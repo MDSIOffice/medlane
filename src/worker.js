@@ -484,8 +484,16 @@ export default {
         const { profile } = await authenticatedProfile(request, env);
         if (request.method !== "GET") return methodNotAllowed();
         requireUserAdmin(profile);
-        const rows = await supabaseFetch(env, "/rest/v1/app_sessions?select=id,user_id,device_name,browser,ip_address,created_at,last_seen_at,revoked_at,profiles(email,full_name,role)&order=last_seen_at.desc");
-        return json({ sessions: rows });
+        let userId = String(url.searchParams.get("userId") || "").trim();
+        const email = cleanEmail(url.searchParams.get("email"));
+        if (!userId && email) {
+          const matches = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id`);
+          userId = matches[0]?.id || "";
+        }
+        if (!/^[0-9a-f-]{36}$/i.test(userId)) return json({ sessions: [], user: null });
+        const rows = await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(userId)}&select=id,user_id,device_name,browser,ip_address,created_at,last_seen_at,revoked_at&order=last_seen_at.desc`);
+        const profiles = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,email,full_name,role`);
+        return json({ user: profiles[0] || null, sessions: rows.map((row) => ({ ...row, profile: profiles[0] || null })) });
       }
 
       if (url.pathname === "/api/users/sessions/revoke") {

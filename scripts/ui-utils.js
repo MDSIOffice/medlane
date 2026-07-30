@@ -156,7 +156,6 @@ function syncGeneratedNotifications() {
   if (latestRecon?.high > 0) add("recon-high-findings", "Reconciliation Risk", `Latest reconciliation has ${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"}.`, "reconciliation", latestRecon.date || "High");
   if (facts.overdue.length || facts.lowStock.length || facts.duePayables.length) add("reports-management-pack", "Report Pack", "Management reports have current AR, inventory, or payable risks to export.", "reports", facts.overdue.length ? "Collections & AR" : facts.lowStock.length ? "Reagent Expiry" : "Supplier Payables");
   if (riskyLogs.length) add("security-risky-actions", "Security Review", `${riskyLogs.length} sensitive audit action${riskyLogs.length === 1 ? "" : "s"} should be reviewed.`, "logs", riskyLogs.map((entry) => entry.record || entry.action).slice(0, 3).join("|"));
-  if (data.logs.length) add("audit-logs-universal", "Audit Logs", `${data.logs.length} action${data.logs.length === 1 ? "" : "s"} by all users are visible in the universal audit log.`, "logs", data.logs[0]?.record || data.logs[0]?.action || "");
   const manual = data.notifications.filter((notice) => !notice.generated);
   data.notifications = [...notices, ...manual].slice(0, 100);
 }

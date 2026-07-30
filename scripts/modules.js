@@ -1,4 +1,5 @@
 let currentReportSaleId = null;
+let selectedUserSessionsTarget = null;
 
 function moduleWorkflowItems(section) {
   const facts = workflowFacts();
@@ -2458,17 +2459,19 @@ function formatSessionDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
-async function renderUserSessions() {
+async function renderUserSessions(target = selectedUserSessionsTarget) {
   const panel = qs("#user-devices-panel");
   if (!panel) return;
-  panel.hidden = !canManageUsers();
-  if (!canManageUsers()) return;
+  selectedUserSessionsTarget = target;
+  panel.hidden = !canManageUsers() || !target;
+  if (!canManageUsers() || !target) return;
+  qs("#user-devices-title").textContent = `Logged-in Devices · ${target.name || target.email || "User"}`;
   table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], [["Loading sessions...", "-", "-", "-", "-", "-", "-", "-"]]);
   try {
-    const payload = await MedlaneAPI.listUserSessions();
+    const payload = await MedlaneAPI.listUserSessions({ userId: target.id, email: target.email });
     const currentSessionId = MedlaneAPI.session()?.app_session_id || "";
-    table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], (payload.sessions || []).map((session) => {
-      const user = session.profiles || {};
+    const rows = (payload.sessions || []).map((session) => {
+      const user = session.profile || payload.user || {};
       const active = !session.revoked_at;
       const isCurrent = session.id === currentSessionId;
       return { focus: session.id, cells: [
@@ -2481,7 +2484,8 @@ async function renderUserSessions() {
         `<span class="pill ${active ? "green" : "gray"}">${active ? "Active" : "Revoked"}${isCurrent ? " · This device" : ""}</span>`,
         active ? `<button class="mini-button danger-button" data-revoke-session="${escapeHtml(session.id)}" ${isCurrent ? "disabled title='Use Logout for this device'" : ""}>Force Logout</button>` : "-",
       ] };
-    }));
+    });
+    table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], rows.length ? rows : [["No tracked sessions yet", "User must log in again after this update", "-", "-", "-", "-", "None", "-"]]);
   } catch (error) {
     table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], [["Session tracking unavailable", "Run updated Supabase schema", "-", "-", "-", "-", "Setup required", escapeHtml(error.message)]]);
   }
@@ -2493,9 +2497,9 @@ function renderUsers() {
     const isSuperadmin = u.superadminPermissions || u.role === "Superadmin";
     const grantControl = `<label class="ios-check-row compact-doc-check user-superadmin-check"><input type="checkbox" data-user-superadmin="${index}" ${isSuperadmin ? "checked" : ""} ${canManageUsers() ? "" : "disabled"} /><span></span><strong>${isSuperadmin ? "Granted" : "Not granted"}</strong></label>`;
     const accessSummary = u.customPermissions?.enabled ? `${u.customPermissions.view?.length || 0} view / ${u.customPermissions.edit?.length || 0} edit modules` : u.access || `${u.role} default permissions`;
-    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, u.branch, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-reset-user-password="${index}">Reset</button><button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"] };
+    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, u.branch, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset</button><button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"] };
   }));
-  renderUserSessions();
+  if (!selectedUserSessionsTarget) qs("#user-devices-panel").hidden = true;
 }
 function notificationItem(notice, index) {
   return `<div class="alert-item clickable" data-notice-index="${index}" data-go-section="${escapeHtml(notice.section || "notifications")}" data-focus-record="${escapeHtml(notice.record || "")}"><span class="alert-dot ${notice.status === "Unread" ? "orange" : "green"}"></span><div><strong>${escapeHtml(notice.type)} · ${escapeHtml(notice.status)}</strong><span>${escapeHtml(notice.message)} · ${escapeHtml(notice.date)}</span></div></div>`;

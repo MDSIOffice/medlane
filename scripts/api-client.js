@@ -64,8 +64,11 @@ const MedlaneAPI = (() => {
     return request("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
   }
 
-  async function listUserSessions() {
-    return request("/api/users/sessions");
+  async function listUserSessions(params = {}) {
+    const query = new URLSearchParams();
+    if (params.userId) query.set("userId", params.userId);
+    if (params.email) query.set("email", params.email);
+    return request(`/api/users/sessions${query.toString() ? `?${query}` : ""}`);
   }
 
   async function revokeUserSession(sessionId) {

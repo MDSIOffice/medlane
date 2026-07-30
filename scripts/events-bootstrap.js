@@ -175,6 +175,8 @@ document.body.addEventListener("click", (event) => {
   if (requestApprove) { const [type, index] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, Number(index)); }
   const requestCancel = event.target.closest("[data-request-cancel]");
   if (requestCancel) { const [type, index] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, Number(index)); }
+  const viewUserSessions = event.target.closest("[data-view-user-sessions]");
+  if (viewUserSessions) return openUserSessions(Number(viewUserSessions.dataset.viewUserSessions));
   const revokeSession = event.target.closest("[data-revoke-session]");
   if (revokeSession) return forceLogoutSession(revokeSession.dataset.revokeSession);
   const confirmPayment = event.target.closest("[data-confirm-payment]");
@@ -610,6 +612,14 @@ qs("#logs-module-filter").addEventListener("change", renderLogs);
 qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
 qs("#clear-notifications").addEventListener("click", () => { data.notifications = data.notifications.filter((notice) => notice.status === "Unread"); saveData(); renderNotifications(); toast("Read notifications cleared."); });
 qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
+
+function openUserSessions(index) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can view device sessions.");
+  const user = data.users[index];
+  if (!user) return toast("User not found.");
+  renderUserSessions({ id: user.id || "", email: user.email || user.username || "", name: user.name || user.email || "User" });
+  qs("#user-devices-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 async function forceLogoutSession(sessionId) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can force logout devices.");
