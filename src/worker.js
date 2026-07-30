@@ -469,7 +469,7 @@ async function gzipBytes(text) {
 }
 
 async function createBackup(env, backupType = "manual", actor = null) {
-  if ((env.ENVIRONMENT || "production") !== "production") throw new Error("Backups are disabled outside production");
+  if (env.ENVIRONMENT !== "production") throw new Error("Backups are disabled outside production");
   if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
   const stateKey = appStateKey(env);
   const records = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
@@ -495,7 +495,7 @@ async function createBackup(env, backupType = "manual", actor = null) {
 
 export default {
   async scheduled(event, env, ctx) {
-    if ((env.ENVIRONMENT || "production") !== "production") return;
+    if (env.ENVIRONMENT !== "production") return;
     ctx.waitUntil(createBackup(env, backupTypeForCron(event.cron), null).catch((error) => console.error(JSON.stringify({ message: "Scheduled backup failed", cron: event.cron, error: error.message }))));
   },
   async fetch(request, env) {
@@ -771,7 +771,7 @@ export default {
       }
 
       if (url.pathname === "/api/backups") {
-        if ((env.ENVIRONMENT || "production") !== "production") return json({ error: "Backups are disabled outside production" }, { status: 403 });
+        if (env.ENVIRONMENT !== "production") return json({ error: "Backups are disabled outside production" }, { status: 403 });
         const { authUser, profile } = await authenticatedProfile(request, env);
         requireBackupAdmin(profile);
         if (request.method === "GET") {
@@ -788,7 +788,7 @@ export default {
       }
 
       if (url.pathname.startsWith("/api/backups/") && request.method === "GET") {
-        if ((env.ENVIRONMENT || "production") !== "production") return json({ error: "Backups are disabled outside production" }, { status: 403 });
+        if (env.ENVIRONMENT !== "production") return json({ error: "Backups are disabled outside production" }, { status: 403 });
         const { profile } = await authenticatedProfile(request, env);
         requireBackupAdmin(profile);
         const id = decodeURIComponent(url.pathname.split("/").pop() || "");
