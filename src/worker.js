@@ -161,12 +161,15 @@ export default {
 
       if (url.pathname === "/api/health") {
         if (request.method !== "GET") return methodNotAllowed();
+        const supabaseHost = env.SUPABASE_URL ? new URL(env.SUPABASE_URL).hostname : null;
         return json({
           ok: true,
           app: "medlane",
           r2Configured: Boolean(env.DOCUMENTS_BUCKET),
           supabaseUrlConfigured: Boolean(env.SUPABASE_URL),
+          supabaseHost,
           supabaseAnonKeyConfigured: Boolean(env.SUPABASE_ANON_KEY),
+          supabaseAnonKeyPrefix: env.SUPABASE_ANON_KEY ? `${env.SUPABASE_ANON_KEY.slice(0, 12)}...` : null,
           supabaseSecretConfigured: Boolean(env.SUPABASE_SERVICE_ROLE_KEY),
         });
       }
