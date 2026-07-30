@@ -62,7 +62,7 @@ async function submitModal(event) {
       oldSale.status = "Cancelled";
       oldSale.cancelReason = values.reason;
       oldSale.replacementId = replacement.documentNo;
-      oldSale.cancelledBy = currentUser?.name || "Demo User";
+      oldSale.cancelledBy = currentUser?.name || "System User";
       data.sales.push(replacement);
       log("Cancelled and replaced invoice", "Invoicing", `${oldSale.documentNo || oldSale.id} -> ${replacement.documentNo}`);
       notify("Cancellation", `${oldSale.documentNo || oldSale.id} cancelled and replaced by ${replacement.documentNo}.`, "receivables-tracker");
@@ -101,7 +101,7 @@ async function submitModal(event) {
     if (data.paymentRequests.some((request) => request.cvNo.toLowerCase() === values.cvNo.toLowerCase() && cvYear(request.date || request.createdAt) === cvYear(values.date))) return toast("Duplicate CV number detected for this year.");
     if (!items.length || items.some((item) => !item.particulars || item.amount <= 0)) return toast("Each payment request item needs particulars and an amount greater than zero.");
     if (total <= 0) return toast("Payment request total must be greater than zero.");
-    data.paymentRequests.unshift({ ...values, items, particulars: items.map((item) => item.particulars).join("; "), amount: items[0]?.amount || 0, gross, withholdingTax: deductions.withholdingTax, expandedWithholdingTax: deductions.expandedWithholdingTax, total, instructions: paymentRequestInstructions, preparedBy: currentUser?.name || "Demo User", preparedRole: currentUser?.role || "Accounting", approvedBy: "Maria Emma F. Llorin", approvedRole: "CEO", status: "Prepared", createdAt: fmtDate(today) });
+    data.paymentRequests.unshift({ ...values, items, particulars: items.map((item) => item.particulars).join("; "), amount: items[0]?.amount || 0, gross, withholdingTax: deductions.withholdingTax, expandedWithholdingTax: deductions.expandedWithholdingTax, total, instructions: paymentRequestInstructions, preparedBy: currentUser?.name || "System User", preparedRole: currentUser?.role || "Accounting", approvedBy: "Maria Emma F. Llorin", approvedRole: "CEO", status: "Prepared", createdAt: fmtDate(today) });
     log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`);
     notify("Payment Request", `${values.cvNo} prepared for ${values.employee}.`, "collections");
   }
@@ -141,8 +141,8 @@ async function submitModal(event) {
     }
   }
   log(`Saved ${modalType}`, modalConfigs[modalType].title, Object.values(values)[0]);
-  saveData();
-  qs("#demo-modal").close();
+    saveData();
+    qs("#demo-modal").close();
   event.currentTarget.reset();
   renderAll();
   if (modalType === "paymentRequest") previewPaymentRequest(0);
@@ -229,12 +229,11 @@ qs("#settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const values = formObject(event.currentTarget);
   const profile = { email: values.email, phone: values.phone, notes: values.notes };
-  localStorage.setItem(userProfileKey(), JSON.stringify(profile));
   currentUser = { ...currentUser, ...profile };
-  localStorage.setItem("medlane-demo-session", JSON.stringify(currentUser));
+  sessionStorage.setItem("medlane-session", JSON.stringify(currentUser));
   renderUserMenu();
   applyRole();
-  toast("User settings saved.");
+  toast("User settings updated for this session. Profile persistence is managed by Admin users.");
 });
 qs("#invoice-approval-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -242,7 +241,7 @@ qs("#invoice-approval-form").addEventListener("submit", (event) => {
   saveData();
   toast("Invoice approved-by names saved.");
 });
-qs("#reset-demo-settings").addEventListener("click", () => qs("#reset-demo").click());
+qs("#reset-demo-settings")?.addEventListener("click", () => toast("Production reset is disabled. Use Admin data tools or Supabase maintenance scripts."));
 qs("#open-password-modal").addEventListener("click", () => {
   qs("#password-form").reset();
   qs("#password-modal").showModal();
@@ -250,20 +249,20 @@ qs("#open-password-modal").addEventListener("click", () => {
 qs("#password-close").addEventListener("click", () => qs("#password-modal").close());
 qs("#password-cancel").addEventListener("click", () => qs("#password-modal").close());
 qs("#password-modal").addEventListener("click", (event) => { if (event.target.id === "password-modal") qs("#password-modal").close(); });
-qs("#password-form").addEventListener("submit", (event) => {
+qs("#password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = formObject(event.currentTarget);
-  const currentPassword = savedPassword();
-  if (values.oldPassword !== currentPassword) return toast("Old password is incorrect.");
   if (values.newPassword.length < 8) return toast("New password must be at least 8 characters.");
   if (!/[A-Za-z]/.test(values.newPassword) || !/\d/.test(values.newPassword)) return toast("New password needs at least one letter and one number.");
   if (/\s/.test(values.newPassword)) return toast("New password cannot contain spaces.");
   if (values.newPassword !== values.confirmPassword) return toast("Confirm password does not match.");
-  if (values.newPassword === currentPassword) return toast("New password must be different from the old password.");
-  localStorage.setItem(passwordKey(), values.newPassword);
+  const activeSession = MedlaneAPI.session();
+  if (!activeSession?.access_token) return toast("Sign in again before changing your password.");
+  try { await MedlaneAPI.changePassword(values.oldPassword, values.newPassword); }
+  catch (error) { return toast(error.message || "Password update failed."); }
   event.currentTarget.reset();
   qs("#password-modal").close();
-  log("Changed password", "User Settings", currentUser?.role || "Demo user");
+  log("Changed password", "User Settings", currentUser?.role || "User");
   toast("Password updated.");
 });
 qs("#platform-branch-form").addEventListener("submit", (event) => {
@@ -584,8 +583,8 @@ qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").valu
 qs("#inventory-status").addEventListener("change", renderInventory);
 qs("#sales-status").addEventListener("change", renderSales);
 qs("#sales-type").addEventListener("change", renderSales);
-qs("#reset-demo").addEventListener("click", () => { localStorage.removeItem("medlane-demo-data"); data = normalizeData(structuredClone(initialData)); qs("#branch-filter").value = data.branch; renderAll(); toast("Demo data reset."); });
-qs("#export-demo").addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export simulated. Audit log added."); });
+qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
+qs("#export-demo")?.addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export logged."); });
 qs("#print-report").addEventListener("click", () => window.print());
 qs("#print-analytics").addEventListener("click", () => window.print());
 qs("#run-reconciliation").addEventListener("click", runReconciliationWorkflow);
@@ -593,7 +592,7 @@ qs("#recon-date-from").addEventListener("change", () => { selectedReconHistoryIn
 qs("#recon-date-to").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
 qs("#recon-period").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
 qs("#clear-recon-dates").addEventListener("click", () => { selectedReconHistoryIndex = null; qs("#recon-date-from").value = ""; qs("#recon-date-to").value = ""; renderReconciliation(); toast("Reconciliation date scope reset."); });
-qs("#clear-logs").addEventListener("click", () => { data.logs = []; saveData(); renderLogs(); toast("Demo logs cleared."); });
+qs("#clear-logs").addEventListener("click", () => { data.logs = []; saveData(); renderLogs(); toast("Logs cleared."); });
 qs("#logs-date-from").addEventListener("change", renderLogs);
 qs("#logs-date-to").addEventListener("change", renderLogs);
 qs("#logs-role-filter").addEventListener("change", renderLogs);
@@ -646,20 +645,11 @@ qs("#login-form").addEventListener("submit", async (event) => {
   try {
     const serverState = await MedlaneAPI.loadAppState();
     serverRevision = Number(serverState.revision || 0);
-    localStorage.setItem("medlane-server-revision", String(serverRevision));
-    if (serverState.data) {
-      data = normalizeData({ ...structuredClone(initialData), ...serverState.data });
-      localStorage.setItem("medlane-server-data", JSON.stringify(data));
-    } else {
-      localStorage.removeItem("medlane-server-data");
-      data = normalizeData(emptyProductionData());
-    }
+      data = serverState.data ? normalizeData({ ...structuredClone(initialData), ...serverState.data }) : normalizeData(emptyProductionData());
   } catch (error) {
     toast(`Logged in, but server data sync failed: ${error.message}`);
   }
-  if (qs("#remember-login")?.checked) localStorage.setItem("medlane-remember-login", JSON.stringify({ email }));
-  else localStorage.removeItem("medlane-remember-login");
-  localStorage.setItem("medlane-demo-session", JSON.stringify(currentUser));
+  sessionStorage.setItem("medlane-session", JSON.stringify(currentUser));
   log("Logged in", "Authentication", currentUser.role);
   showWelcomeTransition(currentUser.name || currentUser.role, () => {
     if (loginButton) {
@@ -693,11 +683,7 @@ function sendPasswordResetLink(index) {
   const user = data.users[index];
   const email = String(user?.email || "").trim().toLowerCase();
   if (!user || !email) return toast("User email is required before sending a reset link.");
-  const token = `rst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  localStorage.setItem(`medlane-reset-token-${token}`, JSON.stringify({ email, role: user.role, createdAt: new Date().toISOString() }));
-  log("Sent password reset link", "Users", `${email} · ${user.role}`);
-  openPasswordResetPage(email, token);
-  toast(`Password reset link sent to ${email}.`);
+  toast("Use Supabase password recovery for existing users. Invitation links are sent when creating a new user.");
 }
 
 function openPasswordResetPage(email, token) {
@@ -757,13 +743,10 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
       if (submitButton) { submitButton.disabled = false; submitButton.classList.remove("is-loading"); submitButton.textContent = originalLabel; }
     }
   } else {
-    const tokenData = JSON.parse(localStorage.getItem(`medlane-reset-token-${values.token}`) || "null");
-    if (!tokenData || tokenData.email !== values.email) return toast("Password reset link is invalid or expired.");
-    localStorage.setItem(emailPasswordKey(values.email), values.newPassword);
-    localStorage.removeItem(`medlane-reset-token-${values.token}`);
+    return toast("Password setup requires a secure Supabase invite or recovery link.");
   }
   currentUser = null;
-  localStorage.removeItem("medlane-demo-session");
+  sessionStorage.removeItem("medlane-session");
   qs("#reset-screen").classList.add("hidden");
   qs("#login-screen").classList.remove("hidden");
   qs("#login-email").value = values.email;
@@ -773,7 +756,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
 });
 function logoutCurrentUser() {
   currentUser = null;
-  localStorage.removeItem("medlane-demo-session");
+  sessionStorage.removeItem("medlane-session");
   MedlaneAPI?.setSession(null);
   document.body.classList.add("login-route");
   document.body.classList.remove("public-landing", "app-route");
@@ -783,11 +766,7 @@ function logoutCurrentUser() {
 }
 
 function restoreRememberedLogin() {
-  const remembered = JSON.parse(localStorage.getItem("medlane-remember-login") || "null");
-  if (!remembered) return;
-  qs("#login-email").value = remembered.email || "";
-  qs("#login-password").value = remembered.password || "";
-  qs("#remember-login").checked = true;
+  qs("#remember-login")?.closest("label")?.remove();
 }
 
 qs("#branch-filter").value = data.branch;
@@ -810,17 +789,10 @@ async function hydrateAuthenticatedSession() {
   if (!MedlaneAPI?.session()?.access_token) throw new Error("No active API session");
   const me = await MedlaneAPI.me();
   currentUser = me.user;
-  localStorage.setItem("medlane-demo-session", JSON.stringify(currentUser));
+  sessionStorage.setItem("medlane-session", JSON.stringify(currentUser));
   const serverState = await MedlaneAPI.loadAppState();
   serverRevision = Number(serverState.revision || 0);
-  localStorage.setItem("medlane-server-revision", String(serverRevision));
-  if (serverState.data) {
-    data = normalizeData({ ...structuredClone(initialData), ...serverState.data });
-    localStorage.setItem("medlane-server-data", JSON.stringify(data));
-  } else {
-    localStorage.removeItem("medlane-server-data");
-    data = normalizeData(emptyProductionData());
-  }
+  data = serverState.data ? normalizeData({ ...structuredClone(initialData), ...serverState.data }) : normalizeData(emptyProductionData());
 }
 async function initializeRoute() {
   if (showSupabasePasswordSetup()) return;
@@ -842,9 +814,7 @@ async function initializeRoute() {
       return;
     } catch {
       currentUser = null;
-      localStorage.removeItem("medlane-demo-session");
-      localStorage.removeItem("medlane-server-data");
-      localStorage.removeItem("medlane-server-revision");
+      sessionStorage.removeItem("medlane-session");
       MedlaneAPI?.setSession(null);
     }
   }

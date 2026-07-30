@@ -104,7 +104,7 @@ function getDashboardRange() {
   return { from: qs("#dashboard-date-from")?.value || "", to: qs("#dashboard-date-to")?.value || "" };
 }
 function log(action, module, record) {
-  data.logs.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), user: currentUser?.name || "Demo User", role: currentUser?.role || "Demo", action, module, record });
+  data.logs.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), user: currentUser?.name || "System User", role: currentUser?.role || "System", action, module, record });
   data.logs = data.logs.slice(0, 60);
   saveData();
 }

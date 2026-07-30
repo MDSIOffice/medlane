@@ -60,6 +60,17 @@ create table if not exists file_objects (
   deleted_at timestamptz
 );
 
+create table if not exists app_records (
+  id uuid primary key default gen_random_uuid(),
+  state_key text not null default 'production',
+  module_name text not null,
+  record_key text not null,
+  data jsonb not null default '{}'::jsonb,
+  updated_by uuid references profiles(id),
+  updated_at timestamptz not null default now(),
+  unique (state_key, module_name, record_key)
+);
+
 create table if not exists storage_usage (
   bucket text primary key,
   used_bytes bigint not null default 0 check (used_bytes >= 0),
@@ -69,11 +80,13 @@ create table if not exists storage_usage (
 
 create index if not exists file_objects_record_idx on file_objects(record_type, record_id);
 create index if not exists file_objects_active_size_idx on file_objects(deleted_at, size_bytes);
+create index if not exists app_records_module_idx on app_records(state_key, module_name);
 
 alter table profiles enable row level security;
 alter table module_permissions enable row level security;
 alter table app_state enable row level security;
 alter table file_objects enable row level security;
+alter table app_records enable row level security;
 alter table branches enable row level security;
 alter table storage_usage enable row level security;
 
@@ -91,6 +104,9 @@ create policy "Authenticated users can read app state" on app_state for select u
 
 drop policy if exists "Authenticated users can read active files" on file_objects;
 create policy "Authenticated users can read active files" on file_objects for select using (auth.role() = 'authenticated' and deleted_at is null);
+
+drop policy if exists "Authenticated users can read app records" on app_records;
+create policy "Authenticated users can read app records" on app_records for select using (auth.role() = 'authenticated');
 
 drop policy if exists "Authenticated users can read storage usage" on storage_usage;
 create policy "Authenticated users can read storage usage" on storage_usage for select using (auth.role() = 'authenticated');
@@ -179,12 +195,14 @@ grant select, insert, update, delete on table branches to service_role;
 grant select, insert, update, delete on table profiles to service_role;
 grant select, insert, update, delete on table module_permissions to service_role;
 grant select, insert, update, delete on table app_state to service_role;
+grant select, insert, update, delete on table app_records to service_role;
 grant select, insert, update, delete on table file_objects to service_role;
 grant select, insert, update, delete on table storage_usage to service_role;
 grant select on table branches to authenticated;
 grant select on table profiles to authenticated;
 grant select on table module_permissions to authenticated;
 grant select on table app_state to authenticated;
+grant select on table app_records to authenticated;
 grant select on table file_objects to authenticated;
 grant select on table storage_usage to authenticated;
 grant execute on function update_app_state(bigint, jsonb, uuid, text) to service_role;

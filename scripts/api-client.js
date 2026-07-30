@@ -2,12 +2,12 @@ const MedlaneAPI = (() => {
   const sessionKey = "medlane-api-session";
 
   function session() {
-    return JSON.parse(localStorage.getItem(sessionKey) || "null");
+    return JSON.parse(sessionStorage.getItem(sessionKey) || "null");
   }
 
   function setSession(value) {
-    if (value) localStorage.setItem(sessionKey, JSON.stringify(value));
-    else localStorage.removeItem(sessionKey);
+    if (value) sessionStorage.setItem(sessionKey, JSON.stringify(value));
+    else sessionStorage.removeItem(sessionKey);
   }
 
   async function request(path, options = {}) {
@@ -24,12 +24,12 @@ const MedlaneAPI = (() => {
   async function login(email, password) {
     const payload = await request("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
     setSession(payload.session);
-    localStorage.setItem("medlane-demo-session", JSON.stringify(payload.user));
+    sessionStorage.setItem("medlane-session", JSON.stringify(payload.user));
     return payload;
   }
 
   async function loadAppState() {
-    return request("/api/app-state");
+    return request("/api/modules/state");
   }
 
   async function me() {
@@ -37,7 +37,7 @@ const MedlaneAPI = (() => {
   }
 
   async function saveAppState(nextData, revision) {
-    return request("/api/app-state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }) });
+    return request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }) });
   }
 
   async function uploadFile(file, metadata = {}) {
@@ -55,5 +55,9 @@ const MedlaneAPI = (() => {
     return request("/api/auth/set-password", { method: "POST", body: JSON.stringify({ accessToken, password }) });
   }
 
-  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword };
+  async function changePassword(currentPassword, newPassword) {
+    return request("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
+  }
+
+  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword, changePassword };
 })();

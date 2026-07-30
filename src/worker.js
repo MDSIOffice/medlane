@@ -13,6 +13,30 @@ const roleModules = {
   HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
 };
 
+const moduleRecordKeys = {
+  users: ["users"],
+  masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals", "masterTab"],
+  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders"],
+  "purchase-orders": ["purchaseOrders"],
+  invoicing: ["sales"],
+  sales: ["sales"],
+  receivables: ["sales", "payments", "collectionContacts", "collectionContactHistory"],
+  warranty: ["warranties"],
+  history: ["sales", "purchaseOrders", "payments"],
+  collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
+  payables: ["payables"],
+  expenses: ["replenishments"],
+  imports: ["imports"],
+  reports: ["reports"],
+  reconciliation: ["reconHistory"],
+  security: ["logs", "notifications"],
+  settings: ["branch", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
+  "audit-logs": ["logs"],
+  system: ["branch", "logs", "notifications", "imports", "reconHistory"],
+};
+
+const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
+
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
@@ -136,6 +160,44 @@ function validEmail(email) {
 
 function validRole(role) {
   return Object.prototype.hasOwnProperty.call(roleModules, role);
+}
+
+function moduleForKey(key) {
+  return Object.entries(moduleRecordKeys).find(([, keys]) => keys.includes(key))?.[0] || "system";
+}
+
+function recordKeyFor(key, value, index) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return key;
+  return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
+}
+
+function stateFromRecords(records) {
+  const next = {};
+  for (const key of persistedKeys) next[key] = ["branch", "masterTab", "branchAddresses", "invoiceApprovals"].includes(key) ? undefined : [];
+  for (const row of records) {
+    const key = row.module_name;
+    if (["branch", "masterTab", "branchAddresses", "invoiceApprovals"].includes(key)) next[key] = row.data?.value;
+    else {
+      next[key] ||= [];
+      next[key].push(row.data);
+    }
+  }
+  for (const key of ["branch", "masterTab", "branchAddresses", "invoiceApprovals"]) if (next[key] === undefined) delete next[key];
+  return next;
+}
+
+function recordsFromState(data, userId, stateKey) {
+  const rows = [];
+  for (const key of persistedKeys) {
+    const value = data?.[key];
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => rows.push({ state_key: stateKey, module_name: key, record_key: recordKeyFor(key, item, index), data: item, updated_by: userId }));
+    } else {
+      rows.push({ state_key: stateKey, module_name: key, record_key: key, data: { value }, updated_by: userId });
+    }
+  }
+  return rows;
 }
 
 async function storageUsage(env) {
@@ -275,6 +337,53 @@ export default {
         const payload = await response.json().catch(() => null);
         if (!response.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password setup failed" }, { status: 400 });
         return json({ ok: true });
+      }
+
+      if (url.pathname === "/api/auth/change-password") {
+        if (request.method !== "POST") return methodNotAllowed();
+        requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
+        const { token, user } = await authenticatedUser(request, env);
+        const { currentPassword, newPassword } = await request.json();
+        if (!currentPassword) return json({ error: "Current password is required" }, { status: 400 });
+        if (String(newPassword || "").length < 8) return json({ error: "New password must be at least 8 characters" }, { status: 400 });
+        const verifyResponse = await fetch(`${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
+          body: JSON.stringify({ email: user.email, password: currentPassword }),
+        });
+        if (!verifyResponse.ok) return json({ error: "Current password is incorrect" }, { status: 401 });
+        const updateResponse = await fetch(`${supabaseBaseUrl(env)}/auth/v1/user`, {
+          method: "PUT",
+          headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ password: newPassword }),
+        });
+        const payload = await updateResponse.json().catch(() => null);
+        if (!updateResponse.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password update failed" }, { status: 400 });
+        return json({ ok: true });
+      }
+
+      if (url.pathname === "/api/modules/state") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        if (request.method === "GET") {
+          const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data&order=updated_at.asc`);
+          return json({ data: stateFromRecords(rows), revision: Date.now() });
+        }
+        if (request.method === "PUT") {
+          requireWriteAccess(profile);
+          const { data } = await request.json();
+          const rows = recordsFromState(data, authUser.id, stateKey);
+          await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}`, { method: "DELETE" });
+          if (rows.length) {
+            await supabaseFetch(env, "/rest/v1/app_records", {
+              method: "POST",
+              headers: { prefer: "return=minimal" },
+              body: JSON.stringify(rows),
+            });
+          }
+          return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
+        }
+        return methodNotAllowed();
       }
 
       if (url.pathname === "/api/users/invite") {

@@ -209,12 +209,11 @@
             <option value="Visayas Dealer">Visayas Dealer</option>
             <option value="Mindanao Dealer">Mindanao Dealer</option>
           </select>
-          <button class="ghost-button" id="reset-demo">Reset Demo</button>
           <button class="primary-button" id="export-demo" hidden>Export Summary</button>
           <div class="user-menu">
             <button class="user-chip" id="user-menu-toggle" type="button" aria-expanded="false" aria-controls="user-popover"><span id="welcome-name">Welcome</span><strong id="user-initials">U</strong></button>
             <div class="user-popover" id="user-popover" hidden>
-              <strong id="user-popover-name">Demo User</strong>
+              <strong id="user-popover-name">User</strong>
               <span id="user-popover-role">Role</span>
               <button class="ghost-button" id="open-settings" type="button">User settings</button>
               <button class="link-button dark" id="logout-top-button" type="button">Logout</button>
@@ -290,7 +289,7 @@
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Management Notes</p><h2>Recommended Actions</h2></div></div><ul class="compact-list" id="analytics-insights"></ul></article>
         </div>
         <div class="analytics-grid analytics-panel" data-analytics-panel="growth">
-          <article class="panel chart-wide"><div class="panel-header"><div><p class="eyebrow">Forecast</p><h2>Projected Sales Growth</h2></div><span class="badge">Demo projection</span></div><div class="line-chart" id="growth-sales-forecast"></div></article>
+          <article class="panel chart-wide"><div class="panel-header"><div><p class="eyebrow">Forecast</p><h2>Projected Sales Growth</h2></div><span class="badge">Projection</span></div><div class="line-chart" id="growth-sales-forecast"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Pipeline</p><h2>Client Growth by Area</h2></div></div><div class="chart-bars compact-chart" id="growth-client-pipeline"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Opportunity</p><h2>Product Demand Outlook</h2></div></div><div class="vertical-bars" id="growth-product-demand"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Cashflow</p><h2>Collection Recovery Potential</h2></div></div><div class="donut-wrap" id="growth-collection-potential"></div></article>
@@ -413,7 +412,7 @@
       </section>
 
       <section class="section" id="imports">
-        <div class="section-header"><div><p class="eyebrow">Excel / CSV Import</p><h2>Import spreadsheet records into the demo</h2></div><button class="primary-button" id="import-sample">Load Sample</button></div>
+        <div class="section-header"><div><p class="eyebrow">Excel / CSV Import</p><h2>Import spreadsheet records into Medlane OS</h2></div><button class="primary-button" id="import-sample">Load Sample</button></div>
         <article class="panel import-panel">
           <p>Paste masterlist CSV data from <strong>CLIENTS</strong>, <strong>SUPPLIERS / VENDORS</strong>, or <strong>PRODUCTS / SERVICES</strong>. The preview detects the format, flags duplicates/missing fields, and imports only confirmed rows.</p>
           <textarea id="csv-input" placeholder="client,ABC Laboratory,Region IV-A,Address,Contact,123-456-789-000"></textarea>
@@ -505,7 +504,7 @@
       </section>
 
       <section class="section" id="settings">
-        <div class="section-header"><div><p class="eyebrow">Platform Settings</p><h2>Branches, Templates, Tutorial</h2><p class="page-description">Configure branches, invoice signatories, tutorials, and demo-only controls.</p></div></div>
+        <div class="section-header"><div><p class="eyebrow">Platform Settings</p><h2>Branches, Templates, Tutorial</h2><p class="page-description">Configure branches, invoice signatories, and tutorial guidance.</p></div></div>
         <article class="panel settings-panel">
           <div class="panel-header"><div><p class="eyebrow">Invoice Template Names</p><h2>Approved By</h2></div></div>
           <form id="invoice-approval-form" class="form-grid">
@@ -516,8 +515,8 @@
           </form>
         </article>
         <article class="panel settings-panel" id="dev-settings-panel" hidden>
-          <div class="panel-header"><div><p class="eyebrow">Developer</p><h2>Demo Controls</h2></div></div>
-          <button class="ghost-button" id="reset-demo-settings" type="button">Reset Demo</button>
+          <div class="panel-header"><div><p class="eyebrow">System</p><h2>Production Controls</h2></div></div>
+          <p class="page-description">Production records are stored in Supabase and protected by role-based access.</p>
         </article>
         <article class="panel settings-panel">
           <div class="panel-header"><div><p class="eyebrow">Tutorial</p><h2>How To Use Each Module</h2></div></div>
@@ -526,7 +525,7 @@
       </section>
 
       <section class="section" id="logs">
-        <div class="section-header"><div><p class="eyebrow">Traceability</p><h2>Audit Trail For Data Accuracy</h2></div><button class="ghost-button" id="clear-logs">Clear Demo Logs</button></div>
+        <div class="section-header"><div><p class="eyebrow">Traceability</p><h2>Audit Trail For Data Accuracy</h2></div><button class="ghost-button" id="clear-logs">Clear Logs</button></div>
         <div class="toolbar log-filter-toolbar">
           <div class="field"><label for="logs-date-from">From</label><input id="logs-date-from" type="date" /></div>
           <div class="field"><label for="logs-date-to">To</label><input id="logs-date-to" type="date" /></div>
@@ -544,7 +543,7 @@
 
     <dialog class="modal" id="demo-modal">
       <form method="dialog" id="modal-form">
-        <div class="modal-header"><div><p class="eyebrow" id="modal-kicker">Demo Form</p><h2 id="modal-title">Add Record</h2></div><button class="icon-button" id="modal-close" type="button" aria-label="Close">x</button></div>
+        <div class="modal-header"><div><p class="eyebrow" id="modal-kicker">Medlane OS Form</p><h2 id="modal-title">Add Record</h2></div><button class="icon-button" id="modal-close" type="button" aria-label="Close">x</button></div>
         <div class="form-grid" id="modal-fields"></div>
         <div class="modal-actions"><button class="ghost-button" id="modal-cancel" type="button">Cancel</button><button class="primary-button" id="modal-submit" type="submit">Save Record</button></div>
       </form>

@@ -92,7 +92,7 @@ const initialData = {
     { name: "Ramon Dela Cruz", email: "logistics@medlane.local", role: "Logistics", branch: "Both", access: "Inventory operations; receive/transfer needs Admin approval" },
   ],
   logs: [
-    { date: "Jul 15, 2026 08:32", user: "Admin User", action: "Reviewed compliance dashboard", module: "Dashboard", record: "Medlane demo" },
+    { date: "Jul 15, 2026 08:32", user: "Admin User", action: "Reviewed compliance dashboard", module: "Dashboard", record: "Medlane OS" },
   ],
   warranties: [
     { client: "Naga City Lab", equipment: "Centrifuge 12-Slot", serial: "CN12-NGA-004", installDate: "2026-06-28", warrantyEnd: "2027-06-28", status: "Active", service: "Quarterly calibration due Sep 2026" },

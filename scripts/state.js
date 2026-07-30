@@ -1,7 +1,7 @@
 let data;
 let modalType = null;
 let editContext = null;
-let currentUser = JSON.parse(localStorage.getItem("medlane-demo-session") || "null");
+let currentUser = JSON.parse(sessionStorage.getItem("medlane-session") || "null");
 let currentClientView = null;
 let currentInvoiceFlow = null;
 let currentPrintNoDate = false;
@@ -15,7 +15,7 @@ let arTrackerTab = "all";
 let collectionMapZoom = 1;
 let inventoryBranchTab = "Las Pinas";
 let pendingServerSave = null;
-let serverRevision = Number(localStorage.getItem("medlane-server-revision") || 0);
+let serverRevision = 0;
 
 const philippinesRegionsGeoJsonUrl = "https://raw.githubusercontent.com/wmgeolab/geoBoundaries/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
 
@@ -42,16 +42,16 @@ if (currentUser?.role && accounts[currentUser.role] && !currentUser.id && !curre
 
 const sectionMeta = {
   notifications: ["Notifications", "Review system alerts for credit limits, stock transfers, collections, and inventory risks."],
-  "user-settings": ["User Settings", "View and update your demo profile, contact details, and session preferences."],
+  "user-settings": ["User Settings", "View and update your profile, contact details, and session preferences."],
   "client-invoices": ["Client Invoice Timeline", "Review every invoice for one client using an order-status timeline."],
   "report-detail": ["Report Detail", "Focused report view with graphs, source records, and connected module actions."],
 };
 
 function userProfileKey() { return `medlane-profile-${currentUser?.role || "guest"}`; }
 function passwordKey(role = currentUser?.role) { return `medlane-password-${role || "guest"}`; }
-function savedPassword(role = currentUser?.role) { return localStorage.getItem(passwordKey(role)) || "demo"; }
+function savedPassword() { return ""; }
 function emailPasswordKey(email) { return `medlane-password-email-${String(email || "").trim().toLowerCase()}`; }
-function savedLoginPassword(email, role) { return localStorage.getItem(emailPasswordKey(email)) || savedPassword(role); }
+function savedLoginPassword() { return ""; }
 function platformAreas() { return data?.platformAreas?.length ? data.platformAreas : initialData.platformAreas; }
 function platformBranches() { return data?.platformBranches?.length ? data.platformBranches : initialData.platformBranches; }
 function branchAddresses() { return data?.branchAddresses || {}; }
@@ -81,7 +81,7 @@ function followupWeekKey(date = followupDate()) {
   return fmtDate(value);
 }
 function getCurrentProfile() {
-  const saved = JSON.parse(localStorage.getItem(userProfileKey()) || "{}");
+  const saved = {};
   return { email: currentUser?.email || `${String(currentUser?.role || "user").toLowerCase()}@medlane.local`, phone: currentUser?.phone || "+63", notes: "", ...currentUser, ...saved };
 }
 function firstName(name) { return String(name || "User").split(/\s+/)[0]; }
@@ -123,14 +123,7 @@ function emptyProductionData() {
 }
 
 function loadData() {
-  if (MedlaneAPI?.session()?.access_token && !localStorage.getItem("medlane-server-data")) return normalizeData(emptyProductionData());
-  const serverCached = localStorage.getItem("medlane-server-data");
-  if (serverCached) return normalizeData({ ...structuredClone(initialData), ...JSON.parse(serverCached) });
-  const stored = localStorage.getItem("medlane-demo-data");
-  if (!stored) return normalizeData(structuredClone(initialData));
-  const parsed = JSON.parse(stored);
-  if (parsed.dataVersion !== initialData.dataVersion) return normalizeData(structuredClone(initialData));
-  return normalizeData({ ...structuredClone(initialData), ...parsed });
+  return normalizeData(emptyProductionData());
 }
 
 function normalizeData(next) {
@@ -187,7 +180,7 @@ function normalizeData(next) {
       const item = next.items.find((entry) => entry.code === line.code || entry.name === line.item) || {};
       return { item: line.item || item.name, code: line.code || item.code || line.item, brand: line.brand || item.brand || "Medlane", qty: Number(line.qty || 0), uom: line.uom || item.uom || "unit", price: Number(line.price || 0) };
     });
-    return { id: po.id, client: po.client, area: po.area || client?.area || "Region I", salesperson: po.salesperson || currentUser?.name || "Demo User", date: po.date || fmtDate(today), lines, status: po.status || "For Invoicing" };
+    return { id: po.id, client: po.client, area: po.area || client?.area || "Region I", salesperson: po.salesperson || currentUser?.name || "System User", date: po.date || fmtDate(today), lines, status: po.status || "For Invoicing" };
   });
   next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ id: po.id, supplier: po.supplier, date: po.date || fmtDate(today), status: po.status || "For Receiving", lines: po.lines || [] }));
   const clientsWithBalance = new Set(next.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
@@ -206,24 +199,19 @@ function normalizeData(next) {
 }
 
 function saveData() {
-  localStorage.setItem("medlane-demo-data", JSON.stringify(data));
-  localStorage.setItem("medlane-server-data", JSON.stringify(data));
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return;
   clearTimeout(pendingServerSave);
   pendingServerSave = setTimeout(() => {
     MedlaneAPI.saveAppState(data, serverRevision).then((result) => {
       if (result?.revision) {
         serverRevision = Number(result.revision);
-        localStorage.setItem("medlane-server-revision", String(serverRevision));
       }
     }).catch(async (error) => {
       if (error.message.includes("APP_STATE_CONFLICT")) {
         const latest = await MedlaneAPI.loadAppState().catch(() => null);
         if (latest?.data) {
           serverRevision = Number(latest.revision || 0);
-          localStorage.setItem("medlane-server-revision", String(serverRevision));
           data = normalizeData({ ...structuredClone(initialData), ...latest.data });
-          localStorage.setItem("medlane-server-data", JSON.stringify(data));
           if (typeof renderAll === "function") renderAll();
           if (typeof toast === "function") toast("Another user saved first. Reloaded latest server data.");
           return;

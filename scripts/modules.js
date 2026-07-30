@@ -560,7 +560,7 @@ function renderSettingsTutorial() {
     { title: "Users, Settings, Notifications", role: "Superadmin settings; role-based notifications", submodules: [
       ["Invite User", "Sends a secure email invitation and creates the user profile after Supabase accepts it.", "Select role to precheck default permissions, then customize by module group.", "The invited user accepts the email link and creates their own password."],
       ["Superadmin Permission Grant", "Lets Superadmin promote/demote another user to Superadmin permissions.", "Check/uncheck the Superadmin box in Users table.", "Use when assigning another manager to control users/settings."],
-      ["Settings", "Stores platform-level settings and this manual.", "Only Superadmin/CEO can open Settings.", "Use to update signatories, tutorial guidance, and demo controls."],
+      ["Settings", "Stores platform-level settings and this manual.", "Only Superadmin/CEO can open Settings.", "Use to update signatories and tutorial guidance."],
       ["Notifications", "Stores alerts, reminders, approvals, and workflow notices.", "Open notification bell or Notifications page.", "Use to review system warnings and mark alerts as seen."],
     ] },
   ];
@@ -692,10 +692,10 @@ function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, total
     d.setMonth(d.getMonth() + step);
     return [fmtDate(d).slice(0, 7), Math.round(base * (1 + step * 0.08))];
   })];
-  qs("#growth-sales-forecast").innerHTML = lineChart(forecast) + graphNote("Projection starts from the latest monthly sales total and applies a demo growth step.");
+  qs("#growth-sales-forecast").innerHTML = lineChart(forecast) + graphNote("Projection starts from the latest monthly sales total and applies the configured growth step.");
   qs("#growth-client-pipeline").innerHTML = barRows(Object.entries(sumBy(data.clients, "area", () => 1)).map(([area, count]) => [area, count + visibleSales.filter((sale) => sale.area === area).length]), (value) => `${value} accounts/orders`, ["", "green", "orange"]);
   const demand = Object.entries(sumBy(visibleSales, "item", (sale) => sale.qty || (sale.lines || []).reduce((sum, line) => sum + Number(line.qty || 0), 0))).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  qs("#growth-product-demand").innerHTML = verticalBars(demand.map(([label, value]) => [label, value * 4200])) + graphNote("Computed from sold item quantities, converted to estimated value using demo unit pricing.");
+  qs("#growth-product-demand").innerHTML = verticalBars(demand.map(([label, value]) => [label, value * 4200])) + graphNote("Computed from sold item quantities and configured unit pricing.");
   const recoverable = Math.max(totalSales - totalPaid, 0);
   const recoveryRate = totalSales ? Math.round((recoverable / totalSales) * 100) : 0;
   qs("#growth-collection-potential").innerHTML = `<div class="donut" style="--paid:${Math.min(100, recoveryRate)}%; --partial:${Math.min(100, recoveryRate + 18)}%; --end:100%;" data-label="${recoveryRate}%\nAR upside"></div><div class="legend"><span class="orange">Recoverable ${peso.format(recoverable)}</span><span class="green">Collected ${peso.format(totalPaid)}</span></div>${graphNote("Computed from outstanding AR compared with collected payment totals.")}`;
@@ -795,7 +795,7 @@ function renderInventory() {
 }
 
 function recordTransferHistory(transfer, action, notes) {
-  data.transferHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), transferId: transfer.id, action, item: transfer.item, from: transfer.from, to: transfer.to, qty: transfer.qty, lot: transfer.sourceLot || transfer.lot, user: currentUser?.name || "Demo User", notes });
+  data.transferHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), transferId: transfer.id, action, item: transfer.item, from: transfer.from, to: transfer.to, qty: transfer.qty, lot: transfer.sourceLot || transfer.lot, user: currentUser?.name || "System User", notes });
   data.transferHistory = data.transferHistory.slice(0, 80);
 }
 
@@ -927,7 +927,7 @@ function saveTransferSheet() {
   if (rows.some((row) => !row.source)) return toast("Not enough source stock for the selected item lot.");
   rows.forEach((row) => {
     row.source.qty -= row.qty;
-    const transfer = { id: nextId(data.pendingTransfers, "TR"), code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, from: row.from, to: row.to, qty: row.qty, lot: row.lot, sourceLot: row.lot, expiry: row.source.expiry || "N/A", lines: [{ code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, qty: row.qty, uom: row.item.uom || "unit", lot: row.lot, expiry: row.source.expiry || "N/A" }], status: "For Receiving", requestedBy: currentUser?.name || "Demo User" };
+    const transfer = { id: nextId(data.pendingTransfers, "TR"), code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, from: row.from, to: row.to, qty: row.qty, lot: row.lot, sourceLot: row.lot, expiry: row.source.expiry || "N/A", lines: [{ code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, qty: row.qty, uom: row.item.uom || "unit", lot: row.lot, expiry: row.source.expiry || "N/A" }], status: "For Receiving", requestedBy: currentUser?.name || "System User" };
     data.pendingTransfers.push(transfer);
     recordTransferHistory(transfer, "Created", "Source stock deducted and transfer opened for dispatch.");
     notify("Transfer", `${transfer.id} requires receiving confirmation at ${transfer.to}.`, "inventory");
@@ -945,7 +945,7 @@ function dispatchTransfer(index) {
   if (!transfer || transfer.status !== "For Receiving") return toast("Transfer is not ready for dispatch.");
   if (!confirm(`Mark ${transfer.id} as In Transit from ${transfer.from} to ${transfer.to}?`)) return;
   transfer.status = "In Transit";
-  transfer.dispatchedBy = currentUser?.name || "Demo User";
+  transfer.dispatchedBy = currentUser?.name || "System User";
   transfer.dispatchedAt = fmtDate(today);
   recordTransferHistory(transfer, "Marked In Transit", `Dispatched from ${transfer.from} to ${transfer.to}.`);
   log("Marked stock transfer in transit", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`);
@@ -962,7 +962,7 @@ function receiveTransfer(index) {
   if (existing) existing.qty += transfer.qty;
   else data.inventory.push({ code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: transfer.qty, min: 10 });
   transfer.status = "Received";
-  transfer.receivedBy = currentUser?.name || "Demo User";
+  transfer.receivedBy = currentUser?.name || "System User";
   transfer.receivedAt = fmtDate(today);
   recordTransferHistory(transfer, "Confirmed Received", `Received at ${transfer.to}; destination inventory increased.`);
   log("Confirmed stock transfer received", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`);
@@ -986,7 +986,7 @@ function incompleteTransfer(index) {
   transfer.status = "Incomplete";
   transfer.receivedQty = received;
   transfer.missingQty = transfer.qty - received;
-  transfer.incompleteBy = currentUser?.name || "Demo User";
+  transfer.incompleteBy = currentUser?.name || "System User";
   transfer.incompleteAt = fmtDate(today);
   recordTransferHistory(transfer, "Marked Incomplete", `Received ${received}; missing ${transfer.missingQty}. Destination inventory updated only for received quantity.`);
   notify("Transfer", `${transfer.id} marked incomplete: ${transfer.missingQty} missing.`, "inventory");
@@ -1008,7 +1008,7 @@ function completeIncompleteTransfer(index) {
   transfer.status = "Received";
   transfer.receivedQty = Number(transfer.receivedQty || 0) + missing;
   transfer.missingQty = 0;
-  transfer.receivedBy = currentUser?.name || "Demo User";
+  transfer.receivedBy = currentUser?.name || "System User";
   transfer.receivedAt = fmtDate(today);
   recordTransferHistory(transfer, "Confirmed Missing Quantity", `Missing ${missing} received at ${transfer.to}; transfer is now complete.`);
   notify("Transfer", `${transfer.id} missing quantity was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory");
@@ -1163,7 +1163,7 @@ function formMoney(value) { return Number(value || 0).toLocaleString("en-US", { 
 function formDate(value = today) { return new Date(value).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }); }
 function clientForSale(sale) { return data.clients.find((client) => client.name === sale.client) || {}; }
 function lineAmount(line) { return Number(line.qty || 0) * Number(line.price || 0); }
-function preparedByName() { return currentUser?.name || "Demo User"; }
+function preparedByName() { return currentUser?.name || "System User"; }
 function approvedByName(type = "SI") { return escapeHtml(invoiceApprovals()[documentType(type)] || "ECTOSOC"); }
 
 function invoiceTemplateOverlay(sale) {
@@ -1281,7 +1281,7 @@ function openCollectionActionModal(key) {
   const payment = data.payments.find((entry) => entry.receiptNo === key) || data.payments.find((entry) => sale && (entry.invoice === sale.id || entry.invoice === sale.documentNo));
   if (!sale && !payment) return toast("Collection detail not found.");
   const source = sale?.migrated ? "Migrated" : "Native";
-  const history = payment?.statusHistory?.length ? payment.statusHistory.map((entry) => `<li>${escapeHtml(entry.date)} · ${escapeHtml(entry.status)} · ${escapeHtml(entry.user || "Demo User")}</li>`).join("") : `<li>No status history yet.</li>`;
+  const history = payment?.statusHistory?.length ? payment.statusHistory.map((entry) => `<li>${escapeHtml(entry.date)} · ${escapeHtml(entry.status)} · ${escapeHtml(entry.user || "System User")}</li>`).join("") : `<li>No status history yet.</li>`;
   qs("#collection-detail-title").textContent = payment?.receiptNo || sale?.documentNo || sale?.id || "Collection Detail";
   qs("#collection-detail-content").innerHTML = `<section class="collection-detail-card"><header><div><span class="eyebrow">Collection Detail</span><strong>${escapeHtml(payment?.receiptNo || sale?.documentNo || sale?.id || "-")}</strong><small>${escapeHtml(sale?.client || payment?.client || "-")}</small></div><span class="pill ${statusClass(payment?.collectionStatus || "For Deposition")}">${escapeHtml(payment?.collectionStatus || "For Deposition")}</span></header><div class="collection-detail-meta"><article><span>Document</span><strong>${escapeHtml(sale?.documentNo || sale?.id || payment?.invoice || "-")}</strong></article><article><span>Tag</span><strong>${escapeHtml(payment?.tag || collectionTagForType(sale?.type))}</strong></article><article><span>Source</span><strong>${source}</strong></article></div><div class="collection-detail-grid"><article class="collection-metric success"><span>Amount Paid</span><strong>${peso.format(Number(payment?.amount || sale?.paid || 0))}</strong></article><article class="collection-metric warning"><span>Balance</span><strong>${peso.format(Math.max(Number(sale?.net || 0) - Number(sale?.paid || 0), 0))}</strong></article><article class="collection-metric"><span>Bank / Reference</span><strong>${escapeHtml([payment?.bank, payment?.reference].filter(Boolean).join(" · ") || "-")}</strong></article></div><div class="collection-history-panel"><h3>Status History</h3><ul>${history}</ul></div><div class="modal-actions collection-status-actions"><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo || "")}:For Deposition">For Deposition</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo || "")}:Deposited">Deposited</button><button class="ghost-button danger-button" data-collection-status="${escapeHtml(payment?.receiptNo || "")}:Bounced">Bounced</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo || "")}:Posted Date">Posted Date</button><button class="primary-button" data-action="open-modal" data-type="payment">Add/Edit Payment</button></div></section>`;
   qs("#collection-detail-modal").showModal();
@@ -1310,7 +1310,7 @@ function syncCollectionContactsForBalances() {
 }
 
 function collectionStatusHistory(status) {
-  return [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, user: currentUser?.name || "Demo User" }];
+  return [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, user: currentUser?.name || "System User" }];
 }
 
 function syncPostedCollectionReminders() {
@@ -1762,7 +1762,7 @@ function updateCollectionContact(client, status) {
   }
   contact.status = status;
   contact.lastContact = fmtDate(followupDate());
-  contact.employee = currentUser?.name || "Demo User";
+  contact.employee = currentUser?.name || "System User";
   contact.weekKey = followupWeekKey();
   contact.chequeInvoice = status === "Cheque Available" ? chequeInvoice.trim() : "";
   const channelText = contact.channels?.length ? ` via ${contact.channels.join(" + ")}` : "";
@@ -2229,12 +2229,12 @@ function previewFinancialRequest(type, index) {
   if (!record) return toast("Request not found.");
   qs("#report-preview-title").textContent = `${type === "payable" ? "Payable" : "Expense"} Request ${record.id}`;
   qs("#report-preview-description").textContent = `${record.supplier || record.requester || "Request"} · ${peso.format(record.amount)}`;
-  qs("#report-preview-content").innerHTML = `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(record.id)}</span></header><div class="pr-meta"><span>${type === "payable" ? "Supplier" : "Requester"}: <strong>${escapeHtml(record.supplier || record.requester || "")}</strong></span><span>Status: <strong>${escapeHtml(record.requestStatus || "For Approval")}</strong></span><span>Date: <strong>${escapeHtml(record.date || fmtDate(today))}</strong></span></div><table><thead><tr><th>Particulars</th><th>Amount</th></tr></thead><tbody>${(record.items || []).map((item) => `<tr><td>${escapeHtml(item.particulars || item.item || "Item")}</td><td>${peso.format(item.amount || 0)}</td></tr>`).join("")}<tr><td><strong>Total</strong></td><td><strong>${peso.format(record.amount)}</strong></td></tr></tbody></table><footer><div>Prepared by:<br><strong>${escapeHtml(record.requester || currentUser?.name || "Demo User")}</strong></div><div>Approved by:<br><strong>${escapeHtml(record.approvedBy || "For approval")}</strong></div></footer></section>`;
+  qs("#report-preview-content").innerHTML = `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(record.id)}</span></header><div class="pr-meta"><span>${type === "payable" ? "Supplier" : "Requester"}: <strong>${escapeHtml(record.supplier || record.requester || "")}</strong></span><span>Status: <strong>${escapeHtml(record.requestStatus || "For Approval")}</strong></span><span>Date: <strong>${escapeHtml(record.date || fmtDate(today))}</strong></span></div><table><thead><tr><th>Particulars</th><th>Amount</th></tr></thead><tbody>${(record.items || []).map((item) => `<tr><td>${escapeHtml(item.particulars || item.item || "Item")}</td><td>${peso.format(item.amount || 0)}</td></tr>`).join("")}<tr><td><strong>Total</strong></td><td><strong>${peso.format(record.amount)}</strong></td></tr></tbody></table><footer><div>Prepared by:<br><strong>${escapeHtml(record.requester || currentUser?.name || "System User")}</strong></div><div>Approved by:<br><strong>${escapeHtml(record.approvedBy || "For approval")}</strong></div></footer></section>`;
   qs("#report-preview-modal").showModal();
 }
 
-function approveFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "Demo User"; record.approvedAt = fmtDate(today); log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments"); saveData(); renderAll(); toast(`${record.id} approved.`); }
-function cancelFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Cancelled"; record.status = "Cancelled"; record.cancelledBy = currentUser?.name || "Demo User"; record.cancelledAt = fmtDate(today); log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); saveData(); renderAll(); toast(`${record.id} cancelled.`); }
+function approveFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "System User"; record.approvedAt = fmtDate(today); log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments"); saveData(); renderAll(); toast(`${record.id} approved.`); }
+function cancelFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Cancelled"; record.status = "Cancelled"; record.cancelledBy = currentUser?.name || "System User"; record.cancelledAt = fmtDate(today); log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); saveData(); renderAll(); toast(`${record.id} cancelled.`); }
 function confirmFinancialPayment(type, index, method) { const record = requestRecord(type, index); if (!record || record.requestStatus !== "Approved") return toast("Only approved requests can be confirmed paid."); record.method = method; record.bank = ["Bank Transfer", "Cheque"].includes(method) ? prompt("Bank name:", record.bank || "") || "" : ""; record.cheque = method === "Cheque" ? prompt("Cheque number:", record.cheque || "") || "" : ""; record.paid = record.amount; record.paymentConfirmed = true; record.status = "Paid"; log(`Confirmed ${type} payment`, type === "payable" ? "Payables" : "Expenses", `${record.id} · ${method} · ${peso.format(record.amount)}`); saveData(); renderAll(); toast(`${record.id} marked paid by ${method}.`); }
 
 function expenseApprovalAction(expense, index) {
@@ -2249,7 +2249,7 @@ function approveExpense(index, nextStatus) {
   const allowed = nextStatus === "Approved by HR" ? ["Superadmin", "HR", "Admin", "CEO"] : ["Superadmin", "Accounting", "Admin", "CEO"];
   if (!allowed.includes(currentUser?.role)) return toast(`${nextStatus} requires ${nextStatus.includes("HR") ? "HR" : "Accounting"} approval.`);
   expense.status = nextStatus;
-  expense.approvedBy = currentUser?.name || "Demo User";
+  expense.approvedBy = currentUser?.name || "System User";
   expense.approvedAt = fmtDate(today);
   notify("Expense", `${expense.id} ${nextStatus} by ${expense.approvedBy}.`, "replenishments");
   log("Approved expense", "Expenses", `${expense.id}: ${nextStatus}`);
@@ -2478,7 +2478,7 @@ function renderSecurity() {
     ["Role-Based Access", "Users only see modules allowed for their role. Masterlist edits require Superadmin approval; money overrides are limited to Superadmin/Admin/CEO."],
     ["Money Approval Gates", requiredSecurityApprovals.join(", ")],
     ["Lost Phone Response", "Admin can immediately switch accounts, clear sessions, and review audit logs after a lost device report."],
-    ["Compromised Password Response", "Use Reset Demo / session switch locally; production should enforce password reset, MFA, and session revocation."],
+    ["Compromised Password Response", "Use Supabase password reset, MFA, session expiry, and audit review for account recovery."],
     ["Audit Trail", `${data.logs.length} recorded actions with user, module, date, and affected record.`],
     ["Collection Safety", "Receipt numbers, collection tags, banks, cheque dates, and date-recorded values are captured for reconciliation."],
   ];
@@ -2580,13 +2580,13 @@ function handleWorkflowAction(action) {
         contact.channels = [...new Set([...(contact.channels || []), "Email"])] ;
         contact.status = contact.status === "Pending" ? "Unreached" : contact.status;
         contact.lastContact = fmtDate(today);
-        contact.employee = currentUser?.name || "Demo User";
+        contact.employee = currentUser?.name || "System User";
         contact.notes = "Batch reminder sent; waiting for reply.";
         count += 1;
       }
     });
     if (count) {
-      data.collectionContactHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), area: "All", client: "Batch reminder", channels: "Email", status: "Unreached", employee: currentUser?.name || "Demo User", notes: `${count} pending clients reminded.` });
+      data.collectionContactHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), area: "All", client: "Batch reminder", channels: "Email", status: "Unreached", employee: currentUser?.name || "System User", notes: `${count} pending clients reminded.` });
       log("Sent batch collection reminders", "Collections", `${count} clients`);
       saveData();
       renderAll();
@@ -2615,7 +2615,7 @@ const modalConfigs = {
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   payment: { title: "Record Collection", fields: [["invoice", "SI / TS / DR", "datalist", () => data.sales.filter((s) => s.status !== "Cancelled").map((s) => s.documentNo || s.id)], ["tag", "Collection Tag", "readonly"], ["receiptNo", "Receipt No."], ["method", "Method", "select", ["Cash", "Cheque", "Multiple Cheques", "Bank Deposit", "Bank Transfer"]], ["bank", "Bank", "select", () => data.banks.map((b) => b.name)], ["reference", "Cheque/Reference No."], ["chequeDate", "Date of Cheque", "date"], ["collectionStatus", "Collection Status", "select", ["For Deposition", "Deposited", "Bounced", "Posted Date"]], ["postedDate", "Posted / Claim Date", "date"], ["dateCollected", "Date of Collection", "date"], ["amount", "Amount Paid", "number"]] },
-  paymentRequest: { title: "Payment Request", fields: [["employee", "Employee / Vendor", "datalist", () => [...new Set([...data.clients.map((client) => client.name), ...data.employees.map((employee) => employee.name), currentUser?.name || "Demo User"].filter(Boolean))]], ["department", "Department"], ["cvNo", "CV Number"], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["requestType", "Mode of Request", "select", ["Reimbursement or Liquidation", "Fees, Supplier or Utilities", "Priority"]]] },
+  paymentRequest: { title: "Payment Request", fields: [["employee", "Employee / Vendor", "datalist", () => [...new Set([...data.clients.map((client) => client.name), ...data.employees.map((employee) => employee.name), currentUser?.name || "System User"].filter(Boolean))]], ["department", "Department"], ["cvNo", "CV Number"], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["requestType", "Mode of Request", "select", ["Reimbursement or Liquidation", "Fees, Supplier or Utilities", "Priority"]]] },
   payable: { title: "Payable Request", fields: [["supplier", "Supplier", "select", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["requestNote", "Request Notes", "textarea"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["date", "PO Date", "date"]] },
@@ -2712,7 +2712,7 @@ function openModal(type, edit = null) {
     syncClientDocsHidden();
   }
   if (type === "paymentRequest" && !edit) {
-    qs("#employee").value = currentUser?.name || "Demo User";
+    qs("#employee").value = currentUser?.name || "System User";
     qs("#department").value = currentUser?.role || "Accounting";
     qs("#date").value = fmtDate(today);
     qs("#cvNo").value = nextCvNumber(cvYear(qs("#date").value));
@@ -2835,7 +2835,7 @@ function openMasterEditModal(type, index) {
   if (!canEdit) {
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const record = listByType[type]?.[index];
-    notify("Approval", `${currentUser?.name || "Demo User"} requested Superadmin/CEO approval to edit ${type}: ${record?.name || record?.code || "record"}.`, "masterlists");
+    notify("Approval", `${currentUser?.name || "System User"} requested Superadmin/CEO approval to edit ${type}: ${record?.name || record?.code || "record"}.`, "masterlists");
     saveData();
     renderNotifications();
     return toast("Masterlist edits require Superadmin/CEO approval. Request sent.");
@@ -2904,7 +2904,7 @@ function buildPurchaseOrder(values) {
   if (!client) throw new Error("Client is required.");
   const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false });
   if (!lines.length) throw new Error("At least one purchase order line is required.");
-  return { id: nextPurchaseOrderId(), client: client.name, area: client.area, salesperson: currentUser?.name || "Demo User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
+  return { id: nextPurchaseOrderId(), client: client.name, area: client.area, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
 }
 
 function buildSale(values, replacementOf = null) {
@@ -2957,7 +2957,7 @@ function buildSale(values, replacementOf = null) {
   else notify("Purchase Order", `${po.id} completely served by ${documentNo}.`, "purchase-orders");
   const primaryLine = lines[0];
   const terms = Number(client.terms || 30);
-  return { id: documentNo, documentNo, vatCode: values.vatCode || (values.type === "SI" ? "VATable" : "Non-VAT"), po: values.po || `PO-${documentNo}`, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "Demo User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", withholdingTax: Boolean(values.withholdingTax), expandedWithholdingTax: Boolean(values.expandedWithholdingTax), autoTaxRate: 0, withholdingDiscount, expandedWithholdingDiscount, taxTreatment: [values.withholdingTax ? "Withholding Tax 5%" : "", values.expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), tax, net, terms, paid: 0, status: "Active", cancelledFrom: replacementOf };
+  return { id: documentNo, documentNo, vatCode: values.vatCode || (values.type === "SI" ? "VATable" : "Non-VAT"), po: values.po || `PO-${documentNo}`, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "System User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", withholdingTax: Boolean(values.withholdingTax), expandedWithholdingTax: Boolean(values.expandedWithholdingTax), autoTaxRate: 0, withholdingDiscount, expandedWithholdingDiscount, taxTreatment: [values.withholdingTax ? "Withholding Tax 5%" : "", values.expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), tax, net, terms, paid: 0, status: "Active", cancelledFrom: replacementOf };
 }
 
 function togglePayableFields() {
