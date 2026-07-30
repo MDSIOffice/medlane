@@ -482,8 +482,9 @@ function renderPlatformSettings() {
   if (qs("#approved-si")) qs("#approved-si").value = approvals.SI || "ECTOSOC";
   if (qs("#approved-ts")) qs("#approved-ts").value = approvals.TS || "ECTOSOC";
   if (qs("#approved-dr")) qs("#approved-dr").value = approvals.DR || "ECTOSOC";
+  if (qs("#invoice-approval-form")) qs("#invoice-approval-form").dataset.focusRecord = "Invoice approvals";
   if (qs("#dev-settings-panel")) qs("#dev-settings-panel").hidden = !isDevEnvironment();
-  qs("#platform-branch-list").innerHTML = platformBranches().map((branch) => `<div class="platform-area-chip"><span>${escapeHtml(branch)}<small>${escapeHtml(branchAddresses()[branch] || "No address set")}</small></span><button class="mini-button" type="button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${lockedBranches.has(branch) ? `<small>Used by records</small>` : `<button class="mini-button danger-button" type="button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}</div>`).join("");
+  qs("#platform-branch-list").innerHTML = platformBranches().map((branch) => `<div class="platform-area-chip" data-focus-record="${escapeHtml(branch)}" data-focus-text="${escapeHtml(`${branch} ${branchAddresses()[branch] || "No address set"}`)}"><span>${escapeHtml(branch)}<small>${escapeHtml(branchAddresses()[branch] || "No address set")}</small></span><button class="mini-button" type="button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${lockedBranches.has(branch) ? `<small>Used by records</small>` : `<button class="mini-button danger-button" type="button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}</div>`).join("");
   renderSettingsTutorial();
 }
 
@@ -930,7 +931,7 @@ function saveTransferSheet() {
     const transfer = { id: nextId(data.pendingTransfers, "TR"), code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, from: row.from, to: row.to, qty: row.qty, lot: row.lot, sourceLot: row.lot, expiry: row.source.expiry || "N/A", lines: [{ code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, qty: row.qty, uom: row.item.uom || "unit", lot: row.lot, expiry: row.source.expiry || "N/A" }], status: "For Receiving", requestedBy: currentUser?.name || "System User" };
     data.pendingTransfers.push(transfer);
     recordTransferHistory(transfer, "Created", "Source stock deducted and transfer opened for dispatch.");
-    notify("Transfer", `${transfer.id} requires receiving confirmation at ${transfer.to}.`, "inventory");
+    notify("Transfer", `${transfer.id} requires receiving confirmation at ${transfer.to}.`, "inventory", transfer.id);
   });
   log("Created stock transfer", "Inventory", `${rows.length} row(s)`);
   saveData();
@@ -966,7 +967,7 @@ function receiveTransfer(index) {
   transfer.receivedAt = fmtDate(today);
   recordTransferHistory(transfer, "Confirmed Received", `Received at ${transfer.to}; destination inventory increased.`);
   log("Confirmed stock transfer received", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`);
-  notify("Transfer", `${transfer.id} was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory");
+  notify("Transfer", `${transfer.id} was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory", transfer.id);
   saveData();
   renderAll();
   toast("Transfer received and inventory adjusted.");
@@ -989,7 +990,7 @@ function incompleteTransfer(index) {
   transfer.incompleteBy = currentUser?.name || "System User";
   transfer.incompleteAt = fmtDate(today);
   recordTransferHistory(transfer, "Marked Incomplete", `Received ${received}; missing ${transfer.missingQty}. Destination inventory updated only for received quantity.`);
-  notify("Transfer", `${transfer.id} marked incomplete: ${transfer.missingQty} missing.`, "inventory");
+  notify("Transfer", `${transfer.id} marked incomplete: ${transfer.missingQty} missing.`, "inventory", transfer.id);
   log("Marked stock transfer incomplete", "Inventory", `${transfer.id}: received ${received}, missing ${transfer.missingQty}`);
   saveData();
   renderAll();
@@ -1011,7 +1012,7 @@ function completeIncompleteTransfer(index) {
   transfer.receivedBy = currentUser?.name || "System User";
   transfer.receivedAt = fmtDate(today);
   recordTransferHistory(transfer, "Confirmed Missing Quantity", `Missing ${missing} received at ${transfer.to}; transfer is now complete.`);
-  notify("Transfer", `${transfer.id} missing quantity was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory");
+  notify("Transfer", `${transfer.id} missing quantity was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory", transfer.id);
   log("Confirmed missing transfer quantity", "Inventory", `${transfer.id}: received missing ${missing}`);
   saveData();
   renderAll();
@@ -1264,7 +1265,7 @@ function renderCollections() {
     const taxDeductions = Number(latest.withholdingTax || 0) + Number(latest.expandedWithholdingTax || 0);
     const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
     const status = latest.collectionStatus || "For Deposition";
-    return [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, peso.format(s.paid), taxDeductions ? `${peso.format(taxDeductions)}<small>WTax ${peso.format(latest.withholdingTax || 0)} · EWT ${peso.format(latest.expandedWithholdingTax || 0)}</small>` : "-", `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`];
+    return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, peso.format(s.paid), taxDeductions ? `${peso.format(taxDeductions)}<small>WTax ${peso.format(latest.withholdingTax || 0)} · EWT ${peso.format(latest.expandedWithholdingTax || 0)}</small>` : "-", `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Amount Paid", "WTax/EWT", "Collection Status", "Actions", "Balance", "AR Status"], rows);
   table("#payment-request-table", ["CV No.", "Date", "Employee", "Department", "Payment", "Request", "Total", "Actions"], data.paymentRequests.map((r, index) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.department, r.paymentType, r.requestType, peso.format(r.total), `<button class="mini-button" data-payment-request-preview="${index}">Preview / Print</button>`] })));
@@ -1322,7 +1323,7 @@ function syncPostedCollectionReminders() {
     const key = `${payment.receiptNo}-${payment.postedDate}-${diffDays}`;
     if (payment.postedReminderKey === key) return;
     payment.postedReminderKey = key;
-    notify("Collection", `${payment.client} cheque for ${payment.receiptNo} can be claimed ${diffDays === 0 ? "today" : "tomorrow"}.`, "collections");
+    notify("Collection", `${payment.client} cheque for ${payment.receiptNo} can be claimed ${diffDays === 0 ? "today" : "tomorrow"}.`, "collections", payment.receiptNo || payment.invoice);
   });
 }
 
@@ -1417,7 +1418,7 @@ function contactActionCard(contact) {
   const channelButton = (channel, icon) => `<label class="channel-check ${channels.includes(channel) ? "active" : ""}"><input type="checkbox" data-contact-channel="${channel}" data-contact-client="${escapeHtml(contact.client)}" ${channels.includes(channel) ? "checked" : ""} /><span>${icon}</span>${channel}</label>`;
   const statusButton = (status, label, tone = "") => `<button class="mini-button ${tone} ${contact.status === contactStatusFromLabel(status) ? "active" : ""}" data-contact-status="${escapeHtml(status)}" data-contact-client="${escapeHtml(contact.client)}">${escapeHtml(label)}</button>`;
   const chequeNote = contact.status === "Cheque Available" && contact.chequeInvoice ? `<div class="contact-control-group cheque-invoice-note"><small>Cheque invoice</small><strong>${escapeHtml(contact.chequeInvoice)}</strong></div>` : "";
-  return `<details class="contact-action-card ${contactStatusClass(contact.status)}" data-focus-text="${escapeHtml(contact.client)} ${escapeHtml(contact.area)} ${escapeHtml(contact.status)}"><summary><div><strong>${escapeHtml(contact.client)}</strong><small>${escapeHtml(contact.lastContact || "Not contacted")} · ${escapeHtml(contact.employee || "Unassigned")}</small></div><span class="contact-status-badge ${contactStatusClass(contact.status)}">${escapeHtml(contactStatusLabel(contact.status))}</span></summary><p>${escapeHtml(contact.notes)}</p>${chequeNote}${invoiceList}<div class="contact-control-group"><small>Channels used (select one or more)</small><div class="channel-buttons">${channelButton("Call", "☎")}${channelButton("Email", "@")}${channelButton("Telephone", "☎")}</div></div><div class="contact-control-group"><small>Outcome</small><div class="contact-buttons">${statusButton("Answered", "Answered")}${statusButton("Unreached", "Unreached")}${statusButton("No Reply", "No Reply", "danger-button")}${statusButton("Cheque Available", "Cheque Available")}</div></div></details>`;
+  return `<details class="contact-action-card ${contactStatusClass(contact.status)}" data-focus-record="${escapeHtml(contact.client || contact.area)}" data-focus-text="${escapeHtml(contact.client)} ${escapeHtml(contact.area)} ${escapeHtml(contact.status)}"><summary><div><strong>${escapeHtml(contact.client)}</strong><small>${escapeHtml(contact.lastContact || "Not contacted")} · ${escapeHtml(contact.employee || "Unassigned")}</small></div><span class="contact-status-badge ${contactStatusClass(contact.status)}">${escapeHtml(contactStatusLabel(contact.status))}</span></summary><p>${escapeHtml(contact.notes)}</p>${chequeNote}${invoiceList}<div class="contact-control-group"><small>Channels used (select one or more)</small><div class="channel-buttons">${channelButton("Call", "☎")}${channelButton("Email", "@")}${channelButton("Telephone", "☎")}</div></div><div class="contact-control-group"><small>Outcome</small><div class="contact-buttons">${statusButton("Answered", "Answered")}${statusButton("Unreached", "Unreached")}${statusButton("No Reply", "No Reply", "danger-button")}${statusButton("Cheque Available", "Cheque Available")}</div></div></details>`;
 }
 
 function collectionContactsGeoJson() {
@@ -1875,7 +1876,7 @@ function renderPurchaseHistory() {
 }
 
 function renderImports() {
-  table("#imports-table", ["Date", "Module", "Source", "Records", "Status"], data.imports.map((item) => [item.date, item.module, item.file, item.records, `<span class="pill ${statusClass(item.status)}">${item.status}</span>`]));
+  table("#imports-table", ["Date", "Module", "Source", "Records", "Status"], data.imports.map((item) => ({ focus: `${item.date} ${item.module} ${item.file}`, cells: [item.date, item.module, item.file, item.records, `<span class="pill ${statusClass(item.status)}">${item.status}</span>`] })));
 }
 
 function splitImportLine(row, delimiter) {
@@ -2233,7 +2234,7 @@ function previewFinancialRequest(type, index) {
   qs("#report-preview-modal").showModal();
 }
 
-function approveFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "System User"; record.approvedAt = fmtDate(today); log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments"); saveData(); renderAll(); toast(`${record.id} approved.`); }
+function approveFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "System User"; record.approvedAt = fmtDate(today); log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments", record.id); saveData(); renderAll(); toast(`${record.id} approved.`); }
 function cancelFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Cancelled"; record.status = "Cancelled"; record.cancelledBy = currentUser?.name || "System User"; record.cancelledAt = fmtDate(today); log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); saveData(); renderAll(); toast(`${record.id} cancelled.`); }
 function confirmFinancialPayment(type, index, method) { const record = requestRecord(type, index); if (!record || record.requestStatus !== "Approved") return toast("Only approved requests can be confirmed paid."); record.method = method; record.bank = ["Bank Transfer", "Cheque"].includes(method) ? prompt("Bank name:", record.bank || "") || "" : ""; record.cheque = method === "Cheque" ? prompt("Cheque number:", record.cheque || "") || "" : ""; record.paid = record.amount; record.paymentConfirmed = true; record.status = "Paid"; log(`Confirmed ${type} payment`, type === "payable" ? "Payables" : "Expenses", `${record.id} · ${method} · ${peso.format(record.amount)}`); saveData(); renderAll(); toast(`${record.id} marked paid by ${method}.`); }
 
@@ -2251,7 +2252,7 @@ function approveExpense(index, nextStatus) {
   expense.status = nextStatus;
   expense.approvedBy = currentUser?.name || "System User";
   expense.approvedAt = fmtDate(today);
-  notify("Expense", `${expense.id} ${nextStatus} by ${expense.approvedBy}.`, "replenishments");
+  notify("Expense", `${expense.id} ${nextStatus} by ${expense.approvedBy}.`, "replenishments", expense.id);
   log("Approved expense", "Expenses", `${expense.id}: ${nextStatus}`);
   saveData();
   renderAll();
@@ -2260,7 +2261,7 @@ function approveExpense(index, nextStatus) {
 
 function renderReports() {
   const cards = getReportDefinitions();
-  qs("#report-grid").innerHTML = cards.map((report, index) => `<article class="report-card report-launch"><div><span class="feature-icon">${report.icon}</span><strong>${report.title}</strong><p>${report.body}</p></div><button class="primary-button" data-report-preview="${index}">Open full report</button></article>`).join("");
+  qs("#report-grid").innerHTML = cards.map((report, index) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(report.title)}" data-focus-text="${escapeHtml(`${report.title} ${report.body}`)}"><div><span class="feature-icon">${report.icon}</span><strong>${report.title}</strong><p>${report.body}</p></div><button class="primary-button" data-report-preview="${index}">Open full report</button></article>`).join("");
 }
 
 function renderReportPage(index) {
@@ -2350,7 +2351,7 @@ function periodKey(dateValue, period) {
 }
 
 function renderReconciliationHistory() {
-  table("#reconciliation-history-table", ["Run Date", "Range", "Compare By", "Findings", "High", "Medium", "Low", "Pass Rate", "View"], data.reconHistory.slice(0, 10).map((run, index) => [run.date, run.range, run.period, run.findings, run.high, run.medium, run.low, `${run.passRate}%`, `<button class="mini-button" data-recon-history="${index}">Load Run</button>`]));
+  table("#reconciliation-history-table", ["Run Date", "Range", "Compare By", "Findings", "High", "Medium", "Low", "Pass Rate", "View"], data.reconHistory.slice(0, 10).map((run, index) => ({ focus: run.date, cells: [run.date, run.range, run.period, run.findings, run.high, run.medium, run.low, `${run.passRate}%`, `<button class="mini-button" data-recon-history="${index}">Load Run</button>`] })));
 }
 
 function renderReconciliationTabs() {
@@ -2459,13 +2460,14 @@ function renderUsers() {
     const isSuperadmin = u.superadminPermissions || u.role === "Superadmin";
     const grantControl = `<label class="ios-check-row compact-doc-check user-superadmin-check"><input type="checkbox" data-user-superadmin="${index}" ${isSuperadmin ? "checked" : ""} ${canManageUsers() ? "" : "disabled"} /><span></span><strong>${isSuperadmin ? "Granted" : "Not granted"}</strong></label>`;
     const accessSummary = u.customPermissions?.enabled ? `${u.customPermissions.view?.length || 0} view / ${u.customPermissions.edit?.length || 0} edit modules` : u.access || `${u.role} default permissions`;
-    return [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, u.branch, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-reset-user-password="${index}">Reset</button><button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"];
+    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, u.branch, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-reset-user-password="${index}">Reset</button><button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"] };
   }));
 }
 function notificationItem(notice, index) {
-  return `<div class="alert-item clickable" data-notice-index="${index}" data-go-section="${notice.section}"><span class="alert-dot ${notice.status === "Unread" ? "orange" : "green"}"></span><div><strong>${escapeHtml(notice.type)} · ${escapeHtml(notice.status)}</strong><span>${escapeHtml(notice.message)} · ${escapeHtml(notice.date)}</span></div></div>`;
+  return `<div class="alert-item clickable" data-notice-index="${index}" data-go-section="${escapeHtml(notice.section || "notifications")}" data-focus-record="${escapeHtml(notice.record || "")}"><span class="alert-dot ${notice.status === "Unread" ? "orange" : "green"}"></span><div><strong>${escapeHtml(notice.type)} · ${escapeHtml(notice.status)}</strong><span>${escapeHtml(notice.message)} · ${escapeHtml(notice.date)}</span></div></div>`;
 }
 function renderNotifications() {
+  syncGeneratedNotifications();
   const unread = data.notifications.filter((notice) => notice.status === "Unread").length;
   qs("#notification-count").textContent = unread;
   qs("#notification-count").hidden = unread === 0;
@@ -2517,7 +2519,7 @@ function renderLogs() {
     .filter((log) => dateInRange(logDateValue(log), from, to))
     .filter((log) => role === "all" || logRole(log) === role)
     .filter((log) => module === "all" || log.module === module);
-  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record"], rows.map((l) => [formatLogCell(l.date), formatLogCell(logRole(l)), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record)]));
+  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record"], rows.map((l) => ({ focus: [l.record, l.action, l.user].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(logRole(l)), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record)] })));
 }
 function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
 
@@ -2835,7 +2837,7 @@ function openMasterEditModal(type, index) {
   if (!canEdit) {
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const record = listByType[type]?.[index];
-    notify("Approval", `${currentUser?.name || "System User"} requested Superadmin/CEO approval to edit ${type}: ${record?.name || record?.code || "record"}.`, "masterlists");
+    notify("Approval", `${currentUser?.name || "System User"} requested Superadmin/CEO approval to edit ${type}: ${record?.name || record?.code || "record"}.`, "masterlists", record?.name || record?.code || "");
     saveData();
     renderNotifications();
     return toast("Masterlist edits require Superadmin/CEO approval. Request sent.");
@@ -2949,12 +2951,12 @@ function buildSale(values, replacementOf = null) {
     const stock = data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && i.lot === line.lot && i.qty >= line.qty);
     stock.qty -= line.qty;
   });
-  if (credit.exceeded) notify("Credit", `${currentUser.name} authorized ${client.name} to exceed credit limit: ${peso.format(credit.projected)} / ${peso.format(credit.limit)}.`, "masterlists");
-  if (discount) notify("Approval", `${currentUser.name} approved ${peso.format(discount)} discount for ${documentNo}.`, "sales");
+  if (credit.exceeded) notify("Credit", `${currentUser.name} authorized ${client.name} to exceed credit limit: ${peso.format(credit.projected)} / ${peso.format(credit.limit)}.`, "masterlists", client.name);
+  if (discount) notify("Approval", `${currentUser.name} approved ${peso.format(discount)} discount for ${documentNo}.`, "sales", documentNo);
   po.completedType = values.type;
   const remaining = (po.lines || []).reduce((sum, line) => sum + Math.max(line.qty - (poServedQty(po, line.code) + lines.filter((served) => served.code === line.code).reduce((lineSum, served) => lineSum + served.qty, 0)), 0), 0);
-  if (remaining > 0) notify("Pending Orders", `${po.id} still has ${remaining} item quantity pending after ${documentNo}.`, "purchase-orders");
-  else notify("Purchase Order", `${po.id} completely served by ${documentNo}.`, "purchase-orders");
+  if (remaining > 0) notify("Pending Orders", `${po.id} still has ${remaining} item quantity pending after ${documentNo}.`, "purchase-orders", po.id);
+  else notify("Purchase Order", `${po.id} completely served by ${documentNo}.`, "purchase-orders", po.id);
   const primaryLine = lines[0];
   const terms = Number(client.terms || 30);
   return { id: documentNo, documentNo, vatCode: values.vatCode || (values.type === "SI" ? "VATable" : "Non-VAT"), po: values.po || `PO-${documentNo}`, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "System User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", withholdingTax: Boolean(values.withholdingTax), expandedWithholdingTax: Boolean(values.expandedWithholdingTax), autoTaxRate: 0, withholdingDiscount, expandedWithholdingDiscount, taxTreatment: [values.withholdingTax ? "Withholding Tax 5%" : "", values.expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), tax, net, terms, paid: 0, status: "Active", cancelledFrom: replacementOf };

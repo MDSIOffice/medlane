@@ -200,6 +200,7 @@ function normalizeData(next) {
 
 function saveData() {
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return;
+  if (typeof syncGeneratedNotifications === "function") syncGeneratedNotifications();
   clearTimeout(pendingServerSave);
   pendingServerSave = setTimeout(() => {
     MedlaneAPI.saveAppState(data, serverRevision).then((result) => {

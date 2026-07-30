@@ -1,4 +1,5 @@
 data = loadData();
+syncGeneratedNotifications();
 async function submitModal(event) {
   event.preventDefault();
   const values = formObject(event.currentTarget);
@@ -43,15 +44,15 @@ async function submitModal(event) {
       data.sales.push(sale);
       log("Created invoice", "Invoicing", `${sale.documentNo} · ${sale.type} · ${sale.client}`);
     }
-    catch (error) { notify("Validation", error.message, "sales"); saveData(); return toast(error.message); }
+    catch (error) { notify("Validation", error.message, "sales", values.documentNo || values.client || ""); saveData(); return toast(error.message); }
   }
   if (modalType === "purchaseOrder") {
     try { data.purchaseOrders.push(buildPurchaseOrder(values)); }
-    catch (error) { notify("Validation", error.message, "purchase-orders"); saveData(); return toast(error.message); }
+    catch (error) { notify("Validation", error.message, "purchase-orders", values.client || ""); saveData(); return toast(error.message); }
   }
   if (modalType === "inventoryPurchaseOrder") {
     try { data.inventoryPurchaseOrders.push(buildInventoryPurchaseOrder(values)); }
-    catch (error) { notify("Validation", error.message, "inventory"); saveData(); return toast(error.message); }
+    catch (error) { notify("Validation", error.message, "inventory", values.supplier || ""); saveData(); return toast(error.message); }
   }
   if (modalType === "cancelReplace") {
     const oldSale = data.sales.find((sale) => sale.id === values.oldInvoice);
@@ -65,7 +66,7 @@ async function submitModal(event) {
       oldSale.cancelledBy = currentUser?.name || "System User";
       data.sales.push(replacement);
       log("Cancelled and replaced invoice", "Invoicing", `${oldSale.documentNo || oldSale.id} -> ${replacement.documentNo}`);
-      notify("Cancellation", `${oldSale.documentNo || oldSale.id} cancelled and replaced by ${replacement.documentNo}.`, "receivables-tracker");
+      notify("Cancellation", `${oldSale.documentNo || oldSale.id} cancelled and replaced by ${replacement.documentNo}.`, "receivables-tracker", replacement.documentNo || replacement.id);
     } catch (error) { deductSaleStock(oldSale); return toast(error.message); }
   }
   if (modalType === "payment") {
@@ -90,7 +91,7 @@ async function submitModal(event) {
     values.tag = collectionTagForType(sale.type);
     data.payments.push({ invoice: sale.documentNo || sale.id, tag: values.tag, receiptNo: values.receiptNo, method: values.method, bank: values.bank, reference: values.method === "Multiple Cheques" ? cheques.map((cheque) => cheque.reference).join(", ") : values.reference, chequeDate: values.method === "Multiple Cheques" ? cheques.map((cheque) => cheque.chequeDate).join(", ") : values.chequeDate, cheques, collectionStatus: values.collectionStatus || "For Deposition", postedDate: values.postedDate, statusHistory: collectionStatusHistory(values.collectionStatus || "For Deposition"), dateCollected: values.dateCollected, dateRecorded: fmtDate(today), client: sale.client, grossAmount: amount, withholdingTax: deductions.withholdingTax, expandedWithholdingTax: deductions.expandedWithholdingTax, amount: appliedAmount });
     log("Recorded collection payment", "Collections", `${values.receiptNo} · ${sale.documentNo || sale.id} · ${peso.format(appliedAmount)}`);
-    notify("Collection", `${peso.format(appliedAmount)} net payment recorded for ${values.invoice}.`, "receivables-tracker");
+    notify("Collection", `${peso.format(appliedAmount)} net payment recorded for ${values.invoice}.`, "receivables-tracker", sale.documentNo || sale.id);
   }
   if (modalType === "paymentRequest") {
     const items = collectPaymentRequestLines();
@@ -103,7 +104,7 @@ async function submitModal(event) {
     if (total <= 0) return toast("Payment request total must be greater than zero.");
     data.paymentRequests.unshift({ ...values, items, particulars: items.map((item) => item.particulars).join("; "), amount: items[0]?.amount || 0, gross, withholdingTax: deductions.withholdingTax, expandedWithholdingTax: deductions.expandedWithholdingTax, total, instructions: paymentRequestInstructions, preparedBy: currentUser?.name || "System User", preparedRole: currentUser?.role || "Accounting", approvedBy: "Maria Emma F. Llorin", approvedRole: "CEO", status: "Prepared", createdAt: fmtDate(today) });
     log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`);
-    notify("Payment Request", `${values.cvNo} prepared for ${values.employee}.`, "collections");
+    notify("Payment Request", `${values.cvNo} prepared for ${values.employee}.`, "collections", values.cvNo);
   }
   if (modalType === "payable") {
     const items = collectFinancialLines();
@@ -134,6 +135,7 @@ async function submitModal(event) {
       const result = await MedlaneAPI.inviteUser({ ...values, modules: view, editModules: edit });
       data.users.push(result.user);
       log("Invited user", "Users", `${result.user.email} · ${result.user.role}`);
+      notify("User Invite", `${result.user.email} was invited as ${result.user.role}.`, "users", result.user.email);
     } catch (error) {
       return toast(error.message || "Unable to invite user.");
     } finally {
@@ -238,6 +240,8 @@ qs("#settings-form").addEventListener("submit", (event) => {
 qs("#invoice-approval-form").addEventListener("submit", (event) => {
   event.preventDefault();
   data.invoiceApprovals = formObject(event.currentTarget);
+  log("Updated invoice approval settings", "Settings", "Invoice approvals");
+  notify("Settings", "Invoice approved-by names were updated.", "settings", "Invoice approvals");
   saveData();
   toast("Invoice approved-by names saved.");
 });
@@ -263,6 +267,7 @@ qs("#password-form").addEventListener("submit", async (event) => {
   event.currentTarget.reset();
   qs("#password-modal").close();
   log("Changed password", "User Settings", currentUser?.role || "User");
+  notify("Password", `${currentUser?.name || "A user"} changed password.`, "logs", currentUser?.role || "User");
   toast("Password updated.");
 });
 qs("#platform-branch-form").addEventListener("submit", (event) => {
@@ -277,6 +282,7 @@ qs("#platform-branch-form").addEventListener("submit", (event) => {
   data.branchAddresses[branch] = values.address.trim();
   event.currentTarget.reset();
   log("Added branch masterlist record", "Masterlists", branch);
+  notify("Settings", `${branch} was added to platform branches.`, "settings", branch);
   saveData();
   renderPlatformSettings();
   renderAll();
@@ -298,6 +304,7 @@ function editPlatformBranchAddress(branch) {
   data.branchAddresses ||= {};
   data.branchAddresses[branch] = prompt(`Address for ${branch}:`, data.branchAddresses[branch] || "") || data.branchAddresses[branch] || "";
   log("Edited branch address", "Masterlists", branch);
+  notify("Settings", `${branch} branch address was updated.`, "settings", branch);
   saveData();
   renderAll();
   toast(`${branch} address saved.`);
@@ -311,6 +318,7 @@ function removePlatformBranch(branch) {
   if (data.branchAddresses) delete data.branchAddresses[branch];
   if (inventoryBranchTab === branch) inventoryBranchTab = platformBranches()[0] || "";
   log("Removed branch masterlist record", "Masterlists", branch);
+  notify("Settings", `${branch} was removed from platform branches.`, "settings", branch);
   saveData();
   renderAll();
   toast(`${branch} removed from platform branches.`);
@@ -592,7 +600,7 @@ qs("#recon-date-from").addEventListener("change", () => { selectedReconHistoryIn
 qs("#recon-date-to").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
 qs("#recon-period").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
 qs("#clear-recon-dates").addEventListener("click", () => { selectedReconHistoryIndex = null; qs("#recon-date-from").value = ""; qs("#recon-date-to").value = ""; renderReconciliation(); toast("Reconciliation date scope reset."); });
-qs("#clear-logs").addEventListener("click", () => { data.logs = []; saveData(); renderLogs(); toast("Logs cleared."); });
+qs("#clear-logs").addEventListener("click", () => { log("Attempted to clear universal audit logs", "Audit Logs", currentUser?.email || currentUser?.name || "User"); notify("Audit Logs", "Universal audit logs cannot be cleared from the app.", "logs", currentUser?.email || currentUser?.name || "User"); saveData(); renderLogs(); toast("Universal audit logs cannot be cleared from the app."); });
 qs("#logs-date-from").addEventListener("change", renderLogs);
 qs("#logs-date-to").addEventListener("change", renderLogs);
 qs("#logs-role-filter").addEventListener("change", renderLogs);

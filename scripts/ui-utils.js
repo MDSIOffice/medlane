@@ -108,9 +108,57 @@ function log(action, module, record) {
   data.logs = data.logs.slice(0, 60);
   saveData();
 }
-function notify(type, message, section = "notifications") {
-  data.notifications.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), type, message, section, status: "Unread" });
+function notify(type, message, section = "notifications", record = "") {
+  data.notifications.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), type, message, section, record, status: "Unread" });
   data.notifications = data.notifications.slice(0, 80);
+}
+function generatedNoticeDate() {
+  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function syncGeneratedNotifications() {
+  if (!data?.notifications) return;
+  const previous = new Map(data.notifications.filter((notice) => notice.generated && notice.key).map((notice) => [notice.key, notice]));
+  const notices = [];
+  const add = (key, type, message, section = "notifications", record = "") => {
+    const existing = previous.get(key);
+    notices.push({ key, generated: true, date: existing?.date || generatedNoticeDate(), type, message, section, record, status: existing?.status || "Unread" });
+  };
+  const facts = workflowFacts();
+  const openPurchaseOrders = data.purchaseOrders.filter((po) => !["Completed", "Served", "Cancelled"].includes(po.status));
+  const receivingPurchaseOrders = data.inventoryPurchaseOrders.filter((po) => !["Received", "Completed", "Cancelled"].includes(po.status));
+  const expiredStock = data.inventory.filter((item) => item.expiry !== "N/A" && daysUntil(item.expiry) < 0);
+  const warrantyExpired = data.warranties.filter((item) => daysUntil(item.warrantyEnd) < 0 || String(item.status).toLowerCase().includes("expired"));
+  const warrantySoon = data.warranties.filter((item) => daysUntil(item.warrantyEnd) >= 0 && daysUntil(item.warrantyEnd) <= 180);
+  const bouncedCheques = data.payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
+  const forDepositCheques = data.payments.filter((payment) => ["Cheque", "Multiple Cheques"].includes(payment.method) && ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
+  const blockedImports = data.imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status));
+  const latestRecon = data.reconHistory[0];
+  const riskyLogs = data.logs.filter((entry) => /cancel|override|discount|password|permission|delete|clear|failed|security/i.test(`${entry.action} ${entry.module}`));
+
+  if (facts.lowStock.length) add("inventory-low-stock", "Low Stock", `${facts.lowStock.length} inventory lot${facts.lowStock.length === 1 ? "" : "s"} are low or critical.`, "inventory", facts.lowStock.map((item) => item.lot || item.code).join("|"));
+  if (facts.nearExpiry.length) add("inventory-near-expiry", "Near Expiry", `${facts.nearExpiry.length} inventory lot${facts.nearExpiry.length === 1 ? "" : "s"} should be sold or transferred using FEFO.`, "inventory", facts.nearExpiry.map((item) => item.lot || item.code).join("|"));
+  if (expiredStock.length) add("inventory-expired", "For Disposal", `${expiredStock.length} expired inventory lot${expiredStock.length === 1 ? "" : "s"} need disposal review.`, "inventory", expiredStock.map((item) => item.lot || item.code).join("|"));
+  if (facts.pendingTransfers.length) add("inventory-transfer-receiving", "Transfer Receiving", `${facts.pendingTransfers.length} stock transfer${facts.pendingTransfers.length === 1 ? "" : "s"} need receiving confirmation.`, "inventory", facts.pendingTransfers.map((item) => item.id).join("|"));
+  if (receivingPurchaseOrders.length) add("inventory-po-receiving", "PO Receiving", `${receivingPurchaseOrders.length} inventory purchase order${receivingPurchaseOrders.length === 1 ? "" : "s"} are waiting for receiving.`, "inventory", receivingPurchaseOrders.map((po) => po.id).join("|"));
+  if (openPurchaseOrders.length) add("sales-pending-po", "Pending PO", `${openPurchaseOrders.length} client purchase order${openPurchaseOrders.length === 1 ? "" : "s"} still need invoicing or completion.`, "purchase-orders", openPurchaseOrders.map((po) => po.id).join("|"));
+  if (facts.nearDue.length) add("ar-near-due", "Near Due AR", `${facts.nearDue.length} invoice${facts.nearDue.length === 1 ? "" : "s"} are due within 7 days.`, "receivables-tracker", facts.nearDue.map((sale) => sale.documentNo || sale.id).join("|"));
+  if (facts.overdue.length) add("ar-overdue", "Overdue AR", `${facts.overdue.length} invoice${facts.overdue.length === 1 ? "" : "s"} are overdue and need collection follow-up.`, "receivables-tracker", facts.overdue.map((sale) => sale.documentNo || sale.id).join("|"));
+  if (facts.pendingContacts.length) add("collections-followup", "Collection Follow-Up", `${facts.pendingContacts.length} client${facts.pendingContacts.length === 1 ? "" : "s"} still need this week's contact outcome.`, "collections", facts.pendingContacts.map((contact) => contact.client || contact.area).join("|"));
+  if (forDepositCheques.length) add("collections-cheques-deposit", "Cheque Deposit", `${forDepositCheques.length} cheque collection${forDepositCheques.length === 1 ? "" : "s"} need deposit or claim-date monitoring.`, "collections", forDepositCheques.map((payment) => payment.receiptNo || payment.invoice).join("|"));
+  if (bouncedCheques.length) add("collections-cheques-bounced", "Bounced Cheque", `${bouncedCheques.length} bounced cheque${bouncedCheques.length === 1 ? "" : "s"} need immediate escalation.`, "collections", bouncedCheques.map((payment) => payment.receiptNo || payment.invoice).join("|"));
+  if (facts.missingDocs.length) add("masterlists-missing-docs", "Missing Client Docs", `${facts.missingDocs.length} client${facts.missingDocs.length === 1 ? "" : "s"} are missing required documents.`, "masterlists", facts.missingDocs.map((client) => client.name).join("|"));
+  if (facts.duplicateClients.length) add("masterlists-duplicates", "Duplicate Client Risk", `${facts.duplicateClients.length} possible duplicate client/TIN record${facts.duplicateClients.length === 1 ? "" : "s"} need review.`, "masterlists", facts.duplicateClients.map((client) => client.name).join("|"));
+  if (facts.duePayables.length) add("payables-open", "Payables", `${facts.duePayables.length} payable${facts.duePayables.length === 1 ? "" : "s"} have open balances.`, "payables", facts.duePayables.map((payable) => payable.id).join("|"));
+  if (facts.pendingExpenses.length) add("expenses-approval", "Expense Approval", `${facts.pendingExpenses.length} expense request${facts.pendingExpenses.length === 1 ? "" : "s"} are pending approval or payment.`, "replenishments", facts.pendingExpenses.map((expense) => expense.id).join("|"));
+  if (warrantySoon.length) add("warranty-ending", "Warranty Ending", `${warrantySoon.length} warranty record${warrantySoon.length === 1 ? "" : "s"} end within 180 days.`, "warranty", warrantySoon.map((item) => item.serial || item.client).join("|"));
+  if (warrantyExpired.length) add("warranty-expired", "Warranty Expired", `${warrantyExpired.length} warranty record${warrantyExpired.length === 1 ? "" : "s"} are expired.`, "warranty", warrantyExpired.map((item) => item.serial || item.client).join("|"));
+  if (blockedImports.length) add("imports-review", "Import Review", `${blockedImports.length} import batch${blockedImports.length === 1 ? "" : "es"} have skipped, invalid, or blocked rows.`, "imports", blockedImports.map((item) => `${item.date} ${item.module} ${item.file}`).join("|"));
+  if (latestRecon?.high > 0) add("recon-high-findings", "Reconciliation Risk", `Latest reconciliation has ${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"}.`, "reconciliation", latestRecon.date || "High");
+  if (facts.overdue.length || facts.lowStock.length || facts.duePayables.length) add("reports-management-pack", "Report Pack", "Management reports have current AR, inventory, or payable risks to export.", "reports", facts.overdue.length ? "Collections & AR" : facts.lowStock.length ? "Reagent Expiry" : "Supplier Payables");
+  if (riskyLogs.length) add("security-risky-actions", "Security Review", `${riskyLogs.length} sensitive audit action${riskyLogs.length === 1 ? "" : "s"} should be reviewed.`, "logs", riskyLogs.map((entry) => entry.record || entry.action).slice(0, 3).join("|"));
+  if (data.logs.length) add("audit-logs-universal", "Audit Logs", `${data.logs.length} action${data.logs.length === 1 ? "" : "s"} by all users are visible in the universal audit log.`, "logs", data.logs[0]?.record || data.logs[0]?.action || "");
+  const manual = data.notifications.filter((notice) => !notice.generated);
+  data.notifications = [...notices, ...manual].slice(0, 100);
 }
 function toast(message) {
   const el = qs("#toast");
@@ -158,7 +206,7 @@ function ensureFocusedRecordsRendered(records) {
     const target = tableEl.dataset.tableTarget;
     const state = tableState.get(target);
     if (!state) return;
-    const needsRecord = records.some((record) => state.rows.some((row) => String(row.focus || "").toLowerCase() === record || row.focusText.toLowerCase().includes(record)));
+    const needsRecord = records.some((record) => state.rows.some((row) => String(row.focus || "").toLowerCase().split("|").map((item) => item.trim()).includes(record) || row.focusText.toLowerCase().includes(record)));
     if (needsRecord && state.rendered < state.rows.length) appendTableRows(target, state.rows.length - state.rendered);
   });
 }
@@ -204,9 +252,17 @@ function prepareFocusedSection(section, record) {
   if (section === "payables") return renderPayables();
   if (section === "warranty") return renderWarranty();
   if (section === "replenishments") return renderReplenishments();
+  if (section === "collections") return renderCollections();
   if (section === "sales") return renderSales();
   if (section === "purchase-orders") return renderPurchaseOrders();
   if (section === "invoicing") return renderInvoicing();
+  if (section === "imports") return renderImports();
+  if (section === "reports") return renderReports();
+  if (section === "users") return renderUsers();
+  if (section === "logs") return renderLogs();
+  if (section === "settings") return renderPlatformSettings();
+  if (section === "security") return renderSecurity();
+  if (section === "reconciliation") return renderReconciliation();
   if (section !== "inventory" || !record) return;
   if (qs("#inventory-status")) qs("#inventory-status").value = "all";
   const stock = data.inventory.find((item) => [item.lot, item.serial, item.code, item.item].some((value) => String(value || "").toLowerCase() === query));
@@ -224,8 +280,8 @@ function focusRecord(record) {
   if (!queries.length) return;
   ensureFocusedRecordsRendered(queries);
   const active = qs(".section.active");
-  const candidates = qsa("tr, .invoice-card, .tracker-card, .client-ar-card, .report-card, .alert-item, .contact-action-card, .map-marker").filter((el) => active?.contains(el) && !el.closest(".workflow-assist"));
-  const targets = queries.map((query) => candidates.find((el) => String(el.dataset.focusRecord || "").toLowerCase() === query) || candidates.find((el) => (el.dataset.focusText || el.innerText || "").toLowerCase().includes(query))).filter(Boolean);
+  const candidates = qsa("[data-focus-record], tr, .invoice-card, .tracker-card, .client-ar-card, .report-card, .alert-item, .contact-action-card, .map-marker, .platform-area-chip, .security-card").filter((el) => active?.contains(el) && !el.closest(".workflow-assist"));
+  const targets = queries.map((query) => candidates.find((el) => String(el.dataset.focusRecord || "").toLowerCase().split("|").map((item) => item.trim()).includes(query)) || candidates.find((el) => (el.dataset.focusText || el.innerText || "").toLowerCase().includes(query))).filter(Boolean);
   if (!targets.length) return;
   qsa(".focus-target").forEach((el) => el.classList.remove("focus-target"));
   targets.forEach((target) => target.classList.add("focus-target"));
