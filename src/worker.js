@@ -101,6 +101,50 @@ async function supabaseAuthAdminFetch(env, path, init = {}) {
   return payload;
 }
 
+function passwordPolicyError(password) {
+  const value = String(password || "");
+  if (value.length < 8) return "Password must be at least 8 characters";
+  if (!/[A-Za-z]/.test(value)) return "Password must include at least one letter";
+  if (!/\d/.test(value)) return "Password must include at least one number";
+  if (!/[^A-Za-z0-9\s]/.test(value)) return "Password must include at least one special character";
+  if (/\s/.test(value)) return "Password cannot contain spaces";
+  return "";
+}
+
+function resendFrom(env) {
+  return env.RESEND_FROM || "Medlane OS <onboarding@resend.dev>";
+}
+
+function inviteEmailHtml({ fullName, email, role, actionLink, origin }) {
+  const year = new Date().getFullYear();
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to Medlane OS</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:12px 0 6px;font-size:34px;line-height:1.05;">Welcome to Medlane OS</h1><p style="margin:0;font-size:16px;line-height:1.6;opacity:.96;">Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.</p></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#fff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f4f9ff;border:1px solid #d8ebfb;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#005a9c;">Security reminder</strong><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Create a password with at least 8 characters, one letter, one number, and one special character. Never share your password or invitation link.</p></div><p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#4c6280;">If the button does not work, copy and paste this link into your browser:</p><p style="word-break:break-all;margin:0 0 18px;font-size:13px;line-height:1.6;color:#0077bd;">${escapeHtml(actionLink)}</p><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Account email: <strong>${escapeHtml(email)}</strong><br>Login site: <a href="${escapeHtml(origin)}" style="color:#0077bd;">${escapeHtml(origin)}</a></p></td></tr><tr><td style="padding:22px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. This message was sent for account access setup. If you did not expect this invitation, ignore this email or contact your administrator.</td></tr></table></td></tr></table></body></html>`;
+}
+
+async function sendResendEmail(env, { to, subject, html }) {
+  if (!env.RESEND_API_KEY) return { sent: false, provider: "resend", reason: "RESEND_API_KEY is not configured" };
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({ from: resendFrom(env), to: [to], subject, html }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.message || payload?.error || `Resend failed: ${response.status}`);
+  return { sent: true, provider: "resend", id: payload?.id || null };
+}
+
+async function generateSupabaseActionLink(env, { email, fullName, role, branch, origin }) {
+  const redirectTo = `${origin}/?login=1`;
+  const body = { email, options: { redirect_to: redirectTo, data: { full_name: fullName, role, branch } } };
+  const payload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
+    method: "POST",
+    body: JSON.stringify({ type: "invite", ...body }),
+  }).catch(() => supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
+    method: "POST",
+    body: JSON.stringify({ type: "recovery", ...body }),
+  }));
+  return { authUser: payload.user, actionLink: payload.action_link || payload.actionLink || payload.properties?.action_link };
+}
+
 async function authenticatedUser(request, env) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
   const authorization = request.headers.get("authorization") || "";
@@ -616,7 +660,8 @@ export default {
         requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
         const { accessToken, password } = await request.json();
         if (!accessToken) return json({ error: "Invite or reset token is required" }, { status: 400 });
-        if (String(password || "").length < 8) return json({ error: "Password must be at least 8 characters" }, { status: 400 });
+        const policyError = passwordPolicyError(password);
+        if (policyError) return json({ error: policyError }, { status: 400 });
         const response = await fetch(`${supabaseBaseUrl(env)}/auth/v1/user`, {
           method: "PUT",
           headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
@@ -633,7 +678,8 @@ export default {
         const { token, user } = await authenticatedUser(request, env);
         const { currentPassword, newPassword } = await request.json();
         if (!currentPassword) return json({ error: "Current password is required" }, { status: 400 });
-        if (String(newPassword || "").length < 8) return json({ error: "New password must be at least 8 characters" }, { status: 400 });
+        const policyError = passwordPolicyError(newPassword);
+        if (policyError) return json({ error: policyError }, { status: 400 });
         const verifyResponse = await fetch(`${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, {
           method: "POST",
           headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
@@ -787,18 +833,20 @@ export default {
         const existingProfiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
         if (existingProfiles.length) {
           const existingPermissions = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(existingProfiles[0].id)}&select=user_id,module_key,can_view,can_edit`);
-          return json({ user: userFromProfileAndAuth(existingProfiles[0], null, existingPermissions), existing: true });
+          const existingUser = userFromProfileAndAuth(existingProfiles[0], null, existingPermissions);
+          return json({ user: existingUser, existing: true, emailDelivery: { sent: false, reason: "User profile already exists" } });
         }
 
         const existingAuthUsers = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] }));
         let authUser = (existingAuthUsers.users || []).find((user) => cleanEmail(user.email) === email);
+        let actionLink = "";
         if (!authUser) {
-          const redirectTo = `${requestOrigin(request)}/?login=1`;
-          const invited = await supabaseAuthAdminFetch(env, `/auth/v1/invite?redirect_to=${encodeURIComponent(redirectTo)}`, {
-            method: "POST",
-            body: JSON.stringify({ email, data: { full_name: fullName, role, branch } }),
-          });
-          authUser = invited.user || invited;
+          const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) });
+          authUser = generated.authUser;
+          actionLink = generated.actionLink;
+        } else {
+          const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) }).catch(() => null);
+          actionLink = generated?.actionLink || "";
         }
         if (!authUser?.id) throw new Error("Supabase did not return an invited user ID");
 
@@ -812,7 +860,25 @@ export default {
             body: JSON.stringify(view.map((moduleKey) => ({ user_id: authUser.id, module_key: moduleKey, can_view: true, can_edit: edit.includes(moduleKey) }))),
           });
         }
-        return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: "Invited" } }, { status: 201 });
+        const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: inviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }) : { sent: false, reason: "Invitation link could not be generated" };
+        return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: emailDelivery.sent ? "Invited" : "Email Not Sent" }, emailDelivery }, { status: 201 });
+      }
+
+      if (url.pathname === "/api/users/invite/resend") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { email: rawEmail } = await request.json();
+        const email = cleanEmail(rawEmail);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
+        if (!profiles[0]) return json({ error: "User profile not found" }, { status: 404 });
+        const role = profiles[0].role || "Sales";
+        const fullName = profiles[0].full_name || email;
+        const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch: profiles[0].branch || "all", origin: requestOrigin(request) });
+        if (!generated.actionLink) throw new Error("Invitation link could not be generated");
+        const emailDelivery = await sendResendEmail(env, { to: email, subject: "Your Medlane OS invitation link", html: inviteEmailHtml({ fullName, email, role, actionLink: generated.actionLink, origin: requestOrigin(request) }) });
+        return json({ ok: true, emailDelivery });
       }
 
       if (url.pathname === "/api/users/sessions") {

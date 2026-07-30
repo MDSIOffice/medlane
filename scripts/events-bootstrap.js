@@ -28,6 +28,16 @@ function confirmInviteUser(values, view, edit) {
   });
 }
 
+function passwordPolicyError(password) {
+  const value = String(password || "");
+  if (value.length < 8) return "Password must be at least 8 characters.";
+  if (!/[A-Za-z]/.test(value)) return "Password must include at least one letter.";
+  if (!/\d/.test(value)) return "Password must include at least one number.";
+  if (!/[^A-Za-z0-9\s]/.test(value)) return "Password must include at least one special character.";
+  if (/\s/.test(value)) return "Password cannot contain spaces.";
+  return "";
+}
+
 async function submitModal(event) {
   event.preventDefault();
   const values = formObject(event.currentTarget);
@@ -166,7 +176,8 @@ async function submitModal(event) {
       mergeUsersFromBackend([result.user]);
       await syncBackendUsers();
       log("Invited user", "Users", `${result.user.email} · ${result.user.role}`);
-      notify("User Invite", `${result.user.email} ${result.existing ? "already exists and was loaded" : "was invited"} as ${result.user.role}.`, "users", result.user.email);
+      const deliveryNote = result.emailDelivery?.sent ? "Email sent via Resend" : result.emailDelivery?.reason || "Email not sent";
+      notify("User Invite", `${result.user.email} ${result.existing ? "already exists and was loaded" : "was invited"} as ${result.user.role}. ${deliveryNote}.`, "users", result.user.email);
     } catch (error) {
       return toast(error.message || "Unable to invite user.");
     } finally {
@@ -293,9 +304,8 @@ qs("#password-modal").addEventListener("click", (event) => { if (event.target.id
 qs("#password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = formObject(event.currentTarget);
-  if (values.newPassword.length < 8) return toast("New password must be at least 8 characters.");
-  if (!/[A-Za-z]/.test(values.newPassword) || !/\d/.test(values.newPassword)) return toast("New password needs at least one letter and one number.");
-  if (/\s/.test(values.newPassword)) return toast("New password cannot contain spaces.");
+  const policyError = passwordPolicyError(values.newPassword);
+  if (policyError) return toast(policyError);
   if (values.newPassword !== values.confirmPassword) return toast("Confirm password does not match.");
   const activeSession = MedlaneAPI.session();
   if (!activeSession?.access_token) return toast("Sign in again before changing your password.");
@@ -367,6 +377,8 @@ qs("#master-add-button").addEventListener("click", () => {
   openModal(modalByTab[data.masterTab]);
 });
 qs("#users-table").addEventListener("click", (event) => {
+  const resendButton = event.target.closest("[data-resend-invite]");
+  if (resendButton) return resendUserInvite(Number(resendButton.dataset.resendInvite));
   const resetButton = event.target.closest("[data-reset-user-password]");
   if (resetButton) return sendPasswordResetLink(Number(resetButton.dataset.resetUserPassword));
   const button = event.target.closest("[data-delete-user]");
@@ -382,6 +394,15 @@ qs("#users-table").addEventListener("click", (event) => {
   renderUsers();
   toast(`${user.name} deleted.`);
 });
+
+async function resendUserInvite(index) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can resend invitations.");
+  const user = data.users[index];
+  if (!user?.email) return toast("User email is required.");
+  const result = await MedlaneAPI.resendInvite(user.email).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to resend invite.");
+  toast(result.emailDelivery?.sent ? `Invitation resent to ${user.email}.` : result.emailDelivery?.reason || "Invite link generated, but email was not sent.");
+}
 qs("#users-table").addEventListener("change", (event) => {
   const checkbox = event.target.closest("[data-user-superadmin]");
   if (!checkbox) return;
@@ -832,11 +853,12 @@ function showSupabasePasswordSetup() {
 }
 
 qs("#reset-password-cancel").addEventListener("click", () => qs("#reset-screen").classList.add("hidden"));
+qsa("#reset-confirm-password, #confirm-password").forEach((input) => input.addEventListener("paste", (event) => { event.preventDefault(); toast("Paste is disabled for confirm password. Please type it manually."); }));
 qs("#reset-password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = formObject(event.currentTarget);
-  if (values.newPassword.length < 8) return toast("New password must be at least 8 characters.");
-  if (!/[A-Za-z]/.test(values.newPassword) || !/\d/.test(values.newPassword)) return toast("New password needs at least one letter and one number.");
+  const policyError = passwordPolicyError(values.newPassword);
+  if (policyError) return toast(policyError);
   if (values.newPassword !== values.confirmPassword) return toast("Confirm password does not match.");
   if (String(values.token || "").startsWith("supabase:")) {
     const submitButton = event.currentTarget.querySelector("button[type='submit']");
