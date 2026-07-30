@@ -376,9 +376,11 @@ qs("#master-add-button").addEventListener("click", () => {
   const modalByTab = { clients: "client", items: "item", suppliers: "supplier", employees: "employee", banks: "bank" };
   openModal(modalByTab[data.masterTab]);
 });
-qs("#users-table").addEventListener("click", (event) => {
+qs("#users-table").addEventListener("click", async (event) => {
   const resendButton = event.target.closest("[data-resend-invite]");
   if (resendButton) return resendUserInvite(Number(resendButton.dataset.resendInvite));
+  const statusButton = event.target.closest("[data-toggle-user-disabled]");
+  if (statusButton) return toggleUserDisabled(Number(statusButton.dataset.toggleUserDisabled));
   const resetButton = event.target.closest("[data-reset-user-password]");
   if (resetButton) return sendPasswordResetLink(Number(resetButton.dataset.resetUserPassword));
   const button = event.target.closest("[data-delete-user]");
@@ -387,13 +389,36 @@ qs("#users-table").addEventListener("click", (event) => {
   const index = Number(button.dataset.deleteUser);
   const user = data.users[index];
   if (!user) return;
-  if (!confirm(`Delete user ${user.name}?`)) return;
+  const confirmation = prompt(`Type the full name to delete this user permanently:\n\n${user.name}`);
+  if (confirmation === null) return;
+  if (confirmation.trim() !== user.name) return toast("Full name did not match. User was not deleted.");
+  const result = await MedlaneAPI.deleteUser(user.email || user.username, confirmation).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to delete user.");
   data.users.splice(index, 1);
+  await syncBackendUsers();
   log("Deleted user", "Users", `${user.email || user.name} · ${user.role}`);
   saveData();
   renderUsers();
   toast(`${user.name} deleted.`);
 });
+
+async function toggleUserDisabled(index) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can disable users.");
+  const user = data.users[index];
+  if (!user?.email) return toast("User email is required.");
+  if (user.email === currentUser?.email) return toast("You cannot disable your own account.");
+  const disabled = !String(user.inviteStatus || "Active").toLowerCase().includes("disabled");
+  const verb = disabled ? "disable" : "enable";
+  if (!confirm(`${disabled ? "Disable" : "Enable"} ${user.name || user.email}?`)) return;
+  const result = await MedlaneAPI.setUserDisabled(user.email, disabled).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || `Unable to ${verb} user.`);
+  user.inviteStatus = disabled ? "Disabled" : "Active";
+  await syncBackendUsers();
+  log(`${disabled ? "Disabled" : "Enabled"} user`, "Users", `${user.email} · ${user.role}`);
+  saveData();
+  renderUsers();
+  toast(`${user.name || user.email} ${disabled ? "disabled" : "enabled"}.`);
+}
 
 async function resendUserInvite(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can resend invitations.");

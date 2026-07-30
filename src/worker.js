@@ -881,6 +881,44 @@ export default {
         return json({ ok: true, emailDelivery });
       }
 
+      if (url.pathname === "/api/users/status") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { email: rawEmail, disabled } = await request.json();
+        const email = cleanEmail(rawEmail);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        if (email === cleanEmail(authUser.email)) return json({ error: "You cannot disable your own account" }, { status: 400 });
+        const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
+        const target = (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
+        if (!target?.id) return json({ error: "Supabase Auth user not found" }, { status: 404 });
+        await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, {
+          method: "PUT",
+          body: JSON.stringify({ ban_duration: disabled ? "876000h" : "none" }),
+        });
+        return json({ ok: true, disabled: Boolean(disabled) });
+      }
+
+      if (url.pathname === "/api/users/delete") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { email: rawEmail, confirmation } = await request.json();
+        const email = cleanEmail(rawEmail);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        if (email === cleanEmail(authUser.email)) return json({ error: "You cannot delete your own account" }, { status: 400 });
+        const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
+        const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
+        const target = (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
+        const fullName = profiles[0]?.full_name || target?.user_metadata?.full_name || email;
+        if (String(confirmation || "").trim() !== fullName) return json({ error: `Type the full name exactly: ${fullName}` }, { status: 400 });
+        const userId = profiles[0]?.id || target?.id;
+        if (userId) await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }).catch(() => null);
+        if (profiles[0]?.id) await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(profiles[0].id)}`, { method: "DELETE" }).catch(() => null);
+        if (target?.id) await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, { method: "DELETE" }).catch(() => null);
+        return json({ ok: true });
+      }
+
       if (url.pathname === "/api/users/sessions") {
         const { profile } = await authenticatedProfile(request, env);
         if (request.method !== "GET") return methodNotAllowed();
