@@ -75,5 +75,36 @@ const MedlaneAPI = (() => {
     return request("/api/users/sessions/revoke", { method: "POST", body: JSON.stringify({ sessionId }) });
   }
 
-  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword, changePassword, listUserSessions, revokeUserSession };
+  async function listBackups() {
+    return request("/api/backups");
+  }
+
+  async function runBackup(backupType = "manual") {
+    return request("/api/backups", { method: "POST", body: JSON.stringify({ backupType }) });
+  }
+
+  async function downloadBackup(id) {
+    const active = session();
+    const headers = {};
+    if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
+    if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+    const response = await fetch(`/api/backups/${encodeURIComponent(id)}`, { headers });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error || `Request failed: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `medlane-backup-${id}.json.gz`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup };
 })();

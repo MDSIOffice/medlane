@@ -10,6 +10,9 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },
+  "triggers": {
+    "crons": ["0 18 * * sun", "0 18 1 * *", "0 18 1 1 *"]
+  },
   "r2_buckets": [
     {
       "binding": "DOCUMENTS_BUCKET",
@@ -50,6 +53,9 @@
     "production": {
       "name": "medlane",
       "workers_dev": true,
+      "triggers": {
+        "crons": ["0 18 * * sun", "0 18 1 * *", "0 18 1 1 *"]
+      },
       "r2_buckets": [
         {
           "binding": "DOCUMENTS_BUCKET",

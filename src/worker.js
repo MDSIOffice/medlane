@@ -4,8 +4,8 @@ const jsonHeaders = {
 };
 
 const roleModules = {
-  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "notifications", "user-settings", "logs"],
-  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "notifications", "user-settings", "logs"],
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs"],
   Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs"],
   Accounting: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"],
   Sales: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings"],
@@ -175,6 +175,10 @@ async function profileForUser(env, userId, email) {
   const fallback = roleModules[profile[0].role] || roleModules.Sales;
   const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
   const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : fallback;
+  if (["Superadmin", "CEO"].includes(profile[0].role)) {
+    if (!view.includes("backup")) view.push("backup");
+    if (!edit.includes("backup")) edit.push("backup");
+  }
   return {
     id: profile[0].id,
     name: profile[0].full_name,
@@ -203,6 +207,10 @@ function requireWriteAccess(profile) {
 
 function requireUserAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage users");
+}
+
+function requireBackupAdmin(profile) {
+  if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage backups");
 }
 
 function cleanEmail(email) {
@@ -312,7 +320,46 @@ function objectKeyFor(fileName, recordType) {
   return `uploads/${folder}/${crypto.randomUUID()}-${safeFileName(fileName)}`;
 }
 
+function backupTypeForCron(cron) {
+  if (cron === "0 18 1 1 *") return "yearly";
+  if (cron === "0 18 1 * *") return "monthly";
+  if (cron === "0 18 * * sun") return "weekly";
+  return "manual";
+}
+
+async function gzipBytes(text) {
+  const stream = new Blob([text], { type: "application/json" }).stream().pipeThrough(new CompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function createBackup(env, backupType = "manual", actor = null) {
+  if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
+  const stateKey = appStateKey(env);
+  const records = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+  const createdAt = new Date().toISOString();
+  const payload = { app: "medlane", stateKey, backupType, mode: "compressed-full", sinceAt: null, createdAt, records };
+  const bytes = await gzipBytes(JSON.stringify(payload));
+  const objectKey = `backups/${stateKey}/${backupType}/${createdAt.replace(/[:.]/g, "-")}-${crypto.randomUUID()}.json.gz`;
+  await reserveStorage(env, bytes.byteLength);
+  try {
+    await env.DOCUMENTS_BUCKET.put(objectKey, bytes, { httpMetadata: { contentType: "application/gzip" }, customMetadata: { backupType, stateKey, records: String(records.length) } });
+    const inserted = await supabaseFetch(env, "/rest/v1/backup_runs", {
+      method: "POST",
+      headers: { prefer: "return=representation" },
+      body: JSON.stringify({ state_key: stateKey, backup_type: backupType, mode: payload.mode, object_key: objectKey, records_count: records.length, size_bytes: bytes.byteLength, since_at: null, created_by: actor }),
+    });
+    return inserted[0];
+  } catch (error) {
+    await releaseStorage(env, bytes.byteLength).catch(() => null);
+    await env.DOCUMENTS_BUCKET.delete(objectKey).catch(() => null);
+    throw error;
+  }
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(createBackup(env, backupTypeForCron(event.cron), null).catch((error) => console.error(JSON.stringify({ message: "Scheduled backup failed", cron: event.cron, error: error.message }))));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
@@ -508,6 +555,33 @@ export default {
           body: JSON.stringify({ revoked_at: new Date().toISOString(), revoked_by: authUser.id }),
         });
         return json({ ok: true });
+      }
+
+      if (url.pathname === "/api/backups") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        requireBackupAdmin(profile);
+        if (request.method === "GET") {
+          const rows = await supabaseFetch(env, `/rest/v1/backup_runs?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=id,backup_type,mode,records_count,size_bytes,since_at,created_at&order=created_at.desc&limit=100`);
+          return json({ backups: rows });
+        }
+        if (request.method === "POST") {
+          const { backupType = "manual" } = await request.json().catch(() => ({}));
+          if (!["manual", "weekly", "monthly", "yearly"].includes(backupType)) return json({ error: "Invalid backup type" }, { status: 400 });
+          const backup = await createBackup(env, backupType, authUser.id);
+          return json({ backup }, { status: 201 });
+        }
+        return methodNotAllowed();
+      }
+
+      if (url.pathname.startsWith("/api/backups/") && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        requireBackupAdmin(profile);
+        const id = decodeURIComponent(url.pathname.split("/").pop() || "");
+        const rows = await supabaseFetch(env, `/rest/v1/backup_runs?id=eq.${encodeURIComponent(id)}&state_key=eq.${encodeURIComponent(appStateKey(env))}&select=*`);
+        if (!rows[0]) return json({ error: "Backup not found" }, { status: 404 });
+        const object = await env.DOCUMENTS_BUCKET.get(rows[0].object_key);
+        if (!object) return json({ error: "Backup object not found" }, { status: 404 });
+        return new Response(object.body, { headers: { "content-type": "application/gzip", "content-disposition": `attachment; filename="medlane-${rows[0].backup_type}-${rows[0].created_at.slice(0, 10)}.json.gz"`, "cache-control": "private, max-age=60" } });
       }
 
       if (url.pathname === "/api/storage/usage") {

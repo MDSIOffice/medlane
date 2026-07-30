@@ -196,6 +196,7 @@
         <button class="nav-item" data-section="security" data-title="Security" data-description="Preview money-protection controls for compromised passwords, lost phones, approvals, and audit trails."><span class="nav-icon">🔐</span><span>Security</span></button>
         <button class="nav-item" data-section="users" data-title="Users" data-description="Manage user accounts, roles, branch access, and allowed modules."><span class="nav-icon">👥</span><span>Users</span></button>
         <button class="nav-item" data-section="settings" data-title="Settings" data-description="Configure platform branches used by branch-specific workflows."><span class="nav-icon">⚙</span><span>Settings</span></button>
+        <button class="nav-item" data-section="backup" data-title="Backup" data-description="Manage optimized weekly, monthly, yearly, and manual backups."><span class="nav-icon">▣</span><span>Backup</span></button>
         <button class="nav-item" data-section="logs" data-title="Audit Logs" data-description="Review traceable user activity including edits, imports, exports, stock changes, and payment postings."><span class="nav-icon">🕘</span><span>Audit Logs</span></button>
       </nav>
     </aside>
@@ -542,6 +543,24 @@
         <article class="panel settings-panel">
           <div class="panel-header"><div><p class="eyebrow">Tutorial</p><h2>How To Use Each Module</h2></div></div>
           <div class="tutorial-list" id="settings-tutorial"></div>
+        </article>
+      </section>
+
+      <section class="section" id="backup">
+        <div class="section-header"><div><p class="eyebrow">Backup</p><h2>Automated Recovery Points</h2><p class="page-description">Weekly, monthly, yearly, and manual backups are compressed and stored in R2. Only Superadmin/CEO can access this module.</p></div><button class="primary-button" id="run-manual-backup" type="button">Run Manual Backup</button></div>
+        <div class="stats-grid" id="backup-summary-grid"></div>
+        <article class="panel">
+          <div class="panel-header"><div><p class="eyebrow">Schedule</p><h2>Backup Cadence</h2></div></div>
+          <ul class="compact-list">
+            <li><span>Weekly</span><strong>Every Sunday 18:00 UTC</strong></li>
+            <li><span>Monthly</span><strong>Every 1st day 18:00 UTC</strong></li>
+            <li><span>Yearly</span><strong>Every January 1 18:00 UTC</strong></li>
+            <li><span>Storage optimization</span><strong>Compressed full recovery points to keep restore simple and safe</strong></li>
+          </ul>
+        </article>
+        <article class="panel">
+          <div class="panel-header"><div><p class="eyebrow">History</p><h2>Backup Files</h2></div><button class="ghost-button" id="refresh-backups" type="button">Refresh</button></div>
+          <div class="table-card"><table id="backup-table"></table></div>
         </article>
       </section>
 

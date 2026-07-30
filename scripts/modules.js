@@ -426,6 +426,7 @@ function showSection(sectionId, options = {}) {
   if (options.scrollTop) window.scrollTo({ top: 0, behavior: "smooth" });
   requestAnimationFrame(updateTableScrollHints);
   if (sectionId === "collections") setTimeout(renderCollectionMapVisual, 80);
+  if (sectionId === "backup") renderBackup();
 }
 
 function renderBranchFilter() {
@@ -2459,6 +2460,34 @@ function formatSessionDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(2)} GB`;
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+let backupsLoaded = false;
+async function renderBackup() {
+  if (!qs("#backup-table") || !canManageUsers()) return;
+  backupsLoaded = true;
+  table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Since", "Download"], [["Loading backups...", "-", "-", "-", "-", "-", "-"]]);
+  try {
+    const payload = await MedlaneAPI.listBackups();
+    const backups = payload.backups || [];
+    const totalBytes = backups.reduce((sum, backup) => sum + Number(backup.size_bytes || 0), 0);
+    qs("#backup-summary-grid").innerHTML = [
+      ["Backup Files", backups.length, "Stored in R2"],
+      ["Backup Storage", formatBytes(totalBytes), "Compressed JSON"],
+      ["Latest Backup", backups[0] ? formatSessionDate(backups[0].created_at) : "None", "Most recent recovery point"],
+      ["Schedule", "3 cadences", "Weekly, monthly, yearly"],
+    ].map(([title, value, note]) => `<article class="stat-card"><span>${escapeHtml(title)}</span><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(note)}</small></article>`).join("");
+    table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Since", "Download"], backups.map((backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), backup.since_at ? formatSessionDate(backup.since_at) : "Full baseline", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button>`] })));
+  } catch (error) {
+    qs("#backup-summary-grid").innerHTML = `<article class="stat-card accent-red"><span>Setup Required</span><strong>Backups unavailable</strong><small>${escapeHtml(error.message)}</small></article>`;
+    table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Since", "Download"], [["Backup tracking unavailable", "Run updated Supabase schema", "-", "-", "-", "-", escapeHtml(error.message)]]);
+  }
+}
 async function renderUserSessions(target = selectedUserSessionsTarget) {
   const panel = qs("#user-devices-panel");
   if (!panel) return;
@@ -2559,7 +2588,7 @@ function renderLogs() {
     .filter((log) => module === "all" || log.module === module);
   table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record"], rows.map((l) => ({ focus: [l.record, l.action, l.user].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(logRole(l)), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record)] })));
 }
-function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
+function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
 
 function runReconciliationWorkflow() {
   const scope = getReconScope();
@@ -2841,7 +2870,7 @@ function syncInviteUserPermissions() {
   const modules = permissionModules();
   const groups = [
     ["Core", ["dashboard", "analytics", "notifications", "user-settings"]],
-    ["Master Data", ["masterlists", "users", "settings", "security", "logs"]],
+    ["Master Data", ["masterlists", "users", "settings", "backup", "security", "logs"]],
     ["Inventory & Orders", ["inventory", "purchase-orders", "warranty"]],
     ["Sales & Receivables", ["sales", "invoicing", "collections", "receivables-tracker", "purchase-history"]],
     ["Finance", ["payables", "replenishments", "reconciliation", "reports", "imports"]],

@@ -179,6 +179,8 @@ document.body.addEventListener("click", (event) => {
   if (viewUserSessions) return openUserSessions(Number(viewUserSessions.dataset.viewUserSessions));
   const revokeSession = event.target.closest("[data-revoke-session]");
   if (revokeSession) return forceLogoutSession(revokeSession.dataset.revokeSession);
+  const downloadBackup = event.target.closest("[data-download-backup]");
+  if (downloadBackup) return downloadBackupFile(downloadBackup.dataset.downloadBackup);
   const confirmPayment = event.target.closest("[data-confirm-payment]");
   if (confirmPayment) { const [type, index, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, Number(index), method); }
   const collectionAction = event.target.closest("[data-collection-action]");
@@ -612,6 +614,35 @@ qs("#logs-module-filter").addEventListener("change", renderLogs);
 qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
 qs("#clear-notifications").addEventListener("click", () => { data.notifications = data.notifications.filter((notice) => notice.status === "Unread"); saveData(); renderNotifications(); toast("Read notifications cleared."); });
 qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
+qs("#refresh-backups")?.addEventListener("click", () => { renderBackup(); toast("Backups refreshed."); });
+qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
+
+async function runManualBackup() {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can run backups.");
+  const button = qs("#run-manual-backup");
+  const original = button?.textContent || "Run Manual Backup";
+  if (button) { button.disabled = true; button.textContent = "Running backup..."; }
+  try {
+    await MedlaneAPI.runBackup("manual");
+    log("Created manual backup", "Backup", currentUser?.email || currentUser?.name || "Superadmin/CEO");
+    await renderBackup();
+    toast("Manual backup created.");
+  } catch (error) {
+    toast(error.message || "Backup failed.");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
+async function downloadBackupFile(id) {
+  try {
+    await MedlaneAPI.downloadBackup(id);
+    log("Downloaded backup", "Backup", id);
+    toast("Backup download started.");
+  } catch (error) {
+    toast(error.message || "Backup download failed.");
+  }
+}
 
 function openUserSessions(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can view device sessions.");

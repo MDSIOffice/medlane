@@ -91,10 +91,24 @@ create table if not exists app_sessions (
   revoked_by uuid references profiles(id)
 );
 
+create table if not exists backup_runs (
+  id uuid primary key default gen_random_uuid(),
+  state_key text not null default 'production',
+  backup_type text not null check (backup_type in ('manual', 'weekly', 'monthly', 'yearly')),
+  mode text not null default 'incremental',
+  object_key text not null unique,
+  records_count integer not null default 0,
+  size_bytes bigint not null default 0 check (size_bytes >= 0),
+  since_at timestamptz,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
 create index if not exists file_objects_record_idx on file_objects(record_type, record_id);
 create index if not exists file_objects_active_size_idx on file_objects(deleted_at, size_bytes);
 create index if not exists app_records_module_idx on app_records(state_key, module_name);
 create index if not exists app_sessions_user_idx on app_sessions(user_id, revoked_at, last_seen_at desc);
+create index if not exists backup_runs_type_idx on backup_runs(state_key, backup_type, created_at desc);
 
 alter table profiles enable row level security;
 alter table module_permissions enable row level security;
@@ -104,6 +118,7 @@ alter table app_records enable row level security;
 alter table branches enable row level security;
 alter table storage_usage enable row level security;
 alter table app_sessions enable row level security;
+alter table backup_runs enable row level security;
 
 drop policy if exists "Users can read own profile" on profiles;
 create policy "Users can read own profile" on profiles for select using (auth.uid() = id);
@@ -128,6 +143,9 @@ create policy "Authenticated users can read storage usage" on storage_usage for 
 
 drop policy if exists "Users can read own app sessions" on app_sessions;
 create policy "Users can read own app sessions" on app_sessions for select using (auth.uid() = user_id);
+
+drop policy if exists "Authenticated users can read backup metadata" on backup_runs;
+create policy "Authenticated users can read backup metadata" on backup_runs for select using (auth.role() = 'authenticated');
 
 create or replace function update_app_state(expected_revision bigint, next_data jsonb, actor uuid, state_key text default 'production')
 returns table(key text, revision bigint, updated_at timestamptz)
@@ -217,6 +235,7 @@ grant select, insert, update, delete on table app_records to service_role;
 grant select, insert, update, delete on table file_objects to service_role;
 grant select, insert, update, delete on table storage_usage to service_role;
 grant select, insert, update, delete on table app_sessions to service_role;
+grant select, insert, update, delete on table backup_runs to service_role;
 grant select on table branches to authenticated;
 grant select on table profiles to authenticated;
 grant select on table module_permissions to authenticated;
@@ -225,6 +244,7 @@ grant select on table app_records to authenticated;
 grant select on table file_objects to authenticated;
 grant select on table storage_usage to authenticated;
 grant select on table app_sessions to authenticated;
+grant select on table backup_runs to authenticated;
 grant execute on function update_app_state(bigint, jsonb, uuid, text) to service_role;
 grant execute on function reserve_file_storage(text, bigint, bigint) to service_role;
 grant execute on function release_file_storage(text, bigint) to service_role;
