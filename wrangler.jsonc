@@ -1,8 +1,25 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "medlane",
-  "compatibility_date": "2026-07-15",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-30",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": "."
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "r2_buckets": [
+    {
+      "binding": "DOCUMENTS_BUCKET",
+      "bucket_name": "medlane-documents"
+    }
+  ],
+  "vars": {
+    "MAX_R2_BYTES": "536870912000"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
   }
 }
