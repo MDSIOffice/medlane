@@ -104,7 +104,10 @@ function getDashboardRange() {
   return { from: qs("#dashboard-date-from")?.value || "", to: qs("#dashboard-date-to")?.value || "" };
 }
 function log(action, module, record) {
-  data.logs.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), user: currentUser?.name || "System User", role: currentUser?.role || "System", action, module, record });
+  const ua = navigator.userAgent || "";
+  const device = /Mobile|iPhone|Android/i.test(ua) ? "Mobile" : /iPad|Tablet/i.test(ua) ? "Tablet" : "Desktop";
+  const browser = /Edg\//.test(ua) ? "Microsoft Edge" : /OPR\//.test(ua) ? "Opera" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Unknown browser";
+  data.logs.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), user: currentUser?.name || "System User", role: currentUser?.role || "System", action, module, record, device, browser, ipAddress: "Server captured on save" });
   data.logs = data.logs.slice(0, 60);
   saveData();
 }

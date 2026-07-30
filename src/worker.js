@@ -336,6 +336,69 @@ function generateReportsFromState(data, branch = "all") {
   ];
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+function documentType(type) {
+  return type === "DRS" ? "DR" : String(type || "SI");
+}
+
+function formMoney(value) {
+  return Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formDate(value) {
+  const date = value ? new Date(value) : new Date();
+  return date.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+}
+
+function lineAmount(line) {
+  return Number(line?.qty || 0) * Number(line?.price || 0);
+}
+
+function saleTaxBreakdown(sale) {
+  const subtotal = Number(sale.amount || 0) - Number(sale.discount || 0);
+  const totalAmountDue = Number(sale.net || subtotal);
+  const totalSalesVatInclusive = documentType(sale.type) === "SI" ? totalAmountDue : subtotal;
+  const addVat = documentType(sale.type) === "SI" ? Math.max(totalSalesVatInclusive - totalSalesVatInclusive / 1.12, 0) : 0;
+  return { totalSalesVatInclusive, amountNetVat: totalSalesVatInclusive - addVat, addVat, totalAmountDue };
+}
+
+function printableBranchAllowed(profile, sale) {
+  const branch = String(profile?.branch || "all");
+  return ["all", "Both", "All"].includes(branch) || sale.area === branch || sale.branch === branch;
+}
+
+function printableRows(sale, variant) {
+  const lines = sale.lines?.length ? sale.lines : [{ item: sale.item, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: Number(sale.amount || 0) / Math.max(Number(sale.qty || 1), 1), lot: "", expiry: "" }];
+  return lines.slice(0, variant === "si" ? 10 : 8).map((line, index) => {
+    const lotExpiry = `<small>Lot ${escapeHtml(line.lot || "-")} · Exp ${escapeHtml(line.expiry || "N/A")}</small>`;
+    if (variant === "si") return `<div class="si-row" style="--row:${index}"><span class="si-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="si-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="si-price">${formMoney(line.price)}</span><span class="si-amount">${formMoney(lineAmount(line))}</span></div>`;
+    if (variant === "ts") return `<div class="ts-row" style="--row:${index}"><span class="ts-code">${escapeHtml(line.code || "")}</span><span class="ts-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="ts-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="ts-amount">${formMoney(lineAmount(line))}</span></div>`;
+    return `<div class="dr-row" style="--row:${index}"><span class="dr-lot">${escapeHtml(line.lot || "")}</span><span class="dr-expiry">${escapeHtml(line.expiry || "")}</span><span class="dr-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item">${escapeHtml(line.item)}</span><span class="dr-price"></span><span class="dr-amount"></span></div>`;
+  }).join("");
+}
+
+function printableInvoiceHtml({ sale, client, approvals, preparedBy, noDate }) {
+  const type = documentType(sale.type);
+  const approvedBy = escapeHtml(approvals?.[type] || "ECTOSOC");
+  if (type === "TS") return `<section class="template-overlay template-ts">${noDate ? "" : `<span class="field ts-date">${formDate(new Date().toISOString())}</span>`}<span class="field ts-po">${escapeHtml(sale.po || "")}</span><span class="field ts-client">${escapeHtml(sale.client)}</span><span class="field ts-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "ts")}<span class="field ts-tax-label">NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total">${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared">${escapeHtml(preparedBy)}</span><span class="field ts-approved">${approvedBy}</span><span class="field ts-received"></span></section>`;
+  if (type === "DR") return `<section class="template-overlay template-dr">${noDate ? "" : `<span class="field dr-date">${formDate(new Date().toISOString())}</span>`}<span class="field dr-po">${escapeHtml(sale.po || "")}</span><span class="field dr-terms">${Number(sale.terms || 30)} Days</span><span class="field dr-client">${escapeHtml(sale.client)}</span><span class="field dr-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "dr")}<span class="field dr-prepared">${escapeHtml(preparedBy)}</span><span class="field dr-recorded"></span><span class="field dr-approved">${approvedBy}</span><span class="field dr-received"></span></section>`;
+  const breakdown = saleTaxBreakdown(sale);
+  return `<section class="template-overlay template-si">${noDate ? "" : `<span class="field si-date">${formDate(sale.date)}</span>`}<span class="field si-po">${escapeHtml(sale.po || "")}</span><span class="field si-terms">Terms of Payment ${Number(sale.terms || 30)} Days</span><span class="field si-sold">${escapeHtml(sale.client)}</span><span class="field si-registered">${escapeHtml(sale.client)}</span><span class="field si-tin">${escapeHtml(client.tin || "")}</span><span class="field si-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "si")}<span class="field si-total-sales">${formMoney(breakdown.totalSalesVatInclusive)}</span><span class="field si-net-vat">${formMoney(breakdown.amountNetVat)}</span><span class="field si-discount">${formMoney(sale.discount || 0)}</span><span class="field si-vat">${formMoney(breakdown.addVat)}</span><span class="field si-amount-due">${formMoney(breakdown.totalAmountDue)}</span><span class="field si-prepared">${escapeHtml(preparedBy)}</span><span class="field si-approved">${approvedBy}</span></section>`;
+}
+
+function paymentRequestPrintableHtml(request) {
+  const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
+  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(request.cvNo)}</span></header><div class="pr-meta"><span>Employee/Vendor: <strong>${escapeHtml(request.employee)}</strong></span><span>Department: <strong>${escapeHtml(request.department)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><div class="pr-checks"><strong>Type of Request:</strong><span>${request.requestType === "Reimbursement or Liquidation" ? "[x]" : "[ ]"} Reimbursement or Liquidation</span><span>${request.requestType === "Fees, Supplier or Utilities" ? "[x]" : "[ ]"} Fees, Supplier or Utilities</span><span>${request.requestType === "Priority" ? "[x]" : "[ ]"} Priority</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${money(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${money(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${money(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${money(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>Attach supporting official receipts, invoices, or billing statements before approval and release.</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div></footer></section>`;
+}
+
+function inventoryPoPrintableHtml(po) {
+  const total = (po.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0);
+  return `<section class="payment-request-print inventory-po-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS INC.</strong><span>${escapeHtml(po.id)}</span></header><div class="pr-meta"><span>Supplier: <strong>${escapeHtml(po.supplier)}</strong></span><span>Date: <strong>${escapeHtml(po.date)}</strong></span><span>Terms: <strong>${Number(po.terms || 30)} Days</strong></span></div><table><thead><tr><th>Qty.</th><th>U/M</th><th>Item Description</th><th>Lot</th><th>Expiry</th><th>Unit Cost</th><th>Disc. Amt</th><th>Total Amount</th></tr></thead><tbody>${(po.lines || []).map((line) => { const discount = Number(line.discount || 0); const totalLine = Number(line.qty || 0) * Number(line.price || 0) - discount; return `<tr><td>${Number(line.qty || 0)}</td><td>${escapeHtml(line.uom || "")}</td><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.brand || "")}</small></td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${money(line.price || 0)}</td><td>${money(discount)}</td><td>${money(totalLine)}</td></tr>`; }).join("")}<tr><td colspan="7"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table></section>`;
+}
+
 async function storageUsage(env) {
   if (!env.DOCUMENTS_BUCKET) {
     return { configured: false, usedBytes: 0, objectCount: 0, truncated: false };
@@ -406,6 +469,7 @@ async function gzipBytes(text) {
 }
 
 async function createBackup(env, backupType = "manual", actor = null) {
+  if ((env.ENVIRONMENT || "production") !== "production") throw new Error("Backups are disabled outside production");
   if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
   const stateKey = appStateKey(env);
   const records = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
@@ -431,6 +495,7 @@ async function createBackup(env, backupType = "manual", actor = null) {
 
 export default {
   async scheduled(event, env, ctx) {
+    if ((env.ENVIRONMENT || "production") !== "production") return;
     ctx.waitUntil(createBackup(env, backupTypeForCron(event.cron), null).catch((error) => console.error(JSON.stringify({ message: "Scheduled backup failed", cron: event.cron, error: error.message }))));
   },
   async fetch(request, env) {
@@ -550,7 +615,7 @@ export default {
           const { data } = await request.json();
           const keys = writableKeys(profile);
           if (!keys.length) throw new Error("You do not have permission to edit production data");
-          const rows = recordsFromState(data, authUser.id, stateKey, keys);
+          const rows = recordsFromState(data, authUser.id, stateKey, keys, auditContextForRequest(request));
           await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(keys))}`, { method: "DELETE" });
           if (rows.length) {
             await supabaseFetch(env, "/rest/v1/app_records", {
@@ -571,6 +636,70 @@ export default {
         const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(filterRecordsForProfile(rows, profile, "view"));
         return json({ reports: generateReportsFromState(state, url.searchParams.get("branch") || "all") });
+      }
+
+      if (url.pathname === "/api/printables/invoice") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        if (!canAccessKey(profile, "sales", "view")) throw new Error("You do not have permission to print invoices");
+        const id = String(url.searchParams.get("id") || "").trim();
+        if (!id) return json({ error: "Invoice ID is required" }, { status: 400 });
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=in.${encodeURIComponent(postgrestIn(["sales", "clients", "invoiceApprovals"]))}&select=module_name,record_key,data&order=updated_at.asc`);
+        const state = stateFromRecords(rows);
+        const sale = (state.sales || []).find((item) => item.id === id || item.documentNo === id);
+        if (!sale || !printableBranchAllowed(profile, sale)) return json({ error: "Invoice not found" }, { status: 404 });
+        const type = documentType(sale.type);
+        return json({
+          id: sale.id,
+          documentNo: sale.documentNo || sale.id,
+          type,
+          title: `Print ${type} ${sale.documentNo || sale.id}`,
+          description: url.searchParams.get("noDate") === "1" ? "Server-rendered data-only overlay without date. Load the physical template in the printer before printing." : "Server-rendered data-only overlay for the pre-printed form. Load the physical template in the printer before printing.",
+          html: printableInvoiceHtml({ sale, client: (state.clients || []).find((client) => client.name === sale.client) || {}, approvals: state.invoiceApprovals || {}, preparedBy: profile.name || "System User", noDate: url.searchParams.get("noDate") === "1" }),
+        });
+      }
+
+      if (url.pathname === "/api/printables/payment-request") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        if (!canAccessKey(profile, "paymentRequests", "view")) throw new Error("You do not have permission to print payment requests");
+        const id = String(url.searchParams.get("id") || "").trim();
+        if (!id) return json({ error: "Payment request ID is required" }, { status: 400 });
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.paymentRequests&select=module_name,record_key,data&order=updated_at.asc`);
+        const state = stateFromRecords(rows);
+        const requestRecord = (state.paymentRequests || []).find((item) => item.cvNo === id || item.id === id);
+        if (!requestRecord) return json({ error: "Payment request not found" }, { status: 404 });
+        return json({ id: requestRecord.cvNo || requestRecord.id, title: requestRecord.cvNo || requestRecord.id, html: paymentRequestPrintableHtml(requestRecord) });
+      }
+
+      if (url.pathname === "/api/printables/inventory-po") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        if (!canAccessKey(profile, "inventoryPurchaseOrders", "view")) throw new Error("You do not have permission to print inventory purchase orders");
+        const id = String(url.searchParams.get("id") || "").trim();
+        if (!id) return json({ error: "Inventory PO ID is required" }, { status: 400 });
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.inventoryPurchaseOrders&select=module_name,record_key,data&order=updated_at.asc`);
+        const state = stateFromRecords(rows);
+        const po = (state.inventoryPurchaseOrders || []).find((item) => item.id === id);
+        if (!po) return json({ error: "Inventory PO not found" }, { status: 404 });
+        return json({ id: po.id, title: `Purchase Order ${po.id}`, description: `${po.supplier} · Terms ${po.terms || 30} days`, html: inventoryPoPrintableHtml(po) });
+      }
+
+      if (url.pathname === "/api/printables/financial-request") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        const type = String(url.searchParams.get("type") || "").trim();
+        const key = type === "payable" ? "payables" : type === "expense" ? "replenishments" : "";
+        if (!key) return json({ error: "Invalid financial request type" }, { status: 400 });
+        if (!canAccessKey(profile, key, "view")) throw new Error("You do not have permission to print this request");
+        const id = String(url.searchParams.get("id") || "").trim();
+        if (!id) return json({ error: "Request ID is required" }, { status: 400 });
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.${encodeURIComponent(key)}&select=module_name,record_key,data&order=updated_at.asc`);
+        const state = stateFromRecords(rows);
+        const record = (state[key] || []).find((item) => item.id === id);
+        if (!record) return json({ error: "Request not found" }, { status: 404 });
+        const titleType = type === "payable" ? "Payable" : "Expense";
+        return json({ id: record.id, title: `${titleType} Request ${record.id}`, description: `${record.supplier || record.requester || "Request"} · ${money(record.amount)}`, html: financialRequestPrintableHtml(record, type) });
       }
 
       if (url.pathname === "/api/users/invite") {
@@ -642,6 +771,7 @@ export default {
       }
 
       if (url.pathname === "/api/backups") {
+        if ((env.ENVIRONMENT || "production") !== "production") return json({ error: "Backups are disabled outside production" }, { status: 403 });
         const { authUser, profile } = await authenticatedProfile(request, env);
         requireBackupAdmin(profile);
         if (request.method === "GET") {
@@ -658,6 +788,7 @@ export default {
       }
 
       if (url.pathname.startsWith("/api/backups/") && request.method === "GET") {
+        if ((env.ENVIRONMENT || "production") !== "production") return json({ error: "Backups are disabled outside production" }, { status: 403 });
         const { profile } = await authenticatedProfile(request, env);
         requireBackupAdmin(profile);
         const id = decodeURIComponent(url.pathname.split("/").pop() || "");

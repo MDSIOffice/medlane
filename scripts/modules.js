@@ -793,7 +793,7 @@ function renderInventory() {
     visualCard("▤", "Stock Health", `${visibleInventory.length} total`, barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((itemStatus) => [itemStatus, visibleInventory.filter((item) => inventoryStatus(item) === itemStatus).length]), (value) => `${value} records`, ["green", "orange", "red", "red", "red"]), "info", "Computed by classifying each inventory record by quantity and expiry rules."),
   ].join("");
   table("#inventory-table", ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Min", "Status"], rows.map((i) => ({ focus: i.lot, cells: [i.branch, i.brand, i.code, i.item, `${i.serial || "N/A"}<small>${i.lot}</small>`, i.expiry, i.qty, i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`] })));
-  table("#inventory-po-table", ["PO", "Supplier", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).map((po, index) => ({ focus: po.id, cells: [po.id, po.supplier, po.date, `${po.terms || 30} days`, itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []), `<span class="pill ${statusClass(po.status)}">${po.status}</span>`, `<button class="mini-button" data-inventory-po-print="${index}">Print PO</button>`] })));
+  table("#inventory-po-table", ["PO", "Supplier", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.date, `${po.terms || 30} days`, itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []), `<span class="pill ${statusClass(po.status)}">${po.status}</span>`, `<button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
   table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, transfer.qty, (transfer.lines?.length ? transfer.lines : [transfer]).map((line) => `${line.lot || "-"}<small>${line.expiry || "N/A"}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, transferAuthorizationCell(transfer, index)] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Item", "From", "To", "Qty", "Lot", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, entry.transferId, entry.action, entry.item, entry.from, entry.to, entry.qty, entry.lot, entry.user, entry.notes]));
 }
@@ -1131,15 +1131,19 @@ function closeReportPreview() {
   qs("#report-preview-modal").close();
 }
 
-function printInvoice(invoiceId, noDate = false) {
+async function printInvoice(invoiceId, noDate = false) {
   clearPrintTarget();
   currentPrintNoDate = noDate;
-  const sale = data.sales.find((item) => item.id === invoiceId || item.documentNo === invoiceId);
-  if (!sale) return toast("Invoice not found.");
-  const type = documentType(sale.type).toLowerCase();
-  qs("#report-preview-title").textContent = `Print ${documentType(sale.type)} ${sale.documentNo || sale.id}`;
-  qs("#report-preview-description").textContent = noDate ? "Data-only overlay without date. Load the physical template in the printer before printing." : "Data-only overlay for the pre-printed form. Load the physical template in the printer before printing.";
-  qs("#report-preview-content").innerHTML = invoiceTemplateOverlay(sale);
+  const printable = await MedlaneAPI.printableInvoice(invoiceId, noDate).catch((error) => {
+    toast(error.message || "Unable to load printable invoice.");
+    return null;
+  });
+  if (!printable) return;
+  currentReportSaleId = printable.id || invoiceId;
+  const type = String(printable.type || "SI").toLowerCase();
+  qs("#report-preview-title").textContent = printable.title;
+  qs("#report-preview-description").textContent = printable.description;
+  qs("#report-preview-content").innerHTML = printable.html;
   document.body.classList.add("print-template-overlay", `print-template-${type}`);
   qs("#report-preview-modal").showModal();
 }
@@ -1150,11 +1154,11 @@ function printReportPreview() {
   window.print();
 }
 
-function printReportPreviewNoDate() {
+async function printReportPreviewNoDate() {
   if (!document.body.classList.contains("print-template-overlay")) return window.print();
   const title = qs("#report-preview-title")?.textContent || "";
-  const sale = data.sales.find((item) => title.includes(item.documentNo || item.id));
-  if (sale) printInvoice(sale.id, true);
+  const sale = data.sales.find((item) => item.id === currentReportSaleId || title.includes(item.documentNo || item.id));
+  if (sale || currentReportSaleId) await printInvoice(sale?.id || currentReportSaleId, true);
   window.print();
 }
 
@@ -1271,7 +1275,7 @@ function renderCollections() {
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, peso.format(s.paid), taxDeductions ? `${peso.format(taxDeductions)}<small>WTax ${peso.format(latest.withholdingTax || 0)} · EWT ${peso.format(latest.expandedWithholdingTax || 0)}</small>` : "-", `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Amount Paid", "WTax/EWT", "Collection Status", "Actions", "Balance", "AR Status"], rows);
-  table("#payment-request-table", ["CV No.", "Date", "Employee", "Department", "Payment", "Request", "Total", "Actions"], data.paymentRequests.map((r, index) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.department, r.paymentType, r.requestType, peso.format(r.total), `<button class="mini-button" data-payment-request-preview="${index}">Preview / Print</button>`] })));
+  table("#payment-request-table", ["CV No.", "Date", "Employee", "Department", "Payment", "Request", "Total", "Actions"], data.paymentRequests.map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.department, r.paymentType, r.requestType, peso.format(r.total), `<button class="mini-button" data-payment-request-preview="${escapeHtml(r.cvNo)}">Preview / Print</button>`] })));
 }
 
 function collectionStatusActions(payment, sale) {
@@ -1398,11 +1402,14 @@ function paymentRequestHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
   return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(request.cvNo)}</span></header><div class="pr-meta"><span>Employee/Vendor: <strong>${escapeHtml(request.employee)}</strong></span><span>Department: <strong>${escapeHtml(request.department)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><div class="pr-checks"><strong>Type of Request:</strong><span>${request.requestType === "Reimbursement or Liquidation" ? "[x]" : "[ ]"} Reimbursement or Liquidation</span><span>${request.requestType === "Fees, Supplier or Utilities" ? "[x]" : "[ ]"} Fees, Supplier or Utilities</span><span>${request.requestType === "Priority" ? "[x]" : "[ ]"} Priority</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${peso.format(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${peso.format(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${peso.format(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${peso.format(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>${escapeHtml(paymentRequestInstructions)}</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div><div><strong>PAYMENT DETAILS:</strong><br>Bank Name:<br>Check no:<br>Date:<br>Name and Signature of approver:</div></footer></section>`;
 }
-function previewPaymentRequest(index) {
-  const request = data.paymentRequests[index];
-  if (!request) return toast("Payment request not found.");
-  qs("#payment-request-preview-title").textContent = request.cvNo;
-  qs("#payment-request-preview-content").innerHTML = paymentRequestHtml(request);
+async function previewPaymentRequest(identifier) {
+  const request = typeof identifier === "number" ? data.paymentRequests[identifier] : data.paymentRequests.find((item) => item.cvNo === identifier || item.id === identifier);
+  const id = request?.cvNo || request?.id || identifier;
+  if (!id) return toast("Payment request not found.");
+  const printable = await MedlaneAPI.printablePaymentRequest(id).catch((error) => { toast(error.message || "Unable to load payment request."); return null; });
+  if (!printable) return;
+  qs("#payment-request-preview-title").textContent = printable.title;
+  qs("#payment-request-preview-content").innerHTML = printable.html;
   qs("#payment-request-preview-modal").showModal();
 }
 
@@ -2228,12 +2235,14 @@ function paymentConfirmActions(type, index) { return `<div class="inline-actions
 
 function requestRecord(type, index) { return type === "payable" ? data.payables[index] : data.replenishments[index]; }
 
-function previewFinancialRequest(type, index) {
+async function previewFinancialRequest(type, index) {
   const record = requestRecord(type, index);
   if (!record) return toast("Request not found.");
-  qs("#report-preview-title").textContent = `${type === "payable" ? "Payable" : "Expense"} Request ${record.id}`;
-  qs("#report-preview-description").textContent = `${record.supplier || record.requester || "Request"} · ${peso.format(record.amount)}`;
-  qs("#report-preview-content").innerHTML = `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(record.id)}</span></header><div class="pr-meta"><span>${type === "payable" ? "Supplier" : "Requester"}: <strong>${escapeHtml(record.supplier || record.requester || "")}</strong></span><span>Status: <strong>${escapeHtml(record.requestStatus || "For Approval")}</strong></span><span>Date: <strong>${escapeHtml(record.date || fmtDate(today))}</strong></span></div><table><thead><tr><th>Particulars</th><th>Amount</th></tr></thead><tbody>${(record.items || []).map((item) => `<tr><td>${escapeHtml(item.particulars || item.item || "Item")}</td><td>${peso.format(item.amount || 0)}</td></tr>`).join("")}<tr><td><strong>Total</strong></td><td><strong>${peso.format(record.amount)}</strong></td></tr></tbody></table><footer><div>Prepared by:<br><strong>${escapeHtml(record.requester || currentUser?.name || "System User")}</strong></div><div>Approved by:<br><strong>${escapeHtml(record.approvedBy || "For approval")}</strong></div></footer></section>`;
+  const printable = await MedlaneAPI.printableFinancialRequest(type, record.id).catch((error) => { toast(error.message || "Unable to load request printable."); return null; });
+  if (!printable) return;
+  qs("#report-preview-title").textContent = printable.title;
+  qs("#report-preview-description").textContent = printable.description;
+  qs("#report-preview-content").innerHTML = printable.html;
   qs("#report-preview-modal").showModal();
 }
 
@@ -2597,7 +2606,7 @@ function renderLogs() {
     .filter((log) => dateInRange(logDateValue(log), from, to))
     .filter((log) => role === "all" || logRole(log) === role)
     .filter((log) => module === "all" || log.module === module);
-  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record"], rows.map((l) => ({ focus: [l.record, l.action, l.user].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(logRole(l)), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record)] })));
+  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address"], rows.map((l) => ({ focus: [l.record, l.action, l.user, l.ipAddress].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(logRole(l)), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record), formatLogCell(l.device || "-"), formatLogCell(l.browser || "-"), formatLogCell(l.ipAddress || "-")] })));
 }
 function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
 
@@ -2969,13 +2978,15 @@ function buildInventoryPurchaseOrder(values) {
   return { id: nextInventoryPurchaseOrderId(), supplier: supplier.name, date: values.date || fmtDate(today), terms: 30, status: "Purchase Receiving", lines };
 }
 
-function previewInventoryPurchaseOrder(index) {
-  const po = (data.inventoryPurchaseOrders || [])[index];
-  if (!po) return toast("Inventory PO not found.");
-  const total = (po.lines || []).reduce((sum, line) => sum + line.qty * line.price - Number(line.discount || 0), 0);
-  qs("#report-preview-title").textContent = `Purchase Order ${po.id}`;
-  qs("#report-preview-description").textContent = `${po.supplier} · Terms ${po.terms || 30} days`;
-  qs("#report-preview-content").innerHTML = `<section class="payment-request-print inventory-po-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS INC.</strong><span>${escapeHtml(po.id)}</span></header><div class="pr-meta"><span>Supplier: <strong>${escapeHtml(po.supplier)}</strong></span><span>Date: <strong>${escapeHtml(po.date)}</strong></span><span>Terms: <strong>${po.terms || 30} Days</strong></span></div><table><thead><tr><th>Qty.</th><th>U/M</th><th>Item Description</th><th>Lot</th><th>Expiry</th><th>Unit Cost</th><th>Disc. Amt</th><th>Total Amount</th></tr></thead><tbody>${(po.lines || []).map((line) => { const discount = Number(line.discount || 0); const totalLine = Number(line.qty || 0) * Number(line.price || 0) - discount; return `<tr><td>${Number(line.qty || 0)}</td><td>${escapeHtml(line.uom || "")}</td><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.brand || "")}</small></td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${peso.format(line.price || 0)}</td><td>${peso.format(discount)}</td><td>${peso.format(totalLine)}</td></tr>`; }).join("")}<tr><td colspan="7"><strong>Total</strong></td><td><strong>${peso.format(total)}</strong></td></tr></tbody></table></section>`;
+async function previewInventoryPurchaseOrder(identifier) {
+  const po = typeof identifier === "number" ? (data.inventoryPurchaseOrders || [])[identifier] : (data.inventoryPurchaseOrders || []).find((item) => item.id === identifier);
+  const id = po?.id || identifier;
+  if (!id) return toast("Inventory PO not found.");
+  const printable = await MedlaneAPI.printableInventoryPurchaseOrder(id).catch((error) => { toast(error.message || "Unable to load inventory PO."); return null; });
+  if (!printable) return;
+  qs("#report-preview-title").textContent = printable.title;
+  qs("#report-preview-description").textContent = printable.description;
+  qs("#report-preview-content").innerHTML = printable.html;
   qs("#report-preview-modal").showModal();
 }
 

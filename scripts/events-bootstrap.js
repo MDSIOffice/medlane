@@ -168,7 +168,7 @@ document.body.addEventListener("click", (event) => {
   const workflowAction = event.target.closest("[data-workflow-action]");
   if (workflowAction) return handleWorkflowAction(workflowAction.dataset.workflowAction);
   const paymentRequestPreview = event.target.closest("[data-payment-request-preview]");
-  if (paymentRequestPreview) return previewPaymentRequest(Number(paymentRequestPreview.dataset.paymentRequestPreview));
+  if (paymentRequestPreview) return previewPaymentRequest(paymentRequestPreview.dataset.paymentRequestPreview);
   const requestPreview = event.target.closest("[data-request-preview]");
   if (requestPreview) { const [type, index] = requestPreview.dataset.requestPreview.split(":"); return previewFinancialRequest(type, Number(index)); }
   const requestApprove = event.target.closest("[data-request-approve]");
@@ -192,7 +192,7 @@ document.body.addEventListener("click", (event) => {
   const removeBranchButton = event.target.closest("[data-remove-platform-branch]");
   if (removeBranchButton) return removePlatformBranch(removeBranchButton.dataset.removePlatformBranch);
   const inventoryPoPrint = event.target.closest("[data-inventory-po-print]");
-  if (inventoryPoPrint) return previewInventoryPurchaseOrder(Number(inventoryPoPrint.dataset.inventoryPoPrint));
+  if (inventoryPoPrint) return previewInventoryPurchaseOrder(inventoryPoPrint.dataset.inventoryPoPrint);
   const invoicePoButton = event.target.closest("[data-create-invoice-po]");
   if (invoicePoButton) return openInvoiceForPurchaseOrder(invoicePoButton.dataset.createInvoicePo);
   const clientInvoices = event.target.closest("[data-client-invoices]");

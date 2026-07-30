@@ -35,6 +35,9 @@
     "preview": {
       "name": "medlane-preview",
       "workers_dev": true,
+      "triggers": {
+        "crons": []
+      },
       "r2_buckets": [
         {
           "binding": "DOCUMENTS_BUCKET",
