@@ -2584,12 +2584,13 @@ function notificationItem(notice, index) {
 }
 function renderNotifications() {
   syncGeneratedNotifications();
-  const unread = data.notifications.filter((notice) => notice.status === "Unread").length;
+  const notices = visibleNotifications();
+  const unread = notices.filter((notice) => notice.status === "Unread").length;
   qs("#notification-count").textContent = unread;
   qs("#notification-count").hidden = unread === 0;
   qs("#notification-toggle").classList.toggle("has-unread", unread > 0);
-  qs("#notification-recent-list").innerHTML = data.notifications.slice(0, 5).map(notificationItem).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>No notifications</strong><span>System alerts will appear here.</span></div></div>`;
-  qs("#notification-list").innerHTML = data.notifications.map(notificationItem).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>No notifications</strong><span>System alerts will appear here.</span></div></div>`;
+  qs("#notification-recent-list").innerHTML = notices.slice(0, 5).map((notice) => notificationItem(notice, data.notifications.indexOf(notice))).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>No notifications</strong><span>System alerts will appear here.</span></div></div>`;
+  qs("#notification-list").innerHTML = notices.map((notice) => notificationItem(notice, data.notifications.indexOf(notice))).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>No notifications</strong><span>System alerts will appear here.</span></div></div>`;
 }
 function renderSecurity() {
   const controls = [

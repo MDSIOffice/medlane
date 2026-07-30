@@ -115,6 +115,16 @@ function notify(type, message, section = "notifications", record = "") {
   data.notifications.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), type, message, section, record, status: "Unread" });
   data.notifications = data.notifications.slice(0, 80);
 }
+function canSeeNotification(notice) {
+  if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
+  const section = notice?.section || "notifications";
+  if (["users", "settings", "backup", "security", "logs"].includes(section)) return false;
+  if (/user|account|permission|password|security|audit|login|logout|session/i.test(`${notice?.type || ""} ${notice?.message || ""}`)) return false;
+  return section === "notifications" || effectiveModules().includes(section);
+}
+function visibleNotifications() {
+  return (data.notifications || []).filter(canSeeNotification);
+}
 function generatedNoticeDate() {
   return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
