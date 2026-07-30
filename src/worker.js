@@ -24,6 +24,10 @@ function appStateKey(env) {
   return env.APP_STATE_KEY || env.ENVIRONMENT || "production";
 }
 
+function supabaseBaseUrl(env) {
+  return new URL(env.SUPABASE_URL).origin;
+}
+
 function methodNotAllowed() {
   return json({ error: "Method not allowed" }, { status: 405 });
 }
@@ -49,7 +53,7 @@ function supabaseHeaders(env, token = env.SUPABASE_SERVICE_ROLE_KEY) {
 
 async function supabaseFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
-  const response = await fetch(`${env.SUPABASE_URL}${path}`, {
+  const response = await fetch(`${supabaseBaseUrl(env)}${path}`, {
     ...init,
     headers: { ...supabaseHeaders(env), ...(init.headers || {}) },
   });
@@ -63,7 +67,7 @@ async function authenticatedUser(request, env) {
   const authorization = request.headers.get("authorization") || "";
   const token = authorization.replace(/^Bearer\s+/i, "");
   if (!token) throw new Error("Authentication required");
-  const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+  const response = await fetch(`${supabaseBaseUrl(env)}/auth/v1/user`, {
     headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${token}` },
   });
   const user = await response.json().catch(() => null);
@@ -167,13 +171,14 @@ export default {
 
       if (url.pathname === "/api/health") {
         if (request.method !== "GET") return methodNotAllowed();
-        const supabaseHost = env.SUPABASE_URL ? new URL(env.SUPABASE_URL).hostname : null;
+        const supabaseUrl = env.SUPABASE_URL ? new URL(env.SUPABASE_URL) : null;
         return json({
           ok: true,
           app: "medlane",
           r2Configured: Boolean(env.DOCUMENTS_BUCKET),
           supabaseUrlConfigured: Boolean(env.SUPABASE_URL),
-          supabaseHost,
+          supabaseHost: supabaseUrl?.hostname || null,
+          supabasePath: supabaseUrl?.pathname || null,
           supabaseAnonKeyConfigured: Boolean(env.SUPABASE_ANON_KEY),
           supabaseAnonKeyPrefix: env.SUPABASE_ANON_KEY ? `${env.SUPABASE_ANON_KEY.slice(0, 12)}...` : null,
           supabaseAnonKeyHash: await shortHash(env.SUPABASE_ANON_KEY),
@@ -185,7 +190,7 @@ export default {
         if (request.method !== "POST") return methodNotAllowed();
         requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
         const { email, password } = await request.json();
-        const authResponse = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        const authResponse = await fetch(`${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, {
           method: "POST",
           headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
           body: JSON.stringify({ email, password }),
@@ -195,7 +200,7 @@ export default {
           const authError = session?.error_description || session?.msg || session?.error || "Invalid email or password";
           const debug = url.searchParams.get("debug") === "1";
           console.error(JSON.stringify({ message: "Supabase login failed", authError, status: authResponse.status }));
-          return json({ error: authError, ...(debug ? { supabaseStatus: authResponse.status, supabaseResponse: session, supabaseHost: new URL(env.SUPABASE_URL).hostname, anonKeyHash: await shortHash(env.SUPABASE_ANON_KEY) } : {}) }, { status: 401 });
+          return json({ error: authError, ...(debug ? { supabaseStatus: authResponse.status, supabaseResponse: session, supabaseHost: new URL(env.SUPABASE_URL).hostname, supabasePath: new URL(env.SUPABASE_URL).pathname, authUrl: `${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, anonKeyHash: await shortHash(env.SUPABASE_ANON_KEY) } : {}) }, { status: 401 });
         }
         const user = await profileForUser(env, session.user.id, email);
         return json({ session, user });
