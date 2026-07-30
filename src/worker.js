@@ -213,6 +213,40 @@ function requireBackupAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage backups");
 }
 
+function userStatusFromAuth(authUser) {
+  if (!authUser) return "Profile only";
+  if (authUser.banned_until) return "Disabled";
+  if (authUser.confirmed_at || authUser.email_confirmed_at) return "Active";
+  if (authUser.invited_at) return "Pending Invite";
+  return "Pending";
+}
+
+function userFromProfileAndAuth(profile, authUser, permissions = []) {
+  const role = profile?.role || authUser?.user_metadata?.role || "Sales";
+  const fallback = roleModules[role] || roleModules.Sales;
+  const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
+  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : roleEditableFallback(role, view);
+  const email = cleanEmail(profile?.email || authUser?.email || "");
+  return {
+    id: profile?.id || authUser?.id || email,
+    name: profile?.full_name || authUser?.user_metadata?.full_name || email || "Supabase User",
+    email,
+    role,
+    branch: profile?.branch || authUser?.user_metadata?.branch || "all",
+    phone: profile?.phone || authUser?.phone || "",
+    modules: view,
+    customPermissions: { enabled: true, view, edit },
+    superadminPermissions: role === "Superadmin" || Boolean(profile?.is_superadmin),
+    inviteStatus: userStatusFromAuth(authUser),
+    access: `${role} with ${view.length} view / ${edit.length} edit modules`,
+  };
+}
+
+function roleEditableFallback(role, view) {
+  if (["Superadmin", "CEO", "Admin"].includes(role)) return view;
+  return view.filter((module) => !["users", "settings", "backup", "security", "logs"].includes(module));
+}
+
 function cleanEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
@@ -268,13 +302,26 @@ function stateFromRecords(records) {
   return next;
 }
 
-function recordsFromState(data, userId, stateKey, allowedKeys = persistedKeys) {
+function auditContextForRequest(request) {
+  const userAgent = request.headers.get("user-agent") || "";
+  return { device: deviceName(userAgent), browser: browserName(userAgent), ipAddress: clientIp(request), userAgent, serverCapturedAt: new Date().toISOString() };
+}
+
+function enrichAuditLogEntry(entry, auditContext) {
+  if (!entry || typeof entry !== "object") return entry;
+  return { ...entry, device: auditContext.device, browser: auditContext.browser, ipAddress: auditContext.ipAddress, userAgent: auditContext.userAgent, serverCapturedAt: entry.serverCapturedAt || auditContext.serverCapturedAt };
+}
+
+function recordsFromState(data, userId, stateKey, allowedKeys = persistedKeys, auditContext = null) {
   const rows = [];
   for (const key of allowedKeys) {
     const value = data?.[key];
     if (value === undefined) continue;
     if (Array.isArray(value)) {
-      value.forEach((item, index) => rows.push({ state_key: stateKey, module_name: key, record_key: recordKeyFor(key, item, index), data: item, updated_by: userId }));
+      value.forEach((item, index) => {
+        const record = key === "logs" && auditContext ? enrichAuditLogEntry(item, auditContext) : item;
+        rows.push({ state_key: stateKey, module_name: key, record_key: recordKeyFor(key, record, index), data: record, updated_by: userId });
+      });
     } else {
       rows.push({ state_key: stateKey, module_name: key, record_key: key, data: { value }, updated_by: userId });
     }
@@ -702,6 +749,27 @@ export default {
         return json({ id: record.id, title: `${titleType} Request ${record.id}`, description: `${record.supplier || record.requester || "Request"} · ${money(record.amount)}`, html: financialRequestPrintableHtml(record, type) });
       }
 
+      if (url.pathname === "/api/users") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const [profiles, permissions, authPayload] = await Promise.all([
+          supabaseFetch(env, "/rest/v1/profiles?select=*"),
+          supabaseFetch(env, "/rest/v1/module_permissions?select=user_id,module_key,can_view,can_edit"),
+          supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] })),
+        ]);
+        const authUsers = authPayload.users || [];
+        const profileById = new Map(profiles.map((item) => [item.id, item]));
+        const authById = new Map(authUsers.map((item) => [item.id, item]));
+        const permissionByUser = permissions.reduce((map, item) => {
+          map.set(item.user_id, [...(map.get(item.user_id) || []), item]);
+          return map;
+        }, new Map());
+        const ids = new Set([...profileById.keys(), ...authById.keys()]);
+        const users = [...ids].map((id) => userFromProfileAndAuth(profileById.get(id), authById.get(id), permissionByUser.get(id) || []));
+        return json({ users: users.sort((a, b) => String(a.email || a.name).localeCompare(String(b.email || b.name))) });
+      }
+
       if (url.pathname === "/api/users/invite") {
         const { profile } = await authenticatedProfile(request, env);
         if (request.method !== "POST") return methodNotAllowed();
@@ -710,14 +778,17 @@ export default {
         const email = cleanEmail(body.email);
         const fullName = String(body.name || "").trim();
         const role = String(body.role || "").trim();
-        const branch = String(body.branch || "Both").trim();
+        const branch = "all";
         const view = Array.isArray(body.modules) ? body.modules.filter(Boolean) : roleModules[role] || [];
         const edit = Array.isArray(body.editModules) ? body.editModules.filter((module) => view.includes(module)) : view;
         if (!fullName) return json({ error: "Name is required" }, { status: 400 });
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
         if (!validRole(role)) return json({ error: "Invalid role" }, { status: 400 });
-        const existingProfiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id,email`);
-        if (existingProfiles.length) return json({ error: "A user with this email already exists" }, { status: 409 });
+        const existingProfiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
+        if (existingProfiles.length) {
+          const existingPermissions = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(existingProfiles[0].id)}&select=user_id,module_key,can_view,can_edit`);
+          return json({ user: userFromProfileAndAuth(existingProfiles[0], null, existingPermissions), existing: true });
+        }
 
         const redirectTo = `${requestOrigin(request)}/?login=1`;
         const invited = await supabaseAuthAdminFetch(env, `/auth/v1/invite?redirect_to=${encodeURIComponent(redirectTo)}`, {

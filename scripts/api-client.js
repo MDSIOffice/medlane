@@ -56,6 +56,10 @@ const MedlaneAPI = (() => {
     return request("/api/users/invite", { method: "POST", body: JSON.stringify(user) });
   }
 
+  async function listUsers() {
+    return request("/api/users");
+  }
+
   async function setPassword(accessToken, password) {
     return request("/api/auth/set-password", { method: "POST", body: JSON.stringify({ accessToken, password }) });
   }
@@ -129,5 +133,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest };
+  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest };
 })();

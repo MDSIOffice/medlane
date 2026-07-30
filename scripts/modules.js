@@ -2541,12 +2541,12 @@ async function renderUserSessions(target = selectedUserSessionsTarget) {
 }
 function renderUsers() {
   qs("#users [data-action='open-modal'][data-type='user']").hidden = !canManageUsers();
-  table("#users-table", ["Name", "Email", "Role", "Branch", "Superadmin", "Access", "Actions"], data.users.filter((u) => includesSearch(Object.values(u))).map((u) => {
+  table("#users-table", ["Name", "Email", "Role", "Status", "Superadmin", "Access", "Actions"], data.users.filter((u) => includesSearch(Object.values(u))).map((u) => {
     const index = data.users.indexOf(u);
     const isSuperadmin = u.superadminPermissions || u.role === "Superadmin";
     const grantControl = `<label class="ios-check-row compact-doc-check user-superadmin-check"><input type="checkbox" data-user-superadmin="${index}" ${isSuperadmin ? "checked" : ""} ${canManageUsers() ? "" : "disabled"} /><span></span><strong>${isSuperadmin ? "Granted" : "Not granted"}</strong></label>`;
     const accessSummary = u.customPermissions?.enabled ? `${u.customPermissions.view?.length || 0} view / ${u.customPermissions.edit?.length || 0} edit modules` : u.access || `${u.role} default permissions`;
-    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, u.branch, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset</button><button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"] };
+    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, `<span class="pill ${statusClass(u.inviteStatus || "Active")}">${escapeHtml(u.inviteStatus || "Active")}</span>`, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset</button><button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"] };
   }));
   if (!selectedUserSessionsTarget) qs("#user-devices-panel").hidden = true;
 }
@@ -2709,7 +2709,7 @@ const modalConfigs = {
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
-  user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["branch", "Branch", "select", ["Both", "Las Pinas", "Naga"]], ["permissions", "Custom Permissions", "user-permissions"]] },
+  user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
 };
 
 function openModal(type, edit = null) {

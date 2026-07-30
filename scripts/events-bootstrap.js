@@ -1,5 +1,33 @@
 data = loadData();
 syncGeneratedNotifications();
+
+function mergeUsersFromBackend(users = []) {
+  const byEmail = new Map(data.users.map((user) => [String(user.email || "").trim().toLowerCase(), user]));
+  users.forEach((user) => {
+    const email = String(user.email || "").trim().toLowerCase();
+    if (!email) return;
+    byEmail.set(email, { ...(byEmail.get(email) || {}), ...user, email, branch: "all" });
+  });
+  data.users = [...byEmail.values()].sort((a, b) => String(a.email || a.name).localeCompare(String(b.email || b.name)));
+}
+
+async function syncBackendUsers() {
+  if (!currentUser || !MedlaneAPI?.session()?.access_token || !["Superadmin", "CEO"].includes(currentUser.role)) return;
+  const payload = await MedlaneAPI.listUsers().catch(() => null);
+  if (payload?.users) mergeUsersFromBackend(payload.users);
+}
+
+function confirmInviteUser(values, view, edit) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "modal invite-confirm-modal";
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Confirm Invite</p><h2>Preview User Access</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="report-preview-grid"><div class="report-preview-card"><small>Name</small><strong>${escapeHtml(values.name)}</strong></div><div class="report-preview-card"><small>Email</small><strong>${escapeHtml(values.email)}</strong></div><div class="report-preview-card"><small>Role</small><strong>${escapeHtml(values.role)}</strong></div><div class="report-preview-card"><small>Branch</small><strong>All branches</strong></div></div><p class="page-description">This will send a Supabase invitation email and create/update the user profile.</p><div class="invoice-tax-summary"><div class="invoice-meta"><span>View Access</span><strong>${view.length} modules</strong></div><div class="invoice-meta"><span>Edit Access</span><strong>${edit.length} modules</strong></div></div><div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button" value="confirm">Confirm & Send Invite</button></div></form>`;
+    document.body.appendChild(dialog);
+    dialog.addEventListener("close", () => { const ok = dialog.returnValue === "confirm"; dialog.remove(); resolve(ok); });
+    dialog.showModal();
+  });
+}
+
 async function submitModal(event) {
   event.preventDefault();
   const values = formObject(event.currentTarget);
@@ -125,17 +153,20 @@ async function submitModal(event) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast("Enter a valid email address.");
     if (data.users.some((user) => String(user.email || "").trim().toLowerCase() === email)) return toast("A user with this email already exists.");
     values.email = email;
+    values.branch = "all";
     if (values.role === "Superadmin") values.superadminPermissions = true;
     const view = qsa("input[name='userViewModules']:checked").map((input) => input.value);
     const edit = qsa("input[name='userEditModules']:checked").map((input) => input.value).filter((module) => view.includes(module));
+    if (!await confirmInviteUser(values, view, edit)) return;
     const submitButton = event.currentTarget.querySelector("button[type='submit']");
     const originalLabel = submitButton?.textContent || "Save Record";
     if (submitButton) { submitButton.disabled = true; submitButton.classList.add("is-loading"); submitButton.textContent = "Sending invite..."; }
     try {
       const result = await MedlaneAPI.inviteUser({ ...values, modules: view, editModules: edit });
-      data.users.push(result.user);
+      mergeUsersFromBackend([result.user]);
+      await syncBackendUsers();
       log("Invited user", "Users", `${result.user.email} · ${result.user.role}`);
-      notify("User Invite", `${result.user.email} was invited as ${result.user.role}.`, "users", result.user.email);
+      notify("User Invite", `${result.user.email} ${result.existing ? "already exists and was loaded" : "was invited"} as ${result.user.role}.`, "users", result.user.email);
     } catch (error) {
       return toast(error.message || "Unable to invite user.");
     } finally {
@@ -713,6 +744,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
     const serverState = await MedlaneAPI.loadAppState();
     serverRevision = Number(serverState.revision || 0);
       data = serverState.data ? normalizeData({ ...structuredClone(initialData), ...serverState.data }) : normalizeData(emptyProductionData());
+    await syncBackendUsers();
   } catch (error) {
     toast(`Logged in, but server data sync failed: ${error.message}`);
   }
@@ -871,6 +903,7 @@ async function hydrateAuthenticatedSession() {
   const serverState = await MedlaneAPI.loadAppState();
   serverRevision = Number(serverState.revision || 0);
   data = serverState.data ? normalizeData({ ...structuredClone(initialData), ...serverState.data }) : normalizeData(emptyProductionData());
+  await syncBackendUsers();
 }
 async function initializeRoute() {
   if (showSupabasePasswordSetup()) return;
