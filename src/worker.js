@@ -3,6 +3,16 @@ const jsonHeaders = {
   "cache-control": "no-store",
 };
 
+const roleModules = {
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "notifications", "user-settings", "logs"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "notifications", "user-settings", "logs"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs"],
+  Accounting: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"],
+  Sales: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings"],
+  Logistics: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "logs"],
+  HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
+};
+
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
@@ -10,8 +20,81 @@ function json(data, init = {}) {
   });
 }
 
+function appStateKey(env) {
+  return env.APP_STATE_KEY || env.ENVIRONMENT || "production";
+}
+
 function methodNotAllowed() {
   return json({ error: "Method not allowed" }, { status: 405 });
+}
+
+function requireEnv(env, keys) {
+  const missing = keys.filter((key) => !env[key]);
+  if (missing.length) throw new Error(`Missing Worker secret/var: ${missing.join(", ")}`);
+}
+
+function supabaseHeaders(env, token = env.SUPABASE_SERVICE_ROLE_KEY) {
+  return {
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json",
+  };
+}
+
+async function supabaseFetch(env, path, init = {}) {
+  requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+  const response = await fetch(`${env.SUPABASE_URL}${path}`, {
+    ...init,
+    headers: { ...supabaseHeaders(env), ...(init.headers || {}) },
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.message || payload?.error || `Supabase request failed: ${response.status}`);
+  return payload;
+}
+
+async function authenticatedUser(request, env) {
+  requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
+  const authorization = request.headers.get("authorization") || "";
+  const token = authorization.replace(/^Bearer\s+/i, "");
+  if (!token) throw new Error("Authentication required");
+  const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${token}` },
+  });
+  const user = await response.json().catch(() => null);
+  if (!response.ok || !user?.id) throw new Error("Invalid or expired session");
+  return { token, user };
+}
+
+async function profileForUser(env, userId, email) {
+  const profile = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`);
+  if (!profile[0]) throw new Error(`No Medlane profile found for ${email || "this account"}`);
+  const permissions = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}&select=module_key,can_view,can_edit`);
+  const fallback = roleModules[profile[0].role] || roleModules.Sales;
+  const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
+  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : fallback;
+  return {
+    id: profile[0].id,
+    name: profile[0].full_name,
+    email: profile[0].email,
+    role: profile[0].role,
+    branch: profile[0].branch || "all",
+    phone: profile[0].phone || "",
+    modules: view,
+    customPermissions: { enabled: true, view, edit },
+  };
+}
+
+async function authenticatedProfile(request, env) {
+  const { user } = await authenticatedUser(request, env);
+  return { authUser: user, profile: await profileForUser(env, user.id, user.email) };
+}
+
+function canWrite(profile) {
+  return Boolean(profile?.customPermissions?.edit?.length || ["Superadmin", "CEO", "Admin"].includes(profile?.role));
+}
+
+function requireWriteAccess(profile) {
+  if (!canWrite(profile)) throw new Error("You do not have permission to edit production data");
 }
 
 async function storageUsage(env) {
@@ -37,33 +120,162 @@ async function storageUsage(env) {
   return { configured: true, usedBytes, objectCount, truncated };
 }
 
+async function activeMetadataUsage(env) {
+  try {
+    const rows = await supabaseFetch(env, `/rest/v1/storage_usage?bucket=eq.${encodeURIComponent(env.R2_BUCKET_NAME || "medlane-documents")}&select=used_bytes`);
+    if (rows[0]) return Number(rows[0].used_bytes || 0);
+    const files = await supabaseFetch(env, "/rest/v1/file_objects?deleted_at=is.null&select=size_bytes");
+    return files.reduce((sum, row) => sum + Number(row.size_bytes || 0), 0);
+  } catch {
+    return null;
+  }
+}
+
+async function reserveStorage(env, size) {
+  return supabaseFetch(env, "/rest/v1/rpc/reserve_file_storage", {
+    method: "POST",
+    body: JSON.stringify({ bucket_name: env.R2_BUCKET_NAME || "medlane-documents", bytes_to_add: size, max_allowed: Number(env.MAX_R2_BYTES || 536870912000) }),
+  });
+}
+
+async function releaseStorage(env, size) {
+  return supabaseFetch(env, "/rest/v1/rpc/release_file_storage", {
+    method: "POST",
+    body: JSON.stringify({ bucket_name: env.R2_BUCKET_NAME || "medlane-documents", bytes_to_remove: size }),
+  });
+}
+
+function safeFileName(name) {
+  return String(name || "upload.bin").replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 140) || "upload.bin";
+}
+
+function objectKeyFor(fileName, recordType) {
+  const folder = safeFileName(recordType || "general").toLowerCase();
+  return `uploads/${folder}/${crypto.randomUUID()}-${safeFileName(fileName)}`;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    try {
 
-    if (url.pathname === "/api/health") {
-      if (request.method !== "GET") return methodNotAllowed();
-      return json({
-        ok: true,
-        app: "medlane",
-        r2Configured: Boolean(env.DOCUMENTS_BUCKET),
-        supabaseUrlConfigured: Boolean(env.SUPABASE_URL),
-        supabaseAnonKeyConfigured: Boolean(env.SUPABASE_ANON_KEY),
-        supabaseSecretConfigured: Boolean(env.SUPABASE_SERVICE_ROLE_KEY),
-      });
+      if (url.pathname === "/api/health") {
+        if (request.method !== "GET") return methodNotAllowed();
+        return json({
+          ok: true,
+          app: "medlane",
+          r2Configured: Boolean(env.DOCUMENTS_BUCKET),
+          supabaseUrlConfigured: Boolean(env.SUPABASE_URL),
+          supabaseAnonKeyConfigured: Boolean(env.SUPABASE_ANON_KEY),
+          supabaseSecretConfigured: Boolean(env.SUPABASE_SERVICE_ROLE_KEY),
+        });
+      }
+
+      if (url.pathname === "/api/auth/login") {
+        if (request.method !== "POST") return methodNotAllowed();
+        requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
+        const { email, password } = await request.json();
+        const authResponse = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const session = await authResponse.json().catch(() => null);
+        if (!authResponse.ok) return json({ error: session?.error_description || session?.msg || "Invalid email or password" }, { status: 401 });
+        const user = await profileForUser(env, session.user.id, email);
+        return json({ session, user });
+      }
+
+      if (url.pathname === "/api/auth/me") {
+        if (request.method !== "GET") return methodNotAllowed();
+        const { profile } = await authenticatedProfile(request, env);
+        return json({ user: profile });
+      }
+
+      if (url.pathname === "/api/app-state") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (request.method === "GET") {
+          const rows = await supabaseFetch(env, `/rest/v1/app_state?key=eq.${encodeURIComponent(appStateKey(env))}&select=data,updated_at,revision`);
+          return json({ data: rows[0]?.data || null, updatedAt: rows[0]?.updated_at || null, revision: rows[0]?.revision || 0 });
+        }
+        if (request.method === "PUT") {
+          requireWriteAccess(profile);
+          const { data, revision } = await request.json();
+          const rows = await supabaseFetch(env, "/rest/v1/rpc/update_app_state", {
+            method: "POST",
+            body: JSON.stringify({ expected_revision: Number(revision || 0), next_data: data, actor: authUser.id, state_key: appStateKey(env) }),
+          });
+          return json({ ok: true, revision: rows[0]?.revision, updatedAt: rows[0]?.updated_at });
+        }
+        return methodNotAllowed();
+      }
+
+      if (url.pathname === "/api/storage/usage") {
+        if (request.method !== "GET") return methodNotAllowed();
+        await authenticatedProfile(request, env);
+        const maxBytes = Number(env.MAX_R2_BYTES || 536870912000);
+        const metadataBytes = await activeMetadataUsage(env);
+        const usage = metadataBytes === null ? await storageUsage(env) : { configured: true, usedBytes: metadataBytes, objectCount: null, truncated: false };
+        return json({ ...usage, maxBytes, remainingBytes: Math.max(maxBytes - usage.usedBytes, 0) });
+      }
+
+      if (url.pathname === "/api/files") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (request.method === "GET") {
+          const rows = await supabaseFetch(env, "/rest/v1/file_objects?deleted_at=is.null&select=*&order=uploaded_at.desc");
+          return json({ files: rows });
+        }
+        if (request.method !== "POST") return methodNotAllowed();
+        requireWriteAccess(profile);
+        if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
+        const form = await request.formData();
+        const file = form.get("file");
+        if (!(file instanceof File)) return json({ error: "File is required" }, { status: 400 });
+        const maxUploadBytes = Number(env.MAX_UPLOAD_BYTES || 26214400);
+        if (file.size > maxUploadBytes) return json({ error: `File is too large. Max upload is ${Math.floor(maxUploadBytes / 1048576)} MB.` }, { status: 413 });
+        const maxBytes = Number(env.MAX_R2_BYTES || 536870912000);
+        const recordType = String(form.get("recordType") || "general");
+        const recordId = String(form.get("recordId") || "");
+        const objectKey = objectKeyFor(file.name, recordType);
+        await reserveStorage(env, file.size);
+        let inserted;
+        try {
+          await env.DOCUMENTS_BUCKET.put(objectKey, file.stream(), {
+            httpMetadata: { contentType: file.type || "application/octet-stream" },
+            customMetadata: { uploadedBy: authUser.id, recordType, recordId },
+          });
+          inserted = await supabaseFetch(env, "/rest/v1/file_objects?select=*", {
+            method: "POST",
+            headers: { prefer: "return=representation" },
+            body: JSON.stringify({ bucket: env.R2_BUCKET_NAME || "medlane-documents", object_key: objectKey, file_name: file.name, mime_type: file.type || "application/octet-stream", size_bytes: file.size, record_type: recordType, record_id: recordId || null, uploaded_by: authUser.id }),
+          });
+        } catch (error) {
+          await releaseStorage(env, file.size).catch(() => null);
+          await env.DOCUMENTS_BUCKET.delete(objectKey).catch(() => null);
+          throw error;
+        }
+        return json({ file: inserted[0] }, { status: 201 });
+      }
+
+      if (url.pathname.startsWith("/api/files/") && request.method === "GET") {
+        await authenticatedProfile(request, env);
+        const id = decodeURIComponent(url.pathname.split("/").pop() || "");
+        const rows = await supabaseFetch(env, `/rest/v1/file_objects?id=eq.${encodeURIComponent(id)}&deleted_at=is.null&select=*`);
+        if (!rows[0]) return json({ error: "File not found" }, { status: 404 });
+        const object = await env.DOCUMENTS_BUCKET.get(rows[0].object_key);
+        if (!object) return json({ error: "R2 object not found" }, { status: 404 });
+        return new Response(object.body, { headers: { "content-type": rows[0].mime_type, "content-disposition": `inline; filename="${safeFileName(rows[0].file_name)}"`, "cache-control": `private, max-age=${Number(env.DOWNLOAD_CACHE_SECONDS || 300)}` } });
+      }
+
+      if (url.pathname.startsWith("/api/")) {
+        return json({ error: "Not found" }, { status: 404 });
+      }
+
+      return env.ASSETS.fetch(request);
+    } catch (error) {
+      console.error(JSON.stringify({ message: error.message, path: url.pathname }));
+      const status = /Authentication required|Invalid or expired/.test(error.message) ? 401 : /No Medlane profile|permission/.test(error.message) ? 403 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      return json({ error: error.message || "Server error" }, { status });
     }
-
-    if (url.pathname === "/api/storage/usage") {
-      if (request.method !== "GET") return methodNotAllowed();
-      const maxBytes = Number(env.MAX_R2_BYTES || 536870912000);
-      const usage = await storageUsage(env);
-      return json({ ...usage, maxBytes, remainingBytes: Math.max(maxBytes - usage.usedBytes, 0) });
-    }
-
-    if (url.pathname.startsWith("/api/")) {
-      return json({ error: "Not found" }, { status: 404 });
-    }
-
-    return env.ASSETS.fetch(request);
   },
 };

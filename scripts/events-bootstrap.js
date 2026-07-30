@@ -613,18 +613,31 @@ qs("#run-import").addEventListener("click", () => {
 window.addEventListener("afterprint", clearPrintTarget);
 window.addEventListener("resize", updateTableScrollHints);
 document.addEventListener("scroll", (event) => { if (event.target?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
-qs("#login-form").addEventListener("submit", (event) => {
+qs("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const email = String(qs("#login-email").value || "").trim().toLowerCase();
   const password = qs("#login-password").value;
-  const accountEntry = Object.entries(accounts).find(([, account]) => String(account.email || "").toLowerCase() === email);
-  const accountUser = data.users.find((user) => String(user.email || "").trim().toLowerCase() === email);
-  const loginRole = accountUser?.role || accountEntry?.[0];
-  if (!loginRole || !accounts[loginRole]) return toast("No account found for that email.");
-  if (password !== savedLoginPassword(email, loginRole)) return toast("Invalid email or password.");
-  const baseAccount = accounts[loginRole];
-  currentUser = accountUser?.superadminPermissions && loginRole !== "Superadmin" ? { ...baseAccount, ...accountUser, role: "Superadmin", baseRole: loginRole, modules: accounts.Superadmin.modules } : { ...baseAccount, ...accountUser, modules: accountUser?.modules || baseAccount.modules };
-  if (qs("#remember-login")?.checked) localStorage.setItem("medlane-remember-login", JSON.stringify({ email, password }));
+  let payload;
+  try {
+    payload = await MedlaneAPI.login(email, password);
+  } catch (error) {
+    return toast(error.message || "Invalid email or password.");
+  }
+  currentUser = payload.user;
+  try {
+    const serverState = await MedlaneAPI.loadAppState();
+    serverRevision = Number(serverState.revision || 0);
+    localStorage.setItem("medlane-server-revision", String(serverRevision));
+    if (serverState.data) {
+      data = normalizeData({ ...structuredClone(initialData), ...serverState.data });
+      localStorage.setItem("medlane-server-data", JSON.stringify(data));
+    } else {
+      saveData();
+    }
+  } catch (error) {
+    toast(`Logged in, but server data sync failed: ${error.message}`);
+  }
+  if (qs("#remember-login")?.checked) localStorage.setItem("medlane-remember-login", JSON.stringify({ email }));
   else localStorage.removeItem("medlane-remember-login");
   localStorage.setItem("medlane-demo-session", JSON.stringify(currentUser));
   log("Logged in", "Authentication", currentUser.role);
@@ -695,6 +708,7 @@ qs("#reset-password-form").addEventListener("submit", (event) => {
 function logoutCurrentUser() {
   currentUser = null;
   localStorage.removeItem("medlane-demo-session");
+  MedlaneAPI?.setSession(null);
   document.body.classList.add("login-route");
   document.body.classList.remove("public-landing", "app-route");
   if (location.protocol !== "file:") history.replaceState(null, "", "/login");
@@ -726,7 +740,20 @@ function showAuthenticatedApp() {
   applyRole();
   renderAll();
 }
-function initializeRoute() {
+async function hydrateAuthenticatedSession() {
+  if (!MedlaneAPI?.session()?.access_token) throw new Error("No active API session");
+  const me = await MedlaneAPI.me();
+  currentUser = me.user;
+  localStorage.setItem("medlane-demo-session", JSON.stringify(currentUser));
+  const serverState = await MedlaneAPI.loadAppState();
+  serverRevision = Number(serverState.revision || 0);
+  localStorage.setItem("medlane-server-revision", String(serverRevision));
+  if (serverState.data) {
+    data = normalizeData({ ...structuredClone(initialData), ...serverState.data });
+    localStorage.setItem("medlane-server-data", JSON.stringify(data));
+  }
+}
+async function initializeRoute() {
   const loginRoute = isLoginRoute();
   const dashboardRoute = isDashboardRoute();
   if (!loginRoute && !dashboardRoute) {
@@ -737,10 +764,19 @@ function initializeRoute() {
     setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 250);
     return;
   }
-  if (currentUser) {
-    showAuthenticatedApp();
-    setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 650);
-    return;
+  if (currentUser || MedlaneAPI?.session()?.access_token) {
+    try {
+      await hydrateAuthenticatedSession();
+      showAuthenticatedApp();
+      setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 650);
+      return;
+    } catch {
+      currentUser = null;
+      localStorage.removeItem("medlane-demo-session");
+      localStorage.removeItem("medlane-server-data");
+      localStorage.removeItem("medlane-server-revision");
+      MedlaneAPI?.setSession(null);
+    }
   }
   if (dashboardRoute && location.protocol !== "file:") history.replaceState(null, "", "/login");
   else if (location.protocol !== "file:" && new URLSearchParams(location.search).has("login")) history.replaceState(null, "", "/login");

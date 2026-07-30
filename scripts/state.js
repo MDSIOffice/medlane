@@ -14,6 +14,8 @@ let philippinesRegionGeoJson = null;
 let arTrackerTab = "all";
 let collectionMapZoom = 1;
 let inventoryBranchTab = "Las Pinas";
+let pendingServerSave = null;
+let serverRevision = Number(localStorage.getItem("medlane-server-revision") || 0);
 
 const philippinesRegionsGeoJsonUrl = "https://github.com/wmgeolab/geoBoundaries/raw/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
 
@@ -36,7 +38,7 @@ const accounts = {
   Logistics: { name: "Ramon Dela Cruz", role: "Logistics", branch: "all", email: "ramon@medlane.local", phone: "+63 917 500 0000", modules: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "logs"] },
   HR: { name: "HR User", role: "HR", branch: "all", email: "hr@medlane.local", phone: "+63 917 600 0000", modules: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"] },
 };
-if (currentUser?.role && accounts[currentUser.role]) currentUser = accounts[currentUser.role];
+if (currentUser?.role && accounts[currentUser.role] && !currentUser.id && !currentUser.customPermissions) currentUser = accounts[currentUser.role];
 
 const sectionMeta = {
   notifications: ["Notifications", "Review system alerts for credit limits, stock transfers, collections, and inventory risks."],
@@ -86,6 +88,8 @@ function firstName(name) { return String(name || "User").split(/\s+/)[0]; }
 function initials(name) { return String(name || "U").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 
 function loadData() {
+  const serverCached = localStorage.getItem("medlane-server-data");
+  if (serverCached) return normalizeData({ ...structuredClone(initialData), ...JSON.parse(serverCached) });
   const stored = localStorage.getItem("medlane-demo-data");
   if (!stored) return normalizeData(structuredClone(initialData));
   const parsed = JSON.parse(stored);
@@ -165,7 +169,34 @@ function normalizeData(next) {
   return next;
 }
 
-function saveData() { localStorage.setItem("medlane-demo-data", JSON.stringify(data)); }
+function saveData() {
+  localStorage.setItem("medlane-demo-data", JSON.stringify(data));
+  localStorage.setItem("medlane-server-data", JSON.stringify(data));
+  if (!currentUser || !MedlaneAPI?.session()?.access_token) return;
+  clearTimeout(pendingServerSave);
+  pendingServerSave = setTimeout(() => {
+    MedlaneAPI.saveAppState(data, serverRevision).then((result) => {
+      if (result?.revision) {
+        serverRevision = Number(result.revision);
+        localStorage.setItem("medlane-server-revision", String(serverRevision));
+      }
+    }).catch(async (error) => {
+      if (error.message.includes("APP_STATE_CONFLICT")) {
+        const latest = await MedlaneAPI.loadAppState().catch(() => null);
+        if (latest?.data) {
+          serverRevision = Number(latest.revision || 0);
+          localStorage.setItem("medlane-server-revision", String(serverRevision));
+          data = normalizeData({ ...structuredClone(initialData), ...latest.data });
+          localStorage.setItem("medlane-server-data", JSON.stringify(data));
+          if (typeof renderAll === "function") renderAll();
+          if (typeof toast === "function") toast("Another user saved first. Reloaded latest server data.");
+          return;
+        }
+      }
+      if (typeof toast === "function") toast(`Server save failed: ${error.message}`);
+    });
+  }, 450);
+}
 function nextId(items, prefix) {
   const next = items.reduce((max, item) => Math.max(max, Number(String(item.id || "").replace(`${prefix}-`, "")) || 0), 0) + 1;
   return `${prefix}-${String(next).padStart(3, "0")}`;

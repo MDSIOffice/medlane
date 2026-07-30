@@ -1,0 +1,193 @@
+create extension if not exists pgcrypto;
+
+do $$ begin
+  create type app_role as enum ('Superadmin', 'Admin', 'Accounting', 'Sales', 'Logistics', 'HR', 'CEO');
+exception when duplicate_object then null;
+end $$;
+
+create table if not exists branches (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  address text not null default '',
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null unique,
+  full_name text not null,
+  role app_role not null default 'Sales',
+  base_role app_role,
+  branch_id uuid references branches(id),
+  branch text not null default 'all',
+  is_superadmin boolean not null default false,
+  phone text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists module_permissions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  module_key text not null,
+  can_view boolean not null default false,
+  can_edit boolean not null default false,
+  unique (user_id, module_key)
+);
+
+create table if not exists app_state (
+  key text primary key default 'production',
+  data jsonb not null default '{}'::jsonb,
+  updated_by uuid references profiles(id),
+  revision bigint not null default 1,
+  updated_at timestamptz not null default now()
+);
+
+alter table app_state add column if not exists revision bigint not null default 1;
+
+create table if not exists file_objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket text not null,
+  object_key text not null unique,
+  file_name text not null,
+  mime_type text not null default 'application/octet-stream',
+  size_bytes bigint not null check (size_bytes >= 0),
+  record_type text not null default 'general',
+  record_id text,
+  uploaded_by uuid references profiles(id),
+  uploaded_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists storage_usage (
+  bucket text primary key,
+  used_bytes bigint not null default 0 check (used_bytes >= 0),
+  max_bytes bigint not null default 536870912000 check (max_bytes > 0),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists file_objects_record_idx on file_objects(record_type, record_id);
+create index if not exists file_objects_active_size_idx on file_objects(deleted_at, size_bytes);
+
+alter table profiles enable row level security;
+alter table module_permissions enable row level security;
+alter table app_state enable row level security;
+alter table file_objects enable row level security;
+alter table branches enable row level security;
+alter table storage_usage enable row level security;
+
+drop policy if exists "Users can read own profile" on profiles;
+create policy "Users can read own profile" on profiles for select using (auth.uid() = id);
+
+drop policy if exists "Users can read own module permissions" on module_permissions;
+create policy "Users can read own module permissions" on module_permissions for select using (auth.uid() = user_id);
+
+drop policy if exists "Authenticated users can read branches" on branches;
+create policy "Authenticated users can read branches" on branches for select using (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated users can read app state" on app_state;
+create policy "Authenticated users can read app state" on app_state for select using (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated users can read active files" on file_objects;
+create policy "Authenticated users can read active files" on file_objects for select using (auth.role() = 'authenticated' and deleted_at is null);
+
+drop policy if exists "Authenticated users can read storage usage" on storage_usage;
+create policy "Authenticated users can read storage usage" on storage_usage for select using (auth.role() = 'authenticated');
+
+create or replace function update_app_state(expected_revision bigint, next_data jsonb, actor uuid, state_key text default 'production')
+returns table(key text, revision bigint, updated_at timestamptz)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from app_state where app_state.key = state_key) then
+    if expected_revision <> 0 then
+      raise exception 'APP_STATE_CONFLICT';
+    end if;
+
+    insert into app_state (key, data, updated_by, revision, updated_at)
+    values (state_key, next_data, actor, 1, now());
+
+    return query select s.key, s.revision, s.updated_at from app_state s where s.key = state_key;
+    return;
+  end if;
+
+  update app_state s
+  set data = next_data,
+      updated_by = actor,
+      revision = s.revision + 1,
+      updated_at = now()
+  where s.key = state_key
+    and s.revision = expected_revision;
+
+  if not found then
+    raise exception 'APP_STATE_CONFLICT';
+  end if;
+
+  return query select s.key, s.revision, s.updated_at from app_state s where s.key = state_key;
+end;
+$$;
+
+create or replace function reserve_file_storage(bucket_name text, bytes_to_add bigint, max_allowed bigint)
+returns table(bucket text, used_bytes bigint, max_bytes bigint)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if bytes_to_add <= 0 then
+    raise exception 'INVALID_FILE_SIZE';
+  end if;
+
+  insert into storage_usage (bucket, used_bytes, max_bytes)
+  values (bucket_name, 0, max_allowed)
+  on conflict (bucket) do update set max_bytes = excluded.max_bytes;
+
+  update storage_usage s
+  set used_bytes = s.used_bytes + bytes_to_add,
+      max_bytes = max_allowed,
+      updated_at = now()
+  where s.bucket = bucket_name
+    and s.used_bytes + bytes_to_add <= max_allowed;
+
+  if not found then
+    raise exception 'STORAGE_LIMIT_REACHED';
+  end if;
+
+  return query select s.bucket, s.used_bytes, s.max_bytes from storage_usage s where s.bucket = bucket_name;
+end;
+$$;
+
+create or replace function release_file_storage(bucket_name text, bytes_to_remove bigint)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update storage_usage
+  set used_bytes = greatest(used_bytes - greatest(bytes_to_remove, 0), 0),
+      updated_at = now()
+  where bucket = bucket_name;
+end;
+$$;
+
+insert into branches (name, address) values
+  ('Las Pinas', '13 Gumamela St, Pilar Village, Las Pinas, Metro Manila 1740, PH'),
+  ('Naga', 'Narra St., Mariano Village, Balatas, Naga City, Camarines Sur 4400, PH')
+on conflict (name) do update set address = excluded.address;
+
+insert into storage_usage (bucket, used_bytes, max_bytes)
+values ('medlane-documents', 0, 536870912000)
+on conflict (bucket) do update set max_bytes = excluded.max_bytes;
+
+insert into storage_usage (bucket, used_bytes, max_bytes)
+values ('medlane-documents-preview', 0, 536870912000)
+on conflict (bucket) do update set max_bytes = excluded.max_bytes;
+
+-- After creating your first Supabase Auth user, insert its profile with that auth.users.id.
+-- Example:
+-- insert into profiles (id, email, full_name, role, branch, is_superadmin)
+-- values ('AUTH_USER_UUID', 'admin@yourdomain.com', 'Admin User', 'Superadmin', 'all', true);
