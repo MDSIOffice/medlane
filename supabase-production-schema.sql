@@ -78,9 +78,23 @@ create table if not exists storage_usage (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists app_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  device_name text not null default 'Unknown device',
+  browser text not null default 'Unknown browser',
+  ip_address text,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  revoked_by uuid references profiles(id)
+);
+
 create index if not exists file_objects_record_idx on file_objects(record_type, record_id);
 create index if not exists file_objects_active_size_idx on file_objects(deleted_at, size_bytes);
 create index if not exists app_records_module_idx on app_records(state_key, module_name);
+create index if not exists app_sessions_user_idx on app_sessions(user_id, revoked_at, last_seen_at desc);
 
 alter table profiles enable row level security;
 alter table module_permissions enable row level security;
@@ -89,6 +103,7 @@ alter table file_objects enable row level security;
 alter table app_records enable row level security;
 alter table branches enable row level security;
 alter table storage_usage enable row level security;
+alter table app_sessions enable row level security;
 
 drop policy if exists "Users can read own profile" on profiles;
 create policy "Users can read own profile" on profiles for select using (auth.uid() = id);
@@ -110,6 +125,9 @@ create policy "Authenticated users can read app records" on app_records for sele
 
 drop policy if exists "Authenticated users can read storage usage" on storage_usage;
 create policy "Authenticated users can read storage usage" on storage_usage for select using (auth.role() = 'authenticated');
+
+drop policy if exists "Users can read own app sessions" on app_sessions;
+create policy "Users can read own app sessions" on app_sessions for select using (auth.uid() = user_id);
 
 create or replace function update_app_state(expected_revision bigint, next_data jsonb, actor uuid, state_key text default 'production')
 returns table(key text, revision bigint, updated_at timestamptz)
@@ -198,6 +216,7 @@ grant select, insert, update, delete on table app_state to service_role;
 grant select, insert, update, delete on table app_records to service_role;
 grant select, insert, update, delete on table file_objects to service_role;
 grant select, insert, update, delete on table storage_usage to service_role;
+grant select, insert, update, delete on table app_sessions to service_role;
 grant select on table branches to authenticated;
 grant select on table profiles to authenticated;
 grant select on table module_permissions to authenticated;
@@ -205,6 +224,7 @@ grant select on table app_state to authenticated;
 grant select on table app_records to authenticated;
 grant select on table file_objects to authenticated;
 grant select on table storage_usage to authenticated;
+grant select on table app_sessions to authenticated;
 grant execute on function update_app_state(bigint, jsonb, uuid, text) to service_role;
 grant execute on function reserve_file_storage(text, bigint, bigint) to service_role;
 grant execute on function release_file_storage(text, bigint) to service_role;

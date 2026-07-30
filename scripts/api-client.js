@@ -14,9 +14,14 @@ const MedlaneAPI = (() => {
     const active = session();
     const headers = { ...(options.headers || {}) };
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
+    if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
     if (options.body && !(options.body instanceof FormData)) headers["content-type"] = "application/json";
     const response = await fetch(path, { ...options, headers });
     const payload = await response.json().catch(() => null);
+    if (response.status === 401 && /SESSION_REVOKED|Invalid app session/i.test(payload?.error || "")) {
+      setSession(null);
+      sessionStorage.removeItem("medlane-session");
+    }
     if (!response.ok) throw new Error(payload?.error || `Request failed: ${response.status}`);
     return payload;
   }
@@ -59,5 +64,13 @@ const MedlaneAPI = (() => {
     return request("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
   }
 
-  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword, changePassword };
+  async function listUserSessions() {
+    return request("/api/users/sessions");
+  }
+
+  async function revokeUserSession(sessionId) {
+    return request("/api/users/sessions/revoke", { method: "POST", body: JSON.stringify({ sessionId }) });
+  }
+
+  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword, changePassword, listUserSessions, revokeUserSession };
 })();

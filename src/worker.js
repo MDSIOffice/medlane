@@ -114,6 +114,60 @@ async function authenticatedUser(request, env) {
   return { token, user };
 }
 
+function clientIp(request) {
+  return request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+}
+
+function browserName(userAgent = "") {
+  const value = String(userAgent);
+  if (/Edg\//.test(value)) return "Microsoft Edge";
+  if (/OPR\//.test(value)) return "Opera";
+  if (/Chrome\//.test(value) && !/Chromium\//.test(value)) return "Chrome";
+  if (/Firefox\//.test(value)) return "Firefox";
+  if (/Safari\//.test(value) && !/Chrome\//.test(value)) return "Safari";
+  return "Unknown browser";
+}
+
+function deviceName(userAgent = "") {
+  const value = String(userAgent);
+  const os = /Windows/i.test(value) ? "Windows" : /Mac OS X|Macintosh/i.test(value) ? "Mac" : /iPhone/i.test(value) ? "iPhone" : /iPad/i.test(value) ? "iPad" : /Android/i.test(value) ? "Android" : /Linux/i.test(value) ? "Linux" : "Unknown device";
+  const type = /Mobile|iPhone|Android/i.test(value) ? "Mobile" : /iPad|Tablet/i.test(value) ? "Tablet" : "Desktop";
+  return os === "Unknown device" ? os : `${os} ${type}`;
+}
+
+function sessionHeader(request) {
+  const value = request.headers.get("x-medlane-session-id") || "";
+  return /^[0-9a-f-]{36}$/i.test(value) ? value : "";
+}
+
+async function createAppSession(env, request, userId) {
+  const userAgent = request.headers.get("user-agent") || "";
+  try {
+    const rows = await supabaseFetch(env, "/rest/v1/app_sessions", {
+      method: "POST",
+      headers: { prefer: "return=representation" },
+      body: JSON.stringify({ user_id: userId, device_name: deviceName(userAgent), browser: browserName(userAgent), ip_address: clientIp(request), user_agent: userAgent }),
+    });
+    return rows[0] || null;
+  } catch (error) {
+    console.error(JSON.stringify({ message: "App session tracking failed", error: error.message }));
+    return null;
+  }
+}
+
+async function validateAppSession(env, request, userId) {
+  const id = sessionHeader(request);
+  if (!id) return;
+  const rows = await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(userId)}&select=id,revoked_at`);
+  if (!rows[0]) throw new Error("Invalid app session");
+  if (rows[0].revoked_at) throw new Error("SESSION_REVOKED");
+  await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify({ last_seen_at: new Date().toISOString(), ip_address: clientIp(request) }),
+  });
+}
+
 async function profileForUser(env, userId, email) {
   const profile = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`);
   if (!profile[0]) throw new Error(`No Medlane profile found for ${email || "this account"}`);
@@ -135,6 +189,7 @@ async function profileForUser(env, userId, email) {
 
 async function authenticatedProfile(request, env) {
   const { user } = await authenticatedUser(request, env);
+  await validateAppSession(env, request, user.id);
   return { authUser: user, profile: await profileForUser(env, user.id, user.email) };
 }
 
@@ -296,7 +351,8 @@ export default {
           return json({ error: authError, ...(debug ? { supabaseStatus: authResponse.status, supabaseResponse: session, supabaseHost: new URL(env.SUPABASE_URL).hostname, supabasePath: new URL(env.SUPABASE_URL).pathname, authUrl: `${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, anonKeyHash: await shortHash(env.SUPABASE_ANON_KEY) } : {}) }, { status: 401 });
         }
         const user = await profileForUser(env, session.user.id, email);
-        return json({ session, user });
+        const appSession = await createAppSession(env, request, session.user.id);
+        return json({ session: { ...session, app_session_id: appSession?.id || null }, user });
       }
 
       if (url.pathname === "/api/auth/me") {
@@ -424,6 +480,28 @@ export default {
         return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: "Invited" } }, { status: 201 });
       }
 
+      if (url.pathname === "/api/users/sessions") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const rows = await supabaseFetch(env, "/rest/v1/app_sessions?select=id,user_id,device_name,browser,ip_address,created_at,last_seen_at,revoked_at,profiles(email,full_name,role)&order=last_seen_at.desc");
+        return json({ sessions: rows });
+      }
+
+      if (url.pathname === "/api/users/sessions/revoke") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { sessionId } = await request.json();
+        if (!/^[0-9a-f-]{36}$/i.test(String(sessionId || ""))) return json({ error: "Invalid session id" }, { status: 400 });
+        await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(sessionId)}`, {
+          method: "PATCH",
+          headers: { prefer: "return=minimal" },
+          body: JSON.stringify({ revoked_at: new Date().toISOString(), revoked_by: authUser.id }),
+        });
+        return json({ ok: true });
+      }
+
       if (url.pathname === "/api/storage/usage") {
         if (request.method !== "GET") return methodNotAllowed();
         await authenticatedProfile(request, env);
@@ -488,7 +566,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired/.test(error.message) ? 401 : /No Medlane profile|permission/.test(error.message) ? 403 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED/.test(error.message) ? 401 : /No Medlane profile|permission/.test(error.message) ? 403 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },

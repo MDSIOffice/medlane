@@ -175,6 +175,8 @@ document.body.addEventListener("click", (event) => {
   if (requestApprove) { const [type, index] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, Number(index)); }
   const requestCancel = event.target.closest("[data-request-cancel]");
   if (requestCancel) { const [type, index] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, Number(index)); }
+  const revokeSession = event.target.closest("[data-revoke-session]");
+  if (revokeSession) return forceLogoutSession(revokeSession.dataset.revokeSession);
   const confirmPayment = event.target.closest("[data-confirm-payment]");
   if (confirmPayment) { const [type, index, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, Number(index), method); }
   const collectionAction = event.target.closest("[data-collection-action]");
@@ -607,6 +609,22 @@ qs("#logs-role-filter").addEventListener("change", renderLogs);
 qs("#logs-module-filter").addEventListener("change", renderLogs);
 qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
 qs("#clear-notifications").addEventListener("click", () => { data.notifications = data.notifications.filter((notice) => notice.status === "Unread"); saveData(); renderNotifications(); toast("Read notifications cleared."); });
+qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
+
+async function forceLogoutSession(sessionId) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can force logout devices.");
+  if (!sessionId) return toast("Session id is missing.");
+  if (!confirm("Force logout this device session?")) return;
+  try {
+    await MedlaneAPI.revokeUserSession(sessionId);
+    log("Forced device logout", "Users", sessionId);
+    notify("Security", "A device session was force logged out.", "logs", sessionId);
+    await renderUserSessions();
+    toast("Device session revoked.");
+  } catch (error) {
+    toast(error.message || "Unable to revoke session.");
+  }
+}
 qs("#import-sample").addEventListener("click", () => {
   qs("#csv-input").value = "vvv\tYear\tMonth\tOffice\tDate\tSales Rep\tBranch\tArea\tTS/DR\tSI No.\tTIN\tCLIENT\tClassification\tBrand\tPRODUCT\tQty\tU/M\tUnit Price\tAmount\tDiscount\tTotal Price\tInvoice Amount\tLESS TPC\tActual Sales\t12% VAT\tNET Sales\tCWT\tRemarks\n1\t2026\tJuly\tLas Pinas\t2026-07-15\tAna Cruz\tLas Pinas\tRegion IV-A\t\tSI-MIG-001\t123-456-789\tPrimeCare Diagnostics\tDirect\tSysmex\tHematology Reagent\t2\tkit\t4200\t8400\t0\t8400\t9408\t0\t8400\t1008\t9408\t0\tMigrated opening AR\n2\t2026\tJuly\tNaga\t2026-07-16\tMika Tan\tNaga\tRegion V\tTS-MIG-002\t\t222-333-444\tBicol Heart Lab\tDirect\tBD\tVacutainer Tubes\t100\tbox\t35\t3500\t0\t3500\t3500\t0\t3500\t0\t3500\t0\tMigrated opening AR";
   renderImportCheck();
