@@ -1,0 +1,351 @@
+Code,Name,Customer Type,Bank Name,Bank Account Number,Sales Account,Tin,Term,Street,City,Province,Country,Zip Code,Mobile,Landline,Fax,Email,Website,Contact Person,Contact Role,Status
+1,MDSI_Las Pinas,Dealer /  Distributor,,,Sales,000-000-000-00000,0,,,,,,,,,,,,,Active
+1,MDSI_Las Pinas,MDSI_Las Pinas,,,Sales,000-000-000-00000,0,,,,,,,,,,,,,Active
+ CAR_01,ALOHA ENTERPRISES,Dealer /  Distributor,,,Accounts Receivable,0,30,"Metrobaguio Laboratories, 146 Kisad Rd, Baguio, 2600 Benguet",,,,,,,,,,,,Active
+ CAR_02,"METROBAGUIO LABORATORIES, INC.",Free Standing Laboratory,,,Accounts Receivable,0,30,"146 Kisad Rd, Baguio, Benguet",,,,,,,,,,,,Active
+ CAR_03,NOTRE DAME DE CHARTRES HOSPITAL,Private Hospital,,,Accounts Receivable,0,30,"25 GEN LUNA ROAD, BAGUIO CITY",,,,,,,,,,,,Active
+ NCR_01,AMERICAN BIO-CLINICAL LABORATORIES INTERNATIONAL,Free Standing Laboratory,,,Accounts Receivable,4671999001,30,"Richville Corporate Tower, Madrigal Business Park Real Street, Muntinlupa City",,,,,9334354888,Ms. Joycee Ichinose,,purchasing@abclab.com.ph,,,,Active
+ NCR_02,ARCIAGA MEDICAL CLINIC,Medical Doctors Clinic,,,Accounts Receivable,0,30,"Bayanan, Muntinlupa City",,,,,9998812670,,,arciagamed@gmail.com,,ELIE FERNANDEZ,,Active
+ NCR_03,ASIA PRIMERA KIMIKA INC,Dealer /  Distributor,,,Accounts Receivable,0,30,"Unit 303, Alabang Business Tower, Madrigal Business Park, 1216 Acacia Ave, Muntinlupa",,,,,,,,,,,,Active
+ NCR_04,ASPRIME INTERNATIONAL INC.,Dealer /  Distributor,,,Accounts Receivable,0,30,"Level 26-A Rufino Pacific Tower 6784, Ayala Avenue, Corner V.A. Rufino St, Makati City",,,,,,,,,,,,Active
+ NCR_05,BAYANAN MEDICAL CLINIC,Medical Doctors Clinic,,,Accounts Receivable,0,30,"235 NATIONAL ROAD, BAYANAN MUNTINLUPA CITY",,,,,0927-877-1185,,,bayananmedicalclinic@gmail.com,,"Dr, Romeo Canatoy / Sir Mark",,Active
+ NCR_06,BEST DIAGNOSTIC CORPORATION,Free Standing Laboratory,,,Accounts Receivable,0,30,"Extension, 94 Masikap, Diliman, Quezon City, 1100 Metro Manila",,,,,,,,,,,,Active
+ NCR_07,BROMED ENTERPRISES,Dealer /  Distributor,,,Accounts Receivable,0,30,"Malate, Metro Manila",,,,,,,,,,,,Active
+ NCR_08,CBC LINK OF MANILA INC.,Dealer /  Distributor,,,Accounts Receivable,2540367000,30,2896 FINLANDIA SAN ISIDRO MAKATI CITY,,,,,9228863903,,,,,GLAIZA,,Active
+ NCR_09,CENTURIA MEDICAL CLINIC,Medical Doctors Clinic,,,Accounts Receivable,0,30,"Brgy, Century City Kalayaan Ave, cor Salamanca, Makati City",,,,,,,,,,,,Active
+ NCR_10,"DE LOS SANTOS MEDICAL CENTER, INC.",Private Hospital,,,Accounts Receivable,0,30,"201 E Rodriguez Sr. Ave, Quezon City",,,,,0916-2096196,,,mpsy@dlsmc.ph,,Ms. Maricel,,Active
+ NCR_11,DRMDP ENTERPRISE,Dealer /  Distributor,,,Accounts Receivable,0,30,"1 Narra, Quezon City, 1119 Metro Manila",,,,,0968 884 7991,,,,,,,Active
+ NCR_12,EASTBOUND MEDICAL SUPPLIES,Dealer /  Distributor,,,Accounts Receivable,0,30,"District 2, Reina Mercedes, 3303 Metro Manila",,,,,,,,,,,,Active
+ NCR_13,ELITE HEALTHCARE MEDICAL DISTRIBUTION,Dealer /  Distributor,,,Accounts Receivable,0,30,"23 Ramax, Quezon City",,,,,,,,,,,,Active
+ NCR_14,GENSENS DIAGNOSTIC CLINIC INC.,Free Standing Laboratory,,,Accounts Receivable,0,30,"4th Floor, Elements Quezon Avenue Building, 560 Quezon Ave, Quezon City",,,,,,,,,,,,Active
+ NCR_16,LAS PINAS DOCTORS HOSPITAL,Private Hospital,,,Accounts Receivable,0,30,"8009 CAA Rd, Pulanglupa II, Las Pi嚙窮s City",,,,,,,,,,,,Active
+ NCR_17,MAVESON ENTERPRISE,Dealer /  Distributor,,,Accounts Receivable,205009749000,30,"DANSALAN ST., SYCAMORE TOWER, MANDALUYONG CITY",,,,,0927-427-7766,,,acctgfinance.maveson@gmail.com,,Ms. Maya,,Active
+ NCR_19,MEDFAST MEDICAL SUPPLIES,Dealer /  Distributor,,,Accounts Receivable,0,30,3FLOOR SOLEDAD BLDG..216 A.BONIFACIO AVE. TANONG MARIKINA CITY,,,,,0917-153-3213,,,jar.medequip@gmail.com,,jar.medequip@gmail.com,,Active
+ NCR_21,MEDICUS DIAGNOSTIC CENTER,Free Standing Laboratory,,,Accounts Receivable,0,30,"UNIT F BPI BLDG 177 DONA SOLEDAD AVE., DON BOSCO BETTERLIVING, PARANAQUE",,,,,,,,,,,,Active
+ NCR_22,MERALCO-CORPORATE WELLNESS CENTER,Free Standing Laboratory,,,Accounts Receivable,101528000,30,"LOPEZ BDLG., ORTIGAS AVENUE, UGONG, PASIG CITY 1600",,,,,,,,,,,,Active
+ NCR_23,"METRO NORTH MEDICAL CENTER AND HOSPITAL, INC.",Private Hospital,,,Accounts Receivable,7861586000,30,"1001 MINDANAO AVENUE, BRGY. BAHAY TORO, QUEZON CITY",,,,,,,,,,,,Active
+ NCR_24,MOISEN MARKETING INC.,Dealer /  Distributor,,,Accounts Receivable,7978961000,30,708 M EARNSHAW ST. BRGY 457 ZONE 45 SAMPALOC MANILA,,,,,0917-854-3165,,,onieda_ogerio@yahoo.com,,Ms. Daye,,Active
+ NCR_25,PHARMA QUEST CO.,Dealer /  Distributor,,,Accounts Receivable,21144488400000,30,"46 A Kalantiaw St. Brgy. Masagana, Project 4, Quezon City",,,,,9173026442,,,sales.info@pharmaquestco.com,,,,Active
+ NCR_26,PRIME RCMC INDUSTRIAL CO,Dealer /  Distributor,,,Accounts Receivable,10262890000,30,UNIT 1-A  122 9TH AVENUE BRGY SOCORRO CUBAO QUEZON CITY,,,,,0920-908-7827,,,primercmc2019@gmail.com,,Ms. Tin,,Active
+ NCR_27,"PROVIDENCE HOSPITAL, INC.",Private Hospital,,,Accounts Receivable,0,30,"1515 QUEZON AVENUE, WEST TRIANGLE, QUEZON CITY",,,,,,,,,,,,Active
+ NCR_28,RIZAL MEDICAL CENTER,Private Hospital,,,Accounts Receivable,0,30,"Pasig Blvd, Pasig, 1600 Metro Manila",,,,,,,,,,,,Active
+ NCR_29,RTS EXPRESS IMPORT & EXPORT,Dealer /  Distributor,,,Accounts Receivable,280768471000,30,"445 ARQUIZA ST. ERMITA, MANILA",,,,,0995-2610-373,,,rts.group.ph@gmail.com,,Ms. Anne Panique,,Active
+ NCR_30,SY MEDICAL TRADING CORPORATION,Dealer /  Distributor,,,Accounts Receivable,8349710000,30,SW 63 Goldloop Tower Escriva Drive San Antonio Pasig City,,,,,0936-591-4822,,,purchasing@symedicaltrading.com,,Mr. Edrian,,Active
+ NCR_31,TOKYO HEALTHLINK INC.,Free Standing Laboratory,,,Accounts Receivable,232350819000,30,EL MOLITO BLDG MADRIGAL AVE AYALA ALABANG MUNTINLUPA CITY,,,,,,,,,,,,Active
+ NCR_32,ULTRAMAX & ULTRASOUND DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,0,30,"UNIT 1 & 2 CUEVAS BLDG. REAL ST. 1740 ALABANG-ZAPOTE RD, LAS PI嚙璀S CITY",,,,,,,,,,,,Active
+ NCR_33,UNITED DOCTORS MEDICAL CENTER,Private Hospital,,,Accounts Receivable,0,30,"6 N. Ramirez St., Brgy. Don Manuel, Quezon City, Quezon City",,,,,9223142816,,,customercare@udmc.com.ph,,,,Active
+ NCR_34,UNIVERSITY OF PERPETUAL HELP DALTA MEDICAL CTR. INC.,Private Hospital,,,Accounts Receivable,419945000,30,"3rd flr. Unimall Complex, Alabang-Zapote Rd., Las Pinas City",,,,,,,,,,,,Active
+ NCR_35,ST. PETER PAUL MEDICAL CLINIC,Medical Doctors Clinic,,,Accounts Receivable,0,30,"ZONE D72, 1182 GREY ST., ERMITA MANILA",,,,,,,,,,,,Active
+ NCR_36,HM CARE LABORATORY CLINIC & DIAGNOSTIC CENTER INC.,Free Standing Laboratory,,,Accounts Receivable,000-000-000-00000,0,,MAKATI,METRO MANILA,,,,,,,,,,Active
+ NCR_37,GILCARE DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Sales,000-000-000-00000,0,BRGY. CENTRAL,QUEZON CITY,METRO MANILA,,,,,,,,,,Active
+ NCR_38,UPLAND SPECIALTY DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,000-000-000-00000,0,JP RIZAL ST. MENDEZ,QUEZON CITY,METRO MANILA,,,,,,,,,,Active
+ R1_01,ACCULIFE MEDICAL LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"ARINGAY, LA UNION",,,,,9619526092,,,acculifemedlab@gmail.com,,,,Active
+ R1_02,AGOO MUNICIPAL HEALTH OFFICE (RHU),Research Center,,,Accounts Receivable,0,30,STA BARBARA AGOO LA UNION,,,,,,,,,,,,Active
+ R1_03,EVOLUTIONARY MEDICAL SUPPLIES,Dealer /  Distributor,,,Accounts Receivable,0,30,"2411 Mawaque Road, Mabalacat City, Pampanga",,,,,,,,evomed2018@gmail.com,,ELVIE KALINISAN,,Active
+ R1_04,LA UNION MEDICAL CENTER,Private Hospital,,,Accounts Receivable,0,30,"NAZARENO, AGOO, LA UNION",,,,,9399196192,,,,,MINERVA DELLA,,Active
+ R1_05,LUZON MEDICAL CENTER,Private Hospital,,,Accounts Receivable,0,30,"329 MAC ARTHUR HIGHWAY, Dagupan City, 2400 Pangasinan",,,,,,,,,,,,Active
+ R1_06,MEDITEK MEDICAL CLINIC AND LABORATORY,Free Standing Laboratory,,,Accounts Receivable,179647687000,30,"Mapandan, Pangasinan",,,,,,,,meditekmedicalcliniclaboratory@gmail.com,,,,Active
+ R1_07,METRO URDANETA SPECIALIST,Free Standing Laboratory,,,Accounts Receivable,0,30,"URDANETA CITY, PANGASINAN",,,,,,,,,,,,Active
+ R1_08,MUNICIPALITY OF SAN MANUEL,Research Center,,,Accounts Receivable,0,30,"San Manuel, Pangasinan",,,,,,,,,,,,Active
+ R1_09,NEW ROSARIO DIAGNOSTIC CLINIC AND LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"ROSARIO, LA UNION",,,,,9178503468,,,newrosariodiagnostic@yahoo.com,,GWEN LARON,,Active
+ R1_10,QUANTERRA MEDICAL AND LABORATORY SERVICES,Free Standing Laboratory,,,Accounts Receivable,0,30,"SAN MIGUEL ST. NAGSIMBAANAN BACNOTAN, LA UNION",,,,,,,,quanterramedlab@gmail.com,,,,Active
+ R1_11,RXL PRIMECARE ENTERPRISES,Dealer /  Distributor,,,Accounts Receivable,0,30,"STA. BARBARA, PANGASINAN",,,,,0933-853-4384,,,,,Mr. Lucky Guao,,Active
+ R1_13,VIRGEN MILAGROSA MEDICAL CENTER,Private Hospital,,,Accounts Receivable,288966885000,30,Pangasinan,,,,,,,,,,,,Active
+ R10_01,BLESS SCIENTIFIC LABORATORY SUPPLY,Dealer /  Distributor,,,Accounts Receivable,0,30,"B15 L10 SILVERCREEK SUBD. PHASE 1, CARMEN, CAGAYAN DE ORO CITY",,,,,9274684536,,,blessscientific@yahoo.com,,HARLEY SANICO,,Active
+ R11_02,FABLAB BIO SOLUTIONS INCORPORATED,Dealer /  Distributor,,,Accounts Receivable,740772178000,30,"B54 L29 COUNTRY HOMES, CABANTIAN BUHANGIN DISTRICT,DAVAO CITY",,,,,0967-3566-834,,,fablabbio.corp@gmail.com,,Ms. Nina,,Active
+ R11_03,GLOBAL DIAGNOSTICS COMPANY,Dealer /  Distributor,,,Accounts Receivable,5881011000,30,"Door 2 G/F Major Bldg.,165-B Bonifacio St., Davao City",,,,,0917-716-6565,,,globaldiagnostics2001@gmail.com,,Ms. Pam,,Active
+ R11_04,MIKENSON DIAGNOSTIC SUPPLY,Dealer /  Distributor,,,Accounts Receivable,0,30,"SAN PEDRO EXTENSION, DAVAO CITY",,,,,,,,,,,,Active
+ R13_01,RN MEDICAL AND LABORATORY SUPPLY,Free Standing Laboratory,,,Accounts Receivable,759880131000,30,"PUROK 1 BRGY ROJALES, CARMEN AGUSAN DEL NORTE",,,,,0949-994-0057,,,rn.medlabsupply@gmail.com,,Ms. Faith Grace Lauro,,Active
+ R2_01,MEDLINK ENTERPRISES,Dealer /  Distributor,,,Accounts Receivable,408801228000,30,"UNIT 6 SEVERO SHELL COMPOUND BALZAIN HIGHWAY, CENTRO 11 TUGUEGARAO",,,,,0945-762-4181,,,medlinkenterprises.acctg@gmail.com,,Ms. Girlie,,Active
+ R2_02,TOPMED DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"ILAGAN, ISABELA",,,,,,,,,,,,Active
+ R3_01,AGAPE HEALTH CARE SUPPLIES AND EQUIPMENT CORPORATION,Dealer /  Distributor,,,Accounts Receivable,4000,30,"SANTA INES, Bacolor, Pampanga",,,,,0917-561-6546,,,agapelab@yahoo.com.ph,,Mr. Jayson Galura,,Active
+ R3_02,CENTUR MEDICAL SUPPLIES,Dealer /  Distributor,,,Accounts Receivable,222318769000,30,BLK 2 L4 PH 2 ESTRELLA HOMES GAYA-GAYA SAN JOSE DEL MONTE BULACAN,,,,,0926-071-9094,,,centurmedicalsupplies2019@gmail.com,,Mr. Romeo Sedoripa,,Active
+ R3_03,DLSI - DEGRAMM LABORATORY SUPPLIES INC,Dealer /  Distributor,,,Accounts Receivable,0,30,"LOT 3 PEARL ST. GEMSVILLE 1 SUBD. DOLORES, SAN FERNANDO, PAMPANGA",,,,,0917-673-0725,,,degrammlabsupplies.inc@gmail.com,,Ms. Glia,,Active
+ R3_04,GOODSEED MEDICAL ENTERPRISES,Dealer /  Distributor,,,Accounts Receivable,0,30,"san Pedro palcarangan, lubao, pampanga",,,,,0917-629-0764,,,alexmacataig@gmail.com,,Mr. Alex Macataig,,Active
+ R3_05,JORONIAN TRADING,Dealer /  Distributor,,,Accounts Receivable,0,30,"DOLMAR SUBD, PHASE 1 Orchids St, Marilao, Bulacan",,,,,0956 207 4175,,,,,,,Active
+ R3_06,LIFESAVIOUR MEDICAL EQUIPMENT AND SUPPLIES TRADING,Dealer /  Distributor,,,Accounts Receivable,287472529001,30,"209 Purok 3, Magalang, Pampanga",,,,,,,,lifesaviourtrading@gmail.com,,RODETTE GARCIA,,Active
+ R3_07,MEYCAUAYAN DOCTORS HOSPITAL AND MEDICAL CENTER,Free Standing Laboratory,,,Accounts Receivable,229405704000,30,"MEYCAUAYAN, BULACAN",,,,,0969 175 8109,,,mdhopd2022@gmail.com,,,,Active
+ R3_08,PANIM MEDICAL LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,16 CLARK ST. POBLACION SUR. PANQUI TARLAC CITY,,,,,,,,,,,,Active
+ R3_09,ST. LANEAH DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,CAMILING TARLAC,,,,,,,,,,,,Active
+ R3_10,TIFFANY JAYDE ENTERPRISES,Dealer /  Distributor,,,Accounts Receivable,228331703000,30,"66-D PACO, OBANDO, BULACAN",,,,,,,,,,,,Active
+ R4_01,A.C. BELAN DIAGNOSTIC CENTER,Free Standing Laboratory,,,Accounts Receivable,0,30,"210 General Malvar St, Bi嚙窮n, 4024 Laguna",,,,,,,,,,,,Active
+ R4_02,ANIKA ELLIE MEDICAL SUPPLIES TRADING,Dealer /  Distributor,,,Accounts Receivable,0,30,"1413 Josephine Subd. Gulang-Gulang, Lucena, Quezon",,,,,9281573132,,,anikaelliemedicalsupplies08@gmail.com,,,,Active
+ R4_03,BIOTECHNICA MEDICAL ENTERPRISES,Dealer /  Distributor,,,Accounts Receivable,0,30,"D. P. Canlas St, San Matias, Santo Tomas, 2020 Pampanga",,,,,,,,,,,,Active
+ R4_04,BRIONES DIAGNOSTICS AND MEDICAL CLINIC,Medical Doctors Clinic,,,Accounts Receivable,0,30,BRGY. MALABANAN NORTE CANDELARIA QUEZON,,,,,9255155764,,,bdmc.jb@gmail.com,,BELLE BRIONES,,Active
+ R4_05,C PLUZ MEDICAL SUPPLIES CORPORATION,Dealer /  Distributor,,,Accounts Receivable,0,30,"Governor's Drive, Carmona",,,,,0917 886 3590,,,cpluzmedicalsupplies.sales@gmail.com,,,,Active
+ R4_06,CALAUAG ST. PETER GENERAL HOSPITAL INC.,Private Hospital,,,Accounts Receivable,9477929000,30,QUEZON ST BRGY. POBLACION DOS CALAUAG QUEZON,,,,,0931-219-5706,,,spgeneralhospital@gmail.com,,,,Active
+ R4_07,CAVITE EAST ASIA MEDICAL CENTER INC,Private Hospital,,,Accounts Receivable,7540547000,30,"4102 MOLINO ROAD, BRGY. MOLINO III, BACOOR CITY, CAVITE",,,,,0917-519-7342,,,yvette.manzano@ceamci.com,,Yvette Manzano,,Active
+ R4_08,CHRIST THE SAVIOUR GENERAL HOSPITAL INC.,Free Standing Laboratory,,,Accounts Receivable,0,30,"Barangay A Rosario, Batangas",,,,,,,,,,,,Active
+ R4_09,CITY OF IMUS DOCTORS HOSPITAL INC,Government Hospital,,,Accounts Receivable,0,30,"Aguinaldo Hwy, Imus, Cavite",,,,,0917 130 6085,,,cidhmarketing@gmail.com,,,,Active
+ R4_10,DE LA SALLE MEDICAL AND HEALTH SCIENCES INSTITUTE,University / Schools,,,Accounts Receivable,0,30,"Governor, D. Mangubat St, Avenue, Dasmari嚙窮s, Cavite",,,,,,,,,,,,Active
+ R4_11,EAGLEBURGMANN PHIL INC.,Dealer /  Distributor,,,Accounts Receivable,0,30,"APC Building No. 212, Main Ave. corner Governor's Drive, Dasmarinas Technopark Paliparan, Cavite.",,,,,,,,,,,,Active
+ R4_12,EMK DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,168136393000,30,19 ANIBAN 1 BACOOR CAVITE,,,,,9434767443,,,charmainevizcondemd@gmail.com,,,,Active
+ R4_13,EVERJOY DIAGNOSTIC TRADING,Dealer /  Distributor,,,Accounts Receivable,123695851000,30,CUSTODIO ST TAYSANSAN JOSE BATANGAS,,,,,0966-9154-648,,,flordeliza.everjoy@gmail.com,,Ms. Flordeliza Belano,,Active
+ R4_14,"FLD SOLUTIONS, INC.",Dealer /  Distributor,,,Accounts Receivable,0,30,"Village Front Brentville Brgy Mamplasan, Laguna",,,,,,,,,,,,Active
+ R4_15,GOD'S HEALING PHARMACY & PHARMA TRADING,Dealer /  Distributor,,,Accounts Receivable,0,30,"Sitio 2, Pagsanjan,  Laguna",,,,,0933 853 8082,,,godshealingpharmacy_pt@yahoo.com,,,,Active
+ R4_16,GRAMZMED MEDICAL AND LABORATORY SUPPLIES,Dealer /  Distributor,,,Accounts Receivable,489808269000,30,BLK 6A LOT 1 PH 1 VERONA ST/ IL GIARDINO RESIDENCES BUENAVISTA. GENERAL TRIAS CAVITE,,,,,9171533213,,,jar.gramzmed@gmail.com,,JAYSON RAMIREZ,,Active
+ R4_17,THE GREENSLEEVES SCIENTIFIC MEDICAL CORP.,Dealer /  Distributor,,,Accounts Receivable,136-576-065-000,30,B5 L10 SAMAR LOOP ST. MACARIA VILLAGE CANLALAY BINAN LAGUNA,,,,,0922-8309-346,,,greensleevesmarketing@gmail.com,,Ms. Charie,,Active
+ R4_18,GUINAYANGAN DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,192935541001,30,"GOMBUZA ST BRGY. POBLACION, GUINAYANGAN QUEZON",,,,,,,,,,,,Active
+ R4_19,GUMACA DRUG AND VARIETY STORE,Dealer /  Distributor,,,Accounts Receivable,0,30,"A. Bonifacio St., Brgy. Maunlad, Gumaca, Quezon",,,,,,,,,,,,Active
+ R4_20,HOLISTIC CHOICE MULTISPECIALTY CLINIC,Medical Doctors Clinic,,,Accounts Receivable,0,30,"Timbao, Bin嚙緯, Laguna",,,,,0932 889 5805,,,,,,,Active
+ R4_21,HOLY ROSARY HOSPITAL,Private Hospital,,,Accounts Receivable,0,30,"F.B. Bailon St, Cabuyao City, Laguna",,,,,,,,,,,,Active
+ R4_22,INSORIO MULTI-SPECIALTY CLINIC AND LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"151 Unit B&C Silangan Bldg., A. Bonifacio Street, Brgy. Canlalay Binan Laguna",,,,,,,,,,,,Active
+ R4_23,JARO MEDICAL AND DIAGNOSTIC CENTER CORP.,Free Standing Laboratory,,,Accounts Receivable,0,30,"Salitran, Dasmari嚙窮s, Cavite",,,,,0926 068 1092,,,,,,,Active
+ R4_24,JENIA MARKETING,Dealer /  Distributor,,,Accounts Receivable,0,30,"Blk 15 LOT 14 ALMOND ST SPRINGVILLE, 2 MOLINO 3, Bacoor, Cavite",,,,,0917-543-2468,,,jeniamarketing0324@gmail.com,,Ms. Jennifer Ruiz,,Active
+ R4_25,JOHN PAUL II CLINICAL LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"Don V. Robles Ave. , Tiaong",,,,,0921 638 5000,,,johnpauliiclinicallaboratory@gmail.com,,,,Active
+ R4_26,JYKEL CLINICAL LABORATORY,Free Standing Laboratory,,,Accounts Receivable,272148202000,30,"64 PLARIDEL ST. BRGY RIZALIANA, MAUBAN, Quezon",,,,,,,,,,,,Active
+ R4_27,L.N.R. MEDICAL CLINIC,Medical Doctors Clinic,,,Accounts Receivable,779762515000,30,"MOLINO 1, BACOOR, CAVITE",,,,,9236050567,,,joecrisian@gmail.com,,Joecris Ian E. Sanchez,,Active
+ R4_28,LOCAL GOVERNMENT UNIT OF ATIMONAN,Research Center,,,Accounts Receivable,75000,30,"ATIMONAN, QUEZON",,,,,,,,,,,,Active
+ R4_29,LOCAL GOVERNMENT UNIT OF GUINAYANGAN,Research Center,,,Accounts Receivable,76000,30,"GUINAYANGAN, QUEZON",,,,,,,,,,,,Active
+ R4_30,LOCAL GOVERNMENT UNIT OF LOPEZ,Research Center,,,Accounts Receivable,65000,30,LOPEZ. QUEZON,,,,,,,,,,,,Active
+ R4_31,LOCAL GOVERNMENT UNIT OF TAGKAWAYAN,Research Center,,,Accounts Receivable,538540000,30,"TAGKAWAYAN, QUEZON",,,,,,,,,,,,Active
+ R4_32,LOPEZ ST. JUDE GENERAL HOSPITAL INC,Private Hospital,,,Accounts Receivable,6722360000,30,BRGY DANLAGAN LOPEZ QUEZON,,,,,,,,,,,,Active
+ R4_33,LUCBAN MMG GENERAL HOSPITAL,Private Hospital,,,Accounts Receivable,3375807003,30,NATIONAL HIGHWAY BRGY TINAMNAN LUCBAN QUEZON,,,,,,,,,,,,Active
+ R4_34,LUCENA MMG GENERAL HOSPITAL,Private Hospital,,,Accounts Receivable,3375807000,30,MAHARLIKA HIGHWAY RED-V IBABANG HIGHWAY LUCENA QUEZON,,,,,9399125271,,,lucenammghosp@yahoo.com,,marjorie ruz,,Active
+ R4_35,MATTGAB MEDICAL SUPPLIES,Dealer /  Distributor,,,Accounts Receivable,918814002000,30,B12 L6 LYNVILLE SAN FERNANDO MALVAR BATANGAS,,,,,0997-602-2950,,,mgmedicaltrading@gmail.com,,Mr. Bobby,,Active
+ R4_36,MEDEQUIP LABORATORY AND DIAGNOSTIC SUPPLIES TRADING,Dealer /  Distributor,,,Accounts Receivable,0,30,CAVITE,,,,,,,,,,,,Active
+ R4_37,MOTHER SAVIOUR POLYCLINIC AND LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"7 RIZAL STREET POBLACION, SAN PEDRO, LAGUNA",,,,,,,,mothersaviourlaboratory@gmail.com,,PAOLO GINO C. JAINGA,,Active
+ R4_38,MUNICIPAL HEALTH OFFICE-CALAUAG,Research Center,,,Accounts Receivable,0,30,"Cantre St, Calauag, Quezon",,,,,,,,,,,,Active
+ R4_39,MUNICIPALITY OF TIAONG,Research Center,,,Accounts Receivable,0,30,"DON V. ROBLES ST., POBLACION 3, TIAONG, QUEZON",,,,,,,,,,,,Active
+ R4_40,MV SANTIAGO MEDICAL CENTER,Private Hospital,,,Accounts Receivable,0,30,"TRECE MARTIRES CITY, CAVITE",,,,,,,,,,,,Active
+ R4_42,"NUESTRA SE嚙瞌RA DE LOS ANGELES GENERAL HOSPITAL, INC.",Private Hospital,,,Accounts Receivable,8615509000,30,"147 MANUEL L. QUEZON ST., ATIMONAN, QUEZON",,,,,,,,nsdagenhos2015@yahoo.com,,,,Active
+ R4_43,OUR LADY OF PIAT POLYCLINIC,Private Hospital,,,Accounts Receivable,0,30,"BLOCK 11 LOT 13 SOUTH CITY DRIVE HOMES, STO. TOMAS, BINAN CITY, LAGUNA",,,,,9665231257,,,piatpharmacy@yahoo.com,,DAISY BANDEQUILLO,,Active
+ R4_44,PETER PAUL MEDICAL CENTER OF CANDELARIA INC,Private Hospital,,,Accounts Receivable,6943437000,30,REGIDOR ST. CANDELARIA QUEZON,,,,,9778549430,,,jonel_dimaunahan29@yahoo.com,,,,Active
+ R4_45,POLILIO ISLAND CLINICAL LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"PUROK TANGLAW, BRGY. SIBULAN, POLILIO, QUEZON",,,,,,,,,,,,Active
+ R4_46,QUESTCARE MEDICAL PRODUCTS INC.,Dealer /  Distributor,,,Accounts Receivable,10447573000,30,"PUROK 2 SANTO NINO, SAN PASCUAL, BATANGAS 4204",,,,,9173205120,,,questcaredistributor@yahoo.com,,,,Active
+ R4_47,QUEZON MEDICAL CENTER,Government Hospital,,,Accounts Receivable,633148000,30,"QUEZON AVENUE, LUCENA CITY, QUEZON",,,,,,,,mssdqmc@gmail.com,,,,Active
+ R4_48,QUEZON MMG HOSPITALS AND HEALTH SERVICES COOP,Private Hospital,,,Accounts Receivable,3375807003,30,NATIONAL HIGHWAY BRGY TINAMNAN LUCBAN QUEZON,,,,,,,,,,,,Active
+ R4_49,"RAKKK PROPHET MEDICAL CENTER, INC.",Private Hospital,,,Accounts Receivable,7354260000,30,KM 194 MAHARLIKA HIGHWAY BRGY ROSARIO GUMACA QUEZON,,,,,9082076398,,,rakkpmci@yahoo.com,,,,Active
+ R4_50,RANNY MEDICAL & DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,0,30,"123 Filsyn compound, Santa Rosa, Laguna",,,,,,,,,,,,Active
+ R4_51,RCBL- MOUNT CARMEL DIOCESAN GENERAL HOSPITAL,Private Hospital,,,Accounts Receivable,6157193000,30,"MCDGH COMPOUND, ALLAREY EXTENSION, BRGY 1, LUCENA CITY, QUEZON",,,,,,,,mcdgh_purchasing@yahoo.com,,,,Active
+ R4_52,RHU-TAGKAWAYAN,Research Center,,,Accounts Receivable,0,30,"TAGKAWAYAN, QUEZON",,,,,,,,,,,,Active
+ R4_53,ROJEN'S DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,261218647000,30,QUEZON ST. BRGY. CALAUAG QUEZON,,,,,63 961 099 9839,,,ronajanegales76@gmail.com,,,,Active
+ R4_54,SAN DIEGO DE ALCALA GENERAL HOSPITAL,Private Hospital,,,Accounts Receivable,170858270000,30,AGUINALDO COR TANADA ST. BRGY. SAN DIEGO GUMACA QUEZON,,,,,9338537578,,,,,vurginio hilario/acctg,,Active
+ R4_56,ST. ANNE GENERAL HOSPITAL INC.,Private Hospital,,,Accounts Receivable,4164183000,30,"OLD MANILA S ROAD, LUCENA CITY, QUEZON",,,,,0922 898 5922,,,saghiofficial@yahoo.com.ph,,,,Active
+ R4_57,TAGKAWAYAN DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"Eleazar St., Brgy. Poblacion, Tagkawayan, Quezon",,,,,0961 467 8524,,,tagkawayanlaboratory@gmail.com,,,,Active
+ R4_58,TAYABAS ANALYST DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,131471340000,30,2 P SILANG ST BRGY SAN ROQUE ZONE 2 TAYABAS QUEZON,,,,,"0928-355-8050
+042-793-2216 local 208",,,"tchi_csr@yahoo.com
+atchi598@gmail.com",,,,Active
+ R4_59,TAYABAS COMMUNITY HOSPITAL INC.,Government Hospital,,,Accounts Receivable,640590000,30,NATIONAL ROAD BRGY WAKAS TAYABAS QUEZON,,,,,,,,,,,,Active
+ R4_60,THE GENERICS PHARMACY - TAGKAWAYAN,Dealer /  Distributor,,,Accounts Receivable,0,30,"TAGKAWAYAN, QUEZON",,,,,0943-464-7648,,,tiffanyjayde2021@gmail.com,,Ms. Cherry,,Active
+ R4_61,TRIPTORS DIAGNOSTIC CENTRE,Free Standing Laboratory,,,Accounts Receivable,126816993000,30,"DONA AURORA BLVB COR CAPISTRANO SUBD GULANG-GULANG, LUCENA CITY",,,,,,,,rizza.cruz@triptors.org / mark.deinla@triptors.org,,,,Active
+ R4_62,"UNITED CANDELARIA DOCTORS, INC.",Private Hospital,,,Accounts Receivable,6820945000,30,BRGY MANGILAG SUR CANDELARIA QUEZON,,,,,,,,,,,,Active
+ R4_63,V. DELMORO GARCIA MEDICAL AND DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,0,30,"22 Caliwara Street Brgy. 2 Poblacion, Alabat, Quezon",,,,,0998 735 1238,,,docvelbe@yahoo.com,,,,Active
+ R4_64,5TH MEDICAL SUPPLY TRADING,Free Standing Laboratory,,,Accounts Receivable,249665378000,30,LOT 3 BLK 27 MARIGOLD ST. GREEN ESTATE MALAGASANG I-G IMUS CAVITE,,,,,,,,,,,,Active
+ R4A_01,ALPHACARE MEDICAL LABORATORY,Free Standing Laboratory,,,Sales,000-000-000-00000,0,,ANGONO,RIZAL,,,,,,,,,,Active
+ R5_01,1ST LAB POLYCLINIC AND DIAGNOSTICS LABORATORY,Free Standing Laboratory,,,Accounts Receivable,9363948140000,30,"SAN FRANCISCO 4419, CAMARINES SUR",,,,,9494309150,,,1stlabpolydl@gmail.com,,,,Active
+ R5_02,3A'S HEALTHLAB AND ANIMAL BITE CLINIC,Free Standing Laboratory,,,Accounts Receivable,0,30,"ZONE 3, PROPER,CARAYCAYON.TIGAON. CAMARINES SUR",,,,,9171656910,,,3ashealthlab.animalbiteclinic@gmail.com,,,,Active
+ R5_03,ACCESSHEALTH INC.,Private Hospital,,,Accounts Receivable,6832744000,30,"CBD II, Brgy. Triangulo, Naga City",,,,,9688515106,,,bachdisbursement2020@gmail.com,,,,Active
+ R5_04,ACS MEDICAL AND DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,0,30,"P-1 Batobalani Paracale Camarines Norte, Paracale",,,,,0977 213 8657,,,acsclinic2020@gmail.com,,,,Active
+ R5_05,"ALBAY DIAGNOSTIC LABORATORY, INC.",Free Standing Laboratory,,,Accounts Receivable,2916526000,30,"YMCA BLDG., SAGPON, OLD ALBAY, LEGAZPI CITY",,,,,9152780255,,,albaydiagnosticlab.ad164@yahoo.com,,,,Active
+ R5_06,ALBAY DOCTOR'S HOSPITAL INC.,Private Hospital,,,Accounts Receivable,5769508000,30,"Pe嚙窮randa Street, Legazpi Port District, Legazpi City 4500",,,,,9985469453,,,adh_hospital@yahoo.com,,,,Active
+ R5_07,ALLIED CARE EXPERTS MEDICAL CENTER LEGAZPI INC,Private Hospital,,,Accounts Receivable,61000,30,"DARAGA-LEGAZPI DIVERSION ROAD, BOGTONG, LEGAZPI CITY",,,,,9171357907,,,,,,,Active
+ R5_08,ALTADAMON IMAGING MEDICAL AND DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,0,30,"Zone 3, Anayan, Pili, Camarines Sur",,,,,0960 240 7576,,,altadamonclinic1@gmail.com,,,,Active
+ R5_09,ARB FAMILY DIAGNOSTIC CENTER,Free Standing Laboratory,,,Accounts Receivable,157349042000,30,"STA. ROSA, DEL NORTE, PASACAO, CAMARINES SUR",,,,,9303596829,,,badetteskybadet@yahoo.com,,,,Active
+ R5_10,BICOL CARDIO VASCULAR DIAGNOSTIC COOPERATIVE,Free Standing Laboratory,,,Accounts Receivable,264888745000,30,"LOT 2 BLOCK 4, BCDC BLDG., CBD II, BRGY. TRIANGULO, NAGA CITY",,,,,9562262711,,,,,ADHEL,,Active
+ R5_100,WASHINGTON MEDICAL CLINIC & DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,247450817000,30,"Brgy Cabugao, Legazpi City",,,,,,,,,,,,Active
+ R5_101,ZEIDUM CLINICAL LABORATORY,Free Standing Laboratory,,,Accounts Receivable,472417450000,30,"057 LUNA ST., LUNA CANDOL, GUBAT, SORSOGON",,,,,,,,,,,,Active
+ R5_102,ZONE MEDICAL AND INTERVENTION HOSPITAL INC.,Private Hospital,,,Accounts Receivable,288966885000,30,"BINATAGAN, LIGAO CITY, ALBAY",,,,,,,,,,,,Active
+ R5_103,HISTOLINK MEDICAL CENTER,Free Standing Laboratory,,,Accounts Receivable,114-108-199-00000,30,PANGANIBAN DRIVE,NAGA CITY,CAMARINES SUR,,4400,,,,,,,,Active
+ R5_11,BICOL MEDICAL CENTER,Government Hospital,,,Accounts Receivable,619672000,30,"BMC Rd., Concepcion Peque嚙窮, Naga City",,,,,,,,,https://bmc.doh.gov.ph/,,,Active
+ R5_12,BICOL REGION GENERAL HOSPITAL & GERIATRIC MEDICAL CENTER,Government Hospital,,,Accounts Receivable,0,30,"San Pedro, Cabusao, Camarines Sur",,,,,,,,,,,,Active
+ R5_13,BICOL RENAL CARE ASSOCIATES CORP.,Free Standing Laboratory,,,Accounts Receivable,0,30,"3B M Plaza, Roxas Ave., Diversion Road, Triangulo Naga City",,,,,,,,,,,,Active
+ R5_14,BICOLCARE MEDICAL CLINIC AND LABORATORY,Free Standing Laboratory,,,Accounts Receivable,70000,30,"Central Business District II, Cory and, Ninoy and Cory Ave, Naga City",,,,,9636385359,,,purchasingbicolcare@gmail.com,,Ricca Mae Royales,,Active
+ R5_15,BLUECROSS DIAGNOSTIC AND MEDICAL SUPPLY,Dealer /  Distributor,,,Accounts Receivable,0,30,"40 Magsaysay Ave, Naga City",,,,,,,,,,,,Active
+ R5_16,BMSC MEDICAL IMAGING CENTER,Free Standing Laboratory,,,Accounts Receivable,168222500000,30,"O & E Building, Vinzon corner Florante Streets, Old Albay District, Legazpi City",,,,,,,,,,,,Active
+ R5_18,CENTRAL LINK LABORATORY & HEALTH SERVICES,Free Standing Laboratory,,,Accounts Receivable,63000,30,"RIZAL ST., DARAGA, ALBAY",,,,,9065895776,,,cenlink.laboratory@yahoo.com,,Maam Tash,,Active
+ R5_19,CHACON GENERAL HOSPITAL,Private Hospital,,,Accounts Receivable,435199715000,30,"3852 Rizal St, Sorsogon City",,,,,9369249293,,,chacongeneralhospital@gmail.com,,,,Active
+ R5_20,CHRIST SERVANT DIAGNOSTICS,Free Standing Laboratory,,,Accounts Receivable,0,30,"COSAY BLDG., SAN VICENTE, PILI, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_21,CITY GOVERNMENT OF LIGAO,Government Hospital,,,Accounts Receivable,8400059000,30,"Ligao, Albay",,,,,,,,,,,,Active
+ R5_22,DAET DOCTORS HOSPITAL INCORPORATED,Private Hospital,,,Accounts Receivable,717036195000,30,"Gov. Panotes Avenue, Brgy. VII, Daet, Camarines Norte",,,,,9120062840,,,businessoffice.ddhi@gmail.com,,Ms. Premie Estrada,,Active
+ R5_23,DAET MEDICAL LABORATORY,Free Standing Laboratory,,,Accounts Receivable,311841275000,30,"BAGASBAS ROAD, BRGY. 5, DAET, CAMARINES NORTE",,,,,,,,daetmedlab@gmail.com,,,,Active
+ R5_24,DR. AMANDO D. COPE MEMORIAL HOSPITAL INC.,Private Hospital,,,Accounts Receivable,5713821000,30,"Ruivivar St., Tayhi, Tabaco, Albay",,,,,0949 146 5891,,,cope_hospital@yahoo.com,,,,Active
+ R5_26,DR. JUSTIN P. NOVELA,Medical Doctors Clinic,,,Accounts Receivable,904600948000,30,"SAN ROQUE, IRIGA CITY, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_27,DR. MIGUEL V. ALEGRE HOSPITAL,Private Hospital,,,Accounts Receivable,0,30,"Burgos Street, Barangay Gumamela, Labo",,,,,961 5 632 597,,,alegredrmiguel@gmail.com,,,,Active
+ R5_28,DR. RUFO T. LLORIN,Medical Doctors Clinic,,,Accounts Receivable,0,30,"RAMADIA CENTRUM, ELIAS ANGELES ST., NAGA CITY",,,,,9190066937,,,,,DR. RUFO T. LLORIN,,Active
+ R5_29,EJTB IMAGING AND DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,937269783000,30,"956 IMPERIAL ST., SAN ISIDRO, PILI, CAMARINES SUR",,,,,9395014943,,,ejtbimagingdxclinic_17@yahoo.com,,Maricar Rita Balid / Mark Rustique,,Active
+ R5_30,ESTEVEZ MEMORIAL HOSPITAL INC.,Private Hospital,,,Accounts Receivable,937799000,30,"GUEVARRA SUBD., LEGAZPI CITY",,,,,9950163556,,,emh_ine@yahoo.com,,,,Active
+ R5_32,FRYDT DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,33720941700000,30,"SOUTH CENTRO, SIPOCOT, CAMARINES SUR",,,,,9451384243,,,frydtlaboratory@gmail.com,,SELAH ELENA BERINA,,Active
+ R5_34,HOLYTRINITY MEDICAL LABORATORY,Free Standing Laboratory,,,Accounts Receivable,21343897200001,30,"132 San Vicente, Calabanga, Camarines Sur",,,,,0961 738 1808,,,htmedlab@gmail.com,,,,Active
+ R5_35,HUMACARE LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"PENAFRANCIA AVENUE, NAGA CITY",,,,,09487776653 /,,,humacaremedicaldiagnostics@gmail.com,,ilma Crisologo,,Active
+ R5_36,ILABDIAGNOSTIX MEDICAL CLINIC AND LABORATORY,Free Standing Laboratory,,,Accounts Receivable,916469576000,30,"SAN NICOLAS, BAAO, CAMARINES SUR",,,,,9171525520,,,ilabdiagnostix@gmail.com,,ALDRIN PRESTINA,,Active
+ R5_37,"IROSIN GENERAL HOSPITAL , INC.",Private Hospital,,,Accounts Receivable,430362676000,30,"SAN PEDRO, IROSIN, SORSOGON",,,,,0920-268-1871,,,igen.hospital@gmail.com,,Jocelyn Frejas,,Active
+ R5_38,JAIME BERCES MEMORIAL HOSPITAL,Private Hospital,,,Accounts Receivable,0,30,"Karangahan Blvd., Bombon, Tabaco City",,,,,939-546-253-000,,,,,,,Active
+ R5_40,JB LEGAZPI MEDICAL CLINIC & DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,168222220000,30,"G/F UI Bldg, Legazpi City",,,,,,(052) 742 2679,,jblegazpi@gmail.com,,,,Active
+ R5_41,JMC LABORATORY & X-RAY CENTER,Free Standing Laboratory,,,Accounts Receivable,411403974000,30,"DABU BLDG., ELIAS ANGELES ST., SAN FRANCISCO, NAGA CITY",,,,,,,,,,,,Active
+ R5_42,JOSE PANGANIBAN INFIRMARY HOSPITAL SERVICES COOPERATIVE,Government Hospital,,,Accounts Receivable,4183241000,30,"Angat Street, North Poblacion, Jose Panganiban, Camarines Norte",,,,,,,,,,,,Active
+ R5_43,LABWORX DIAGNOSTIC AND HEALTH SERVICES INC,Free Standing Laboratory,,,Accounts Receivable,474209936000,30,"4/F DECA BLDG., PANGANIBAN DRIVE, NAGA CITY",,,,,0949 990 1090,,,labworxdiagnostic@gmail.com,,,,Active
+ R5_44,LEON D. HERNANDEZ MEMORIAL HOSPITAL INC.,Private Hospital,,,Accounts Receivable,4183275000,30,"1328 Dasmari嚙窮s St, Daet, Camarines Norte",,,,,0915 249 5330,,,ldhmh_docs@yahoo.com.,,,,Active
+ R5_45,LIBMANAN DISTRICT HOSPITAL,Government Hospital,,,Accounts Receivable,0,30,"Herrera St, Libmanan, Camarines Sur",,,,,,,,,,,,Active
+ R5_46,LOCAL GOVERNMENT OF SAN FERNANDO,Research Center,,,Accounts Receivable,628886000,30,"BONIFACIO, SAN FERNANDO, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_47,LOCAL GOVERNMENT UNIT OF BOMBON,Research Center,,,Accounts Receivable,79000,30,"BOMBON, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_48,LOCAL GOVERNMENT UNIT OF BUHI,Research Center,,,Accounts Receivable,80000,30,"BUHI, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_49,LOCAL GOVERNMENT UNIT OF CAMALIGAN,Research Center,,,Accounts Receivable,631832000,30,"STO. DOMINGO, CAMALIGAN, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_50,LOCAL GOVERNMENT UNIT OF CARAMOAN,Research Center,,,Accounts Receivable,999445000,30,"CARAMOAN, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_51,LOCAL GOVERNMENT UNIT OF DONSOL,Research Center,,,Accounts Receivable,81000,30,"DONSOL, SORSOGON",,,,,,,,,,,,Active
+ R5_52,LOCAL GOVERNMENT UNIT OF GOA,Research Center,,,Accounts Receivable,1000401000,30,"TAGONGTONG, GOA, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_53,LOCAL GOVERNMENT UNIT OF GUINOBATAN,Research Center,,,Accounts Receivable,77000,30,"GUINOBATAN, ALBAY",,,,,,,,,,,,Active
+ R5_54,LOCAL GOVERNMENT UNIT OF LIBMANAN,Research Center,,,Accounts Receivable,631904000,30,"LIBMANAN, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_55,LOCAL GOVERNMENT UNIT OF PAMPLONA,Research Center,,,Accounts Receivable,631564000,30,"PAMPLONA, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_56,LOCAL GOVERNMENT UNIT OF PILAR,Research Center,,,Accounts Receivable,0,30,"PILAR, SORSOGON",,,,,,,,,,,,Active
+ R5_57,LOCAL GOVERNMENT UNIT OF POLANGUI,Research Center,,,Accounts Receivable,0,30,"POLANGUI, ALBAY",,,,,,,,,,,,Active
+ R5_58,LOCAL GOVERNMENT UNIT OF SAN JOSE,Research Center,,,Accounts Receivable,1003971000,30,"SAN JUAN, SAN JOSE, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_59,LOCAL GOVERNMENT UNIT OF SIPOCOT,Research Center,,,Accounts Receivable,632001000,30,"SIPOCOT, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_60,LOCAL GOVERNMENT UNIT OF TIGAON,Research Center,,,Accounts Receivable,1004785000,30,"TIGAON, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_61,LOCAL GOVERNMENT UNIT OF TINAMBAC,Research Center,,,Accounts Receivable,3738863000,30,"ZONE 2 BINALAY, TINAMBAC, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_62,MEDICAL MISSION GROUP HOSPITAL & HEALTH SERVICES,Free Standing Laboratory,,,Accounts Receivable,5659320000,30,"STA. ELENA, BARAS, NABUA, CAMARINES SUR",,,,,9190789916,,,mmgcamsur@yahoo.com,,maam rose,,Active
+ R5_63,MEDLANE ENTEPRISES,Dealer /  Distributor,,,Accounts Receivable,0,30,"Narra St., Mariano Village, Balatas, Naga City",,,,,,,,,,,,Active
+ R5_64,MEGALIFE CLINIC,Free Standing Laboratory,,,Accounts Receivable,916928615000,30,"METROBANK VILLAGE, MAGANG, DAET, CAMARINES NORTE",,,,,0948 121 0737,,,megalifeonlineph@gmail.com,,,,Active
+ R5_65,METRO HEALTH LABORATORY AND MEDICAL SERVICES INC.,Free Standing Laboratory,,,Accounts Receivable,406274353000,30,"501 ALEGRE ST., BALOGO, SORSOGON CITY 4700",,,,,,,,metrohealthpostgrad@gmail.com,,,,Active
+ R5_66,METRO HEALTH SPECIALISTS HOSPITAL INC.,Private Hospital,,,Accounts Receivable,462184642000,30,"Brgy. Cabid-An, East District, Sorsogon City",,,,,0919 075 0420,,,customerservices@metrohealth.ph,,,,Active
+ R5_67,MIRACULOUS MEDAL HEALTH CARE CENTER,Private Hospital,,,Accounts Receivable,0,30,"TINAMBAC, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_68,MULTI-MED DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,949388925003,30,"SAN FRANCISCO, IRIGA CITY, CAMARINES SUR",,,,,9121702615,,,mutimeddiaglab@gmail.com,,,,Active
+ R5_69,MUNICIPAL GOVERNMENT UNIT OF TIGAON,Research Center,,,Accounts Receivable,0,30,"Tigaon, Camarines Sur",,,,,,,,,,,,Active
+ R5_70,NAGA CITY HOSPITAL,Government Hospital,,,Accounts Receivable,632147000,30,"Leon SA Aureus St., Batalas, Naga City",,,,,,,,,,,,Active
+ R5_71,NEWLYF MEDICAL CLINIC & DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,0,30,"2388 T.Perez St. Daraga, Albay",,,,,,,,nmcdiagnosticlab62021@gmail.com,,,,Active
+ R5_72,NICC DOCTORS HOSPITAL,Private Hospital,,,Accounts Receivable,0,30,"Roxas Avenue, Diversion Road, Brgy. Triangulo, Naga City",,,,,,,,info@niccdoctorshospital.com,niccdoctorshospital.com,,,Active
+ R5_73,OUR LADY MEDIATRIX HOSPITAL/ Lynie I. Gonzales,Private Hospital,,,Accounts Receivable,135424647000,30,"NATIONAL HIGHWAY, SAN JOSE, IRIGA CITY, CAMARINES SUR",,,,,9943257561,,,mediatrixacctdept@yahoo.com,,JACKIE,,Active
+ R5_74,OUR LADY OF LOURDES HOSPITAL,Private Hospital,,,Accounts Receivable,535009000,30,"Vinzons Avenue, Lag-On, Daet, Camarines Norte",,,,,9915642381,,,,,VIVIAN IBASCO,,Active
+ R5_75,"PARTIDO MEDICAL AND DIAGNOSTIC CENTRE, INC.",Free Standing Laboratory,,,Accounts Receivable,476280592000,30,"PANDAY ST., GOA, CAMARINES SUR",,,,,9195362500,,,partidomedical@gmail.com,,BUDDY BELARO,,Active
+ R5_76,RHU-CAMALIG,Research Center,,,Accounts Receivable,0,30,"Camalig, Albay",,,,,,,,,,,,Active
+ R5_77,SAINT MARIA SOLEDAD TORRES FOUNDATION INCORPORATED,Private Hospital,,,Accounts Receivable,460352470000,30,"DAHAT, LAGONOY, CAMARINES SUR",,,,,9452079216,,,,,MYRA OCERA DEBIL,,Active
+ R5_78,SAN JOSE MEDICARE COMMUNITY HOSPITAL,Government Hospital,,,Accounts Receivable,0,30,"SAN JOSE, CAMARINES SUR",,,,,9189153929,,,,,,,Active
+ R5_79,SIPOCOT DISTRICT HOSPITAL,Government Hospital,,,Accounts Receivable,6069981000,30,"SIPOCOT, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_80,SMMGHHSC,Private Hospital,,,Accounts Receivable,4200753000,30,"MAHARLIKA HIGHWAY, PANGPANG, SORSOGON",,,,,9125527240,,,sorsogonmmg@yahoo.com / accountingsmmg92@yahoo.com,,,,Active
+ R5_81,SORMED DIAGNOSTIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,920121219000,30,"FERNANDOS MALL, RIZAL ST., PIOT, SORSOGON CITY, SORSOGON",,,,,9460749845/09186913325,,,sormeddc@gmail.com,,Cristine C. Pante,,Active
+ R5_82,ST. JAMES THE APOSTLE MEDICAL & PEDIATRIC CLINIC,Free Standing Laboratory,,,Accounts Receivable,286291130000,30,"POBLACION LIBMANAN, CAMARINES SUR",,,,,0928 745 0161,,,,,,,Active
+ R5_83,ST. LOUISE DIAGNOSTIC COOPERATIVE LABORATORY,Free Standing Laboratory,,,Accounts Receivable,5532114000,30,"ROOM 205 ST. LOUISE BLDG., MAYON AVENUE, NAGA CITY",,,,,9214351559,,,,,MALOU,,Active
+ R5_84,ST. PEREGRINE DIAGNOSTIC LABORATORY - CALABANGA,Free Standing Laboratory,,,Accounts Receivable,404489918000,30,"UNITEL COMPOUND, SAN ANTONIO, POBLACION, CALABANGA, CAMARINES SUR",,,,,9485057839,,,slcdc@yahoo.com,,JUN MALLARI,,Active
+ R5_85,ST. PIO DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,149200522000,30,"GUEVARRA ST., SAN VICENTE, PILI, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_86,"STA. MARIA JOSEFA HOSPITAL FOUNDATION, INC.",Private Hospital,,,Accounts Receivable,4194525000,30,"BULA, CAMARINES SUR",,,,,9095927120,,,smjhfi_iriga@yahoo.com.ph,,,,Active
+ R5_87,SUPPLIMED ENTERPRISES,Dealer /  Distributor,,,Accounts Receivable,916635979000,30,"DARAGA, ALBAY",,,,,,,,,,,,Active
+ R5_88,SUPRA GRADE MEDICAL SUPPLIES,Dealer /  Distributor,,,Accounts Receivable,0,30,"S. OLA ST., SAN ALFONSO HOMES, PACOL, NAGA CITY",,,,,,,,,,,,Active
+ R5_89,TABACO COLLEGE HOSPITAL,Private Hospital,,,Accounts Receivable,114114954000,30,"NO. 6. TOMAS CABILES AVENUE, TABACO CITY",,,,,,,,,,,,Active
+ R5_91,TIGAON INFIRMARY SCHOOL,University / Schools,,,Accounts Receivable,0,30,"TIGAON, CAMARINES SUR",,,,,,,,roxie_cee@ymail.com,,,,Active
+ R5_92,TRULAB LABORATORY AND DIAGNOSTIC CENTER,Free Standing Laboratory,,,Accounts Receivable,221959280001,30,"WINWIN MALL, Roxas Avenue, Diversion Road,Triangulo, Naga City",,,,,,,,,,,,Active
+ R5_93,TWIN HEARTS DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,351105346001,30,"J. REYES ST., TALISAY, SORSOGON CITY",,,,,,,,,,,,Active
+ R5_94,UNIVERSIDAD DE STA. ISABEL DE NAGA INC.,University / Schools,,,Accounts Receivable,417226790001,30,Elias Angeles St. Naga City,,,,,,,,,,,,Active
+ R5_95,UNIVERSIDAD DE STA. ISABEL DE NAGA INC.(USI-HSD),Private Hospital,,,Accounts Receivable,417226790001,30,"Roxas Avenue, Diversion Road, Naga City",,,,,,,,,,,,Active
+ R5_96,UNIVERSITY OF STO. TOMAS-LEGAZPI INC.e,Private Hospital,,,Accounts Receivable,60000,30,"Legazpi City, Albay",,,,,,,,,,,,Active
+ R5_97,VALERA PEÑA MEDICAL CLINIC ,Free Standing Laboratory,,,Accounts Receivable,157299473000,30,"Rosario, La Union",,,,,,,,,,,,Active
+ R5_98,VILLANUEVA-TANCHULING MATERNITY AND GENERAL HOSPITAL,Private Hospital,,,Accounts Receivable,0,30,"SAN JOSE, IRIGA CITY, CAMARINES SUR",,,,,,,,,,,,Active
+ R5_99,VIZCONN DIAGNOSTIC LABORATORY,Free Standing Laboratory,,,Accounts Receivable,943963270001,30,Vinzon St. Legazpi City Alba,,,,,0966 855 5823,,,,,,,Active
+ R6_01,BIOSPECTRA MARKETING,Dealer /  Distributor,,,Accounts Receivable,191-761-192-000,30,2F MC BLDG JALANDONI EXT MANDURRIAO ILOILO CITY,,,,,0917-887-7043,033-3331447,,biospectrapharmacist@gmail.com,,,,Active
+ R6_02,"ALTAMEDICA, INC.",Dealer /  Distributor,,,Accounts Receivable,000-000-036-000,30,"2ND FLR. MASONIC TEMPLE BLDG., PLAZA LIBERTAD, J.M. BASA ST., ILOILO CITY",,,,,0938-262-1208,Ms. Jeanen Pearl G. Muya,,altapurchasing@gmail.com,,,,Active
+ R7_01,NORTHCARE DIAGNOSTICS,Free Standing Laboratory,,,Accounts Receivable,000-000-000-000,30,CEDAVILLE RESIDENCES KALUBIHAN TALAMBAN CEBU CITY,,,,,,,,,,,,Active
+R5_100,ZONE MEDICAL AND INTERVENTION HOSPITAL INC.,Private Hospital,,,,472-417-450-000,30,"BINATAGAN, LIGAO CITY, ALBAY",,,,,,,,,,,,Active
+R4A_02,5TH MEDICAL SUPPLY TRADING ,,,,,249-665-378-000,30,LOT 3 BLK 27 MARIGOLD ST. GREEN ESTATE MALAGASANG I-G IMUS CAVITE,,,,,,,,,,,,Active
+NCR_39,ST. PETER PAUL MEDICAL CLINIC,,,,,,30,"ZONE D72, 1182 GREY ST., ERMITA MANILA",,,,,,,,,,,,Active
+NCR_40,SUPERCARE MEDICAL SERVICES INC.,,,,,,30,ERMITA MANILA,,,,,,,,,,,,Active
+R4A_03,MDN NOVOHEALTH CORPORATION,,,,,,30,"BLK 10 LOT 15 SOUTH CITY DRIVE CORNER DALE ST., SOUTH CITY HOMES SANTO TOMAS BIÑAN LAGUNA",,,,,,,,,,,,Active
+R4A_04,UPLAND SPECIALTY DIAGNOSTIC CLINICS,,,,,,30,J.P RIZAL ST. MENDEZ,,,,,,,,,,,,Active
+ R4_65,GILCARE DIAGNOSTIC CLINIC,,,,,209-200-415-000,30,ROOM 202 #132 KALAYAAN AVE. BRGY. CENTRAL QUEZON CITY,,,,,,,,,,,,Active
+NCR_41,HMICARE CLINIC AND DIANGNOSTIC CENTER INC.,,,,,008-713-778-00002,30,"1152 CHINO ROCES AVENUE, MAKATI CITY",,,,,,,,,,,,Active
+R4A_05,ALPHA CARE MEDICAL LABORATORY,,,,,719-574-015-00001,30,B2 L4 JENLIGTTE BLDG. B21 L10 GRANDVALLEY MAHABANG PARANG ANGONO RIZAL,,,,,,,,,,,,Active
+NCR_42,APOLLO MEDICA TRADING CORPORATION,,,,,689-004-474-00000,30,"5515, DM RIVERA, POBLACION MAKATI CITY 1210",,,,,,,,,,,,Active
+R10_01,RBJ COMMODITIES TRADING EXPONENT,,,,,688-770-981-00000,30,11TH 30TH STS. NAZARETH CITY OF CAGAYAN DE ORO MISAMIS ORIENTAL 9000,,,,,,,,,,,,Active
+ R4_66,MANILA MED,,,,,404-778-954-00004,30,850 UNITED NATIONS AVE. PACO MANILA,,,,,,,,,,,,Active
+NCR_43,FEDEL MUNDO MEDICAL CENTER,,,,,,30,1 BANAWE ST. QUEZON CIY,,,,,,,,,,,,Active
+R4A_06,HMICARE INC.,,,,,,30,5 Cez Space Hub Construction and Development Antero Soriano Highway Cor Epza Bacao Rd. City og General Trias Cavite,,,,,,,,,,,,Active
+R4A_07,WENRRY MEDICAL LABORATORY,,,,,,30,"PASONG LANGKA, SILANG CAVITE",,,,,,,,,,,,Active
+NCR_44,HEALTHHAVEN DIAGNOSTIC SUPPLIES INC.,,,,,,30,011 (A) 12 DE JUNO STREET BACLARAN PARANAQUE CITY,,,,,,,,,,,,Active
+NCR_45,SMART CLINIQUE MEDICAL INC.,,,,,,30,LOT 106 BLK 53 BLUEMINTRIT ST. RIZAL PARK SUBD. BRGY. 515 SAMPALOC MANILA,,,,,,,,,,,,Active
+ R11_05,MEDHEALTH LABORATORY AND DIAGNOSTIC CENTER,,,,,230-045-843-0000,30,1ST CRUMB STREET ZONE 1 8002 CITY OF DIGOS DAVAO DEL SUR,,,,,,,,,,,,Active
+R4A_08,ST. ANGELO'S MULTISPECIALIST AND DIAGNOSTIC CENTER,,,,,,30,"74 MALVAR ST., SAN VICENTE, BIÑAN, LAGUNA",,,,,,,,,,,,Active
+NCR_46,ONEMED DIAGNOSTICS SUPPLIES INC.,,,,,009-812-380-000,30,262-A UNIT E SECOND FLOOR QUIRINO AVE. BACLARAN CITY PARANAQUE,,,,,,,,,,,,Active
+R4A_09,OUR LADY OF PIAT LABORATORY (LIPA),,,,,226-299-905-004,30,LIPA BATANGAS,,,,,,,,,,,,Active
+R4A_10,TANAUAN DRUG TESTING AND DIAGNOSTIC,,,,,614-297-100,30,TANAUAN BATANGAS CENTER,,,,,,,,,,,,Active
+R4A_11,GERODIAS HEALTH CARE SYSTEM CORPORATION,,,,,,30,SAN PEDRO LAGUNA,,,,,,,,,,,,Active
+R6_03,ECG DYNAMIC MEDICAL SYSTEM INC.,,,,,008-638-823-00000,30,UNIT 405 4TH FLOOR ELIZABETH CENTER NATIONAL RD. PUTATAN MUNTINLUPA CITY,,,,,,,,,,,,Active
+R4A_11,RB LIRIO MEDICAL AND DIAGNOSTIC CLINIC,,,,,206-926-503-0000,30,CALAMBA LAGUNA,,,,,,,,,,,,Active
+R4A_12,THE PARAMOUNT MEDICAL CENTER INC.,,,,,,30,BRGY. BUGTONG NA PULO LIPA CITY BATANGAS,,,,,,,,,,,,Active
+R4A_13,DCA MEDICAL LABORATORY,,,,,,30,KUMINTANG ILAYA BATANGAS CITY BATANGAS,,,,,,,,,,,,Active
+NCR_47,ORCA GENERAL MERCHANDISE OPC,,,,,,30,MAMA FINAS BLDG. 1159 DOS CAATILLAS ST. BRGY. 481 ZONE SAMPALCO,,,,,,,,,,,,Active
+R5_101,MA ROSITA HEALTHCARE CENTER INC.,,,,,,30,"1876 B-1-B MAHARLIKA HIGHWAY, CONCEPCION PEQUENA N.C",,,,,,,,,,,,Active
+R4A_14,HEALTHWAY QUALIMED HOSPITAL SANTA ROSA,,,,,,30,NUVALI NORTH SANTO DOMINGO SANTA ROSA LAGUNA,,,,,,,,,,,,Active
+R4A_15,SOUTHWEST MEDICAL CLINIC AND LABORATORY,,,,,,30,201-1 MALVAR ST. SAN VICENTE BINAN LAGUNA,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active
+,,,,,,,,,,,,,,,,,,,,Active

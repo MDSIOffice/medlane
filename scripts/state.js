@@ -1,0 +1,183 @@
+let data;
+let modalType = null;
+let editContext = null;
+let currentUser = JSON.parse(localStorage.getItem("medlane-demo-session") || "null");
+let currentClientView = null;
+let currentInvoiceFlow = null;
+let currentPrintNoDate = false;
+let selectedReconHistoryIndex = null;
+let reconciliationTab = "current";
+let collectionLeafletMap = null;
+let collectionLeafletLayer = null;
+let collectionRegionLayer = null;
+let philippinesRegionGeoJson = null;
+let arTrackerTab = "all";
+let collectionMapZoom = 1;
+let inventoryBranchTab = "Las Pinas";
+
+const philippinesRegionsGeoJsonUrl = "https://github.com/wmgeolab/geoBoundaries/raw/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
+
+const clientCoordinates = {
+  "IlocosCare Laboratory": [16.6159, 120.3209],
+  "Cagayan Valley Diagnostics": [17.6132, 121.7270],
+  "Central Luzon MedLab": [15.0333, 120.6833],
+  "CALABARZON Hospital Lab": [14.2117, 121.1653],
+  "Bicol Diagnostics": [13.6218, 123.1948],
+  "Visayas Dealer Hub": [10.3157, 123.8854],
+  "Mindanao Dealer Hub": [7.1907, 125.4553],
+};
+
+const accounts = {
+  Superadmin: { name: "Superadmin", role: "Superadmin", branch: "all", email: "superadmin@medlane.local", phone: "+63 900 000 0000", modules: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "notifications", "user-settings", "logs"] },
+  Admin: { name: "Admin User", role: "Admin", branch: "all", email: "admin@medlane.local", phone: "+63 917 100 0000", modules: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs"] },
+  CEO: { name: "CEO", role: "CEO", branch: "all", email: "ceo@medlane.local", phone: "+63 917 200 0000", modules: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "notifications", "user-settings", "logs"] },
+  Accounting: { name: "Joy Santos", role: "Accounting", branch: "all", email: "joy@medlane.local", phone: "+63 917 300 0000", modules: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"] },
+  Sales: { name: "Ana Cruz", role: "Sales", branch: "Region IV-A", email: "ana@medlane.local", phone: "+63 917 400 0000", modules: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings"] },
+  Logistics: { name: "Ramon Dela Cruz", role: "Logistics", branch: "all", email: "ramon@medlane.local", phone: "+63 917 500 0000", modules: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "logs"] },
+  HR: { name: "HR User", role: "HR", branch: "all", email: "hr@medlane.local", phone: "+63 917 600 0000", modules: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"] },
+};
+if (currentUser?.role && accounts[currentUser.role]) currentUser = accounts[currentUser.role];
+
+const sectionMeta = {
+  notifications: ["Notifications", "Review system alerts for credit limits, stock transfers, collections, and inventory risks."],
+  "user-settings": ["User Settings", "View and update your demo profile, contact details, and session preferences."],
+  "client-invoices": ["Client Invoice Timeline", "Review every invoice for one client using an order-status timeline."],
+  "report-detail": ["Report Detail", "Focused report view with graphs, source records, and connected module actions."],
+};
+
+function userProfileKey() { return `medlane-profile-${currentUser?.role || "guest"}`; }
+function passwordKey(role = currentUser?.role) { return `medlane-password-${role || "guest"}`; }
+function savedPassword(role = currentUser?.role) { return localStorage.getItem(passwordKey(role)) || "demo"; }
+function emailPasswordKey(email) { return `medlane-password-email-${String(email || "").trim().toLowerCase()}`; }
+function savedLoginPassword(email, role) { return localStorage.getItem(emailPasswordKey(email)) || savedPassword(role); }
+function platformAreas() { return data?.platformAreas?.length ? data.platformAreas : initialData.platformAreas; }
+function platformBranches() { return data?.platformBranches?.length ? data.platformBranches : initialData.platformBranches; }
+function branchAddresses() { return data?.branchAddresses || {}; }
+function invoiceApprovals() { return data?.invoiceApprovals || { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" }; }
+function isDevEnvironment() { return ["localhost", "127.0.0.1", ""].includes(location.hostname) || location.protocol === "file:"; }
+function effectiveModules() { return currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || []; }
+const roleEditableModules = {
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "notifications", "user-settings", "logs"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "notifications", "user-settings", "logs"],
+  Accounting: ["purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings"],
+  Sales: ["sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings"],
+  Logistics: ["inventory", "reports", "notifications", "user-settings", "logs"],
+  HR: ["replenishments", "reports", "notifications", "user-settings"],
+};
+function editableModules() { return currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || []; }
+function canEditModule(sectionId) { return editableModules().includes(sectionId); }
+function canEditActiveSection() { return editableModules().includes(qs(".section.active")?.id || "dashboard"); }
+function permissionModules() { return [...new Set(Object.values(accounts).flatMap((account) => account.modules))].filter((module) => !["client-invoices", "invoice-flow-detail", "report-detail"].includes(module)); }
+function followupDate() { return new Date(); }
+function followupWeekKey(date = followupDate()) {
+  const value = date instanceof Date ? new Date(date) : new Date(`${date}T00:00:00`);
+  if (Number.isNaN(value.getTime())) return "";
+  const day = (value.getDay() + 6) % 7;
+  value.setHours(0, 0, 0, 0);
+  value.setDate(value.getDate() - day);
+  return fmtDate(value);
+}
+function getCurrentProfile() {
+  const saved = JSON.parse(localStorage.getItem(userProfileKey()) || "{}");
+  return { email: currentUser?.email || `${String(currentUser?.role || "user").toLowerCase()}@medlane.local`, phone: currentUser?.phone || "+63", notes: "", ...currentUser, ...saved };
+}
+function firstName(name) { return String(name || "User").split(/\s+/)[0]; }
+function initials(name) { return String(name || "U").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
+
+function loadData() {
+  const stored = localStorage.getItem("medlane-demo-data");
+  if (!stored) return normalizeData(structuredClone(initialData));
+  const parsed = JSON.parse(stored);
+  if (parsed.dataVersion !== initialData.dataVersion) return normalizeData(structuredClone(initialData));
+  return normalizeData({ ...structuredClone(initialData), ...parsed });
+}
+
+function normalizeData(next) {
+  next.pendingTransfers ||= [];
+  next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };
+  next.invoiceApprovals ||= { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" };
+  next.transferHistory ||= [];
+  next.notifications ||= [];
+  next.reconHistory ||= [];
+  next.platformAreas ||= structuredClone(initialData.platformAreas);
+  next.platformBranches ||= structuredClone(initialData.platformBranches);
+  next.purchaseOrders ||= structuredClone(initialData.purchaseOrders || []);
+  next.collectionContacts ||= structuredClone(initialData.collectionContacts);
+  next.collectionContactHistory ||= [];
+  next.banks ||= structuredClone(initialData.banks);
+  next.paymentRequests ||= [];
+  next.inventoryPurchaseOrders ||= [];
+  next.clients = next.clients.map((client, index) => {
+    const { terms, ...clientWithoutTerms } = client;
+    const accountType = client.dealer === "Dealer" || client.dealer?.includes("Dealer") ? "Dealer" : "Direct";
+    return { dealer: accountType, salesperson: client.salesperson || "Unassigned", terms: Number(client.terms || 30), creditLimit: [180000, 120000, 210000, 160000][index] || 150000, withholdingTax: Boolean(client.withholdingTax), expandedWithholdingTax: Boolean(client.expandedWithholdingTax), docs: client.docs || "Mayor's Permit, 2303, SEC or DTI, FDALTO, GAIA", ...clientWithoutTerms, dealer: accountType };
+  });
+  next.items = next.items.map((item) => ({ brand: item.brand || item.supplier || "Medlane", uom: item.uom || "unit", ...item }));
+  next.suppliers = next.suppliers.map((supplier) => ({ brand: supplier.brand || "Multiple", ...supplier }));
+  next.employees = next.employees.map((employee, index) => {
+    const salary = Number(String(employee.salary || "").replace(/[^0-9.-]/g, ""));
+    return { ...employee, salary: Number.isFinite(salary) && salary > 0 ? salary : [85000, 52000, 42000][index] || 35000 };
+  });
+  next.inventory = next.inventory.map((stock) => ({ brand: stock.brand || next.items.find((item) => item.code === stock.code)?.brand || "Medlane", ...stock }));
+  next.pendingTransfers = next.pendingTransfers.map((transfer) => {
+    const lot = transfer.sourceLot || String(transfer.lot || "").replace(/-TR$/, "");
+    const source = next.inventory.find((item) => item.code === transfer.code && item.lot === lot) || {};
+    const expiry = transfer.expiry || source.expiry || "N/A";
+    const lines = transfer.lines?.length ? transfer.lines : [{ code: transfer.code, item: transfer.item, brand: transfer.brand || source.brand || "Medlane", qty: Number(transfer.qty || 0), uom: transfer.uom || "unit", lot, expiry }];
+    return { ...transfer, lot, sourceLot: lot, expiry, lines };
+  });
+  next.sales = next.sales.map((sale) => {
+    const client = next.clients.find((c) => c.name === sale.client);
+    const item = next.items.find((i) => i.name === sale.item);
+    const stock = next.inventory.find((entry) => entry.code === item?.code || entry.item === sale.item) || {};
+    const line = { item: sale.item, code: item?.code || sale.code || sale.item, brand: sale.brand || item?.brand || "Medlane", qty: Number(sale.qty || 1), uom: sale.uom || item?.uom || "unit", price: sale.qty ? Math.round((sale.amount || 0) / sale.qty) : item?.price || 0, lot: sale.lot || stock.lot || "Manual", expiry: sale.expiry || stock.expiry || "N/A", discount: Number(sale.discount || 0), discountReason: sale.discountReason || "", terms: Number(sale.terms || item?.terms || 30) };
+    const amount = Number(sale.amount || 0);
+    const manualDiscount = Number(sale.discount || 0);
+    const withholdingTax = Boolean(sale.withholdingTax);
+    const expandedWithholdingTax = Boolean(sale.expandedWithholdingTax);
+    return { po: sale.po || `PO-${sale.id}`, documentNo: sale.documentNo || sale.id, dealer: sale.dealer || client?.dealer || "Direct", brand: sale.brand || item?.brand || "Medlane", area: client?.area || sale.area, status: sale.status || "Active", lines: (sale.lines || [line]).map((entry) => ({ lot: stock.lot || "Manual", expiry: stock.expiry || "N/A", ...entry })), discount: manualDiscount, discountReason: sale.discountReason || "", withholdingTax, expandedWithholdingTax, autoTaxRate: 0, withholdingDiscount: 0, expandedWithholdingDiscount: 0, taxTreatment: sale.taxTreatment || [withholdingTax ? "Withholding Tax 5%" : "", expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), ...sale };
+  });
+  next.payables = next.payables.map((payable, index) => ({ id: payable.id || `PAY-${String(index + 1).padStart(3, "0")}`, requestStatus: payable.requestStatus || (payable.status === "Cancelled" ? "Cancelled" : payable.status === "Approved" ? "Approved" : "For Approval"), paymentConfirmed: Boolean(payable.paymentConfirmed), items: payable.items || [{ particulars: payable.item || "Payable", qty: Number(payable.qty || 1), uom: payable.uom || "unit", amount: Number(payable.amount || 0) }], method: payable.method || (payable.cheque ? "Cheque" : "Cash"), bank: payable.bank || "", cheque: payable.cheque || "", chequeDate: payable.chequeDate || "", uom: payable.uom || "unit", qty: Number(payable.qty || 1), ...payable }));
+  next.replenishments = next.replenishments.map((expense, index) => ({ id: expense.id || `REP-${String(index + 1).padStart(3, "0")}`, requestStatus: expense.requestStatus || (["Approved", "Approved by HR"].includes(expense.status) ? "Approved" : expense.status === "Cancelled" ? "Cancelled" : "For Approval"), paymentConfirmed: Boolean(expense.paymentConfirmed), method: expense.method || "Cash", bank: expense.bank || "", cheque: expense.cheque || "", chequeDate: expense.chequeDate || "", items: expense.items || [{ particulars: expense.file || expense.type || "Expense", amount: Number(expense.amount || 0) }], ...expense }));
+  next.payments = next.payments.map((payment) => ({ receiptNo: payment.receiptNo || payment.reference || "Manual", tag: payment.tag || (String(payment.invoice).startsWith("TS") ? "TS-PR" : "SI-CR"), dateRecorded: payment.dateRecorded || fmtDate(today), bank: payment.bank || "", chequeDate: payment.chequeDate || "", collectionStatus: payment.collectionStatus || "For Deposition", postedDate: payment.postedDate || "", cheques: payment.cheques || [], statusHistory: payment.statusHistory || [{ date: payment.dateRecorded || fmtDate(today), status: payment.collectionStatus || "For Deposition", user: payment.client || "Imported" }], ...payment }));
+  next.purchaseOrders = next.purchaseOrders.map((po) => {
+    const client = next.clients.find((item) => item.name === po.client);
+    const lines = (po.lines || []).map((line) => {
+      const item = next.items.find((entry) => entry.code === line.code || entry.name === line.item) || {};
+      return { item: line.item || item.name, code: line.code || item.code || line.item, brand: line.brand || item.brand || "Medlane", qty: Number(line.qty || 0), uom: line.uom || item.uom || "unit", price: Number(line.price || 0) };
+    });
+    return { id: po.id, client: po.client, area: po.area || client?.area || "Region I", salesperson: po.salesperson || currentUser?.name || "Demo User", date: po.date || fmtDate(today), lines, status: po.status || "For Invoicing" };
+  });
+  next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ id: po.id, supplier: po.supplier, date: po.date || fmtDate(today), status: po.status || "For Receiving", lines: po.lines || [] }));
+  const clientsWithBalance = new Set(next.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
+  next.collectionContacts = next.clients.filter((client) => clientsWithBalance.has(client.name)).map((client) => {
+    const existing = next.collectionContacts.find((contact) => contact.client === client.name || contact.area === client.area) || {};
+    const status = existing.status === "Called" ? "Unreached" : existing.status || "Pending";
+    const currentWeek = followupWeekKey();
+    const savedWeek = existing.weekKey || followupWeekKey(existing.lastContact);
+    const hasWeeklyWork = status !== "Pending" || existing.lastContact || existing.employee || existing.channels?.length;
+    const shouldReset = hasWeeklyWork && savedWeek !== currentWeek;
+    return shouldReset
+      ? { client: client.name, area: client.area, status: "Pending", lastContact: "", employee: "", channels: [], notes: "Fresh weekly follow-up. Not yet contacted this week.", weekKey: currentWeek }
+      : { client: client.name, area: client.area, status, lastContact: existing.lastContact || "", employee: existing.employee || "", channels: existing.channels || [], notes: existing.notes || "Not yet contacted this week.", weekKey: savedWeek || currentWeek };
+  });
+  return next;
+}
+
+function saveData() { localStorage.setItem("medlane-demo-data", JSON.stringify(data)); }
+function nextId(items, prefix) {
+  const next = items.reduce((max, item) => Math.max(max, Number(String(item.id || "").replace(`${prefix}-`, "")) || 0), 0) + 1;
+  return `${prefix}-${String(next).padStart(3, "0")}`;
+}
+function qs(selector) { return document.querySelector(selector); }
+function qsa(selector) { return [...document.querySelectorAll(selector)]; }
+function includesSearch(values) {
+  const term = qs("#global-search").value.trim().toLowerCase();
+  return !term || values.some((value) => String(value ?? "").toLowerCase().includes(term));
+}
+function byBranch(items, key = "branch") { return data.branch === "all" ? items : items.filter((item) => item[key] === data.branch || item[key] === "Both" || item.area === data.branch || item.office === data.branch || item.dealer === data.branch); }
+function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + Number(days)); return d; }
+function fmtDate(date) { return new Date(date).toISOString().slice(0, 10); }
+function daysUntil(date) { return Math.ceil((new Date(date) - today) / 86400000); }
+function escapeHtml(value) { return String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]); }

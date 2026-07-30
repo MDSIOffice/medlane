@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Medlane Diagnostic Solutions Demo</title>
+    <link rel="icon" type="image/jpeg" href="medlane.jpg" />
+    <link rel="apple-touch-icon" href="medlane.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQp8vz6gVq1ueMlI4p8dIiTQUx19w3A=" crossorigin="" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="loading-overlay" id="loading-overlay" aria-hidden="true">
+      <div class="loader-card"><div class="loader-orbit"><img src="medlane.jpg" alt="" /><span></span><i></i></div><strong>Loading Medlane OS</strong><small>Securing diagnostics operations...</small></div>
+    </div>
+    <div class="welcome-transition" id="welcome-transition" hidden aria-hidden="true">
+      <div class="welcome-burst"><span></span><i></i><b></b></div>
+      <img src="medlane.jpg" alt="" />
+      <strong id="welcome-transition-name">Welcome</strong>
+      <small>Loading your Medlane workspace</small>
+    </div>
+    <section class="landing-page" id="landing-page">
+      <div class="landing-ambient" aria-hidden="true"><span></span><i></i><b></b></div>
+      <div class="landing-particles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="landing-orbits" aria-hidden="true"><span></span><span></span><span></span></div>
+      <header class="landing-nav">
+        <a class="landing-brand" href="/" aria-label="Medlane Diagnostic Solutions homepage"><img src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" /><span><strong>Medlane</strong><small>Diagnostic Solutions, Inc.</small></span></a>
+        <nav class="landing-menu" aria-label="Company profile navigation">
+          <a href="#about-medlane">About</a>
+          <a href="#solutions">Solutions</a>
+          <a href="#locations">Locations</a>
+          <a href="#contact-info">Contact</a>
+        </nav>
+      </header>
+      <main class="landing-hero">
+        <section class="landing-hero-copy">
+          <p class="landing-kicker">Importer and distributor since 1997</p>
+          <h1>Laboratory diagnostics, delivered with service that stays close.</h1>
+          <p>Medlane Diagnostic Solutions supplies diagnostic equipment, reagents, consumables, and operational support for laboratories and healthcare facilities across the Philippines.</p>
+          <div class="landing-proof-strip"><span>Licensed distributor</span><span>Las Piñas HQ</span><span>Naga branch</span><span>11-50 team size</span></div>
+        </section>
+        <section class="landing-diagnostic-card" aria-label="Medlane diagnostics profile">
+          <div class="hero-card-particles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="diagnostic-scan"><span></span><i></i><b></b></div>
+          <div class="hero-product-showcase" aria-label="Sample diagnostics products from Medlane masterlist">
+            <article class="product-visual reagent" aria-label="A-Rate Drug Test 40T"><em>Rx</em><span></span><strong>Drug Test</strong><small>Reagent kit</small></article>
+            <article class="product-visual saline" aria-label="0.45% Saline"><em>IV</em><span></span><strong>Saline</strong><small>Supply bottle</small></article>
+            <article class="product-visual analyzer" aria-label="Diagnostic Equipment"><em>Dx</em><span></span><strong>Analyzer</strong><small>Equipment</small></article>
+            <article class="product-visual consumable" aria-label="Slide Mailer Cards"><em>▦</em><span></span><strong>Slide Cards</strong><small>Consumables</small></article>
+          </div>
+          <div class="diagnostic-card-head"><img src="medlane.jpg" alt="" /><strong>Medlane Diagnostic Solutions</strong><small>Equipment · Reagents · Service</small></div>
+          <div class="diagnostic-flow"><article><span>01</span><strong>Equipment</strong><small>Reliable diagnostic platforms for daily lab operations.</small></article><article><span>02</span><strong>Reagents</strong><small>Traceable supplies and kits for continuity of testing.</small></article><article><span>03</span><strong>Service</strong><small>Goal-driven support focused on long-term client relationships.</small></article></div>
+        </section>
+      </main>
+      <section class="landing-values" id="about-medlane">
+        <article data-icon="01"><span>Mission</span><strong>Outstanding service for diagnostic teams.</strong><p>Service-oriented professionals focused on client productivity, integrity, and tailored support.</p></article>
+        <article data-icon="02"><span>Vision</span><strong>A trusted name in diagnostics.</strong><p>Medlane aims to be recognized for exceptional service, innovative solutions, and customer satisfaction.</p></article>
+        <article data-icon="03"><span>Coverage</span><strong>Two operating locations.</strong><p>13 Gumamela St, Pilar Village, Las Piñas and Narra St., Mariano Village, Balatas, Naga City.</p></article>
+      </section>
+      <section class="landing-photo-story">
+        <div class="photo-story-image"></div>
+        <div class="landing-section-copy" data-icon="HQ"><p class="landing-kicker">Company Profile</p><h2>Diagnostic distribution with a relationship-first operating style.</h2><p>Medlane supports laboratories with equipment, reagents, consumables, service coordination, and branch coverage built around lasting customer relationships.</p></div>
+      </section>
+      <section class="landing-gallery" aria-label="Medlane installation highlights">
+        <div class="landing-section-copy" data-icon="FS"><p class="landing-kicker">Field Work</p><h2>Installations, training, and on-site laboratory support.</h2></div>
+        <div class="landing-gallery-grid"><figure><img src="2.jpg" alt="Medlane laboratory installation team" /><figcaption>Installation added to the books</figcaption></figure><figure><img src="3.jpg" alt="Medlane team with diagnostic analyzer" /><figcaption>Analyzer setup and handover</figcaption></figure><figure><img src="4.jpg" alt="Medlane latest installation team" /><figcaption>Latest installation high fives</figcaption></figure><figure><img src="5.jpg" alt="Medlane retraining and installation support" /><figcaption>Retraining and support</figcaption></figure></div>
+      </section>
+      <section class="landing-capabilities" id="solutions">
+        <div class="landing-section-copy" data-icon="OS"><p class="landing-kicker">What Medlane Supports</p><h2>Built for laboratories that need supplies, traceability, and dependable follow-through.</h2></div>
+        <div class="capability-grid"><article data-icon="EQ">Diagnostic equipment</article><article data-icon="RG">Reagents and diagnostic kits</article><article data-icon="CS">Consumables and supplies</article><article data-icon="IM">Importation and distribution</article><article data-icon="BR">Branch coordination</article><article data-icon="SV">Client-focused service</article></div>
+      </section>
+      <section class="landing-locations" id="locations">
+        <article data-icon="LP"><span>Las Piñas Branch / Headquarters</span><strong>Las Piñas, Metro Manila</strong><p>13 Gumamela St, Pilar Village, Las Piñas, Metro Manila 1740, PH</p><div class="landing-map"><iframe title="Medlane Las Piñas Branch map" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://maps.google.com/maps?q=14.4446,120.9977&z=17&output=embed"></iframe></div><a class="map-link" href="https://www.google.com/maps/search/?api=1&query=13%20Gumamela%20St%20Pilar%20Village%20Las%20Pinas%201740%20Metro%20Manila%20Philippines" target="_blank" rel="noreferrer">Open in Google Maps</a></article>
+        <article data-icon="NG"><span>Naga Branch</span><strong>Naga City, Camarines Sur</strong><p>Narra St., Mariano Village, Balatas, Naga City, Camarines Sur 4400, PH</p><div class="landing-map"><iframe title="Medlane Naga Branch map" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://maps.google.com/maps?q=13.6360,123.2090&z=16&output=embed"></iframe></div><a class="map-link" href="https://www.google.com/maps/search/?api=1&query=Narra%20St.%20Mariano%20Village%20Balatas%20Naga%20City%20Camarines%20Sur%204400%20Philippines" target="_blank" rel="noreferrer">Open in Google Maps</a></article>
+      </section>
+      <footer class="landing-footer" id="contact-info">
+        <div><img src="medlane.jpg" alt="" /><span><strong>Medlane Diagnostic Solutions, Inc.</strong><small>Medical Equipment Manufacturing · Privately Held · Founded 1997</small></span></div>
+        <address class="landing-contact-info"><a href="tel:288362853"><span>☎</span>288362853</a><a href="mailto:mdsolutionsph@gmail.com"><span>✉</span>mdsolutionsph@gmail.com</a></address>
+        <nav><a href="#about-medlane">About</a><a href="#solutions">Solutions</a><a href="#locations">Locations</a><a href="https://www.linkedin.com/company/medlane-diagnostic-solutions-inc/" target="_blank" rel="noreferrer">LinkedIn</a><a href="https://www.facebook.com/MedlaneDiagnosticSolutions" target="_blank" rel="noreferrer">Facebook</a></nav>
+      </footer>
+    </section>
+
+    <section class="login-screen hidden" id="login-screen">
+      <div class="login-bg-effects" aria-hidden="true">
+        <span class="login-grid-orb orb-a"></span>
+        <span class="login-grid-orb orb-b"></span>
+        <span class="login-grid-orb orb-c"></span>
+        <span class="login-circuit circuit-a"></span>
+        <span class="login-circuit circuit-b"></span>
+        <span class="login-metric metric-a"><strong>AR</strong><small>Live</small></span>
+        <span class="login-metric metric-b"><strong>Lot</strong><small>Trace</small></span>
+        <span class="login-metric metric-c"><strong>SI</strong><small>Ready</small></span>
+        <span class="login-metric metric-d"><strong>PO</strong><small>Queue</small></span>
+        <span class="login-metric metric-e"><strong>₱</strong><small>Cash</small></span>
+        <span class="login-metric metric-f"><strong>DR</strong><small>Ship</small></span>
+        <span class="login-metric metric-g"><strong>Rx</strong><small>Stock</small></span>
+        <span class="login-icon-badge icon-a">🧾</span>
+        <span class="login-icon-badge icon-b">📦</span>
+        <span class="login-icon-badge icon-c">💳</span>
+        <span class="login-icon-badge icon-d">📊</span>
+        <span class="login-icon-badge icon-e">🔔</span>
+        <span class="login-icon-badge icon-f">✅</span>
+        <span class="login-color-ribbon ribbon-a"></span>
+        <span class="login-color-ribbon ribbon-b"></span>
+      </div>
+      <div class="login-card">
+        <div class="brand login-brand">
+          <img class="brand-logo" src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" />
+          <div>
+            <strong>Medlane</strong>
+            <span>Diagnostic Solutions System</span>
+          </div>
+        </div>
+        <div>
+          <h1>Sign in to Medlane OS</h1>
+        </div>
+        <form id="login-form" class="login-form">
+          <label for="login-email">Email</label>
+          <input id="login-email" type="email" autocomplete="email" placeholder="name@medlane.local" required />
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" autocomplete="current-password" required />
+          <label class="remember-login-row"><input id="remember-login" type="checkbox" /> <span>Remember email and password on this device</span></label>
+          <button class="primary-button" type="submit">Login</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="reset-screen hidden" id="reset-screen">
+      <form class="reset-card" id="reset-password-form">
+        <div class="brand login-brand">
+          <img class="brand-logo" src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" />
+          <div>
+            <strong>Medlane</strong>
+            <span>Password Reset</span>
+          </div>
+        </div>
+        <h1>Create New Password</h1>
+        <p id="reset-password-email"></p>
+        <input id="reset-token" name="token" type="hidden" />
+        <input id="reset-email" name="email" type="hidden" />
+        <div class="form-grid">
+          <div class="field full"><label for="reset-new-password">New Password</label><input id="reset-new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" required /></div>
+          <div class="field full"><label for="reset-confirm-password">Confirm Password</label><input id="reset-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required /></div>
+          <p class="password-rules full">Use at least 8 characters with one letter and one number.</p>
+        </div>
+        <div class="modal-actions"><button class="ghost-button" id="reset-password-cancel" type="button">Cancel</button><button class="primary-button" type="submit">Update Password</button></div>
+      </form>
+    </section>
+
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-logo" src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" />
+        <div>
+          <strong>Medlane OS</strong>
+          <span>Diagnostics Distribution</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-item active" data-section="dashboard" data-title="Dashboard" data-description="Executive overview of sales, collections, receivables, stock alerts, and urgent operational actions."><span class="nav-icon">🏠</span><span>Dashboard</span></button>
+        <button class="nav-item" data-section="analytics" data-title="Analytics" data-description="Visual charts for branch sales, AR status, top products, collection efficiency, inventory health, and recommendations."><span class="nav-icon">📊</span><span>Analytics</span></button>
+        <button class="nav-item" data-section="masterlists" data-title="Masterlists" data-description="Central source records for clients, reagents/items, suppliers, and employees used throughout the system."><span class="nav-icon">🗂️</span><span>Masterlists</span></button>
+        <button class="nav-item" data-section="inventory" data-title="Inventory" data-description="Track branch stocks by item, lot number, serial number, expiry date, quantity, minimum level, and transfer status."><span class="nav-icon">📦</span><span>Inventory</span></button>
+        <button class="nav-item" data-section="purchase-orders" data-title="Purchase Orders" data-description="Create and monitor purchase orders before inventory is served or invoiced."><span class="nav-icon">🛒</span><span>Purchase Orders</span></button>
+        <button class="nav-item" data-section="sales" data-title="Sales" data-description="Review SI and TS sales by client, area, salesperson, amount, terms, and payment status."><span class="nav-icon">💸</span><span>Sales</span></button>
+        <button class="nav-item" data-section="invoicing" data-title="Invoicing" data-description="Create SI, TS, and DR documents from pending purchase orders with lot/expiry stock deduction."><span class="nav-icon">🧾</span><span>Invoicing</span></button>
+        <button class="nav-item" data-section="collections" data-title="Collections" data-description="Record client payments, monitor partial payments, and identify near-due or overdue accounts."><span class="nav-icon">💳</span><span>Collections</span></button>
+        <button class="nav-item" data-section="receivables-tracker" data-title="Receivables" data-description="Track each invoice from purchase order to sale, delivery, payment, and collection status."><span class="nav-icon">🧭</span><span>Receivables</span></button>
+        <button class="nav-item" data-section="warranty" data-title="Warranty" data-description="Monitor diagnostic equipment warranty, serial numbers, installation dates, and service follow-up notes."><span class="nav-icon">🛡️</span><span>Warranty</span></button>
+        <button class="nav-item" data-section="purchase-history" data-title="Client History" data-description="See each client’s purchase count, purchased items, lifetime value, AR balance, and last purchase date."><span class="nav-icon">📜</span><span>History</span></button>
+        <button class="nav-item" data-section="payables" data-title="Payables" data-description="Track supplier bills, cheque details, partial payments, balances, and payment voucher information."><span class="nav-icon">🏦</span><span>Payables</span></button>
+        <button class="nav-item" data-section="replenishments" data-title="Expenses" data-description="Submit and monitor petty cash, per diem, and expense requests for HR and Accounting approval."><span class="nav-icon">🧮</span><span>Expenses</span></button>
+        <button class="nav-item" data-section="imports" data-title="Excel / CSV Import" data-description="Import spreadsheet records to support migration from existing Excel or Google Sheets files."><span class="nav-icon">📥</span><span>Import</span></button>
+        <button class="nav-item" data-section="reports" data-title="Reports" data-description="Preview and print management, compliance, inventory, collections, warranty, and audit reports."><span class="nav-icon">📑</span><span>Reports</span></button>
+        <button class="nav-item" data-section="reconciliation" data-title="Reconciliation" data-description="Run manual checks to validate documents, stock, payments, credit limits, and linked records."><span class="nav-icon">✅</span><span>Recon</span></button>
+        <button class="nav-item" data-section="security" data-title="Security" data-description="Preview money-protection controls for compromised passwords, lost phones, approvals, and audit trails."><span class="nav-icon">🔐</span><span>Security</span></button>
+        <button class="nav-item" data-section="users" data-title="Users" data-description="Manage user accounts, roles, branch access, and allowed modules."><span class="nav-icon">👥</span><span>Users</span></button>
+        <button class="nav-item" data-section="settings" data-title="Settings" data-description="Configure platform branches used by branch-specific workflows."><span class="nav-icon">⚙</span><span>Settings</span></button>
+        <button class="nav-item" data-section="logs" data-title="Audit Logs" data-description="Review traceable user activity including edits, imports, exports, stock changes, and payment postings."><span class="nav-icon">🕘</span><span>Audit Logs</span></button>
+      </nav>
+    </aside>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Medlane Diagnostic Solutions</p>
+          <h1 id="page-title">Dashboard</h1>
+          <p class="page-description" id="page-description">Executive overview of sales, collections, receivables, stock alerts, and urgent operational actions.</p>
+        </div>
+        <div class="topbar-actions">
+          <input id="global-search" class="search-input" type="search" placeholder="Search client, reagent, invoice..." />
+          <div class="notification-menu">
+            <button class="icon-button notification-button" id="notification-toggle" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notification-popover"><span class="notification-symbol">🔔</span><span id="notification-count">0</span></button>
+            <div class="notification-popover" id="notification-popover" hidden>
+              <div class="notification-popover-header"><strong>Recent Notifications</strong><button class="link-button dark" id="view-all-notifications" type="button">View all</button></div>
+              <div class="alert-list compact-alerts" id="notification-recent-list"></div>
+            </div>
+          </div>
+          <select id="branch-filter" aria-label="Branch filter">
+            <option value="all">All Areas</option>
+            <option value="Region I">Region I</option>
+            <option value="Region II">Region II</option>
+            <option value="Region III">Region III</option>
+            <option value="Region IV-A">Region IV-A</option>
+            <option value="Region V">Region V</option>
+            <option value="Visayas Dealer">Visayas Dealer</option>
+            <option value="Mindanao Dealer">Mindanao Dealer</option>
+          </select>
+          <button class="ghost-button" id="reset-demo">Reset Demo</button>
+          <button class="primary-button" id="export-demo" hidden>Export Summary</button>
+          <div class="user-menu">
+            <button class="user-chip" id="user-menu-toggle" type="button" aria-expanded="false" aria-controls="user-popover"><span id="welcome-name">Welcome</span><strong id="user-initials">U</strong></button>
+            <div class="user-popover" id="user-popover" hidden>
+              <strong id="user-popover-name">Demo User</strong>
+              <span id="user-popover-role">Role</span>
+              <button class="ghost-button" id="open-settings" type="button">User settings</button>
+              <button class="link-button dark" id="logout-top-button" type="button">Logout</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="print-header" aria-label="Printable business header">
+        <img src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" />
+        <div>
+          <strong>Medlane Diagnostic Solutions, Inc.</strong>
+          <span>13 Gumamela Street, Pilar Village, Las Piñas, Philippines, 1781</span>
+        </div>
+      </section>
+
+      <section class="section active" id="dashboard">
+        <div class="toolbar dashboard-date-filter">
+          <div class="field"><label for="dashboard-date-from">Dashboard from</label><input id="dashboard-date-from" type="date" /></div>
+          <div class="field"><label for="dashboard-date-to">Dashboard until</label><input id="dashboard-date-to" type="date" /></div>
+          <button class="ghost-button" id="clear-dashboard-dates" type="button">All Dates</button>
+        </div>
+        <section class="feature-strip" aria-label="Core Medlane workflows">
+          <article><span class="feature-icon">▤</span><strong>Lot & Expiry</strong><small>Reagent traceability</small></article>
+          <article><span class="feature-icon">▧</span><strong>BIR-Ready SI/TS/DR</strong><small>Tax and terms</small></article>
+          <article><span class="feature-icon">◆</span><strong>Document Vault</strong><small>BIR, SEC, FDA, COA</small></article>
+          <article><span class="feature-icon">◇</span><strong>Branch Transfers</strong><small>Las Pinas ↔ Naga</small></article>
+          <article><span class="feature-icon">◉</span><strong>Service Records</strong><small>Warranty and installs</small></article>
+          <article><span class="feature-icon">⇪</span><strong>CSV Import</strong><small>Spreadsheet migration</small></article>
+        </section>
+        <div class="stats-grid">
+          <article class="stat-card accent-blue"><span class="card-icon">₱</span><span>Total Sales</span><strong id="sales-total">PHP 0</strong><small>SI + TS</small></article>
+          <article class="stat-card accent-green"><span class="card-icon">●</span><span>Collections</span><strong id="collection-total">PHP 0</strong><small>Received payments</small></article>
+          <article class="stat-card accent-orange"><span class="card-icon">◌</span><span>Outstanding AR</span><strong id="outstanding-total">PHP 0</strong><small>Needs follow-up</small></article>
+          <article class="stat-card accent-red"><span class="card-icon">!</span><span>Stock Alerts</span><strong id="alert-total">0</strong><small>Low / expiring</small></article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel wide">
+            <div class="panel-header"><div><p class="eyebrow">Needs Attention</p><h2>Action Center</h2></div><span class="badge danger" id="urgent-count">0 urgent</span></div>
+            <div class="alert-list" id="alerts-list"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Region Performance</p><h2>Regions I-V and dealer areas</h2></div></div>
+            <div class="branch-bars" id="branch-bars"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Compliance</p><h2>Record Health</h2></div></div>
+            <ul class="compact-list" id="health-list"></ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="analytics">
+        <div class="section-header"><div><p class="eyebrow">Analytics</p><h2>Visual Business Insights</h2></div><button class="primary-button" id="print-analytics">Print Analytics</button></div>
+        <div class="tabs" id="analytics-tabs">
+          <button class="tab active" data-analytics-tab="current">Current Operations</button>
+          <button class="tab" data-analytics-tab="growth">Future Growth</button>
+        </div>
+        <div class="analytics-grid analytics-panel active" data-analytics-panel="current">
+          <article class="panel chart-wide"><div class="panel-header"><div><p class="eyebrow">Trend</p><h2>Monthly Sales Line Graph</h2></div></div><div class="line-chart" id="analytics-sales-trend"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Sales Team</p><h2>Salesperson Bar Graph</h2></div></div><div class="vertical-bars" id="analytics-salesperson-bars"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Revenue</p><h2>Sales by Region / Dealer</h2></div></div><div class="chart-bars compact-chart" id="analytics-branch-sales"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Dealers</p><h2>Dealers per Area</h2></div></div><div class="chart-bars compact-chart" id="analytics-dealers-area"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Coverage</p><h2>Area vs Dealer Sales</h2></div></div><div class="donut-wrap" id="analytics-area-dealer"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Brands</p><h2>Top Brands</h2></div></div><div class="chart-bars compact-chart" id="analytics-top-brands"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Receivables</p><h2>AR Status Mix</h2></div></div><div class="donut-wrap" id="analytics-ar-mix"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Products</p><h2>Top Items Sold</h2></div></div><div class="chart-bars compact-chart" id="analytics-top-items"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Collections</p><h2>Collection Efficiency</h2></div></div><div class="big-number" id="analytics-collection-rate">0%</div><p id="analytics-collection-note"></p></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Inventory Risk</p><h2>Stock Health</h2></div></div><div class="chart-bars compact-chart" id="analytics-stock-health"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Expenses</p><h2>Expense per Classification</h2></div></div><div class="chart-bars compact-chart" id="analytics-expense-classification"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Profitability</p><h2>Revenue vs Expenses</h2></div></div><div class="chart-bars compact-chart" id="analytics-revenue-expenses"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Management Notes</p><h2>Recommended Actions</h2></div></div><ul class="compact-list" id="analytics-insights"></ul></article>
+        </div>
+        <div class="analytics-grid analytics-panel" data-analytics-panel="growth">
+          <article class="panel chart-wide"><div class="panel-header"><div><p class="eyebrow">Forecast</p><h2>Projected Sales Growth</h2></div><span class="badge">Demo projection</span></div><div class="line-chart" id="growth-sales-forecast"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Pipeline</p><h2>Client Growth by Area</h2></div></div><div class="chart-bars compact-chart" id="growth-client-pipeline"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Opportunity</p><h2>Product Demand Outlook</h2></div></div><div class="vertical-bars" id="growth-product-demand"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Cashflow</p><h2>Collection Recovery Potential</h2></div></div><div class="donut-wrap" id="growth-collection-potential"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Risk</p><h2>Stock Coverage Forecast</h2></div></div><div class="chart-bars compact-chart" id="growth-stock-coverage"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Recommendations</p><h2>Growth Plays</h2></div></div><ul class="compact-list" id="growth-recommendations"></ul></article>
+        </div>
+      </section>
+
+      <section class="section" id="masterlists">
+        <div class="section-header"><div><p class="eyebrow">Masterlists</p><h2>Clients, reagents, suppliers, employees</h2></div><button class="primary-button" id="master-add-button">Add Client</button></div>
+        <div class="tabs" id="master-tabs">
+          <button class="tab active" data-master="clients">Clients</button>
+          <button class="tab" data-master="items">Items</button>
+          <button class="tab" data-master="suppliers">Suppliers</button>
+          <button class="tab" data-master="branches">Branches</button>
+          <button class="tab" data-master="employees">Employees</button>
+          <button class="tab" data-master="banks">Banks</button>
+        </div>
+        <div class="master-overview" id="master-overview"></div>
+        <article class="panel settings-panel platform-settings-panel" id="platform-branch-panel">
+          <div class="panel-header"><div><p class="eyebrow">Branch Masterlist</p><h2>Physical Branches</h2></div></div>
+          <form id="platform-branch-form" class="toolbar">
+            <input id="platform-branch-name" class="search-input" name="branch" placeholder="New branch name" required />
+            <input id="platform-branch-address" class="search-input" name="address" placeholder="Branch address" required />
+            <button class="primary-button" type="submit">Add Branch</button>
+          </form>
+          <div class="platform-area-list" id="platform-branch-list"></div>
+        </article>
+        <div class="table-card"><table id="master-table"></table></div>
+      </section>
+
+      <section class="section" id="inventory">
+        <div class="section-header"><div><p class="eyebrow">Inventory</p><h2>Stocks by branch, lot, expiry, serial</h2></div></div>
+        <div class="toolbar"><select id="inventory-status"><option value="all">All Status</option><option>Available</option><option>Low Stock</option><option>Near Expiry</option><option>Critical</option><option>For Disposal</option></select></div>
+        <div class="visual-grid" id="inventory-visuals"></div>
+        <div class="inventory-action-row">
+          <button class="ghost-button" data-action="open-modal" data-type="inventoryPurchaseOrder">Inventory PO</button>
+          <button class="primary-button" id="open-stock-sheet" type="button">Receive Stock</button>
+          <button class="primary-button" id="open-transfer-sheet" type="button">Stock Transfer</button>
+          <button class="ghost-button" id="open-transfer-history" type="button">Transfer History</button>
+        </div>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div></article>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div></article>
+        <div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div>
+        <div class="table-card"><table id="inventory-table"></table></div>
+      </section>
+
+      <section class="section" id="sales">
+        <div class="section-header"><div><p class="eyebrow">Sales Review</p><h2>SI and TS by client, area, sales person, and payment status</h2></div></div>
+        <div class="near-expiry-banner" id="near-expiry-sales-alert"></div>
+        <div class="toolbar"><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select></div>
+        <div class="table-card"><table id="sales-table"></table></div>
+        <article class="panel sales-total-panel"><div class="sales-summary-grid" id="sales-summary-grid"></div></article>
+      </section>
+
+      <section class="section" id="purchase-orders">
+        <div class="section-header"><div><p class="eyebrow">Purchase Orders</p><h2>Client orders before serving and invoicing</h2></div><button class="primary-button" data-action="open-modal" data-type="purchaseOrder">New Purchase Order</button></div>
+        <div class="toolbar date-toolbar">
+          <div class="field"><label for="po-date-from">PO from</label><input id="po-date-from" type="date" /></div>
+          <div class="field"><label for="po-date-to">PO to</label><input id="po-date-to" type="date" /></div>
+          <button class="ghost-button" id="clear-po-dates" type="button">All Dates</button>
+        </div>
+        <div class="visual-grid" id="purchase-order-visuals"></div>
+        <div class="invoice-grid" id="purchase-order-grid"></div>
+      </section>
+
+      <section class="section" id="invoicing">
+        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>SI, TS, and DR from purchase orders</h2></div><button class="primary-button" data-action="open-modal" data-type="invoice">Create Sales Invoice</button></div>
+        <div class="invoice-workbench">
+          <article class="panel feature-panel"><h3>Automation</h3><ul class="check-list"><li><span>▧</span>SI / TS / DR document no.</li><li><span>₱</span>PO-based item serving</li><li><span>▤</span>Lot and expiry entry deducts stock</li><li><span>◇</span>Partial serving keeps PO pending</li></ul></article>
+          <div class="invoice-grid" id="invoice-grid"></div>
+        </div>
+      </section>
+
+      <section class="section" id="collections">
+        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Collections, due dates, partial payments</h2></div><div class="topbar-actions"><button class="ghost-button" data-action="open-modal" data-type="paymentRequest">Payment Request</button><button class="primary-button" data-action="open-modal" data-type="payment">Record Payment</button></div></div>
+        <article class="panel sales-total-panel"><div class="sales-summary-grid" id="collections-summary-grid"></div></article>
+        <div class="visual-grid" id="collections-visuals"></div>
+        <article class="panel collection-map-panel">
+          <div class="panel-header"><div><p class="eyebrow">Weekly Contact Map</p><h2>Client Follow-up Status Across the Philippines</h2><p>Manually mark each client and the channels used this week.</p></div><span class="badge">Call / email / telephone</span></div>
+          <div class="collection-map-layout">
+            <div class="ph-map" id="collection-map"></div>
+            <div>
+              <div class="collection-map-actions" id="collection-map-actions"></div>
+              <button class="ghost-button" id="open-followup-history" type="button">Follow-up History</button>
+            </div>
+          </div>
+        </article>
+        <div class="table-card"><table id="collections-table"></table></div>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Requests</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div></article>
+      </section>
+
+      <section class="section" id="receivables-tracker">
+        <div class="section-header"><div><p class="eyebrow">Receivables</p><h2>PO to invoice to collection flow</h2></div></div>
+        <div class="order-status-tabs" id="ar-tracker-tabs"></div>
+        <div class="visual-grid" id="ar-tracker-visuals"></div>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Regional Receivables</p><h2>Open client invoices grouped by region</h2></div></div><div class="table-card compact-table"><table id="regional-receivables-table"></table></div></article>
+        <div class="tracker-grid" id="receivables-tracker-grid"></div>
+      </section>
+
+      <section class="section" id="client-invoices">
+        <div class="section-header"><div><p class="eyebrow">Client Invoice Timeline</p><h2 id="client-invoices-title">Client invoices</h2></div><button class="ghost-button" data-go-section="receivables-tracker">Back to AR Tracker</button></div>
+        <div class="tracker-grid" id="client-invoices-grid"></div>
+      </section>
+
+      <section class="section" id="invoice-flow-detail">
+        <div class="section-header"><div><p class="eyebrow">Order Flow Details</p><h2 id="invoice-flow-title">Invoice Timeline</h2></div><button class="ghost-button" data-go-section="receivables-tracker">Back to AR Tracker</button></div>
+        <article class="panel" id="invoice-flow-detail-panel"></article>
+      </section>
+
+      <section class="section" id="warranty">
+        <div class="section-header"><div><p class="eyebrow">Equipment Warranty</p><h2>Serial numbers, installs, service status</h2></div><button class="primary-button" data-action="open-modal" data-type="warranty">Add Warranty</button></div>
+        <div class="visual-grid" id="warranty-visuals"></div>
+        <div class="table-card"><table id="warranty-table"></table></div>
+      </section>
+
+      <section class="section" id="purchase-history">
+        <div class="section-header"><div><p class="eyebrow">Client History</p><h2>Items bought, frequency, and account value</h2></div></div>
+        <div class="table-card"><table id="purchase-history-table"></table></div>
+      </section>
+
+      <section class="section" id="imports">
+        <div class="section-header"><div><p class="eyebrow">Excel / CSV Import</p><h2>Import spreadsheet records into the demo</h2></div><button class="primary-button" id="import-sample">Load Sample</button></div>
+        <article class="panel import-panel">
+          <p>Paste masterlist CSV data from <strong>CLIENTS</strong>, <strong>SUPPLIERS / VENDORS</strong>, or <strong>PRODUCTS / SERVICES</strong>. The preview detects the format, flags duplicates/missing fields, and imports only confirmed rows.</p>
+          <textarea id="csv-input" placeholder="client,ABC Laboratory,Region IV-A,Address,Contact,123-456-789-000"></textarea>
+          <div class="modal-actions"><button class="ghost-button" id="check-import" type="button">Preview Import</button></div>
+          <div class="import-preview-summary" id="import-preview-summary" aria-live="polite"></div>
+          <div class="table-card compact-table"><table id="import-check-table"></table></div>
+          <div class="modal-actions"><button class="ghost-button" id="clear-import">Clear</button><button class="primary-button" id="run-import">Import Confirmed Rows</button></div>
+        </article>
+        <div class="table-card"><table id="imports-table"></table></div>
+      </section>
+
+      <section class="section" id="payables">
+        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Supplier Payables And Payment Vouchers</h2></div><button class="primary-button" data-action="open-modal" data-type="payable">Payable Request</button></div>
+        <article class="panel sales-total-panel"><div class="sales-summary-grid" id="payables-summary-grid"></div></article>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payable Requests</p><h2>For approval</h2></div></div><div class="table-card compact-table"><table id="payable-requests-table"></table></div></article>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Final Payables</p><h2>Approved and ready for payment confirmation</h2></div></div><div class="table-card compact-table"><table id="final-payables-table"></table></div></article>
+        <div class="table-card"><table id="payables-table"></table></div>
+      </section>
+
+      <section class="section" id="replenishments">
+        <div class="section-header"><div><p class="eyebrow">Expenses</p><h2>Petty Cash, Per Diem, And Operating Expenses</h2></div><button class="primary-button" data-action="open-modal" data-type="replenishment">Expense Request</button></div>
+        <article class="panel sales-total-panel"><div class="sales-summary-grid" id="expenses-summary-grid"></div></article>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Expense Requests</p><h2>For approval</h2></div></div><div class="table-card compact-table"><table id="expense-requests-table"></table></div></article>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Confirmed Expenses</p><h2>Approved and ready for payment confirmation</h2></div></div><div class="table-card compact-table"><table id="confirmed-expenses-table"></table></div></article>
+        <div class="table-card"><table id="replenishments-table"></table></div>
+      </section>
+
+      <section class="section" id="reconciliation">
+        <div class="section-header"><div><p class="eyebrow">Reconciliation</p><h2>Manual Data Integrity Checks</h2></div><button class="primary-button" id="run-reconciliation">Run Reconciliation</button></div>
+        <div class="toolbar recon-toolbar">
+          <div class="field"><label for="recon-date-from">Check records from</label><input id="recon-date-from" type="date" /></div>
+          <div class="field"><label for="recon-date-to">Check records until</label><input id="recon-date-to" type="date" /></div>
+          <div class="field"><label for="recon-period">Compare by</label><select id="recon-period"><option value="day">Day</option><option value="month" selected>Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></div>
+          <button class="ghost-button" id="clear-recon-dates" type="button">All Dates</button>
+        </div>
+        <div class="tabs" id="reconciliation-tabs"><button class="tab active" data-recon-tab="current">Current Check</button><button class="tab" data-recon-tab="history">History</button></div>
+        <div class="recon-tab-panel active" data-recon-panel="current">
+          <article class="panel recon-help" id="reconciliation-description"></article>
+          <article class="panel recon-help"><div class="panel-header"><div><p class="eyebrow">Comparison</p><h2>Daily, Monthly, Quarterly, Yearly Results</h2></div></div><div class="chart-bars" id="reconciliation-comparison"></div></article>
+          <div class="dashboard-grid" id="reconciliation-summary"></div>
+          <div class="table-card"><table id="reconciliation-table"></table></div>
+        </div>
+        <div class="recon-tab-panel" data-recon-panel="history">
+          <article class="panel recon-help"><div class="panel-header"><div><p class="eyebrow">History</p><h2>Past Reconciliation Runs</h2></div></div><div class="table-card compact-table"><table id="reconciliation-history-table"></table></div></article>
+        </div>
+      </section>
+
+      <section class="section" id="security">
+        <div class="section-header"><div><p class="eyebrow">Security</p><h2>Money Protection Controls</h2></div></div>
+        <div class="security-grid" id="security-grid"></div>
+      </section>
+
+      <section class="section" id="reports">
+        <div class="section-header"><div><p class="eyebrow">Reports</p><h2>Management, compliance, and operations</h2></div><button class="primary-button" id="print-report">Print Report</button></div>
+        <div class="report-grid" id="report-grid"></div>
+      </section>
+
+      <section class="section" id="report-detail">
+        <div class="section-header"><div><p class="eyebrow">Report Detail</p><h2 id="report-detail-title">Report</h2></div><button class="ghost-button" data-go-section="reports">Back to Reports</button></div>
+        <article class="panel report-page" id="report-page-detail"></article>
+      </section>
+
+      <section class="section" id="users">
+        <div class="section-header"><div><p class="eyebrow">Admin Editable</p><h2>Users And Permissions</h2></div><button class="primary-button" data-action="open-modal" data-type="user">Invite User</button></div>
+        <div class="table-card"><table id="users-table"></table></div>
+      </section>
+
+      <section class="section" id="notifications">
+        <div class="section-header"><div><p class="eyebrow">Notifications</p><h2>Operational alerts and approvals</h2></div><button class="ghost-button" id="clear-notifications">Clear Read</button></div>
+        <div class="alert-list" id="notification-list"></div>
+      </section>
+
+      <section class="section" id="user-settings">
+        <div class="section-header"><div><p class="eyebrow">Account</p><h2>User Settings</h2></div></div>
+        <article class="panel settings-panel">
+          <form id="settings-form" class="form-grid">
+            <div class="field"><label for="settings-name">Display Name</label><input id="settings-name" name="name" readonly /></div>
+            <div class="field"><label for="settings-email">Email</label><input id="settings-email" name="email" type="email" required /></div>
+            <div class="field"><label for="settings-phone">Mobile Number</label><input id="settings-phone" name="phone" required /></div>
+            <div class="field"><label for="settings-branch">Default Area</label><input id="settings-branch" name="branch" readonly /></div>
+            <div class="field"><label for="settings-role">Role</label><input id="settings-role" name="role" readonly /></div>
+            <div class="field"><label>Password</label><button class="ghost-button" id="open-password-modal" type="button">Change Password</button></div>
+            <label class="ios-check-row full"><input id="settings-custom-permissions" name="customPermissions" type="checkbox" /><span></span><strong>Customize this user's viewable/editable permissions</strong></label>
+            <div class="field full" id="settings-permissions-panel"></div>
+            <div class="field full"><label for="settings-notes">Profile Notes</label><textarea id="settings-notes" name="notes"></textarea></div>
+            <div class="modal-actions full"><button class="primary-button" type="submit">Save Settings</button></div>
+          </form>
+        </article>
+      </section>
+
+      <section class="section" id="settings">
+        <div class="section-header"><div><p class="eyebrow">Platform Settings</p><h2>Branches, Templates, Tutorial</h2><p class="page-description">Configure branches, invoice signatories, tutorials, and demo-only controls.</p></div></div>
+        <article class="panel settings-panel">
+          <div class="panel-header"><div><p class="eyebrow">Invoice Template Names</p><h2>Approved By</h2></div></div>
+          <form id="invoice-approval-form" class="form-grid">
+            <div class="field"><label for="approved-si">SI Approved By</label><input id="approved-si" name="SI" /></div>
+            <div class="field"><label for="approved-ts">TS Approved By</label><input id="approved-ts" name="TS" /></div>
+            <div class="field"><label for="approved-dr">DR Approved By</label><input id="approved-dr" name="DR" /></div>
+            <div class="modal-actions full"><button class="primary-button" type="submit">Save Invoice Names</button></div>
+          </form>
+        </article>
+        <article class="panel settings-panel" id="dev-settings-panel" hidden>
+          <div class="panel-header"><div><p class="eyebrow">Developer</p><h2>Demo Controls</h2></div></div>
+          <button class="ghost-button" id="reset-demo-settings" type="button">Reset Demo</button>
+        </article>
+        <article class="panel settings-panel">
+          <div class="panel-header"><div><p class="eyebrow">Tutorial</p><h2>How To Use Each Module</h2></div></div>
+          <div class="tutorial-list" id="settings-tutorial"></div>
+        </article>
+      </section>
+
+      <section class="section" id="logs">
+        <div class="section-header"><div><p class="eyebrow">Traceability</p><h2>Audit Trail For Data Accuracy</h2></div><button class="ghost-button" id="clear-logs">Clear Demo Logs</button></div>
+        <div class="toolbar log-filter-toolbar">
+          <div class="field"><label for="logs-date-from">From</label><input id="logs-date-from" type="date" /></div>
+          <div class="field"><label for="logs-date-to">To</label><input id="logs-date-to" type="date" /></div>
+          <div class="field"><label for="logs-role-filter">Role/User</label><select id="logs-role-filter"><option value="all">All Roles</option></select></div>
+          <div class="field"><label for="logs-module-filter">Module</label><select id="logs-module-filter"><option value="all">All Modules</option></select></div>
+          <button class="ghost-button" id="clear-log-filters" type="button">Clear Filters</button>
+        </div>
+        <div class="table-card"><table id="logs-table"></table></div>
+      </section>
+      <footer class="site-footer">
+        <strong>Designed and developed by <a href="https://www.instagram.com/" target="_blank" rel="noreferrer">Geo Dominic Pineda</a></strong>
+        <span><a href="mailto:geodominic.pineda@gmail.com">geodominic.pineda@gmail.com</a> · <a href="tel:+639613479462">+639613479462</a></span>
+      </footer>
+    </main>
+
+    <dialog class="modal" id="demo-modal">
+      <form method="dialog" id="modal-form">
+        <div class="modal-header"><div><p class="eyebrow" id="modal-kicker">Demo Form</p><h2 id="modal-title">Add Record</h2></div><button class="icon-button" id="modal-close" type="button" aria-label="Close">x</button></div>
+        <div class="form-grid" id="modal-fields"></div>
+        <div class="modal-actions"><button class="ghost-button" id="modal-cancel" type="button">Cancel</button><button class="primary-button" id="modal-submit" type="submit">Save Record</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal sheet-modal" id="stock-sheet-modal">
+      <div class="sheet-modal-body">
+        <div class="modal-header"><div><p class="eyebrow">Receive Stock</p><h2>Spreadsheet Entry</h2></div><button class="icon-button" id="stock-sheet-close" type="button" aria-label="Close">x</button></div>
+        <div class="table-card compact-table sheet-table-card"><table id="stock-sheet-table"></table></div>
+        <div class="sheet-modal-actions"><button class="ghost-button" id="add-stock-sheet-row" type="button">Add Item</button><div class="modal-actions"><button class="ghost-button" id="stock-sheet-cancel" type="button">Cancel</button><button class="primary-button" id="save-stock-sheet" type="button">Save Received Stock</button></div></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal sheet-modal" id="transfer-sheet-modal">
+      <div class="sheet-modal-body">
+        <div class="modal-header"><div><p class="eyebrow">Stock Transfer</p><h2>Branch Movement</h2></div><button class="icon-button" id="transfer-sheet-close" type="button" aria-label="Close">x</button></div>
+        <div class="table-card compact-table sheet-table-card"><table id="transfer-sheet-table"></table></div>
+        <div class="sheet-modal-actions"><button class="ghost-button" id="add-transfer-sheet-row" type="button">Add Item</button><div class="modal-actions"><button class="ghost-button" id="transfer-sheet-cancel" type="button">Cancel</button><button class="primary-button" id="save-transfer-sheet" type="button">Create Transfer</button></div></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal report-modal" id="transfer-history-modal">
+      <div class="report-preview">
+        <div class="modal-header"><div><p class="eyebrow">Transfer History</p><h2>Stock Movement Audit</h2></div><button class="icon-button" id="transfer-history-close" type="button" aria-label="Close">x</button></div>
+        <p>Review every transfer action, including source, destination, quantity, lot, user, and notes.</p>
+        <div class="table-card compact-table"><table id="transfer-history-table"></table></div>
+        <div class="modal-actions"><button class="ghost-button" id="transfer-history-cancel" type="button">Close</button></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal report-modal" id="report-preview-modal">
+      <div class="report-preview">
+        <section class="print-header report-print-header" aria-label="Printable report business header">
+          <img src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" />
+          <div>
+            <strong>Medlane Diagnostic Solutions, Inc.</strong>
+            <span>13 Gumamela Street, Pilar Village, Las Piñas, Philippines, 1781</span>
+          </div>
+        </section>
+        <div class="modal-header"><div><p class="eyebrow">Report Preview</p><h2 id="report-preview-title">Report</h2></div><button class="icon-button" id="report-preview-close" type="button" aria-label="Close">x</button></div>
+        <p id="report-preview-description"></p>
+        <div id="report-preview-content"></div>
+        <div class="modal-actions"><button class="ghost-button" id="report-preview-cancel" type="button">Close</button><button class="ghost-button" id="report-preview-print-no-date" type="button">Print Without Date</button><button class="primary-button" id="report-preview-print" type="button">Print Preview</button></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal report-modal collection-detail-modal" id="collection-detail-modal">
+      <div class="report-preview collection-detail-preview">
+        <div class="modal-header"><div><p class="eyebrow">Collections</p><h2 id="collection-detail-title">Collection Detail</h2></div><button class="icon-button" id="collection-detail-close" type="button" aria-label="Close">x</button></div>
+        <div id="collection-detail-content"></div>
+        <div class="modal-actions"><button class="ghost-button" id="collection-detail-cancel" type="button">Close</button></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal report-modal" id="followup-history-modal">
+      <div class="report-preview">
+        <div class="modal-header"><div><p class="eyebrow">Follow-up History</p><h2>All Client Follow-up Records</h2></div><button class="icon-button" id="followup-history-close" type="button" aria-label="Close">x</button></div>
+        <div class="table-card compact-table"><table id="collection-contact-history"></table></div>
+        <div class="modal-actions"><button class="ghost-button" id="followup-history-cancel" type="button">Close</button></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal report-modal" id="payment-request-preview-modal">
+      <div class="report-preview">
+        <div class="modal-header"><div><p class="eyebrow">Payment Request</p><h2 id="payment-request-preview-title">Preview</h2></div><button class="icon-button" id="payment-request-preview-close" type="button" aria-label="Close">x</button></div>
+        <div id="payment-request-preview-content"></div>
+        <div class="modal-actions"><button class="ghost-button" id="payment-request-preview-cancel" type="button">Close</button><button class="primary-button" id="payment-request-preview-print" type="button">Print</button></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal" id="password-modal">
+      <form method="dialog" id="password-form">
+        <div class="modal-header"><div><p class="eyebrow">Security</p><h2>Change Password</h2></div><button class="icon-button" id="password-close" type="button" aria-label="Close">x</button></div>
+        <div class="form-grid">
+          <div class="field full"><label for="old-password">Old Password</label><input id="old-password" name="oldPassword" type="password" required /></div>
+          <div class="field"><label for="new-password">New Password</label><input id="new-password" name="newPassword" type="password" minlength="8" required /></div>
+          <div class="field"><label for="confirm-password">Confirm Password</label><input id="confirm-password" name="confirmPassword" type="password" minlength="8" required /></div>
+          <p class="password-rules full">Use at least 8 characters with one letter and one number. New password cannot match the old password.</p>
+        </div>
+        <div class="modal-actions"><button class="ghost-button" id="password-cancel" type="button">Cancel</button><button class="primary-button" type="submit">Update Password</button></div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="scripts/config-data.js"></script>
+    <script src="scripts/state.js"></script>
+    <script src="scripts/ui-utils.js"></script>
+    <script src="scripts/modules.js"></script>
+    <script src="scripts/events-bootstrap.js"></script>
+  </body>
+</html>

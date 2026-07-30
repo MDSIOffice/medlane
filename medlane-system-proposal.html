@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Medlane Diagnostic Solutions System Proposal</title>
+    <style>
+      :root { --blue: #006eb6; --blue-dark: #014f86; --red: #d71920; --ink: #10213d; --muted: #5f7288; --line: #d7e4f0; --bg: #f4f8fc; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: var(--ink); background: #fff; font-family: Inter, Arial, sans-serif; font-size: 13px; line-height: 1.45; }
+      @page { size: A4; margin: 13mm; }
+      .cover { min-height: 245mm; display: grid; align-content: space-between; padding: 8mm 0; }
+      .brand { display: flex; align-items: center; gap: 16px; }
+      .brand img { width: 78px; height: 78px; object-fit: contain; }
+      .brand strong { display: block; font-size: 22px; }
+      .brand span { color: var(--muted); }
+      h1 { margin: 40px 0 12px; font-size: 42px; line-height: 1.05; letter-spacing: -1.8px; }
+      h2 { margin: 24px 0 10px; color: var(--blue-dark); font-size: 22px; letter-spacing: -0.5px; }
+      h3 { margin: 14px 0 7px; font-size: 16px; }
+      p { margin: 0 0 10px; }
+      .kicker { color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; }
+      .hero { border-radius: 28px; background: linear-gradient(135deg, var(--blue), #0b8ed0 68%, var(--red)); color: #fff; padding: 32px; }
+      .hero p { color: rgba(255,255,255,0.88); font-size: 15px; max-width: 620px; }
+      .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px; }
+      .meta div, .card { border: 1px solid var(--line); border-radius: 18px; background: #fff; padding: 15px; }
+      .meta small, .card small { display: block; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+      .meta strong { display: block; margin-top: 5px; font-size: 17px; }
+      section { break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .grid.three { grid-template-columns: repeat(3, 1fr); }
+      .card strong { display: block; margin: 8px 0 4px; font-size: 15px; }
+      .icon { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: rgba(0,110,182,0.1); color: var(--blue-dark); font-weight: 900; }
+      table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+      th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; }
+      th { color: var(--blue-dark); background: var(--bg); font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; }
+      .price { font-weight: 800; text-align: right; white-space: nowrap; }
+      .recommended { border: 2px solid var(--blue); }
+      .footer { color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); padding-top: 10px; }
+      .page-break { break-before: page; page-break-before: always; }
+      ul { margin: 8px 0 0; padding-left: 18px; }
+      li { margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="cover">
+        <div>
+          <div class="brand"><img src="medlane.jpg" alt="Medlane logo" /><div><strong>Medlane Diagnostic Solutions, Inc.</strong><span>Business Management System Proposal</span><span>13 Gumamela Street, Pilar Village, Las Piñas, Philippines, 1781</span></div></div>
+          <div class="hero">
+            <p class="kicker">System Proposal</p>
+            <h1>Medlane OS for Diagnostic Equipment & Reagent Distribution</h1>
+            <p>A centralized web-based system for inventory, lot and expiry tracking, SI/TS/DRS invoicing, collections, supplier payables, warranty records, client purchase history, analytics, reports, old data migration, workflow recommendations, map-based collection tracking, automated email reminders, Google Sheets support, and role-based access across Las Pinas and Naga.</p>
+          </div>
+          <div class="meta">
+            <div><small>Prepared For</small><strong>Medlane Diagnostic Solutions</strong></div>
+            <div><small>Recommended Package</small><strong>Basic MVP</strong></div>
+            <div><small>Project Cost</small><strong>PHP 40,000</strong></div>
+          </div>
+        </div>
+        <p class="footer">Prepared as a preliminary estimate. Final pricing depends on final reports, invoice layouts, data migration volume, approval workflows, and hosting decisions.</p>
+      </section>
+
+      <section class="page-break">
+        <p class="kicker">Overview</p>
+        <h2>Project Goals</h2>
+        <div class="grid three">
+          <div class="card"><span class="icon">▤</span><strong>Inventory Accuracy</strong><p>Track branch stock, lot number, serial number, expiry date, and stock movement.</p></div>
+          <div class="card"><span class="icon">₱</span><strong>Sales & AR Visibility</strong><p>Monitor SI/TS/DRS sales, terms, due dates, collections, and outstanding balances.</p></div>
+          <div class="card"><span class="icon">◆</span><strong>Workflow Efficiency</strong><p>Guide users to the next task, reduce repetitive encoding, and prevent common data errors before save.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Core Features</h2>
+        <table>
+          <thead><tr><th>Feature</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>Role-Based Login</td><td>Admin, CEO, Accounting, Sales, Logistics, and HR users only see modules relevant to their work.</td></tr>
+            <tr><td>Dashboard & Analytics</td><td>Visualizes sales by branch, AR status, collection efficiency, top items, stock health, future growth indicators, and recommended actions.</td></tr>
+            <tr><td>Workflow Assistant</td><td>Shows module-specific task queues and recommendations so users can open urgent AR, low stock, missing documents, approvals, imports, and reconciliation checks faster.</td></tr>
+            <tr><td>Masterlists</td><td>Central records for clients, items, suppliers, banks, and employees with duplicate client/TIN, duplicate item, duplicate bank, and document-completion checks.</td></tr>
+            <tr><td>Inventory Management</td><td>Records received stocks, lot numbers, expiry dates, serial numbers, minimum levels, branch transfer, low-stock filters, FEFO recommendations, and bulk receiving actions.</td></tr>
+            <tr><td>Near-Expiry Sales Alert</td><td>Flags reagents/items near expiry so Sales can prioritize movement before expiry risk increases.</td></tr>
+            <tr><td>Invoicing</td><td>Creates SI, TS, and DRS layouts with automatic address, TIN, tax, net amount, item terms, FEFO lot autofill, exact-lot stock deduction, discount approval checks, duplicate document blocking, and credit-limit validation.</td></tr>
+            <tr><td>Collections</td><td>Records cash, cheque, bank deposit, bank transfer, partial payments, due dates, receipt numbers, cheque details, AR status, and payment-over-balance prevention.</td></tr>
+            <tr><td>Collection Contact Map</td><td>Displays a Philippines map using projected regional overlays, including NCR and CAR, with collection-status colors and clickable region/client follow-up queues.</td></tr>
+            <tr><td>Receivables Tracker</td><td>Groups open AR by client and invoice stage with order-style timelines, status tabs, invoice drilldowns, and direct collection follow-up actions.</td></tr>
+            <tr><td>Payables</td><td>Tracks supplier bills, cheque numbers, bank details, paid/partial status, payment voucher-ready information, and cheque-only field validation.</td></tr>
+            <tr><td>Replenishments</td><td>Allows petty cash and per diem requests with HR and Accounting approval flow.</td></tr>
+            <tr><td>Equipment Warranty Tracking</td><td>Tracks equipment serial numbers, installation dates, warranty end dates, service notes, and warranty status.</td></tr>
+            <tr><td>Client Purchase History</td><td>Shows what each client bought, order count, lifetime value, AR balance, and last purchase date.</td></tr>
+            <tr><td>Old Data Migration</td><td>Includes migration of existing Excel, CSV, Google Sheets, and available historical records into the new platform's structured client, product, inventory, sales, collection, supplier, and warranty modules.</td></tr>
+            <tr><td>Import Safety Checker</td><td>Checks pasted CSV rows for missing fields, unsupported areas, and duplicate clients before import so unsafe spreadsheet rows are blocked.</td></tr>
+            <tr><td>Fix-Oriented Reconciliation</td><td>Runs scoped reconciliation checks for documents, payments, client documents, credit exposure, stock transfers, and data gaps with direct fix buttons and saved run history.</td></tr>
+            <tr><td>Notifications With Actions</td><td>Operational alerts can open the related module or record directly, reducing manual searching across tables.</td></tr>
+            <tr><td>Automated Emails & Reminders</td><td>Sends or queues reminders for collections, overdue AR, pending approvals, low stock, near-expiry lots, cheque follow-ups, and report notifications.</td></tr>
+            <tr><td>Google Sheets Support</td><td>Supports Google Sheets-based import/export workflows for clients, products, inventory, sales, collections, reports, and migration handoff files.</td></tr>
+            <tr><td>Audit Logs</td><td>Tracks edits, imports, exports, inventory adjustments, payment posting, and user activity for accountability.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Recommended Enhancements for Medlane</h2>
+        <div class="grid">
+          <div class="card"><span class="icon">◉</span><strong>Warranty & Service History</strong><p>Useful for diagnostic equipment clients that need installation, calibration, maintenance, and warranty support.</p></div>
+          <div class="card"><span class="icon">▦</span><strong>Client Purchase History</strong><p>Helps Sales identify repeat orders, preferred products, and clients with growing AR exposure.</p></div>
+          <div class="card"><span class="icon">!</span><strong>Near-Expiry Alerts</strong><p>Supports faster reagent movement and reduces potential inventory loss from expired products.</p></div>
+          <div class="card"><span class="icon">⇪</span><strong>Old Data Migration</strong><p>Transfers existing spreadsheet and historical business records into the new system so Medlane can continue operations with prior data available.</p></div>
+          <div class="card"><span class="icon">✓</span><strong>Workflow Assistant</strong><p>Gives each role a practical task queue for overdue AR, low stock, missing documents, approvals, and reconciliation fixes.</p></div>
+          <div class="card"><span class="icon">⌖</span><strong>Philippines Collection Map</strong><p>Uses real region boundary overlays, including NCR and CAR, to visualize follow-up status by area and dealer coverage.</p></div>
+          <div class="card"><span class="icon">@</span><strong>Automated Reminders</strong><p>Helps Accounting and Sales send timely follow-ups for overdue AR, near-due accounts, approvals, and operational alerts.</p></div>
+          <div class="card"><span class="icon">▥</span><strong>Google Sheets Workflow</strong><p>Supports spreadsheet-based imports, exports, and migration review for teams that still rely on Google Sheets.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Workflow Automation and Error Prevention</h2>
+        <div class="grid three">
+          <div class="card"><span class="icon">1</span><strong>Task Queues</strong><p>Action queues show what to collect, approve, receive, reconcile, or complete next instead of relying on manual checking.</p></div>
+          <div class="card"><span class="icon">2</span><strong>Autofill</strong><p>Client, item, payment, warehouse, FEFO lot, receipt, tag, and balance fields are pre-filled where possible to reduce repetitive encoding.</p></div>
+          <div class="card"><span class="icon">3</span><strong>Save-Time Validation</strong><p>The system blocks duplicate documents, duplicate receipts, invalid cheque records, expired lots, missing lot/expiry, overpayments, and unsafe imports.</p></div>
+        </div>
+      </section>
+
+      <section class="page-break">
+        <p class="kicker">Estimate</p>
+        <h2>Basic MVP Package</h2>
+        <table>
+          <thead><tr><th>Package</th><th>Scope</th><th class="price">Project Cost</th></tr></thead>
+          <tbody>
+            <tr class="recommended"><td><strong>Basic MVP</strong></td><td>Login, dashboard, workflow assistant, masterlists, inventory, sales, invoicing, collections, collection contact map, AR tracker, automated emails and reminders, Google Sheets import/export support, payables, replenishments, warranty tracking, client purchase history, near-expiry sales alert, old data migration from existing spreadsheets/records, CSV import with safety checks, simple reports, analytics, reconciliation, role access, notifications, and audit logs.</td><td class="price"><strong>PHP 40,000</strong></td></tr>
+          </tbody>
+        </table>
+        <p><strong>Included support:</strong> 2 months free requested changes, bug fixes, and basic maintenance from the developer after turnover.</p>
+      </section>
+
+      <section>
+        <h2>Free Support Inclusion</h2>
+        <div class="grid three">
+          <div class="card"><span class="icon">✓</span><strong>Requested Changes</strong><p>Minor adjustments requested by Medlane within 2 months after turnover are included, as long as they are within the agreed Basic MVP scope.</p></div>
+          <div class="card"><span class="icon">◎</span><strong>Bug Fixes</strong><p>Issues caused by the delivered system will be corrected during the free support period.</p></div>
+          <div class="card"><span class="icon">◉</span><strong>Basic Maintenance</strong><p>Includes light monitoring, minor corrections, guidance, and assistance while the team starts using the system.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Suggested Implementation Phases</h2>
+        <table>
+          <thead><tr><th>Phase</th><th>Scope</th><th>Timeline</th></tr></thead>
+          <tbody>
+            <tr><td>1. Finalization</td><td>Review files, confirm columns, clean old data sources, invoice layouts, reports, roles, approval rules, map areas, and workflow priorities.</td><td>3-5 days</td></tr>
+            <tr><td>2. Basic MVP Build</td><td>Build the daily-use modules: login, workflow assistant, masterlists, inventory, sales, invoicing, collections, AR tracker, automated emails/reminders, Google Sheets support, payables, replenishments, warranty, purchase history, CSV import, reports, reconciliation, and audit logs.</td><td>3-5 weeks</td></tr>
+            <tr><td>3. Data Migration, Testing & Turnover</td><td>Migrate agreed old records into the new platform, perform client testing, bug fixing, sample data validation, workflow validation, basic training, and launch support.</td><td>1 week</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Monthly Hosting and Storage Estimate</h2>
+        <table>
+          <thead><tr><th>Item</th><th>Purpose</th><th class="price">Monthly Estimate</th></tr></thead>
+          <tbody>
+            <tr><td>Supabase Pro</td><td>Database, authentication, backend, and daily operational records.</td><td class="price">USD 25 / month</td></tr>
+            <tr><td>Cloudflare R2 500GB</td><td>File storage for invoices, receipts, BIR/SEC/FDA/COA files, warranty documents, and attachments.</td><td class="price">About USD 7.35 / month</td></tr>
+            <tr><td>Base Infrastructure Estimate</td><td>Supabase Pro + approximately 500GB R2 file storage.</td><td class="price">About USD 32.35 / month</td></tr>
+          </tbody>
+        </table>
+        <p><strong>Approximate PHP estimate:</strong> PHP 1,800 - 2,500 per month, depending on exchange rate, taxes, actual file storage, and usage.</p>
+        <p>This estimate excludes domain name, paid email or messaging provider fees, third-party integration fees, and any storage beyond the planned 500GB capacity.</p>
+      </section>
+
+      <section>
+        <h2>Next Steps</h2>
+        <ul>
+          <li>Review Medlane's current spreadsheets, old records, invoice layouts, report samples, and document folders.</li>
+          <li>Confirm the final module list, fields, user roles, approval rules, reminder templates, Google Sheets workflow, and data migration requirements.</li>
+          <li>Approve the selected package and implementation timeline.</li>
+          <li>Begin Phase 1 workflow and data finalization.</li>
+        </ul>
+      </section>
+
+    </main>
+  </body>
+</html>
