@@ -2,6 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "medlane",
   "main": "src/worker.js",
+  "workers_dev": true,
   "compatibility_date": "2026-07-30",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
@@ -30,6 +31,7 @@
   "env": {
     "preview": {
       "name": "medlane-preview",
+      "workers_dev": true,
       "r2_buckets": [
         {
           "binding": "DOCUMENTS_BUCKET",
@@ -47,6 +49,7 @@
     },
     "production": {
       "name": "medlane",
+      "workers_dev": true,
       "r2_buckets": [
         {
           "binding": "DOCUMENTS_BUCKET",
