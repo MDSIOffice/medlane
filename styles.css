@@ -463,7 +463,7 @@ body.app-route .landing-page { display: none !important; }
   justify-content: space-between;
   gap: 14px;
 }
-.topbar { align-items: flex-start; margin-bottom: 18px; }
+.topbar { align-items: flex-start; margin-bottom: 18px; min-height: 78px; }
 .topbar-actions { display: grid; grid-template-columns: minmax(260px, 1fr) auto auto; grid-template-areas: "search notif user" "branch notif user"; justify-content: flex-end; align-items: center; margin-left: auto; }
 .topbar-actions #global-search { grid-area: search; }
 .topbar-actions #branch-filter { grid-area: branch; justify-self: stretch; }

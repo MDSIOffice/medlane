@@ -121,7 +121,7 @@ function renderWorkflowAssist(sectionId) {
 }
 
 function renderWorkflowAssistAll() {
-  ["dashboard", "analytics", "masterlists", "inventory", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users"].forEach(renderWorkflowAssist);
+  ["dashboard", "analytics", "masterlists", "inventory", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security"].forEach(renderWorkflowAssist);
 }
 
 function monthLabel(value) {
