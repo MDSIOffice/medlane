@@ -645,6 +645,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
       localStorage.setItem("medlane-server-data", JSON.stringify(data));
     } else {
       localStorage.removeItem("medlane-server-data");
+      data = normalizeData(emptyProductionData());
     }
   } catch (error) {
     toast(`Logged in, but server data sync failed: ${error.message}`);
@@ -768,6 +769,9 @@ async function hydrateAuthenticatedSession() {
   if (serverState.data) {
     data = normalizeData({ ...structuredClone(initialData), ...serverState.data });
     localStorage.setItem("medlane-server-data", JSON.stringify(data));
+  } else {
+    localStorage.removeItem("medlane-server-data");
+    data = normalizeData(emptyProductionData());
   }
 }
 async function initializeRoute() {

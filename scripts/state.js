@@ -87,7 +87,43 @@ function getCurrentProfile() {
 function firstName(name) { return String(name || "User").split(/\s+/)[0]; }
 function initials(name) { return String(name || "U").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 
+function emptyProductionData() {
+  return {
+    dataVersion: initialData.dataVersion,
+    branch: "all",
+    platformAreas: structuredClone(initialData.platformAreas),
+    platformBranches: structuredClone(initialData.platformBranches),
+    branchAddresses: structuredClone(initialData.branchAddresses),
+    invoiceApprovals: structuredClone(initialData.invoiceApprovals),
+    masterTab: "clients",
+    clients: [],
+    items: [],
+    suppliers: [],
+    employees: [],
+    inventory: [],
+    sales: [],
+    purchaseOrders: [],
+    inventoryPurchaseOrders: [],
+    payments: [],
+    payables: [],
+    replenishments: [],
+    users: [],
+    logs: [],
+    warranties: [],
+    imports: [],
+    pendingTransfers: [],
+    paymentRequests: [],
+    transferHistory: [],
+    notifications: [],
+    reconHistory: [],
+    collectionContacts: [],
+    collectionContactHistory: [],
+    banks: [],
+  };
+}
+
 function loadData() {
+  if (MedlaneAPI?.session()?.access_token && !localStorage.getItem("medlane-server-data")) return normalizeData(emptyProductionData());
   const serverCached = localStorage.getItem("medlane-server-data");
   if (serverCached) return normalizeData({ ...structuredClone(initialData), ...JSON.parse(serverCached) });
   const stored = localStorage.getItem("medlane-demo-data");
