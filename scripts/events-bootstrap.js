@@ -729,9 +729,18 @@ qs("#login-form").addEventListener("submit", async (event) => {
     document.body.classList.remove("login-route", "public-landing");
     applyRole();
     renderAll();
+    playDashboardLoginSound();
     toast(`Logged in as ${currentUser.role}.`);
   });
 });
+
+function playDashboardLoginSound() {
+  if (!currentUser || sessionStorage.getItem("medlane-dashboard-sound-played") === "1") return;
+  sessionStorage.setItem("medlane-dashboard-sound-played", "1");
+  const audio = new Audio("/Notification Sound.mp3");
+  audio.volume = 0.55;
+  audio.play().catch(() => null);
+}
 
 function showWelcomeTransition(name, done) {
   const overlay = qs("#welcome-transition");
@@ -824,6 +833,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
 function logoutCurrentUser() {
   currentUser = null;
   sessionStorage.removeItem("medlane-session");
+  sessionStorage.removeItem("medlane-dashboard-sound-played");
   MedlaneAPI?.setSession(null);
   document.body.classList.add("login-route");
   document.body.classList.remove("public-landing", "app-route");
@@ -851,6 +861,7 @@ function showAuthenticatedApp() {
   qs("#login-screen")?.classList.add("hidden");
   applyRole();
   renderAll();
+  playDashboardLoginSound();
 }
 async function hydrateAuthenticatedSession() {
   if (!MedlaneAPI?.session()?.access_token) throw new Error("No active API session");

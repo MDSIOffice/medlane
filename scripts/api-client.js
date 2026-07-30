@@ -79,6 +79,11 @@ const MedlaneAPI = (() => {
     return request("/api/backups");
   }
 
+  async function listReports(branch = "all") {
+    const query = new URLSearchParams({ branch });
+    return request(`/api/reports?${query}`);
+  }
+
   async function runBackup(backupType = "manual") {
     return request("/api/backups", { method: "POST", body: JSON.stringify({ backupType }) });
   }
@@ -106,5 +111,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup };
+  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports };
 })();

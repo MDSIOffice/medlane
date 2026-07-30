@@ -8,7 +8,7 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/", "/index.html", "/login/*", "/dashboard/*", "/api/*"]
   },
   "triggers": {
     "crons": ["0 18 * * sun", "0 18 1 * *", "0 18 1 1 *"]

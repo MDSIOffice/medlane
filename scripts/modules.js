@@ -1,5 +1,6 @@
 let currentReportSaleId = null;
 let selectedUserSessionsTarget = null;
+let serverReportDefinitions = null;
 
 function moduleWorkflowItems(section) {
   const facts = workflowFacts();
@@ -2261,7 +2262,16 @@ function approveExpense(index, nextStatus) {
   toast(`${expense.id} ${nextStatus}.`);
 }
 
-function renderReports() {
+async function renderReports() {
+  if (MedlaneAPI?.session()?.access_token) {
+    try {
+      const payload = await MedlaneAPI.listReports(data.branch || "all");
+      serverReportDefinitions = payload.reports || null;
+    } catch (error) {
+      serverReportDefinitions = null;
+      console.warn("Server reports unavailable", error);
+    }
+  }
   const cards = getReportDefinitions();
   qs("#report-grid").innerHTML = cards.map((report, index) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(report.title)}" data-focus-text="${escapeHtml(`${report.title} ${report.body}`)}"><div><span class="feature-icon">${report.icon}</span><strong>${report.title}</strong><p>${report.body}</p></div><button class="primary-button" data-report-preview="${index}">Open full report</button></article>`).join("");
 }
@@ -2421,6 +2431,7 @@ function renderReconciliation() {
 }
 
 function getReportDefinitions() {
+  if (serverReportDefinitions) return serverReportDefinitions;
   const totalSales = byBranch(data.sales, "area").reduce((sum, s) => sum + s.net, 0);
   const totalPaid = byBranch(data.sales, "area").reduce((sum, s) => sum + s.paid, 0);
   const overdue = byBranch(data.sales, "area").filter((s) => statusForSale(s) === "Overdue").length;

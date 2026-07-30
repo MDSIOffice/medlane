@@ -229,6 +229,25 @@ function moduleForKey(key) {
   return Object.entries(moduleRecordKeys).find(([, keys]) => keys.includes(key))?.[0] || "system";
 }
 
+function modulesForKey(key) {
+  return Object.entries(moduleRecordKeys).filter(([, keys]) => keys.includes(key)).map(([module]) => module);
+}
+
+function canAccessKey(profile, key, mode = "view") {
+  if (["Superadmin", "CEO"].includes(profile?.role)) return true;
+  const allowed = profile?.customPermissions?.[mode] || [];
+  const modules = modulesForKey(key);
+  return modules.some((module) => allowed.includes(module));
+}
+
+function writableKeys(profile) {
+  return persistedKeys.filter((key) => canAccessKey(profile, key, "edit"));
+}
+
+function filterRecordsForProfile(records, profile, mode = "view") {
+  return records.filter((row) => canAccessKey(profile, row.module_name, mode));
+}
+
 function recordKeyFor(key, value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return key;
   return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
@@ -249,9 +268,9 @@ function stateFromRecords(records) {
   return next;
 }
 
-function recordsFromState(data, userId, stateKey) {
+function recordsFromState(data, userId, stateKey, allowedKeys = persistedKeys) {
   const rows = [];
-  for (const key of persistedKeys) {
+  for (const key of allowedKeys) {
     const value = data?.[key];
     if (value === undefined) continue;
     if (Array.isArray(value)) {
@@ -261,6 +280,60 @@ function recordsFromState(data, userId, stateKey) {
     }
   }
   return rows;
+}
+
+function postgrestIn(values) {
+  return `(${values.map((value) => `"${String(value).replace(/"/g, "\\\"")}"`).join(",")})`;
+}
+
+function money(value) {
+  return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + Number(days || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function saleStatus(sale) {
+  if (sale.status === "Cancelled") return "Cancelled";
+  const balance = Number(sale.net || 0) - Number(sale.paid || 0);
+  if (balance <= 0) return "Paid";
+  const due = new Date(addDays(sale.date, sale.terms || 0)).getTime();
+  const now = Date.now();
+  if (due < now) return "Overdue";
+  if (due - now <= 7 * 86400000) return "Near Due";
+  if (Number(sale.paid || 0) > 0) return "Partially Paid";
+  return "Unpaid";
+}
+
+function inventoryState(item) {
+  const expiry = item.expiry && item.expiry !== "N/A" ? new Date(item.expiry).getTime() : null;
+  if (expiry && expiry < Date.now()) return "For Disposal";
+  if (Number(item.qty || 0) <= Math.ceil(Number(item.min || 0) * 0.5)) return "Critical";
+  if (Number(item.qty || 0) < Number(item.min || 0)) return "Low Stock";
+  if (expiry && expiry - Date.now() <= 183 * 86400000) return "Near Expiry";
+  return "Available";
+}
+
+function generateReportsFromState(data, branch = "all") {
+  const byBranch = (rows, key = "branch") => branch === "all" ? rows : rows.filter((row) => row[key] === branch || row.area === branch);
+  const sales = byBranch(data.sales || [], "area");
+  const inventory = byBranch(data.inventory || []);
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const totalPaid = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const overdue = sales.filter((sale) => saleStatus(sale) === "Overdue").length;
+  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryState(item))).length;
+  return [
+    { icon: "₱", title: "Sales by Territory", body: `Area, client, salesperson, SI/TS/DR, and item movement. ${money(totalSales)} current view.`, section: "sales", actionLabel: "Open Sales", rows: sales.map((sale) => [sale.area, sale.client, sale.salesperson, sale.documentNo || sale.id, `${sale.qty || ""} ${sale.uom || ""} ${sale.item || ""}`.trim(), money(sale.net)]) },
+    { icon: "●", title: "Collections & AR", body: `${money(totalPaid)} collected. ${overdue} overdue invoice/s.`, section: "collections", actionLabel: "Open Collections", rows: sales.map((sale) => [sale.id, sale.client, saleStatus(sale), money(sale.paid), money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0)), addDays(sale.date, sale.terms || 0)]) },
+    { icon: "▤", title: "Reagent Expiry", body: `${lowStock} low or critical stock records with lot and expiry tracking.`, section: "inventory", actionLabel: "Open Inventory", rows: inventory.map((item) => [item.item, item.branch, item.lot, item.expiry, item.qty, inventoryState(item)]) },
+    { icon: "◆", title: "Client Documents", body: "BIR, SEC, TIN, required permits, and account attachments.", section: "masterlists", actionLabel: "Open Masterlists", rows: (data.clients || []).map((client) => [client.name, client.area, client.tin, money(client.creditLimit), client.docs]) },
+    { icon: "◇", title: "Supplier Payables", body: `${(data.payables || []).length} supplier payable records with payment method tracking.`, section: "payables", actionLabel: "Open Payables", rows: (data.payables || []).map((payable) => [payable.supplier, payable.item, payable.method, money(payable.amount), money(payable.paid), money(Number(payable.amount || 0) - Number(payable.paid || 0)), payable.status]) },
+    { icon: "◉", title: "Service & Warranty", body: "Equipment install, serial number, warranty, and customer support history.", section: "warranty", actionLabel: "Open Warranty", rows: (data.warranties || []).map((warranty) => [warranty.client, warranty.equipment, warranty.serial, warranty.installDate, warranty.warrantyEnd, warranty.status]) },
+    { icon: "◎", title: "Compliance Audit", body: `${(data.logs || []).length} traceable changes for corrections, exports, and approvals.`, section: "logs", actionLabel: "Open Audit Logs", rows: (data.logs || []).map((log) => [log.date, log.user, log.module, log.action, log.record]) },
+  ];
 }
 
 async function storageUsage(env) {
@@ -470,13 +543,15 @@ export default {
         const stateKey = appStateKey(env);
         if (request.method === "GET") {
           const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data&order=updated_at.asc`);
-          return json({ data: stateFromRecords(rows), revision: Date.now() });
+          return json({ data: stateFromRecords(filterRecordsForProfile(rows, profile, "view")), revision: Date.now() });
         }
         if (request.method === "PUT") {
           requireWriteAccess(profile);
           const { data } = await request.json();
-          const rows = recordsFromState(data, authUser.id, stateKey);
-          await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}`, { method: "DELETE" });
+          const keys = writableKeys(profile);
+          if (!keys.length) throw new Error("You do not have permission to edit production data");
+          const rows = recordsFromState(data, authUser.id, stateKey, keys);
+          await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(keys))}`, { method: "DELETE" });
           if (rows.length) {
             await supabaseFetch(env, "/rest/v1/app_records", {
               method: "POST",
@@ -487,6 +562,15 @@ export default {
           return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
         }
         return methodNotAllowed();
+      }
+
+      if (url.pathname === "/api/reports") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        if (!profile.customPermissions?.view?.includes("reports") && !["Superadmin", "CEO"].includes(profile.role)) throw new Error("You do not have permission to view reports");
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data&order=updated_at.asc`);
+        const state = stateFromRecords(filterRecordsForProfile(rows, profile, "view"));
+        return json({ reports: generateReportsFromState(state, url.searchParams.get("branch") || "all") });
       }
 
       if (url.pathname === "/api/users/invite") {
@@ -643,6 +727,13 @@ export default {
 
       if (url.pathname.startsWith("/api/")) {
         return json({ error: "Not found" }, { status: 404 });
+      }
+
+      if (["/", "/index.html", "/login", "/login/", "/dashboard", "/dashboard/"].includes(url.pathname)) {
+        const response = await env.ASSETS.fetch(request);
+        const headers = new Headers(response.headers);
+        headers.set("cache-control", "no-cache, must-revalidate");
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
       }
 
       return env.ASSETS.fetch(request);
