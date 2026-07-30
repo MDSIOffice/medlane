@@ -17,7 +17,7 @@ let inventoryBranchTab = "Las Pinas";
 let pendingServerSave = null;
 let serverRevision = Number(localStorage.getItem("medlane-server-revision") || 0);
 
-const philippinesRegionsGeoJsonUrl = "https://github.com/wmgeolab/geoBoundaries/raw/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
+const philippinesRegionsGeoJsonUrl = "https://raw.githubusercontent.com/wmgeolab/geoBoundaries/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
 
 const clientCoordinates = {
   "IlocosCare Laboratory": [16.6159, 120.3209],

@@ -547,6 +547,9 @@ select, .search-input {
 .search-input { min-width: min(360px, 100%); }
 .primary-button, .ghost-button, .tab, .icon-button { font-weight: 800; }
 .primary-button { border: 0; background: linear-gradient(135deg, var(--blue), #0b8ed0); color: #fff; box-shadow: 0 12px 26px rgba(0, 110, 182, 0.23); }
+.primary-button:disabled { cursor: wait; opacity: .78; transform: none; }
+.primary-button.is-loading { display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
+.primary-button.is-loading::before { content: ""; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.38); border-top-color: #fff; border-radius: 999px; animation: spin .8s linear infinite; }
 .ghost-button, .tab { border: 1px solid var(--line); background: #fff; color: var(--ink); }
 .primary-button, .ghost-button, .tab, .mini-button { transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; }
 .primary-button:hover, .ghost-button:hover, .tab:hover, .mini-button:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(16, 33, 61, 0.12); }

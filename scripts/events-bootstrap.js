@@ -615,12 +615,24 @@ window.addEventListener("resize", updateTableScrollHints);
 document.addEventListener("scroll", (event) => { if (event.target?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
 qs("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const loginButton = event.currentTarget.querySelector("button[type='submit']");
+  const originalLabel = loginButton?.textContent || "Login";
+  if (loginButton) {
+    loginButton.disabled = true;
+    loginButton.classList.add("is-loading");
+    loginButton.textContent = "Checking...";
+  }
   const email = String(qs("#login-email").value || "").trim().toLowerCase();
   const password = qs("#login-password").value;
   let payload;
   try {
     payload = await MedlaneAPI.login(email, password);
   } catch (error) {
+    if (loginButton) {
+      loginButton.disabled = false;
+      loginButton.classList.remove("is-loading");
+      loginButton.textContent = originalLabel;
+    }
     return toast(error.message || "Invalid email or password.");
   }
   currentUser = payload.user;
@@ -642,6 +654,11 @@ qs("#login-form").addEventListener("submit", async (event) => {
   localStorage.setItem("medlane-demo-session", JSON.stringify(currentUser));
   log("Logged in", "Authentication", currentUser.role);
   showWelcomeTransition(currentUser.name || currentUser.role, () => {
+    if (loginButton) {
+      loginButton.disabled = false;
+      loginButton.classList.remove("is-loading");
+      loginButton.textContent = originalLabel;
+    }
     if (location.protocol !== "file:") history.replaceState(null, "", "/dashboard");
     document.body.classList.add("app-route");
     document.body.classList.remove("login-route", "public-landing");

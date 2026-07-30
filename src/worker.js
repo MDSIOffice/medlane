@@ -181,7 +181,11 @@ export default {
           body: JSON.stringify({ email, password }),
         });
         const session = await authResponse.json().catch(() => null);
-        if (!authResponse.ok) return json({ error: session?.error_description || session?.msg || "Invalid email or password" }, { status: 401 });
+        if (!authResponse.ok) {
+          const authError = session?.error_description || session?.msg || session?.error || "Invalid email or password";
+          console.error(JSON.stringify({ message: "Supabase login failed", authError, status: authResponse.status }));
+          return json({ error: authError }, { status: 401 });
+        }
         const user = await profileForUser(env, session.user.id, email);
         return json({ session, user });
       }
