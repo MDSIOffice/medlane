@@ -28,6 +28,12 @@ function methodNotAllowed() {
   return json({ error: "Method not allowed" }, { status: 405 });
 }
 
+async function shortHash(value) {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hash)].slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function requireEnv(env, keys) {
   const missing = keys.filter((key) => !env[key]);
   if (missing.length) throw new Error(`Missing Worker secret/var: ${missing.join(", ")}`);
@@ -170,6 +176,7 @@ export default {
           supabaseHost,
           supabaseAnonKeyConfigured: Boolean(env.SUPABASE_ANON_KEY),
           supabaseAnonKeyPrefix: env.SUPABASE_ANON_KEY ? `${env.SUPABASE_ANON_KEY.slice(0, 12)}...` : null,
+          supabaseAnonKeyHash: await shortHash(env.SUPABASE_ANON_KEY),
           supabaseSecretConfigured: Boolean(env.SUPABASE_SERVICE_ROLE_KEY),
         });
       }
@@ -186,8 +193,9 @@ export default {
         const session = await authResponse.json().catch(() => null);
         if (!authResponse.ok) {
           const authError = session?.error_description || session?.msg || session?.error || "Invalid email or password";
+          const debug = url.searchParams.get("debug") === "1";
           console.error(JSON.stringify({ message: "Supabase login failed", authError, status: authResponse.status }));
-          return json({ error: authError }, { status: 401 });
+          return json({ error: authError, ...(debug ? { supabaseStatus: authResponse.status, supabaseResponse: session, supabaseHost: new URL(env.SUPABASE_URL).hostname, anonKeyHash: await shortHash(env.SUPABASE_ANON_KEY) } : {}) }, { status: 401 });
         }
         const user = await profileForUser(env, session.user.id, email);
         return json({ session, user });
