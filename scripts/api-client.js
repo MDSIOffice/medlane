@@ -47,5 +47,13 @@ const MedlaneAPI = (() => {
     return request("/api/files", { method: "POST", body: form });
   }
 
-  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile };
+  async function inviteUser(user) {
+    return request("/api/users/invite", { method: "POST", body: JSON.stringify(user) });
+  }
+
+  async function setPassword(accessToken, password) {
+    return request("/api/auth/set-password", { method: "POST", body: JSON.stringify({ accessToken, password }) });
+  }
+
+  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, setPassword };
 })();

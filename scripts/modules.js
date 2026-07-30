@@ -558,7 +558,7 @@ function renderSettingsTutorial() {
       ["Reconciliation History", "Stores previous reconciliation results.", "Open History tab and load a run.", "Use to compare whether issues were resolved over time."],
     ] },
     { title: "Users, Settings, Notifications", role: "Superadmin settings; role-based notifications", submodules: [
-      ["Invite User", "Creates employee accounts with email, password, role, branch, and permissions.", "Select role to precheck default permissions, then customize by module group.", "Use when onboarding new employees or granting temporary access."],
+      ["Invite User", "Sends a secure email invitation and creates the user profile after Supabase accepts it.", "Select role to precheck default permissions, then customize by module group.", "The invited user accepts the email link and creates their own password."],
       ["Superadmin Permission Grant", "Lets Superadmin promote/demote another user to Superadmin permissions.", "Check/uncheck the Superadmin box in Users table.", "Use when assigning another manager to control users/settings."],
       ["Settings", "Stores platform-level settings and this manual.", "Only Superadmin/CEO can open Settings.", "Use to update signatories, tutorial guidance, and demo controls."],
       ["Notifications", "Stores alerts, reminders, approvals, and workflow notices.", "Open notification bell or Notifications page.", "Use to review system warnings and mark alerts as seen."],
@@ -2620,7 +2620,7 @@ const modalConfigs = {
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
-  user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["password", "Temporary Password"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["branch", "Branch", "select", ["Both", "Las Pinas", "Naga"]], ["permissions", "Custom Permissions", "user-permissions"]] },
+  user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["branch", "Branch", "select", ["Both", "Las Pinas", "Naga"]], ["permissions", "Custom Permissions", "user-permissions"]] },
 };
 
 function openModal(type, edit = null) {

@@ -1,5 +1,5 @@
 data = loadData();
-function submitModal(event) {
+async function submitModal(event) {
   event.preventDefault();
   const values = formObject(event.currentTarget);
   if (["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder"].includes(modalType)) {
@@ -127,11 +127,18 @@ function submitModal(event) {
     if (values.role === "Superadmin") values.superadminPermissions = true;
     const view = qsa("input[name='userViewModules']:checked").map((input) => input.value);
     const edit = qsa("input[name='userEditModules']:checked").map((input) => input.value).filter((module) => view.includes(module));
-    values.modules = view;
-    values.customPermissions = { enabled: true, view, edit };
-    values.access = `${values.role} with ${view.length} view / ${edit.length} edit modules`;
-    data.users.push(values);
-    log("Created user", "Users", `${values.email} · ${values.role}`);
+    const submitButton = event.currentTarget.querySelector("button[type='submit']");
+    const originalLabel = submitButton?.textContent || "Save Record";
+    if (submitButton) { submitButton.disabled = true; submitButton.classList.add("is-loading"); submitButton.textContent = "Sending invite..."; }
+    try {
+      const result = await MedlaneAPI.inviteUser({ ...values, modules: view, editModules: edit });
+      data.users.push(result.user);
+      log("Invited user", "Users", `${result.user.email} · ${result.user.role}`);
+    } catch (error) {
+      return toast(error.message || "Unable to invite user.");
+    } finally {
+      if (submitButton) { submitButton.disabled = false; submitButton.classList.remove("is-loading"); submitButton.textContent = originalLabel; }
+    }
   }
   log(`Saved ${modalType}`, modalConfigs[modalType].title, Object.values(values)[0]);
   saveData();
@@ -703,17 +710,58 @@ function openPasswordResetPage(email, token) {
   qs("#reset-screen").classList.remove("hidden");
 }
 
+function authHashParams() {
+  return new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+}
+
+function jwtEmail(token) {
+  try {
+    const payload = JSON.parse(atob(String(token || "").split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/") || ""));
+    return payload.email || "";
+  } catch {
+    return "";
+  }
+}
+
+function showSupabasePasswordSetup() {
+  const params = authHashParams();
+  const accessToken = params.get("access_token");
+  const type = params.get("type");
+  if (!accessToken || !["invite", "recovery"].includes(type)) return false;
+  const email = jwtEmail(accessToken) || "Invited account";
+  openPasswordResetPage(email, `supabase:${accessToken}`);
+  document.body.classList.add("login-route");
+  document.body.classList.remove("public-landing", "app-route");
+  qs("#login-screen")?.classList.add("hidden");
+  setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 250);
+  return true;
+}
+
 qs("#reset-password-cancel").addEventListener("click", () => qs("#reset-screen").classList.add("hidden"));
-qs("#reset-password-form").addEventListener("submit", (event) => {
+qs("#reset-password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = formObject(event.currentTarget);
-  const tokenData = JSON.parse(localStorage.getItem(`medlane-reset-token-${values.token}`) || "null");
-  if (!tokenData || tokenData.email !== values.email) return toast("Password reset link is invalid or expired.");
   if (values.newPassword.length < 8) return toast("New password must be at least 8 characters.");
   if (!/[A-Za-z]/.test(values.newPassword) || !/\d/.test(values.newPassword)) return toast("New password needs at least one letter and one number.");
   if (values.newPassword !== values.confirmPassword) return toast("Confirm password does not match.");
-  localStorage.setItem(emailPasswordKey(values.email), values.newPassword);
-  localStorage.removeItem(`medlane-reset-token-${values.token}`);
+  if (String(values.token || "").startsWith("supabase:")) {
+    const submitButton = event.currentTarget.querySelector("button[type='submit']");
+    const originalLabel = submitButton?.textContent || "Update Password";
+    if (submitButton) { submitButton.disabled = true; submitButton.classList.add("is-loading"); submitButton.textContent = "Setting password..."; }
+    try {
+      await MedlaneAPI.setPassword(values.token.replace(/^supabase:/, ""), values.newPassword);
+      history.replaceState(null, "", "/login");
+    } catch (error) {
+      return toast(error.message || "Password setup failed.");
+    } finally {
+      if (submitButton) { submitButton.disabled = false; submitButton.classList.remove("is-loading"); submitButton.textContent = originalLabel; }
+    }
+  } else {
+    const tokenData = JSON.parse(localStorage.getItem(`medlane-reset-token-${values.token}`) || "null");
+    if (!tokenData || tokenData.email !== values.email) return toast("Password reset link is invalid or expired.");
+    localStorage.setItem(emailPasswordKey(values.email), values.newPassword);
+    localStorage.removeItem(`medlane-reset-token-${values.token}`);
+  }
   currentUser = null;
   localStorage.removeItem("medlane-demo-session");
   qs("#reset-screen").classList.add("hidden");
@@ -775,6 +823,7 @@ async function hydrateAuthenticatedSession() {
   }
 }
 async function initializeRoute() {
+  if (showSupabasePasswordSetup()) return;
   const loginRoute = isLoginRoute();
   const dashboardRoute = isDashboardRoute();
   if (!loginRoute && !dashboardRoute) {

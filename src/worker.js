@@ -51,6 +51,10 @@ function supabaseHeaders(env, token = env.SUPABASE_SERVICE_ROLE_KEY) {
   };
 }
 
+function requestOrigin(request) {
+  return new URL(request.url).origin;
+}
+
 async function supabaseFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
   const response = await fetch(`${supabaseBaseUrl(env)}${path}`, {
@@ -59,6 +63,17 @@ async function supabaseFetch(env, path, init = {}) {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(payload?.message || payload?.error || `Supabase request failed: ${response.status}`);
+  return payload;
+}
+
+async function supabaseAuthAdminFetch(env, path, init = {}) {
+  requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+  const response = await fetch(`${supabaseBaseUrl(env)}${path}`, {
+    ...init,
+    headers: { ...supabaseHeaders(env), ...(init.headers || {}) },
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.msg || payload?.message || payload?.error_description || payload?.error || `Supabase Auth request failed: ${response.status}`);
   return payload;
 }
 
@@ -105,6 +120,22 @@ function canWrite(profile) {
 
 function requireWriteAccess(profile) {
   if (!canWrite(profile)) throw new Error("You do not have permission to edit production data");
+}
+
+function requireUserAdmin(profile) {
+  if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage users");
+}
+
+function cleanEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function validEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function validRole(role) {
+  return Object.prototype.hasOwnProperty.call(roleModules, role);
 }
 
 async function storageUsage(env) {
@@ -228,6 +259,60 @@ export default {
           return json({ ok: true, revision: rows[0]?.revision, updatedAt: rows[0]?.updated_at });
         }
         return methodNotAllowed();
+      }
+
+      if (url.pathname === "/api/auth/set-password") {
+        if (request.method !== "POST") return methodNotAllowed();
+        requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
+        const { accessToken, password } = await request.json();
+        if (!accessToken) return json({ error: "Invite or reset token is required" }, { status: 400 });
+        if (String(password || "").length < 8) return json({ error: "Password must be at least 8 characters" }, { status: 400 });
+        const response = await fetch(`${supabaseBaseUrl(env)}/auth/v1/user`, {
+          method: "PUT",
+          headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password setup failed" }, { status: 400 });
+        return json({ ok: true });
+      }
+
+      if (url.pathname === "/api/users/invite") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const body = await request.json();
+        const email = cleanEmail(body.email);
+        const fullName = String(body.name || "").trim();
+        const role = String(body.role || "").trim();
+        const branch = String(body.branch || "Both").trim();
+        const view = Array.isArray(body.modules) ? body.modules.filter(Boolean) : roleModules[role] || [];
+        const edit = Array.isArray(body.editModules) ? body.editModules.filter((module) => view.includes(module)) : view;
+        if (!fullName) return json({ error: "Name is required" }, { status: 400 });
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        if (!validRole(role)) return json({ error: "Invalid role" }, { status: 400 });
+        const existingProfiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id,email`);
+        if (existingProfiles.length) return json({ error: "A user with this email already exists" }, { status: 409 });
+
+        const redirectTo = `${requestOrigin(request)}/?login=1`;
+        const invited = await supabaseAuthAdminFetch(env, `/auth/v1/invite?redirect_to=${encodeURIComponent(redirectTo)}`, {
+          method: "POST",
+          body: JSON.stringify({ email, data: { full_name: fullName, role, branch } }),
+        });
+        const authUser = invited.user || invited;
+        if (!authUser?.id) throw new Error("Supabase did not return an invited user ID");
+
+        await supabaseFetch(env, "/rest/v1/profiles", {
+          method: "POST",
+          body: JSON.stringify({ id: authUser.id, email, full_name: fullName, role, branch, is_superadmin: role === "Superadmin" }),
+        });
+        if (view.length) {
+          await supabaseFetch(env, "/rest/v1/module_permissions", {
+            method: "POST",
+            body: JSON.stringify(view.map((moduleKey) => ({ user_id: authUser.id, module_key: moduleKey, can_view: true, can_edit: edit.includes(moduleKey) }))),
+          });
+        }
+        return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: "Invited" } }, { status: 201 });
       }
 
       if (url.pathname === "/api/storage/usage") {
