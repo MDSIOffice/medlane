@@ -790,12 +790,16 @@ export default {
           return json({ user: userFromProfileAndAuth(existingProfiles[0], null, existingPermissions), existing: true });
         }
 
-        const redirectTo = `${requestOrigin(request)}/?login=1`;
-        const invited = await supabaseAuthAdminFetch(env, `/auth/v1/invite?redirect_to=${encodeURIComponent(redirectTo)}`, {
-          method: "POST",
-          body: JSON.stringify({ email, data: { full_name: fullName, role, branch } }),
-        });
-        const authUser = invited.user || invited;
+        const existingAuthUsers = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] }));
+        let authUser = (existingAuthUsers.users || []).find((user) => cleanEmail(user.email) === email);
+        if (!authUser) {
+          const redirectTo = `${requestOrigin(request)}/?login=1`;
+          const invited = await supabaseAuthAdminFetch(env, `/auth/v1/invite?redirect_to=${encodeURIComponent(redirectTo)}`, {
+            method: "POST",
+            body: JSON.stringify({ email, data: { full_name: fullName, role, branch } }),
+          });
+          authUser = invited.user || invited;
+        }
         if (!authUser?.id) throw new Error("Supabase did not return an invited user ID");
 
         await supabaseFetch(env, "/rest/v1/profiles", {
