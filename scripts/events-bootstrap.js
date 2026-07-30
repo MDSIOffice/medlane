@@ -40,7 +40,8 @@ function passwordPolicyError(password) {
 
 async function submitModal(event) {
   event.preventDefault();
-  const values = formObject(event.currentTarget);
+  const form = event.currentTarget;
+  const values = formObject(form);
   if (["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder"].includes(modalType)) {
     try { values.itemsText = collectInvoiceEditorLines(); }
     catch (error) { return toast(error.message); }
@@ -167,10 +168,11 @@ async function submitModal(event) {
     if (values.role === "Superadmin") values.superadminPermissions = true;
     const view = qsa("input[name='userViewModules']:checked").map((input) => input.value);
     const edit = qsa("input[name='userEditModules']:checked").map((input) => input.value).filter((module) => view.includes(module));
+    const submitButton = form.querySelector("button[type='submit']");
     if (!await confirmInviteUser(values, view, edit)) return;
-    const submitButton = event.currentTarget.querySelector("button[type='submit']");
     const originalLabel = submitButton?.textContent || "Save Record";
     if (submitButton) { submitButton.disabled = true; submitButton.classList.add("is-loading"); submitButton.textContent = "Sending invite..."; }
+    toast("Sending invitation email...");
     try {
       const result = await MedlaneAPI.inviteUser({ ...values, modules: view, editModules: edit });
       mergeUsersFromBackend([result.user]);
@@ -178,8 +180,14 @@ async function submitModal(event) {
       log("Invited user", "Users", `${result.user.email} · ${result.user.role}`);
       const deliveryNote = result.emailDelivery?.sent ? "Email sent via Resend" : result.emailDelivery?.reason || "Email not sent";
       notify("User Invite", `${result.user.email} ${result.existing ? "already exists and was loaded" : "was invited"} as ${result.user.role}. ${deliveryNote}.`, "users", result.user.email);
+      qs("#demo-modal").close();
+      form.reset();
+      renderAll();
+      toast(`${result.user.email} invited. ${deliveryNote}.`);
+      return;
     } catch (error) {
-      return toast(error.message || "Unable to invite user.");
+      console.error("Invite user failed", error);
+      return toast(`Invite failed: ${error.message || "Unable to invite user."}`);
     } finally {
       if (submitButton) { submitButton.disabled = false; submitButton.classList.remove("is-loading"); submitButton.textContent = originalLabel; }
     }
@@ -187,7 +195,7 @@ async function submitModal(event) {
   log(`Saved ${modalType}`, modalConfigs[modalType].title, Object.values(values)[0]);
     saveData();
     qs("#demo-modal").close();
-  event.currentTarget.reset();
+  form.reset();
   renderAll();
   if (modalType === "paymentRequest") previewPaymentRequest(0);
   toast(`${modalConfigs[modalType].title} saved.`);
