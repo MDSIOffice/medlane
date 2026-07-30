@@ -644,7 +644,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
       data = normalizeData({ ...structuredClone(initialData), ...serverState.data });
       localStorage.setItem("medlane-server-data", JSON.stringify(data));
     } else {
-      saveData();
+      localStorage.removeItem("medlane-server-data");
     }
   } catch (error) {
     toast(`Logged in, but server data sync failed: ${error.message}`);

@@ -174,6 +174,23 @@ begin
 end;
 $$;
 
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on table branches to service_role;
+grant select, insert, update, delete on table profiles to service_role;
+grant select, insert, update, delete on table module_permissions to service_role;
+grant select, insert, update, delete on table app_state to service_role;
+grant select, insert, update, delete on table file_objects to service_role;
+grant select, insert, update, delete on table storage_usage to service_role;
+grant select on table branches to authenticated;
+grant select on table profiles to authenticated;
+grant select on table module_permissions to authenticated;
+grant select on table app_state to authenticated;
+grant select on table file_objects to authenticated;
+grant select on table storage_usage to authenticated;
+grant execute on function update_app_state(bigint, jsonb, uuid, text) to service_role;
+grant execute on function reserve_file_storage(text, bigint, bigint) to service_role;
+grant execute on function release_file_storage(text, bigint) to service_role;
+
 insert into branches (name, address) values
   ('Las Pinas', '13 Gumamela St, Pilar Village, Las Pinas, Metro Manila 1740, PH'),
   ('Naga', 'Narra St., Mariano Village, Balatas, Naga City, Camarines Sur 4400, PH')
