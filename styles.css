@@ -558,6 +558,13 @@ select, .search-input {
 .mini-button { border: 1px solid #bfdbfe; border-radius: 999px; background: #eff6ff; color: var(--blue-dark); padding: 7px 11px; font-size: 12px; font-weight: 900; }
 .inline-actions { display: inline-flex; flex-wrap: wrap; gap: 7px; min-width: 220px; }
 .inline-actions .mini-button { white-space: nowrap; }
+.row-action-menu { position: relative; display: inline-block; min-width: 116px; }
+.row-action-menu summary { list-style: none; cursor: pointer; border: 1px solid #bfdbfe; border-radius: 999px; background: #eff6ff; color: var(--blue-dark); padding: 8px 13px; font-size: 12px; font-weight: 900; text-align: center; }
+.row-action-menu summary::-webkit-details-marker { display: none; }
+.row-action-menu summary::after { content: " ▾"; font-size: 10px; }
+.row-action-menu[open] summary { background: #dbeafe; border-color: rgba(0, 110, 182, 0.38); }
+.row-action-menu > div { position: absolute; right: 0; z-index: 30; display: grid; gap: 7px; min-width: 190px; margin-top: 8px; padding: 10px; border: 1px solid rgba(0, 110, 182, 0.22); border-radius: 16px; background: #fff; box-shadow: 0 22px 54px rgba(16, 33, 61, 0.18); }
+.row-action-menu .mini-button { width: 100%; text-align: left; }
 .mini-transfer-lines { display: grid; gap: 6px; min-width: 260px; }
 .mini-transfer-lines span { display: block; }
 .mini-transfer-lines small, .inline-actions small { display: block; color: var(--muted); font-size: 11px; font-weight: 800; }

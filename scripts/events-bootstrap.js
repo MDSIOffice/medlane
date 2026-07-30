@@ -410,9 +410,12 @@ async function toggleUserDisabled(index) {
   const disabled = !String(user.inviteStatus || "Active").toLowerCase().includes("disabled");
   const verb = disabled ? "disable" : "enable";
   if (!confirm(`${disabled ? "Disable" : "Enable"} ${user.name || user.email}?`)) return;
-  const result = await MedlaneAPI.setUserDisabled(user.email, disabled).catch((error) => ({ error }));
+  const reason = disabled ? prompt(`Reason for disabling ${user.name || user.email}:`) : "";
+  if (disabled && !String(reason || "").trim()) return toast("Disable reason is required.");
+  const result = await MedlaneAPI.setUserDisabled(user.email, disabled, reason || "").catch((error) => ({ error }));
   if (result.error) return toast(result.error.message || `Unable to ${verb} user.`);
   user.inviteStatus = disabled ? "Disabled" : "Active";
+  user.disabledReason = disabled ? String(reason).trim() : "";
   await syncBackendUsers();
   log(`${disabled ? "Disabled" : "Enabled"} user`, "Users", `${user.email} · ${user.role}`);
   saveData();

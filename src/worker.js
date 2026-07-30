@@ -282,8 +282,26 @@ function userFromProfileAndAuth(profile, authUser, permissions = []) {
     customPermissions: { enabled: true, view, edit },
     superadminPermissions: role === "Superadmin" || Boolean(profile?.is_superadmin),
     inviteStatus: userStatusFromAuth(authUser),
+    disabledReason: authUser?.user_metadata?.disabled_reason || "",
     access: `${role} with ${view.length} view / ${edit.length} edit modules`,
   };
+}
+
+async function userDeleteBlockers(env, { id, email, name }) {
+  const needles = [id, email, name].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  const blockers = [];
+  if (!needles.length) return blockers;
+  const sessions = id ? await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(id)}&revoked_at=is.null&select=id`) .catch(() => []) : [];
+  if (sessions.length) blockers.push(`${sessions.length} active device session${sessions.length === 1 ? "" : "s"}`);
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data`);
+  const ignored = new Set(["users", "logs", "notifications"]);
+  for (const row of rows) {
+    if (ignored.has(row.module_name)) continue;
+    const text = JSON.stringify(row.data || {}).toLowerCase();
+    if (needles.some((needle) => text.includes(needle))) blockers.push(`${row.module_name}: ${row.record_key}`);
+    if (blockers.length >= 12) break;
+  }
+  return blockers;
 }
 
 function roleEditableFallback(role, view) {
@@ -885,18 +903,19 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         if (request.method !== "POST") return methodNotAllowed();
         requireUserAdmin(profile);
-        const { email: rawEmail, disabled } = await request.json();
+        const { email: rawEmail, disabled, reason = "" } = await request.json();
         const email = cleanEmail(rawEmail);
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
         if (email === cleanEmail(authUser.email)) return json({ error: "You cannot disable your own account" }, { status: 400 });
+        if (disabled && !String(reason).trim()) return json({ error: "Disable reason is required" }, { status: 400 });
         const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
         const target = (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
         if (!target?.id) return json({ error: "Supabase Auth user not found" }, { status: 404 });
         await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, {
           method: "PUT",
-          body: JSON.stringify({ ban_duration: disabled ? "876000h" : "none" }),
+          body: JSON.stringify({ ban_duration: disabled ? "876000h" : "none", user_metadata: { ...(target.user_metadata || {}), disabled_reason: disabled ? String(reason).trim() : "", disabled_at: disabled ? new Date().toISOString() : "" } }),
         });
-        return json({ ok: true, disabled: Boolean(disabled) });
+        return json({ ok: true, disabled: Boolean(disabled), reason: disabled ? String(reason).trim() : "" });
       }
 
       if (url.pathname === "/api/users/delete") {
@@ -913,6 +932,8 @@ export default {
         const fullName = profiles[0]?.full_name || target?.user_metadata?.full_name || email;
         if (String(confirmation || "").trim() !== fullName) return json({ error: `Type the full name exactly: ${fullName}` }, { status: 400 });
         const userId = profiles[0]?.id || target?.id;
+        const blockers = await userDeleteBlockers(env, { id: userId, email, name: fullName });
+        if (blockers.length) return json({ error: `Cannot delete user with active or linked records: ${blockers.join(", ")}` }, { status: 409 });
         if (userId) await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }).catch(() => null);
         if (profiles[0]?.id) await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(profiles[0].id)}`, { method: "DELETE" }).catch(() => null);
         if (target?.id) await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, { method: "DELETE" }).catch(() => null);

@@ -64,8 +64,8 @@ const MedlaneAPI = (() => {
     return request("/api/users/invite/resend", { method: "POST", body: JSON.stringify({ email }) });
   }
 
-  async function setUserDisabled(email, disabled) {
-    return request("/api/users/status", { method: "POST", body: JSON.stringify({ email, disabled }) });
+  async function setUserDisabled(email, disabled, reason = "") {
+    return request("/api/users/status", { method: "POST", body: JSON.stringify({ email, disabled, reason }) });
   }
 
   async function deleteUser(email, confirmation) {

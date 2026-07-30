@@ -2567,7 +2567,9 @@ function renderUsers() {
     const resend = String(inviteStatus).toLowerCase().includes("active") ? "" : `<button class="mini-button" data-resend-invite="${index}">Resend Invite</button>`;
     const disabled = String(inviteStatus).toLowerCase().includes("disabled");
     const statusAction = `<button class="mini-button ${disabled ? "" : "danger-button"}" data-toggle-user-disabled="${index}">${disabled ? "Enable" : "Disable"}</button>`;
-    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>`, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset</button>${resend}${statusAction}<button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"] };
+    const statusCell = `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>${u.disabledReason ? `<small>${escapeHtml(u.disabledReason)}</small>` : ""}`;
+    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset Password</button>${resend}${statusAction}<button class="mini-button danger-button" data-delete-user="${index}">Delete Permanently</button></div></details>`;
+    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, statusCell, grantControl, accessSummary, canManageUsers() ? actions : "Superadmin/CEO only"] };
   }));
 }
 function notificationItem(notice, index) {
