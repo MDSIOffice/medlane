@@ -2518,7 +2518,12 @@ async function renderUserSessions(target = selectedUserSessionsTarget) {
   try {
     const payload = await MedlaneAPI.listUserSessions({ userId: target.id, email: target.email });
     const currentSessionId = MedlaneAPI.session()?.app_session_id || "";
-    const rows = (payload.sessions || []).map((session) => {
+    const latestSessions = [...(payload.sessions || [])].sort((a, b) => new Date(b.last_seen_at || b.created_at || 0) - new Date(a.last_seen_at || a.created_at || 0)).reduce((map, session) => {
+      const key = [session.user_id, session.device_name, session.browser, session.ip_address, session.revoked_at ? session.id : "active"].join("|");
+      if (!map.has(key)) map.set(key, session);
+      return map;
+    }, new Map());
+    const rows = [...latestSessions.values()].map((session) => {
       const user = session.profile || payload.user || {};
       const active = !session.revoked_at;
       const isCurrent = session.id === currentSessionId;
@@ -2566,9 +2571,11 @@ function renderUsers() {
     const inviteStatus = u.inviteStatus || "Active";
     const resend = String(inviteStatus).toLowerCase().includes("active") ? "" : `<button class="mini-button" data-resend-invite="${index}">Resend Invite</button>`;
     const disabled = String(inviteStatus).toLowerCase().includes("disabled");
-    const statusAction = `<button class="mini-button ${disabled ? "" : "danger-button"}" data-toggle-user-disabled="${index}">${disabled ? "Enable" : "Disable"}</button>`;
+    const isSelf = String(u.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase() || (u.id && u.id === currentUser?.id);
+    const statusAction = isSelf ? "" : `<button class="mini-button ${disabled ? "" : "danger-button"}" data-toggle-user-disabled="${index}">${disabled ? "Enable" : "Disable"}</button>`;
     const statusCell = `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>${u.disabledReason ? `<small>${escapeHtml(u.disabledReason)}</small>` : ""}`;
-    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset Password</button>${resend}${statusAction}<button class="mini-button danger-button" data-delete-user="${index}">Delete Permanently</button></div></details>`;
+    const deleteAction = isSelf ? "" : `<button class="mini-button danger-button" data-delete-user="${index}">Delete Permanently</button>`;
+    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset Password</button>${resend}${statusAction}${deleteAction}</div></details>`;
     return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, statusCell, grantControl, accessSummary, canManageUsers() ? actions : "Superadmin/CEO only"] };
   }));
 }

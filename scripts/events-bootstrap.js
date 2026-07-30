@@ -749,7 +749,6 @@ async function forceLogoutSession(sessionId) {
   try {
     await MedlaneAPI.revokeUserSession(sessionId);
     log("Forced device logout", "Users", sessionId);
-    notify("Security", "A device session was force logged out.", "logs", sessionId);
     await renderUserSessions();
     toast("Device session revoked.");
   } catch (error) {
