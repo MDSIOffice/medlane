@@ -1252,6 +1252,14 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .client-ar-card .report-preview-card { min-height: auto; }
 .report-preview-card small { display: block; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
 .report-preview-card strong { display: block; margin-top: 7px; font-size: 20px; }
+.invite-confirm-modal { width: min(720px, calc(100vw - 20px)); }
+.invite-confirm-modal .report-preview-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: stretch; }
+.invite-confirm-modal .report-preview-card { min-width: 0; overflow: hidden; }
+.invite-confirm-modal .report-preview-card strong { overflow-wrap: anywhere; word-break: break-word; line-height: 1.2; }
+.invite-confirm-modal .invoice-tax-summary { min-width: 0; }
+.invite-confirm-modal .invoice-meta { gap: 12px; }
+.invite-confirm-modal .modal-actions { flex-wrap: wrap; }
+.invite-confirm-modal .modal-actions button { min-width: 160px; }
 .payment-request-print { max-width: 980px; margin: 0 auto; border: 2px solid #111827; background: #fff; color: #111827; font-family: Arial, sans-serif; }
 .payment-request-print header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #111827; padding: 16px 18px; font-size: 18px; }
 .payment-request-print .pr-meta, .payment-request-print .pr-checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; border-bottom: 1px solid #111827; padding: 12px 18px; }
@@ -1695,6 +1703,8 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .collapsible-invoice summary { padding: 15px; }
   .invoice-details { padding: 0 15px 15px; }
   .report-preview-card strong { font-size: 18px; }
+  .invite-confirm-modal .report-preview-grid { grid-template-columns: 1fr; }
+  .invite-confirm-modal .modal-actions button { width: 100%; min-width: 0; }
   table { min-width: 820px; font-size: 14px; }
   .table-card::-webkit-scrollbar { height: 18px; }
 }
