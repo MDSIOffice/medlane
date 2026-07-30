@@ -2509,10 +2509,9 @@ async function renderBackup() {
   }
 }
 async function renderUserSessions(target = selectedUserSessionsTarget) {
-  const panel = qs("#user-devices-panel");
-  if (!panel) return;
+  const modal = qs("#user-devices-modal");
+  if (!modal) return;
   selectedUserSessionsTarget = target;
-  panel.hidden = !canManageUsers() || !target;
   if (!canManageUsers() || !target) return;
   qs("#user-devices-title").textContent = `Logged-in Devices · ${target.name || target.email || "User"}`;
   table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], [["Loading sessions...", "-", "-", "-", "-", "-", "-", "-"]]);
@@ -2539,16 +2538,35 @@ async function renderUserSessions(target = selectedUserSessionsTarget) {
     table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], [["Session tracking unavailable", "Run updated Supabase schema", "-", "-", "-", "-", "Setup required", escapeHtml(error.message)]]);
   }
 }
+function dedupedUsers() {
+  const map = new Map();
+  data.users.forEach((user, index) => {
+    const key = String(user.email || user.id || user.name || "").trim().toLowerCase();
+    if (!key) return;
+    const previous = map.get(key) || {};
+    map.set(key, { ...previous, ...user, customPermissions: user.customPermissions || previous.customPermissions, _sourceIndex: index });
+  });
+  return [...map.values()];
+}
+function userStatusClass(status = "Active") {
+  const value = String(status).toLowerCase();
+  if (value.includes("active")) return "green";
+  if (value.includes("pending") || value.includes("invite")) return "orange";
+  if (value.includes("not sent") || value.includes("disabled")) return "red";
+  return "gray";
+}
 function renderUsers() {
   qs("#users [data-action='open-modal'][data-type='user']").hidden = !canManageUsers();
-  table("#users-table", ["Name", "Email", "Role", "Status", "Superadmin", "Access", "Actions"], data.users.filter((u) => includesSearch(Object.values(u))).map((u) => {
-    const index = data.users.indexOf(u);
+  const users = dedupedUsers();
+  table("#users-table", ["Name", "Email", "Role", "Status", "Superadmin", "Access", "Actions"], users.filter((u) => includesSearch(Object.values(u))).map((u) => {
+    const index = u._sourceIndex ?? data.users.indexOf(u);
     const isSuperadmin = u.superadminPermissions || u.role === "Superadmin";
     const grantControl = `<label class="ios-check-row compact-doc-check user-superadmin-check"><input type="checkbox" data-user-superadmin="${index}" ${isSuperadmin ? "checked" : ""} ${canManageUsers() ? "" : "disabled"} /><span></span><strong>${isSuperadmin ? "Granted" : "Not granted"}</strong></label>`;
     const accessSummary = u.customPermissions?.enabled ? `${u.customPermissions.view?.length || 0} view / ${u.customPermissions.edit?.length || 0} edit modules` : u.access || `${u.role} default permissions`;
-    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, `<span class="pill ${statusClass(u.inviteStatus || "Active")}">${escapeHtml(u.inviteStatus || "Active")}</span>`, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset</button><button class="mini-button" data-resend-invite="${index}">Resend Invite</button><button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"] };
+    const inviteStatus = u.inviteStatus || "Active";
+    const resend = String(inviteStatus).toLowerCase().includes("active") ? "" : `<button class="mini-button" data-resend-invite="${index}">Resend Invite</button>`;
+    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>`, grantControl, accessSummary, canManageUsers() ? `<div class="inline-actions"><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset</button>${resend}<button class="mini-button danger-button" data-delete-user="${index}">Delete</button></div>` : "Superadmin/CEO only"] };
   }));
-  if (!selectedUserSessionsTarget) qs("#user-devices-panel").hidden = true;
 }
 function notificationItem(notice, index) {
   return `<div class="alert-item clickable" data-notice-index="${index}" data-go-section="${escapeHtml(notice.section || "notifications")}" data-focus-record="${escapeHtml(notice.record || "")}"><span class="alert-dot ${notice.status === "Unread" ? "orange" : "green"}"></span><div><strong>${escapeHtml(notice.type)} · ${escapeHtml(notice.status)}</strong><span>${escapeHtml(notice.message)} · ${escapeHtml(notice.date)}</span></div></div>`;

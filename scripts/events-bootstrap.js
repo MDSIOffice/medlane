@@ -665,6 +665,8 @@ qs("#logs-role-filter").addEventListener("change", renderLogs);
 qs("#logs-module-filter").addEventListener("change", renderLogs);
 qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
 qs("#clear-notifications").addEventListener("click", () => { data.notifications = data.notifications.filter((notice) => notice.status === "Unread"); saveData(); renderNotifications(); toast("Read notifications cleared."); });
+qs("#user-devices-close")?.addEventListener("click", () => qs("#user-devices-modal")?.close());
+qs("#user-devices-modal")?.addEventListener("click", (event) => { if (event.target.id === "user-devices-modal") qs("#user-devices-modal")?.close(); });
 qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
 qs("#refresh-backups")?.addEventListener("click", () => { renderBackup(); toast("Backups refreshed."); });
 qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
@@ -701,7 +703,7 @@ function openUserSessions(index) {
   const user = data.users[index];
   if (!user) return toast("User not found.");
   renderUserSessions({ id: user.id || "", email: user.email || user.username || "", name: user.name || user.email || "User" });
-  qs("#user-devices-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  qs("#user-devices-modal")?.showModal();
 }
 
 async function forceLogoutSession(sessionId) {
@@ -789,6 +791,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
 
 function playDashboardLoginSound() {
   if (!currentUser || sessionStorage.getItem("medlane-dashboard-sound-played") === "1") return;
+  if (!data.notifications?.some((notice) => notice.status === "Unread")) return;
   sessionStorage.setItem("medlane-dashboard-sound-played", "1");
   const audio = new Audio("/Notification Sound.mp3");
   audio.volume = 0.55;

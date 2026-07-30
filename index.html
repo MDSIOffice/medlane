@@ -497,10 +497,6 @@
       <section class="section" id="users">
         <div class="section-header"><div><p class="eyebrow">Admin Editable</p><h2>Users And Permissions</h2></div><button class="primary-button" data-action="open-modal" data-type="user">Invite User</button></div>
         <div class="table-card"><table id="users-table"></table></div>
-        <article class="panel transfer-panel" id="user-devices-panel" hidden>
-          <div class="panel-header"><div><p class="eyebrow">Active Sessions</p><h2 id="user-devices-title">Logged-in Devices</h2><p>Review device, IP address, browser, and force logout a session.</p></div><button class="ghost-button" id="refresh-user-sessions" type="button">Refresh</button></div>
-          <div class="table-card compact-table"><table id="user-sessions-table"></table></div>
-        </article>
       </section>
 
       <section class="section" id="notifications">
@@ -652,6 +648,14 @@
         <div class="modal-header"><div><p class="eyebrow">Payment Request</p><h2 id="payment-request-preview-title">Preview</h2></div><button class="icon-button" id="payment-request-preview-close" type="button" aria-label="Close">x</button></div>
         <div id="payment-request-preview-content"></div>
         <div class="modal-actions"><button class="ghost-button" id="payment-request-preview-cancel" type="button">Close</button><button class="primary-button" id="payment-request-preview-print" type="button">Print</button></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal report-modal" id="user-devices-modal">
+      <div class="report-preview">
+        <div class="modal-header"><div><p class="eyebrow">Active Sessions</p><h2 id="user-devices-title">Logged-in Devices</h2><p>Review device, IP address, browser, and force logout a session.</p></div><button class="icon-button" id="user-devices-close" type="button" aria-label="Close">x</button></div>
+        <div class="modal-actions"><button class="ghost-button" id="refresh-user-sessions" type="button">Refresh</button></div>
+        <div class="table-card compact-table"><table id="user-sessions-table"></table></div>
       </div>
     </dialog>
 
