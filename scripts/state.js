@@ -36,6 +36,8 @@ const accounts = {
   Accounting: { name: "Joy Santos", role: "Accounting", branch: "all", email: "joy@medlane.local", phone: "+63 917 300 0000", modules: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"] },
   Sales: { name: "Ana Cruz", role: "Sales", branch: "Region IV-A", email: "ana@medlane.local", phone: "+63 917 400 0000", modules: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"] },
   Logistics: { name: "Ramon Dela Cruz", role: "Logistics", branch: "all", email: "ramon@medlane.local", phone: "+63 917 500 0000", modules: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
+  "Product Specialist": { name: "Product Specialist", role: "Product Specialist", branch: "all", email: "product.specialist@medlane.local", phone: "+63 917 700 0000", modules: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
+  Engineering: { name: "Service Engineer", role: "Engineering", branch: "all", email: "engineering@medlane.local", phone: "+63 917 800 0000", modules: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
   HR: { name: "HR User", role: "HR", branch: "all", email: "hr@medlane.local", phone: "+63 917 600 0000", modules: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"] },
 };
 if (currentUser?.role && accounts[currentUser.role] && !currentUser.id && !currentUser.customPermissions) currentUser = accounts[currentUser.role];
@@ -67,6 +69,8 @@ const roleEditableModules = {
   Accounting: ["purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings"],
   Sales: ["sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
   Logistics: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
+  "Product Specialist": ["inventory", "reports", "notifications", "user-settings", "product-issues"],
+  Engineering: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
   HR: ["replenishments", "reports", "notifications", "user-settings"],
 };
 function editableModules() { return currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || []; }

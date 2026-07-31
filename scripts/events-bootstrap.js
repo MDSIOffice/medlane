@@ -276,6 +276,8 @@ document.body.addEventListener("click", (event) => {
   if (inventoryPoCancel) return cancelPurchaseOrder(Number(inventoryPoCancel.dataset.inventoryPoCancel));
   const inventoryPoReceive = event.target.closest("[data-inventory-po-receive]");
   if (inventoryPoReceive) { const po = data.inventoryPurchaseOrders[Number(inventoryPoReceive.dataset.inventoryPoReceive)]; if (po) openStockSheetForPo(po.id); return; }
+  const revertImport = event.target.closest("[data-revert-import]");
+  if (revertImport) return revertImportBatch(Number(revertImport.dataset.revertImport));
   const productIssuePrint = event.target.closest("[data-product-issue-print]");
   if (productIssuePrint) return previewProductIssue(productIssuePrint.dataset.productIssuePrint);
   const productIssueTimeline = event.target.closest("[data-product-issue-timeline]");
@@ -755,6 +757,14 @@ qs("#logs-role-filter").addEventListener("change", renderLogs);
 qs("#logs-module-filter").addEventListener("change", renderLogs);
 qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
 qs("#clear-notifications").addEventListener("click", () => { data.notifications = data.notifications.filter((notice) => notice.status === "Unread"); saveData(); renderNotifications(); toast("Read notifications cleared."); });
+qs("#mark-all-read-notifications").addEventListener("click", () => {
+  const unreadCount = data.notifications.filter((notice) => notice.status === "Unread").length;
+  if (!unreadCount) return toast("No unread notifications.");
+  data.notifications.forEach((notice) => { notice.status = "Read"; });
+  saveData();
+  renderNotifications();
+  toast(`${unreadCount} notification${unreadCount === 1 ? "" : "s"} marked as read.`);
+});
 qs("#user-devices-close")?.addEventListener("click", () => qs("#user-devices-modal")?.close());
 qs("#user-devices-modal")?.addEventListener("click", (event) => { if (event.target.id === "user-devices-modal") qs("#user-devices-modal")?.close(); });
 qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
@@ -809,22 +819,47 @@ async function forceLogoutSession(sessionId) {
     toast(error.message || "Unable to revoke session.");
   }
 }
+let lastImportFileName = null;
 qs("#import-sample").addEventListener("click", () => {
+  lastImportFileName = null;
   qs("#csv-input").value = "vvv\tYear\tMonth\tOffice\tDate\tSales Rep\tBranch\tArea\tTS/DR\tSI No.\tTIN\tCLIENT\tClassification\tBrand\tPRODUCT\tQty\tU/M\tUnit Price\tAmount\tDiscount\tTotal Price\tInvoice Amount\tLESS TPC\tActual Sales\t12% VAT\tNET Sales\tCWT\tRemarks\n1\t2026\tJuly\tLas Pinas\t2026-07-15\tAna Cruz\tLas Pinas\tRegion IV-A\t\tSI-MIG-001\t123-456-789\tPrimeCare Diagnostics\tDirect\tSysmex\tHematology Reagent\t2\tkit\t4200\t8400\t0\t8400\t9408\t0\t8400\t1008\t9408\t0\tMigrated opening AR\n2\t2026\tJuly\tNaga\t2026-07-16\tMika Tan\tNaga\tRegion V\tTS-MIG-002\t\t222-333-444\tBicol Heart Lab\tDirect\tBD\tVacutainer Tubes\t100\tbox\t35\t3500\t0\t3500\t3500\t0\t3500\t0\t3500\t0\tMigrated opening AR";
   renderImportCheck();
 });
+qs("#csv-file-input").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const text = await file.text().catch(() => "");
+  if (!text.trim()) return toast("Could not read that file, or it was empty.");
+  lastImportFileName = file.name;
+  qs("#csv-input").value = text;
+  renderImportCheck();
+  toast(`Loaded ${file.name}. Review the preview before importing.`);
+});
+qs("#csv-input").addEventListener("input", () => { lastImportFileName = null; });
 qs("#check-import").addEventListener("click", () => { renderImportCheck(); toast("Import safety check completed."); });
-qs("#clear-import").addEventListener("click", () => { qs("#csv-input").value = ""; qs("#import-preview-summary").innerHTML = ""; table("#import-check-table", ["Row", "Client", "Area", "Status", "Safety Notes"], []); });
-qs("#run-import").addEventListener("click", () => {
+qs("#clear-import").addEventListener("click", () => { lastImportFileName = null; qs("#csv-file-input").value = ""; qs("#csv-input").value = ""; qs("#import-preview-summary").innerHTML = ""; table("#import-check-table", ["Row", "Client", "Area", "Status", "Safety Notes"], []); });
+qs("#run-import").addEventListener("click", async () => {
+  if (!canApproveMigrations()) return toast("Only Superadmin or CEO can approve a migration import.");
   const checked = renderImportCheck();
   const ready = checked.filter((row) => row.status === "Ready");
   if (!ready.length) return toast("No valid rows to import. Review the skipped-row warnings first.");
+  const moduleLabel = { clientsMasterlist: "Clients", suppliersMasterlist: "Suppliers/Vendors", productsMasterlist: "Products/Services" }[ready[0]?.kind] || "Records";
+  const ok = await confirmDetailsModal({
+    eyebrow: "Confirm Migration Import",
+    title: `Import ${ready.length} ${moduleLabel} record(s)`,
+    fields: [["File", lastImportFileName || "Pasted CSV/TSV"], ["Ready rows", ready.length], ["Skipped rows", checked.length - ready.length]],
+    confirmLabel: "Approve & Import",
+    note: "This creates new live records. Review the preview table carefully before confirming.",
+  });
+  if (!ok) return;
   const result = importCheckedRows(checked);
-  data.imports.unshift({ date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), module: result.module, file: "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows" });
+  data.imports.unshift({ date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" });
   log("Imported confirmed CSV/TSV rows", "Imports", `${result.records} ${result.module} records · ${result.skipped || 0} skipped`);
   saveData();
   renderAll();
   toast(`${result.records} ${result.module} record/s imported; ${result.skipped || 0} skipped.`);
+  lastImportFileName = null;
+  qs("#csv-file-input").value = "";
 });
 window.addEventListener("afterprint", clearPrintTarget);
 window.addEventListener("resize", updateTableScrollHints);

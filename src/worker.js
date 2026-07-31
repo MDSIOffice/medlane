@@ -10,6 +10,8 @@ const roleModules = {
   Accounting: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"],
   Sales: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
   Logistics: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
+  "Product Specialist": ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
+  Engineering: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
   HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
 };
 

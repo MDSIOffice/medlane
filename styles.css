@@ -1248,6 +1248,10 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .modal::-webkit-scrollbar-thumb { border: 3px solid #edf5ff; border-radius: 999px; background: #63b3e6; }
 .modal::-webkit-scrollbar-thumb:hover { background: var(--blue); }
 .modal { scrollbar-color: #63b3e6 #edf5ff; scrollbar-width: thin; }
+#report-preview-modal { width: min(940px, calc(100vw - 24px)); }
+#report-preview-modal[open] { overflow-x: auto; }
+#report-preview-modal .report-preview:has(.template-overlay) { overflow-x: auto; padding: 24px 0; }
+#report-preview-modal .template-overlay { margin: 0 auto; }
 .modal.wide-modal { width: min(1180px, calc(100vw - 24px)); }
 .modal.inventory-po-modal { width: min(1500px, calc(100vw - 24px)); }
 .modal.wide-modal[open] { max-height: calc(100dvh - 18px); }

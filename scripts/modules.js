@@ -605,6 +605,7 @@ function transferAuthorizationCell(transfer, index) {
 function canApproveInventoryChanges() { return ["Admin", "Superadmin"].includes(currentUser?.role); }
 function canApprovePurchaseOrders() { return currentUser?.role === "Superadmin"; }
 function canManagePoReceiving() { return ["Superadmin", "Logistics"].includes(currentUser?.role); }
+function canApproveMigrations() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 
 const inventoryPoTerminalStatuses = ["Fully Received", "Cancelled"];
 const inventoryPoCancellableStatuses = ["Approved", "Sent to Supplier", "In Transit", "For Receiving", "Partially Received"];
@@ -2084,14 +2085,17 @@ function productIssueHistory(report) {
   return report.history?.length ? report.history : [{ date: report.startDate, status: "Open", note: "Report started", by: report.performedBy }];
 }
 
+function canEditPassedProductIssue() { return ["Engineering", "Superadmin", "CEO"].includes(currentUser?.role); }
+
 function productIssueActionsMenu(report) {
-  const canEdit = canEditModule("product-issues") && report.status !== "Resolved";
+  const lockedToEngineering = report.status === "Pass to Engineering" && !canEditPassedProductIssue();
+  const canEdit = canEditModule("product-issues") && report.status !== "Resolved" && !lockedToEngineering;
   const statusButtons = canEdit ? [
     report.status !== "In Progress" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:In Progress">In Progress</button>` : "",
     report.status !== "Resolved" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Resolved">Mark Resolved</button>` : "",
     report.status !== "Pass to Engineering" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineering</button>` : "",
     report.status !== "Open" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Open">Reopen</button>` : "",
-  ].join("") : (report.status === "Resolved" ? `<small>Resolved &amp; locked</small>` : "");
+  ].join("") : (report.status === "Resolved" ? `<small>Resolved &amp; locked</small>` : lockedToEngineering ? `<small>Locked to Engineering</small>` : "");
   return `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-product-issue-print="${escapeHtml(report.id)}">Print</button>${statusButtons}</div></details>`;
 }
 
@@ -2162,6 +2166,7 @@ async function updateProductIssueStatus(id, status) {
   const report = data.productIssues.find((item) => item.id === id);
   if (!report) return toast("Support report not found.");
   if (report.status === "Resolved") return toast("This report is resolved and locked from further changes.");
+  if (report.status === "Pass to Engineering" && !canEditPassedProductIssue()) return toast("This report is with Engineering. Only Engineering, Superadmin, or CEO can update it now.");
   let resolvedBy = report.resolvedBy || "";
   let note = "";
   if (status === "Resolved") {
@@ -2197,7 +2202,12 @@ function renderPurchaseHistory() {
 }
 
 function renderImports() {
-  table("#imports-table", ["Date", "Module", "Source", "Records", "Status"], data.imports.map((item) => ({ focus: `${item.date} ${item.module} ${item.file}`, cells: [item.date, item.module, item.file, item.records, `<span class="pill ${statusClass(item.status)}">${item.status}</span>`] })));
+  const canRevert = canApproveMigrations();
+  table("#imports-table", ["Date", "Module", "Source", "Records", "Status", "Actions"], data.imports.map((item, index) => {
+    const revertible = !item.reverted && item.recordType && item.recordKeys?.length;
+    const action = item.reverted ? `<small>Reverted</small>` : revertible ? (canRevert ? `<button class="mini-button danger-button" data-revert-import="${index}">Revert</button>` : `<small>Superadmin/CEO only</small>`) : "-";
+    return { focus: `${item.date} ${item.module} ${item.file}`, cells: [item.date, item.module, item.file, item.records, `<span class="pill ${statusClass(item.status)}">${item.status}</span>`, action] };
+  }));
 }
 
 function splitImportLine(row, delimiter) {
@@ -2444,19 +2454,23 @@ function importCheckedRows(checked) {
     const parsed = parseImportText();
     const headers = parsed[0].map(normalizedImportHeader);
     if (kind === "clientsMasterlist") {
+      const recordKeys = [];
       ready.forEach((item) => {
         const client = buildImportedClient(parsed[item.row - 1], headers);
         if (client.area && !platformAreas().some((area) => area.toLowerCase() === client.area.toLowerCase())) data.platformAreas.push(client.area);
         data.clients.push(client);
+        recordKeys.push(client.name);
       });
-      return { module: "Clients", records: ready.length, skipped: checked.length - ready.length };
+      return { module: "Clients", records: ready.length, skipped: checked.length - ready.length, recordType: "clients", recordKeys };
     }
     if (kind === "suppliersMasterlist") {
-      ready.forEach((item) => data.suppliers.push(buildImportedSupplier(parsed[item.row - 1], headers)));
-      return { module: "Suppliers/Vendors", records: ready.length, skipped: checked.length - ready.length };
+      const recordKeys = [];
+      ready.forEach((item) => { const supplier = buildImportedSupplier(parsed[item.row - 1], headers); data.suppliers.push(supplier); recordKeys.push(supplier.name); });
+      return { module: "Suppliers/Vendors", records: ready.length, skipped: checked.length - ready.length, recordType: "suppliers", recordKeys };
     }
-    ready.forEach((item) => data.items.push(buildImportedProduct(parsed[item.row - 1], headers)));
-    return { module: "Products/Services", records: ready.length, skipped: checked.length - ready.length };
+    const recordKeys = [];
+    ready.forEach((item) => { const product = buildImportedProduct(parsed[item.row - 1], headers); data.items.push(product); recordKeys.push(product.code); });
+    return { module: "Products/Services", records: ready.length, skipped: checked.length - ready.length, recordType: "items", recordKeys };
   }
   if (kind === "salesMigration") {
     const parsed = parseImportText();
@@ -2479,11 +2493,54 @@ function importCheckedRows(checked) {
     });
     return { module: "Collections", records: imported, skipped: checked.length - ready.length };
   }
+  const recordKeys = [];
   ready.forEach(({ name, area, address, contact, tin }) => {
     if (area && !platformAreas().some((item) => item.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
     data.clients.push({ name, area, dealer: area.includes("Dealer") ? area : "Direct", address, contact, tin, creditLimit: 150000, docs: "Mayor's Permit, 2303, SEC or DTI, FDALTO, GAIA", migrated: true });
+    recordKeys.push(name);
   });
-  return { module: "Clients", records: ready.length, skipped: checked.length - ready.length };
+  return { module: "Clients", records: ready.length, skipped: checked.length - ready.length, recordType: "clients", recordKeys };
+}
+
+function importRevertBlockers(recordType, key) {
+  const needle = String(key || "").trim().toLowerCase();
+  if (!needle) return [];
+  const scopes = {
+    clients: ["sales", "payments", "paymentRequests", "collectionContacts", "collectionContactHistory", "warranties", "productIssues"],
+    suppliers: ["inventoryPurchaseOrders", "payables", "items"],
+    items: ["inventory", "sales", "inventoryPurchaseOrders", "purchaseOrders"],
+  };
+  const modules = scopes[recordType] || [];
+  const blockers = [];
+  modules.forEach((moduleKey) => {
+    const records = data[moduleKey] || [];
+    const matches = records.filter((record) => JSON.stringify(record).toLowerCase().includes(needle));
+    if (matches.length) blockers.push(`${matches.length} record(s) in ${moduleKey}`);
+  });
+  return blockers;
+}
+
+async function revertImportBatch(index) {
+  if (!canApproveMigrations()) return toast("Only Superadmin or CEO can revert a migration import.");
+  const entry = data.imports[index];
+  if (!entry || entry.reverted || !entry.recordType || !entry.recordKeys?.length) return toast("This import cannot be reverted.");
+  const blockedKeys = [];
+  entry.recordKeys.forEach((key) => {
+    const blockers = importRevertBlockers(entry.recordType, key);
+    if (blockers.length) blockedKeys.push(`${key} (${blockers.join(", ")})`);
+  });
+  if (blockedKeys.length) return toast(`Cannot revert: these records are already in use — ${blockedKeys.slice(0, 3).join("; ")}${blockedKeys.length > 3 ? "…" : ""}`);
+  const ok = await confirmDetailsModal({ eyebrow: "Confirm Revert", title: `Revert ${entry.module} import`, fields: [["File", entry.file], ["Records", entry.records], ["Imported", entry.date]], confirmLabel: "Revert Import", danger: true, note: "This permanently removes the records created by this import." });
+  if (!ok) return;
+  const keySet = new Set(entry.recordKeys.map((value) => String(value).trim().toLowerCase()));
+  if (entry.recordType === "clients") data.clients = data.clients.filter((client) => !keySet.has(String(client.name).trim().toLowerCase()));
+  if (entry.recordType === "suppliers") data.suppliers = data.suppliers.filter((supplier) => !keySet.has(String(supplier.name).trim().toLowerCase()));
+  if (entry.recordType === "items") data.items = data.items.filter((item) => !keySet.has(String(item.code).trim().toLowerCase()));
+  entry.reverted = true;
+  log("Reverted migration import", "Imports", `${entry.module}: ${entry.records} record(s)`);
+  saveData();
+  renderAll();
+  toast(`${entry.module} import reverted.`);
 }
 
 function renderPayables() {
@@ -3127,7 +3184,7 @@ const modalConfigs = {
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
-  user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
+  user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
   productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "In Progress", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
 };
 

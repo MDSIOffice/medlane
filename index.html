@@ -452,7 +452,8 @@
       <section class="section" id="imports">
         <div class="section-header"><div><p class="eyebrow">Excel / CSV Import</p><h2>Import spreadsheet records into Medlane OS</h2></div><button class="primary-button" id="import-sample">Load Sample</button></div>
         <article class="panel import-panel">
-          <p>Paste masterlist CSV data from <strong>CLIENTS</strong>, <strong>SUPPLIERS / VENDORS</strong>, or <strong>PRODUCTS / SERVICES</strong>. The preview detects the format, flags duplicates/missing fields, and imports only confirmed rows.</p>
+          <p>Upload a masterlist CSV file for <strong>CLIENTS</strong>, <strong>SUPPLIERS / VENDORS</strong>, or <strong>PRODUCTS / SERVICES</strong> (or paste the data below). The preview detects the format, flags duplicates/missing fields, and imports only confirmed rows.</p>
+          <div class="field"><label for="csv-file-input">Upload CSV File</label><input id="csv-file-input" type="file" accept=".csv,text/csv" /></div>
           <textarea id="csv-input" placeholder="client,ABC Laboratory,Region IV-A,Address,Contact,123-456-789-000"></textarea>
           <div class="modal-actions"><button class="ghost-button" id="check-import" type="button">Preview Import</button></div>
           <div class="import-preview-summary" id="import-preview-summary" aria-live="polite"></div>
@@ -519,7 +520,7 @@
       </section>
 
       <section class="section" id="notifications">
-        <div class="section-header"><div><p class="eyebrow">Notifications</p><h2>Operational alerts and approvals</h2></div><button class="ghost-button" id="clear-notifications">Clear Read</button></div>
+        <div class="section-header"><div><p class="eyebrow">Notifications</p><h2>Operational alerts and approvals</h2></div><div class="inline-actions"><button class="ghost-button" id="mark-all-read-notifications">Mark All as Read</button><button class="ghost-button" id="clear-notifications">Clear Read</button></div></div>
         <div class="alert-list" id="notification-list"></div>
       </section>
 
