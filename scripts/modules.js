@@ -717,6 +717,8 @@ function renderMasterlists() {
   qsa("#master-tabs .tab[data-master='employees']").forEach((tab) => { tab.hidden = !canManageEmployees(); });
   qsa("#master-tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.master === data.masterTab));
   qs("#platform-branch-panel").hidden = data.masterTab !== "branches";
+  qs("#master-table").parentElement.classList.toggle("hidden", data.masterTab === "branches");
+  qs("#master-add-button").hidden = !canEditModule("masterlists") || data.masterTab === "branches";
   qs("#master-table").classList.toggle("employee-table", data.masterTab === "employees");
   const labels = { clients: "Add Client", items: "Add Item", suppliers: "Add Supplier", branches: "Add Branch", employees: "Add Employee", banks: "Add Bank" };
   qs("#master-add-button").textContent = labels[data.masterTab];
