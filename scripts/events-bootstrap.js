@@ -14,7 +14,12 @@ function mergeUsersFromBackend(users = []) {
 async function syncBackendUsers() {
   if (!currentUser || !MedlaneAPI?.session()?.access_token || !["Superadmin", "CEO"].includes(currentUser.role)) return;
   const payload = await MedlaneAPI.listUsers().catch(() => null);
-  if (payload?.users) mergeUsersFromBackend(payload.users);
+  if (!payload?.users) return;
+  const backendEmails = new Set(payload.users.map((user) => String(user.email || "").trim().toLowerCase()));
+  const staleCount = data.users.filter((user) => !backendEmails.has(String(user.email || "").trim().toLowerCase())).length;
+  data.users = data.users.filter((user) => backendEmails.has(String(user.email || "").trim().toLowerCase()));
+  mergeUsersFromBackend(payload.users);
+  if (staleCount) saveData();
 }
 
 function confirmInviteUser(values, view, edit) {
