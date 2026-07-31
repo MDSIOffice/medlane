@@ -674,6 +674,7 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
   if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
+  if (event.target.id === "companyName" && modalType === "productIssue") syncProductIssueClientAddress();
   if (event.target.id === "role" && modalType === "user") syncInviteUserPermissions();
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
   if (["invoice", "cancelReplace"].includes(modalType)) renderInvoiceComputePreview();

@@ -689,12 +689,12 @@ select, .search-input {
 #stock-sheet-table th, #stock-sheet-table td, #transfer-sheet-table th, #transfer-sheet-table td { padding: 20px 28px; }
 #stock-sheet-table .sheet-action-cell, #transfer-sheet-table .sheet-action-cell { padding: 16px; text-align: center; }
 #stock-sheet-table .remove-sheet-row, #transfer-sheet-table .remove-sheet-row { width: 42px; height: 42px; min-height: 42px; padding: 0; border-radius: 50%; font-size: 21px; font-weight: 950; line-height: 1; }
-.parameter-table-lots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+.parameter-table-lots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 18px; }
 #parameter-qc-table { min-width: 1500px; table-layout: fixed; }
-#parameter-qc-table th, #parameter-qc-table td { padding: 8px 10px; text-align: center; }
-#parameter-qc-table td:first-child, #parameter-qc-table th:first-child { text-align: left; width: 170px; }
-#parameter-qc-table td:nth-child(2), #parameter-qc-table th:nth-child(2) { width: 110px; }
-#parameter-qc-table input { width: 100%; min-width: 70px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 6px 8px; font: inherit; }
+#parameter-qc-table th, #parameter-qc-table td { padding: 12px 14px; text-align: center; }
+#parameter-qc-table td:first-child, #parameter-qc-table th:first-child { text-align: left; width: 190px; }
+#parameter-qc-table td:nth-child(2), #parameter-qc-table th:nth-child(2) { width: 130px; }
+#parameter-qc-table input { width: 100%; min-width: 80px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 8px 10px; font: inherit; }
 #parameter-qc-table input[type="checkbox"] { width: 18px; height: 18px; min-width: 0; }
 #parameter-qc-table .param-p-cell, #parameter-qc-table .param-f-cell { width: 46px; }
 #parameter-qc-table .sheet-action-cell { width: 60px; }

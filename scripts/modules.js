@@ -996,7 +996,7 @@ function syncStockSheetRow(input, allowPartial = false) {
 function saveStockSheet() {
   const poId = qs("#inventory-po-receive-picker")?.value;
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
-  if (!(po ? canManagePoReceiving() : canApproveInventoryChanges())) return toast(po ? "Receiving this purchase order needs Logistics or Superadmin access." : "Receiving stock needs Admin approval.");
+  if (!canManagePoReceiving()) return toast("Receiving stock needs Logistics or Superadmin access.");
   if (po && !["For Receiving", "Partially Received"].includes(po.status)) return toast(`${po.id} is not ready for receiving.`);
   const rows = qsa("#stock-sheet-table tbody tr").map((row) => {
     const branch = row.querySelector(".stock-branch")?.value;
@@ -2032,6 +2032,7 @@ function renderWarranty() {
 function productIssueStatusClass(status) {
   if (status === "Resolved") return "green";
   if (status === "Pass to Engineering") return "orange";
+  if (status === "In Progress") return "purple";
   return "gray";
 }
 
@@ -2056,6 +2057,7 @@ function productIssueHistory(report) {
 function productIssueActionsMenu(report) {
   const canEdit = canEditModule("product-issues");
   const statusButtons = canEdit ? [
+    report.status !== "In Progress" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:In Progress">In Progress</button>` : "",
     report.status !== "Resolved" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Resolved">Mark Resolved</button>` : "",
     report.status !== "Pass to Engineering" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineering</button>` : "",
     report.status !== "Open" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Open">Reopen</button>` : "",
@@ -2090,7 +2092,7 @@ function renderProductIssueDetail(id) {
   if (!report) return toast("Support report not found.");
   const events = productIssueHistory(report);
   qs("#product-issue-detail-title").textContent = `${report.id} · ${report.companyName}`;
-  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Performed By</small><strong>${escapeHtml(report.performedBy || "-")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Concerns / Inquiries:</strong> ${escapeHtml(report.concerns || "-")}</p><p><strong>Update / Actions Taken:</strong> ${escapeHtml(report.actionsTaken || "-")}</p>${productIssueParameterSummaryHtml(report)}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Resolved" ? "done" : event.status === "Pass to Engineering" ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Performed By</small><strong>${escapeHtml(report.performedBy || "-")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Concerns / Inquiries:</strong> ${escapeHtml(report.concerns || "-")}</p><p><strong>Update / Actions Taken:</strong> ${escapeHtml(report.actionsTaken || "-")}</p>${productIssueParameterSummaryHtml(report)}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Resolved" ? "done" : ["Pass to Engineering", "In Progress"].includes(event.status) ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
   showSection("product-issue-detail");
 }
 
@@ -2993,14 +2995,14 @@ const modalConfigs = {
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
-  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
+  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "In Progress", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
 };
 
 function openModal(type, edit = null) {
   modalType = type;
   editContext = edit?.record ? edit : null;
   const config = modalConfigs[type];
-  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder", "user"].includes(type));
+  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue"].includes(type));
   qs("#demo-modal").classList.toggle("inventory-po-modal", type === "inventoryPurchaseOrder");
   const isEditRecord = Boolean(edit?.record);
   qs("#modal-title").textContent = isEditRecord ? config.title.replace("Add", "Edit") : config.title;
@@ -3237,6 +3239,13 @@ function syncItemSupplierBrand() {
   if (modalType !== "item") return;
   const supplier = data.suppliers.find((entry) => entry.name.toLowerCase() === (qs("#supplier")?.value || "").trim().toLowerCase());
   if (supplier?.brand && qs("#brand")) qs("#brand").value = supplier.brand;
+}
+
+function syncProductIssueClientAddress() {
+  if (modalType !== "productIssue") return;
+  const client = data.clients.find((entry) => entry.name.toLowerCase() === (qs("#companyName")?.value || "").trim().toLowerCase());
+  if (client?.address && qs("#address")) qs("#address").value = client.address;
+  if (client?.contact && qs("#contactPerson") && !qs("#contactPerson").value.trim()) qs("#contactPerson").value = client.contact;
 }
 
 function openMasterEditModal(type, index) {
