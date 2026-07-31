@@ -242,7 +242,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="1" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${uomOptions.map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" value="${line.price || ""}" required /></div>
-      ${requireLot ? `<div class="field lot-field"><label>Lot No.</label><input class="invoice-lot-input" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="Lot number" required /></div><div class="field expiry-field"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" required /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
+      ${requireLot ? `<div class="field lot-field"><label>Lot No.</label><input class="invoice-lot-input" list="invoice-lot-options" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="Lot number" required /></div><div class="field expiry-field"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" required /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
     </div>
     <button class="icon-button remove-invoice-line" type="button" aria-label="Remove item" title="Remove item">×</button>
@@ -285,7 +285,7 @@ function renderInvoiceEditor(lines = [{}], options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
   const help = requireLot ? "Search item name/code. Enter lot and expiry before creating SI, TS, or DR." : "Search item name/code. Lot and expiry will be entered during invoicing.";
-  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option><option value="${escapeHtml(item.code)}">${escapeHtml(item.name)}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
+  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option><option value="${escapeHtml(item.code)}">${escapeHtml(item.name)}</option>`).join("")}</datalist><datalist id="invoice-lot-options">${data.inventory.map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.item)} · ${escapeHtml(entry.branch)} · Qty ${entry.qty}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
 }
 
 function collectInvoiceEditorLines() {
@@ -302,6 +302,20 @@ function collectInvoiceEditorLines() {
     const discount = row.querySelector(".invoice-discount-input")?.value || 0;
     return `${itemValue}|${brand}|${qty}|${uom}|${price}|${sourceBranch}|${lot}|${expiry}|${discount}`;
   }).filter((line) => line.split("|")[0]).join("\n");
+}
+
+function syncInvoiceRowLot(input) {
+  if (!input) return;
+  const row = input.closest(".invoice-line-row");
+  const item = findItemByCodeOrName(row?.querySelector(".invoice-item-input")?.value);
+  const lot = input.value.trim();
+  if (!row || !item || !lot) return;
+  const branch = row.querySelector(".invoice-source-branch-input")?.value || qs("#sourceBranch")?.value;
+  const stock = data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.lot === lot && (!branch || entry.branch === branch));
+  if (stock?.expiry && stock.expiry !== "N/A") {
+    const expiryInput = row.querySelector(".invoice-expiry-input");
+    if (expiryInput) expiryInput.value = stock.expiry;
+  }
 }
 
 function syncInvoiceRowItem(input) {
