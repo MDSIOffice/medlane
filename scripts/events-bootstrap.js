@@ -652,6 +652,10 @@ qs("#modal-fields").addEventListener("click", (event) => {
   if (parameterRemove && qsa(".parameter-row").length > 1) parameterRemove.closest(".parameter-row").remove();
 });
 qs("#modal-fields").addEventListener("input", (event) => {
+  if (event.target.hasAttribute("data-tin-input")) {
+    const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
+    event.target.value = digits.replace(/(\d{3})(?=\d)/g, "$1-");
+  }
   if (event.target.id === "invoice" && modalType === "payment") syncPaymentInvoice();
   if (event.target.id === "amount" && modalType === "payment") renderPaymentDeductionPreview();
   if (modalType === "paymentRequest" && event.target.closest(".payment-request-line-row")) syncPaymentRequestTotal();

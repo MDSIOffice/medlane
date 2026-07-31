@@ -721,6 +721,7 @@ function renderMasterlists() {
   qs("#master-table").parentElement.classList.toggle("hidden", data.masterTab === "branches");
   qs("#master-add-button").hidden = !canEditModule("masterlists") || data.masterTab === "branches";
   qs("#master-table").classList.toggle("employee-table", data.masterTab === "employees");
+  qs("#master-table").classList.toggle("client-table", data.masterTab === "clients");
   const labels = { clients: "Add Client", items: "Add Item", suppliers: "Add Supplier", branches: "Add Branch", employees: "Add Employee", banks: "Add Bank" };
   qs("#master-add-button").textContent = labels[data.masterTab];
   qs("#master-add-button").hidden = !canEditModule("masterlists");
@@ -2853,10 +2854,10 @@ function handleWorkflowAction(action) {
 }
 
 const modalConfigs = {
-  client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address"], ["contact", "Contact Information"], ["tin", "TIN No."], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
+  client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
   item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...data.items.map((item) => item.brand), ...data.suppliers.map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["source", "From", "select", ["Supplier", "Client"]], ["supplier", "Supplier/Client", "datalist", () => [...new Set([...data.suppliers.map((supplier) => supplier.name), ...data.clients.map((client) => client.name)])]], ["lot", "Default Lot No."], ["expiry", "Default Expiry", "date"]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea"]] },
-  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address"], ["contact", "Contact Information"]] },
+  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["contact", "Contact Information"]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["benefits", "Govt. Benefits", "benefit-checkboxes"]] },
   purchaseOrder: { title: "Create PO", fields: [["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
@@ -2868,7 +2869,7 @@ const modalConfigs = {
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
-  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
+  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
 };
 
 function openModal(type, edit = null) {
@@ -2886,8 +2887,11 @@ function openModal(type, edit = null) {
     const full = kind === "textarea" ? " full" : "";
     if (kind === "select") {
       const values = typeof options === "function" ? options() : options;
-      return `<div class="field${full}"><label for="${name}">${label}</label><select id="${name}" name="${name}" required>${values.map((value) => `<option>${escapeHtml(value)}</option>`).join("")}</select></div>`;
+      const hasValues = values.length > 0;
+      const optionsHtml = hasValues ? values.map((value) => `<option>${escapeHtml(value)}</option>`).join("") : `<option value="">No ${label.toLowerCase()} available yet</option>`;
+      return `<div class="field${full}"><label for="${name}">${label}</label><select id="${name}" name="${name}" ${hasValues ? "required" : ""}>${optionsHtml}</select></div>`;
     }
+    if (kind === "tin") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="text" inputmode="numeric" placeholder="000-000-000-000" maxlength="15" pattern="\\d{3}-\\d{3}-\\d{3}-\\d{3}" title="Enter a 12-digit TIN as 000-000-000-000" data-tin-input required /></div>`;
     if (kind === "datalist") {
       const values = typeof options === "function" ? options() : options;
       return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" list="${name}-options" required /><datalist id="${name}-options">${values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist></div>`;
@@ -3139,8 +3143,9 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
   if (type === "client") {
     const name = values.name?.trim().toLowerCase();
     const tin = values.tin?.trim();
+    if (String(tin || "").replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000).");
     if (data.clients.some((client, index) => index !== exceptIndex && client.name.trim().toLowerCase() === name)) throw new Error("Duplicate client name detected.");
-    if (tin && data.clients.some((client, index) => index !== exceptIndex && client.tin === tin)) throw new Error("Duplicate client TIN detected.");
+    if (data.clients.some((client, index) => index !== exceptIndex && client.tin === tin)) throw new Error("Duplicate client TIN detected.");
     if (Number(values.creditLimit) < 0) throw new Error("Credit limit cannot be negative.");
   }
   if (type === "item") {
