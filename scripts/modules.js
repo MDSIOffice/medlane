@@ -459,7 +459,7 @@ function applyRole() {
   qs("#login-screen").classList.add("hidden");
   renderUserMenu();
   qsa(".nav-item").forEach((button) => {
-    button.hidden = !effectiveModules().includes(button.dataset.section);
+    button.hidden = button.dataset.section === "security" || !effectiveModules().includes(button.dataset.section);
   });
   renderBranchFilter();
   if (currentUser.branch !== "all") data.branch = currentUser.branch;
@@ -1263,7 +1263,7 @@ function renderInvoicing() {
 
 function clearPrintTarget() {
   document.body.classList.remove("print-single-invoice");
-  document.body.classList.remove("print-template-overlay", "print-template-si", "print-template-ts", "print-template-dr");
+  document.body.classList.remove("print-template-overlay", "print-template-si", "print-template-ts", "print-template-dr", "print-template-tsr");
   qsa(".invoice-card").forEach((card) => card.classList.remove("print-target"));
 }
 
@@ -2127,12 +2127,14 @@ function renderProductIssueDetail(id) {
 }
 
 async function previewProductIssue(id) {
+  clearPrintTarget();
   showReportPreviewLoading();
   const printable = await MedlaneAPI.printableProductIssue(id).catch((error) => { toast(error.message || "Unable to load support report."); qs("#report-preview-modal").close(); return null; });
   if (!printable) return;
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
   qs("#report-preview-content").innerHTML = printable.html;
+  document.body.classList.add("print-template-overlay", "print-template-tsr");
 }
 
 function confirmResolveProductIssue(id, currentResolvedBy) {
@@ -2598,14 +2600,39 @@ async function cancelFinancialRequest(type, index) {
   saveData(); renderAll(); toast(`${record.id} cancelled.`);
 }
 
+function confirmPaymentDetailsModal(record, type, method) {
+  return new Promise((resolve) => {
+    const needsBank = ["Bank Transfer", "Cheque"].includes(method);
+    const needsCheque = method === "Cheque";
+    const hasBanks = data.banks.length > 0;
+    const bankOptions = hasBanks
+      ? data.banks.map((bank) => `<option value="${escapeHtml(bank.name)}"${bank.name === record.bank ? " selected" : ""}>${escapeHtml(bank.name)}</option>`).join("")
+      : `<option value="">No banks available yet</option>`;
+    const dialog = document.createElement("dialog");
+    dialog.className = "modal invite-confirm-modal";
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Confirm Payment</p><h2>Mark ${escapeHtml(record.id)} Paid via ${escapeHtml(method)}</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="report-preview-grid">${financialRequestDetailFields(record, type).map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value ?? "-"))}</strong></div>`).join("")}</div>${needsBank ? `<div class="field"><label for="payment-bank-select">Bank</label><select id="payment-bank-select" ${hasBanks ? "required" : ""}>${bankOptions}</select></div>` : ""}${needsCheque ? `<div class="field"><label for="payment-cheque-number">Cheque Number</label><input id="payment-cheque-number" value="${escapeHtml(record.cheque || "")}" required /></div><div class="field"><label for="payment-cheque-date">Cheque Date</label><input id="payment-cheque-date" type="date" value="${escapeHtml(record.chequeDate || "")}" required /></div>` : ""}<div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button" value="confirm">Confirm Payment</button></div></form>`;
+    document.body.appendChild(dialog);
+    dialog.addEventListener("close", () => {
+      const ok = dialog.returnValue === "confirm";
+      const bank = needsBank ? dialog.querySelector("#payment-bank-select")?.value || "" : "";
+      const cheque = needsCheque ? dialog.querySelector("#payment-cheque-number")?.value.trim() || "" : "";
+      const chequeDate = needsCheque ? dialog.querySelector("#payment-cheque-date")?.value || "" : "";
+      dialog.remove();
+      resolve(ok ? { bank, cheque, chequeDate } : null);
+    });
+    dialog.showModal();
+  });
+}
+
 async function confirmFinancialPayment(type, index, method) {
   const record = requestRecord(type, index);
   if (!record || record.requestStatus !== "Approved") return toast("Only approved requests can be confirmed paid.");
-  const ok = await confirmDetailsModal({ eyebrow: "Confirm Payment", title: `Mark ${record.id} Paid via ${method}`, fields: [...financialRequestDetailFields(record, type), ["Method", method]], confirmLabel: "Confirm Payment" });
-  if (!ok) return;
+  const result = await confirmPaymentDetailsModal(record, type, method);
+  if (!result) return;
   record.method = method;
-  record.bank = ["Bank Transfer", "Cheque"].includes(method) ? prompt("Bank name:", record.bank || "") || "" : "";
-  record.cheque = method === "Cheque" ? prompt("Cheque number:", record.cheque || "") || "" : "";
+  record.bank = result.bank;
+  record.cheque = result.cheque;
+  record.chequeDate = result.chequeDate;
   record.paid = record.amount; record.paymentConfirmed = true; record.status = "Paid";
   log(`Confirmed ${type} payment`, type === "payable" ? "Payables" : "Expenses", `${record.id} · ${method} · ${peso.format(record.amount)}`);
   saveData(); renderAll(); toast(`${record.id} marked paid by ${method}.`);
@@ -3097,7 +3124,7 @@ const modalConfigs = {
   payment: { title: "Record Collection", fields: [["invoice", "SI / TS / DR", "datalist", () => data.sales.filter((s) => s.status !== "Cancelled").map((s) => s.documentNo || s.id)], ["tag", "Collection Tag", "readonly"], ["receiptNo", "Receipt No."], ["method", "Method", "select", ["Cash", "Cheque", "Multiple Cheques", "Bank Deposit", "Bank Transfer"]], ["bank", "Bank", "select", () => data.banks.map((b) => b.name)], ["reference", "Cheque/Reference No."], ["chequeDate", "Date of Cheque", "date"], ["collectionStatus", "Collection Status", "select", ["For Deposition", "Deposited", "Bounced", "Posted Date"]], ["postedDate", "Posted / Claim Date", "date"], ["dateCollected", "Date of Collection", "date"], ["amount", "Amount Paid", "number"]] },
   paymentRequest: { title: "Payment Request", fields: [["employee", "Employee / Vendor", "datalist", () => [...new Set([...data.clients.map((client) => client.name), ...data.employees.map((employee) => employee.name), currentUser?.name || "System User"].filter(Boolean))]], ["department", "Department"], ["cvNo", "CV Number"], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["requestType", "Mode of Request", "select", ["Reimbursement or Liquidation", "Fees, Supplier or Utilities", "Priority"]]] },
   payable: { title: "Payable Request", fields: [["supplier", "Supplier", "select", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["requestNote", "Request Notes", "textarea"]] },
-  replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["file", "Receipt/File Name"]] },
+  replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
@@ -3201,6 +3228,9 @@ function openModal(type, edit = null) {
     qs("#performedBy").value = currentUser?.name || "System User";
     qs("#status").value = "Open";
     toggleProductIssueResolvedByField();
+  }
+  if (type === "replenishment" && !edit) {
+    qs("#requester").value = currentUser?.name || "System User";
   }
   if (type === "client" && !edit) {
     qs("#creditLimit").value = 150000;
