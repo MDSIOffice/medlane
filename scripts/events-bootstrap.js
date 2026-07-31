@@ -822,7 +822,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
     applyRole();
     renderAll();
     playDashboardLoginSound();
-    toast(`Logged in as ${currentUser.role}.`);
+    toast(`Logged in as ${currentUser.name || currentUser.role}.`);
   });
 });
 

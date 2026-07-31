@@ -461,7 +461,8 @@ function renderUserMenu() {
   qs("#welcome-name").textContent = `Welcome, ${firstName(profile.name)}`;
   qs("#user-initials").textContent = initials(profile.name);
   qs("#user-popover-name").textContent = profile.name;
-  qs("#user-popover-role").hidden = true;
+  qs("#user-popover-role").hidden = false;
+  qs("#user-popover-role").textContent = profile.role || "";
 }
 
 function renderUserSettings() {
