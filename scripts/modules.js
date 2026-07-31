@@ -1267,6 +1267,21 @@ function clearPrintTarget() {
   qsa(".invoice-card").forEach((card) => card.classList.remove("print-target"));
 }
 
+function showReportPreviewLoading() {
+  qs("#report-preview-title").textContent = "Loading print preview…";
+  qs("#report-preview-description").textContent = "";
+  qs("#report-preview-content").innerHTML = `<div class="print-loading"><span class="print-loading-spinner"></span><p>Preparing document…</p></div>`;
+  const dialog = qs("#report-preview-modal");
+  if (!dialog.open) dialog.showModal();
+}
+
+function showPaymentRequestPreviewLoading() {
+  qs("#payment-request-preview-title").textContent = "Loading print preview…";
+  qs("#payment-request-preview-content").innerHTML = `<div class="print-loading"><span class="print-loading-spinner"></span><p>Preparing document…</p></div>`;
+  const dialog = qs("#payment-request-preview-modal");
+  if (!dialog.open) dialog.showModal();
+}
+
 function closeReportPreview() {
   clearPrintTarget();
   currentReportSaleId = null;
@@ -1276,8 +1291,10 @@ function closeReportPreview() {
 async function printInvoice(invoiceId, noDate = false) {
   clearPrintTarget();
   currentPrintNoDate = noDate;
+  showReportPreviewLoading();
   const printable = await MedlaneAPI.printableInvoice(invoiceId, noDate).catch((error) => {
     toast(error.message || "Unable to load printable invoice.");
+    qs("#report-preview-modal").close();
     return null;
   });
   if (!printable) return;
@@ -1287,7 +1304,6 @@ async function printInvoice(invoiceId, noDate = false) {
   qs("#report-preview-description").textContent = printable.description;
   qs("#report-preview-content").innerHTML = printable.html;
   document.body.classList.add("print-template-overlay", `print-template-${type}`);
-  qs("#report-preview-modal").showModal();
 }
 
 function printReportPreview() {
@@ -1576,11 +1592,11 @@ async function previewPaymentRequest(identifier) {
   const request = typeof identifier === "number" ? data.paymentRequests[identifier] : data.paymentRequests.find((item) => item.cvNo === identifier || item.id === identifier);
   const id = request?.cvNo || request?.id || identifier;
   if (!id) return toast("Payment request not found.");
-  const printable = await MedlaneAPI.printablePaymentRequest(id).catch((error) => { toast(error.message || "Unable to load payment request."); return null; });
+  showPaymentRequestPreviewLoading();
+  const printable = await MedlaneAPI.printablePaymentRequest(id).catch((error) => { toast(error.message || "Unable to load payment request."); qs("#payment-request-preview-modal").close(); return null; });
   if (!printable) return;
   qs("#payment-request-preview-title").textContent = printable.title;
   qs("#payment-request-preview-content").innerHTML = printable.html;
-  qs("#payment-request-preview-modal").showModal();
 }
 
 function renderCollectionContactMap() {
@@ -2069,14 +2085,14 @@ function productIssueHistory(report) {
 }
 
 function productIssueActionsMenu(report) {
-  const canEdit = canEditModule("product-issues");
+  const canEdit = canEditModule("product-issues") && report.status !== "Resolved";
   const statusButtons = canEdit ? [
     report.status !== "In Progress" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:In Progress">In Progress</button>` : "",
     report.status !== "Resolved" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Resolved">Mark Resolved</button>` : "",
     report.status !== "Pass to Engineering" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineering</button>` : "",
     report.status !== "Open" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Open">Reopen</button>` : "",
-  ].join("") : "";
-  return `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-product-issue-timeline="${escapeHtml(report.id)}">View Timeline</button><button class="mini-button" data-product-issue-print="${escapeHtml(report.id)}">Print</button>${statusButtons}</div></details>`;
+  ].join("") : (report.status === "Resolved" ? `<small>Resolved &amp; locked</small>` : "");
+  return `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-product-issue-print="${escapeHtml(report.id)}">Print</button>${statusButtons}</div></details>`;
 }
 
 function renderProductIssues() {
@@ -2091,7 +2107,7 @@ function renderProductIssues() {
     visualCard("🛠", "Case Status", `${open} open`, barRows([["Open", open], ["Pass to Engineering", passed], ["Resolved", resolved.length]], (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "orange", "green"]), open ? "warning" : "success", "Computed from current support report status across all logged cases."),
     visualCard("⏱", "Avg. Turnaround", avgTurnaround === null ? "No resolved cases yet" : `${avgTurnaround} day${avgTurnaround === 1 ? "" : "s"}`, `<p>Average days between start date and resolution for resolved reports.</p>`, "info", "Computed as the average of (resolved date - start date) across resolved reports."),
   ].join("");
-  table("#product-issues-table", ["Document No.", "Start Date", "Company", "Equipment", "Support Type", "Status", "Performed By", "Actions"], reports.filter((report) => includesSearch(Object.values(report))).map((report) => ({ focus: report.id, cells: [report.id, report.startDate, report.companyName, `${report.equipment || "-"}${report.serialNo ? `<small>${report.serialNo}</small>` : ""}`, report.typeOfSupport || "-", `<span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span>`, report.performedBy, productIssueActionsMenu(report)] })));
+  table("#product-issues-table", ["Document No.", "Start Date", "Company", "Equipment", "Support Type", "Status", "Performed By", "Timeline", "Actions"], reports.filter((report) => includesSearch(Object.values(report))).map((report) => ({ focus: report.id, cells: [report.id, report.startDate, report.companyName, `${report.equipment || "-"}${report.serialNo ? `<small>${report.serialNo}</small>` : ""}`, report.typeOfSupport || "-", `<span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span>`, report.performedBy, `<button class="mini-button" data-product-issue-timeline="${escapeHtml(report.id)}">View Timeline</button>`, productIssueActionsMenu(report)] })));
 }
 
 function productIssueParameterSummaryHtml(report) {
@@ -2111,30 +2127,54 @@ function renderProductIssueDetail(id) {
 }
 
 async function previewProductIssue(id) {
-  const printable = await MedlaneAPI.printableProductIssue(id).catch((error) => { toast(error.message || "Unable to load support report."); return null; });
+  showReportPreviewLoading();
+  const printable = await MedlaneAPI.printableProductIssue(id).catch((error) => { toast(error.message || "Unable to load support report."); qs("#report-preview-modal").close(); return null; });
   if (!printable) return;
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
   qs("#report-preview-content").innerHTML = printable.html;
-  qs("#report-preview-modal").showModal();
 }
 
-function updateProductIssueStatus(id, status) {
+function confirmResolveProductIssue(id, currentResolvedBy) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "modal invite-confirm-modal";
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Confirm Resolution</p><h2>Mark ${escapeHtml(id)} Resolved</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="field"><label for="resolve-by-select">Resolved By</label><select id="resolve-by-select" required><option value="Product Specialist"${currentResolvedBy === "Product Specialist" ? " selected" : ""}>Product Specialist</option><option value="Service Engineer"${currentResolvedBy === "Service Engineer" ? " selected" : ""}>Service Engineer</option></select></div><div class="field full"><label for="resolve-note">Resolution Note</label><textarea id="resolve-note" placeholder="Describe how this was resolved (optional)"></textarea></div><label class="ios-check-row"><input type="checkbox" id="resolve-confirm-check" /><span></span><strong>I confirm this issue has been fully resolved and no further action is needed.</strong></label><div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button" value="confirm" disabled>Mark Resolved</button></div></form>`;
+    document.body.appendChild(dialog);
+    const checkbox = dialog.querySelector("#resolve-confirm-check");
+    const confirmBtn = dialog.querySelector(".primary-button");
+    checkbox.addEventListener("change", () => { confirmBtn.disabled = !checkbox.checked; });
+    dialog.addEventListener("close", () => {
+      const ok = dialog.returnValue === "confirm" && checkbox.checked;
+      const resolvedBy = dialog.querySelector("#resolve-by-select").value;
+      const note = dialog.querySelector("#resolve-note").value.trim();
+      dialog.remove();
+      resolve(ok ? { resolvedBy, note } : null);
+    });
+    dialog.showModal();
+  });
+}
+
+async function updateProductIssueStatus(id, status) {
   if (!canEditModule("product-issues")) return toast("Editing is disabled for this module in User Settings.");
   const report = data.productIssues.find((item) => item.id === id);
   if (!report) return toast("Support report not found.");
+  if (report.status === "Resolved") return toast("This report is resolved and locked from further changes.");
   let resolvedBy = report.resolvedBy || "";
+  let note = "";
   if (status === "Resolved") {
-    const input = (prompt("Resolved by: type \"Product Specialist\" or \"Service Engineer\"", resolvedBy || "Product Specialist") || "").trim();
-    if (!["Product Specialist", "Service Engineer"].includes(input)) return toast("Enter Product Specialist or Service Engineer.");
-    resolvedBy = input;
+    const result = await confirmResolveProductIssue(id, resolvedBy);
+    if (!result) return;
+    resolvedBy = result.resolvedBy;
+    note = result.note;
+  } else {
+    note = (prompt(`Add a note for marking ${id} as ${status}:`, "") || "").trim();
   }
-  const note = prompt(`Add a note for marking ${id} as ${status}:`, "") || "";
   report.status = status;
   report.resolvedBy = status === "Resolved" ? resolvedBy : status === "Open" ? "" : report.resolvedBy;
   report.resolvedAt = status === "Resolved" ? fmtDate(today) : "";
   report.history = productIssueHistory(report);
-  report.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, note: note.trim() || `Marked ${status}`, by: currentUser?.name || "System User" });
+  report.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, note: note || `Marked ${status}`, by: currentUser?.name || "System User" });
   log("Updated support report status", "Product Issues", `${id}: ${status}`);
   notify("Support Report", `${id} marked ${status}.`, "product-issues", id);
   saveData();
@@ -2507,17 +2547,69 @@ function requestRecord(type, index) { return type === "payable" ? data.payables[
 async function previewFinancialRequest(type, index) {
   const record = requestRecord(type, index);
   if (!record) return toast("Request not found.");
-  const printable = await MedlaneAPI.printableFinancialRequest(type, record.id).catch((error) => { toast(error.message || "Unable to load request printable."); return null; });
+  showReportPreviewLoading();
+  const printable = await MedlaneAPI.printableFinancialRequest(type, record.id).catch((error) => { toast(error.message || "Unable to load request printable."); qs("#report-preview-modal").close(); return null; });
   if (!printable) return;
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
   qs("#report-preview-content").innerHTML = printable.html;
-  qs("#report-preview-modal").showModal();
 }
 
-function approveFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "System User"; record.approvedAt = fmtDate(today); log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments", record.id); saveData(); renderAll(); toast(`${record.id} approved.`); }
-function cancelFinancialRequest(type, index) { const record = requestRecord(type, index); if (!record) return; record.requestStatus = "Cancelled"; record.status = "Cancelled"; record.cancelledBy = currentUser?.name || "System User"; record.cancelledAt = fmtDate(today); log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id); saveData(); renderAll(); toast(`${record.id} cancelled.`); }
-function confirmFinancialPayment(type, index, method) { const record = requestRecord(type, index); if (!record || record.requestStatus !== "Approved") return toast("Only approved requests can be confirmed paid."); record.method = method; record.bank = ["Bank Transfer", "Cheque"].includes(method) ? prompt("Bank name:", record.bank || "") || "" : ""; record.cheque = method === "Cheque" ? prompt("Cheque number:", record.cheque || "") || "" : ""; record.paid = record.amount; record.paymentConfirmed = true; record.status = "Paid"; log(`Confirmed ${type} payment`, type === "payable" ? "Payables" : "Expenses", `${record.id} · ${method} · ${peso.format(record.amount)}`); saveData(); renderAll(); toast(`${record.id} marked paid by ${method}.`); }
+function confirmDetailsModal({ eyebrow = "Confirm Action", title, fields = [], note = "", confirmLabel = "Confirm", danger = false }) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "modal invite-confirm-modal";
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2>${escapeHtml(title)}</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="report-preview-grid">${fields.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value ?? "-"))}</strong></div>`).join("")}</div>${note ? `<p class="page-description">${escapeHtml(note)}</p>` : ""}<div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button${danger ? " danger-button" : ""}" value="confirm">${escapeHtml(confirmLabel)}</button></div></form>`;
+    document.body.appendChild(dialog);
+    dialog.addEventListener("close", () => { const ok = dialog.returnValue === "confirm"; dialog.remove(); resolve(ok); });
+    dialog.showModal();
+  });
+}
+
+function financialRequestDetailFields(record, type) {
+  return [
+    ["ID", record.id],
+    [type === "payable" ? "Supplier" : "Requester", type === "payable" ? record.supplier : record.requester],
+    ["Items", itemizedSummary(record.items).replace(/<[^>]*>/g, " ").trim() || "-"],
+    ["Amount", peso.format(record.amount || 0)],
+    ["Status", record.requestStatus || record.status || "-"],
+  ];
+}
+
+async function approveFinancialRequest(type, index) {
+  const record = requestRecord(type, index);
+  if (!record) return;
+  if (type === "payable" && !["Superadmin", "CEO"].includes(currentUser?.role)) return toast("Only Superadmin or CEO can approve payable requests.");
+  const ok = await confirmDetailsModal({ eyebrow: "Confirm Approval", title: `Approve ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Approve" });
+  if (!ok) return;
+  record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "System User"; record.approvedAt = fmtDate(today);
+  log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id);
+  notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments", record.id);
+  saveData(); renderAll(); toast(`${record.id} approved.`);
+}
+
+async function cancelFinancialRequest(type, index) {
+  const record = requestRecord(type, index);
+  if (!record) return;
+  const ok = await confirmDetailsModal({ eyebrow: "Confirm Cancellation", title: `Cancel ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Cancel Request", danger: true });
+  if (!ok) return;
+  record.requestStatus = "Cancelled"; record.status = "Cancelled"; record.cancelledBy = currentUser?.name || "System User"; record.cancelledAt = fmtDate(today);
+  log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id);
+  saveData(); renderAll(); toast(`${record.id} cancelled.`);
+}
+
+async function confirmFinancialPayment(type, index, method) {
+  const record = requestRecord(type, index);
+  if (!record || record.requestStatus !== "Approved") return toast("Only approved requests can be confirmed paid.");
+  const ok = await confirmDetailsModal({ eyebrow: "Confirm Payment", title: `Mark ${record.id} Paid via ${method}`, fields: [...financialRequestDetailFields(record, type), ["Method", method]], confirmLabel: "Confirm Payment" });
+  if (!ok) return;
+  record.method = method;
+  record.bank = ["Bank Transfer", "Cheque"].includes(method) ? prompt("Bank name:", record.bank || "") || "" : "";
+  record.cheque = method === "Cheque" ? prompt("Cheque number:", record.cheque || "") || "" : "";
+  record.paid = record.amount; record.paymentConfirmed = true; record.status = "Paid";
+  log(`Confirmed ${type} payment`, type === "payable" ? "Payables" : "Expenses", `${record.id} · ${method} · ${peso.format(record.amount)}`);
+  saveData(); renderAll(); toast(`${record.id} marked paid by ${method}.`);
+}
 
 function expenseApprovalAction(expense, index) {
   if (expense.status === "For HR Approval") return `<button class="mini-button" data-approve-expense="${index}" data-next-status="Approved by HR">Approve HR</button>`;
@@ -3342,12 +3434,12 @@ async function previewInventoryPurchaseOrder(identifier) {
   const po = typeof identifier === "number" ? (data.inventoryPurchaseOrders || [])[identifier] : (data.inventoryPurchaseOrders || []).find((item) => item.id === identifier);
   const id = po?.id || identifier;
   if (!id) return toast("Inventory PO not found.");
-  const printable = await MedlaneAPI.printableInventoryPurchaseOrder(id).catch((error) => { toast(error.message || "Unable to load inventory PO."); return null; });
+  showReportPreviewLoading();
+  const printable = await MedlaneAPI.printableInventoryPurchaseOrder(id).catch((error) => { toast(error.message || "Unable to load inventory PO."); qs("#report-preview-modal").close(); return null; });
   if (!printable) return;
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
   qs("#report-preview-content").innerHTML = printable.html;
-  qs("#report-preview-modal").showModal();
 }
 
 function buildPurchaseOrder(values) {
