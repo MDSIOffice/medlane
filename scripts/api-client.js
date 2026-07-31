@@ -10,7 +10,36 @@ const MedlaneAPI = (() => {
     else sessionStorage.removeItem(sessionKey);
   }
 
-  async function request(path, options = {}) {
+  let refreshInFlight = null;
+
+  async function refreshSession() {
+    const active = session();
+    if (!active?.refresh_token) throw new Error("No refresh token available");
+    if (!refreshInFlight) {
+      refreshInFlight = (async () => {
+        const response = await fetch("/api/auth/refresh", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ refreshToken: active.refresh_token }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.session?.access_token) throw new Error(payload?.error || "Session refresh failed");
+        setSession({ ...payload.session, app_session_id: active.app_session_id || null });
+        if (payload.user) sessionStorage.setItem("medlane-session", JSON.stringify(payload.user));
+        return payload;
+      })().finally(() => { refreshInFlight = null; });
+    }
+    return refreshInFlight;
+  }
+
+  function forceSessionLogout(reason) {
+    setSession(null);
+    sessionStorage.removeItem("medlane-session");
+    if (typeof logoutCurrentUser === "function") logoutCurrentUser();
+    if (typeof toast === "function") toast(reason);
+  }
+
+  async function request(path, options = {}, retried = false) {
     const active = session();
     const headers = { ...(options.headers || {}) };
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
@@ -18,9 +47,25 @@ const MedlaneAPI = (() => {
     if (options.body && !(options.body instanceof FormData)) headers["content-type"] = "application/json";
     const response = await fetch(path, { ...options, headers });
     const payload = await response.json().catch(() => null);
-    if (response.status === 401 && /SESSION_REVOKED|Invalid app session/i.test(payload?.error || "")) {
-      setSession(null);
-      sessionStorage.removeItem("medlane-session");
+    const errorText = payload?.error || "";
+    const sessionRevoked = /SESSION_REVOKED|Invalid app session/i.test(errorText);
+    const sessionExpired = /Invalid or expired session|Authentication required/i.test(errorText);
+    if (response.status === 401 && sessionExpired && !retried && active?.refresh_token) {
+      try {
+        await refreshSession();
+        return request(path, options, true);
+      } catch {
+        forceSessionLogout("Your session has expired. Please log in again.");
+        throw new Error("Your session has expired. Please log in again.");
+      }
+    }
+    if (response.status === 401 && sessionRevoked) {
+      forceSessionLogout("Your session was ended. Please log in again.");
+      throw new Error("Your session was ended. Please log in again.");
+    }
+    if (response.status === 401 && sessionExpired) {
+      forceSessionLogout("Your session has expired. Please log in again.");
+      throw new Error("Your session has expired. Please log in again.");
     }
     if (!response.ok) throw new Error(payload?.error || `Request failed: ${response.status}`);
     return payload;
@@ -149,5 +194,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue };
 })();

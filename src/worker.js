@@ -705,6 +705,25 @@ export default {
         return json({ session: { ...session, app_session_id: appSession?.id || null }, user });
       }
 
+      if (url.pathname === "/api/auth/refresh") {
+        if (request.method !== "POST") return methodNotAllowed();
+        requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
+        const { refreshToken } = await request.json();
+        if (!refreshToken) return json({ error: "Refresh token is required" }, { status: 400 });
+        const refreshResponse = await fetch(`${supabaseBaseUrl(env)}/auth/v1/token?grant_type=refresh_token`, {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        const session = await refreshResponse.json().catch(() => null);
+        if (!refreshResponse.ok || !session?.access_token) {
+          const authError = session?.error_description || session?.msg || session?.error || "Session refresh failed";
+          return json({ error: authError }, { status: 401 });
+        }
+        const user = await profileForUser(env, session.user.id, session.user.email).catch(() => null);
+        return json({ session, user });
+      }
+
       if (url.pathname === "/api/auth/me") {
         if (request.method !== "GET") return methodNotAllowed();
         const { profile } = await authenticatedProfile(request, env);
