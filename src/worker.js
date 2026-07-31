@@ -162,12 +162,14 @@ async function generateSupabaseActionLink(env, { email, fullName, role, branch, 
     method: "POST",
     body: JSON.stringify({ type: "invite", email, options }),
   }).catch((error) => ({ _error: error.message }));
+  console.error(JSON.stringify({ message: "generate_link invite response", email, payload: invitePayload }));
   const inviteResult = extractLinkResult(invitePayload);
   if (inviteResult) return inviteResult;
   const recoveryPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
     method: "POST",
     body: JSON.stringify({ type: "recovery", email, options }),
   }).catch((error) => ({ _error: error.message }));
+  console.error(JSON.stringify({ message: "generate_link recovery response", email, payload: recoveryPayload }));
   const recoveryResult = extractLinkResult(recoveryPayload);
   if (recoveryResult) return recoveryResult;
   const adminUserPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users", {
