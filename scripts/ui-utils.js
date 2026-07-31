@@ -194,8 +194,8 @@ function table(target, headers, rows) {
   const tableEl = qs(target);
   tableEl.dataset.tableTarget = target;
   tableEl.innerHTML = `<thead><tr>${headers.map((h, index) => `<th><button class="sort-button" type="button" data-sort-col="${index}">${escapeHtml(h)}</button></th>`).join("")}</tr></thead><tbody></tbody>`;
-  if (!normalizedRows.length) tableEl.tBodies[0].innerHTML = `<tr><td colspan="${headers.length}">No records found.</td></tr>`;
-  else appendTableRows(target);
+  if (!normalizedRows.length) { tableEl.tBodies[0].innerHTML = `<tr><td colspan="${headers.length}">No records found.</td></tr>`; renderViewMoreButton(target); }
+  else appendTableRows(target, tableInitialBatchSize);
   requestAnimationFrame(updateTableScrollHints);
 }
 
@@ -211,6 +211,25 @@ function appendTableRows(target, count = tableBatchSize) {
   const nextRows = state.rows.slice(state.rendered, state.rendered + count);
   tableEl.tBodies[0].insertAdjacentHTML("beforeend", nextRows.map(rowHtml).join(""));
   state.rendered += nextRows.length;
+  renderViewMoreButton(target);
+}
+
+function renderViewMoreButton(target) {
+  const state = tableState.get(target);
+  const tableEl = qs(target);
+  const card = tableEl?.closest(".table-card");
+  if (!state || !card) return;
+  const remaining = state.rows.length - state.rendered;
+  let button = card.nextElementSibling;
+  if (!button?.classList?.contains("table-view-more")) {
+    button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost-button table-view-more";
+    card.insertAdjacentElement("afterend", button);
+    button.addEventListener("click", () => appendTableRows(target));
+  }
+  button.hidden = remaining <= 0;
+  button.textContent = `View More (${remaining} more)`;
 }
 
 function ensureFocusedRecordsRendered(records) {
@@ -220,16 +239,6 @@ function ensureFocusedRecordsRendered(records) {
     if (!state) return;
     const needsRecord = records.some((record) => state.rows.some((row) => String(row.focus || "").toLowerCase().split("|").map((item) => item.trim()).includes(record) || row.focusText.toLowerCase().includes(record)));
     if (needsRecord && state.rendered < state.rows.length) appendTableRows(target, state.rows.length - state.rendered);
-  });
-}
-
-function loadVisibleTableBatches() {
-  qsa("table[data-table-target]").forEach((tableEl) => {
-    const card = tableEl.closest(".table-card");
-    const state = tableState.get(tableEl.dataset.tableTarget);
-    if (!card || !state || state.rendered >= state.rows.length) return;
-    const rect = card.getBoundingClientRect();
-    if (rect.top < window.innerHeight + 220 && rect.bottom < window.innerHeight + 260) appendTableRows(tableEl.dataset.tableTarget);
   });
 }
 

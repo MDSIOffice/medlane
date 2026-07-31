@@ -46,6 +46,7 @@ const sectionMeta = {
   "client-invoices": ["Client Invoice Timeline", "Review every invoice for one client using an order-status timeline."],
   "report-detail": ["Report Detail", "Focused report view with graphs, source records, and connected module actions."],
   "product-issue-detail": ["Support Report Detail", "Full status history and turnaround timeline for this technical support report."],
+  "inventory-po-detail": ["Purchase Order Detail", "Approval, dispatch, and receiving history for this purchase order."],
 };
 
 function userProfileKey() { return `medlane-profile-${currentUser?.role || "guest"}`; }
@@ -185,7 +186,7 @@ function normalizeData(next) {
     });
     return { id: po.id, client: po.client, area: po.area || client?.area || "Region I", salesperson: po.salesperson || currentUser?.name || "System User", date: po.date || fmtDate(today), lines, status: po.status || "For Invoicing" };
   });
-  next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ id: po.id, supplier: po.supplier, date: po.date || fmtDate(today), status: po.status || "For Receiving", lines: po.lines || [] }));
+  next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ id: po.id, supplier: po.supplier, branch: po.branch || "", date: po.date || fmtDate(today), terms: po.terms || 30, status: po.status || "Pending Approval", approvedBy: po.approvedBy || "", approvedAt: po.approvedAt || "", cancelledBy: po.cancelledBy || "", cancelledAt: po.cancelledAt || "", receivedBy: po.receivedBy || "", receivedAt: po.receivedAt || "", history: po.history || [], lines: (po.lines || []).map((line) => ({ ...line, receivedQty: Number(line.receivedQty || 0) })) }));
   const clientsWithBalance = new Set(next.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
   next.collectionContacts = next.clients.filter((client) => clientsWithBalance.has(client.name)).map((client) => {
     const existing = next.collectionContacts.find((contact) => contact.client === client.name || contact.area === client.area) || {};

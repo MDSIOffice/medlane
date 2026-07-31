@@ -121,7 +121,7 @@ function renderWorkflowAssist(sectionId) {
 }
 
 function renderWorkflowAssistAll() {
-  ["dashboard", "analytics", "masterlists", "inventory", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security"].forEach(renderWorkflowAssist);
+  ["dashboard", "analytics", "masterlists", "inventory", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users"].forEach(renderWorkflowAssist);
 }
 
 function monthLabel(value) {
@@ -589,6 +589,109 @@ function transferAuthorizationCell(transfer, index) {
 }
 
 function canApproveInventoryChanges() { return ["Admin", "Superadmin"].includes(currentUser?.role); }
+function canApprovePurchaseOrders() { return currentUser?.role === "Superadmin"; }
+function canManagePoReceiving() { return ["Superadmin", "Logistics"].includes(currentUser?.role); }
+
+const inventoryPoTerminalStatuses = ["Fully Received", "Cancelled"];
+const inventoryPoCancellableStatuses = ["Approved", "Sent to Supplier", "In Transit", "For Receiving", "Partially Received"];
+const inventoryPoStatusEmoji = { "Sent to Supplier": "📤", "In Transit": "🚚", "For Receiving": "📦", "Partially Received": "☑️", "Fully Received": "✔️", Cancelled: "❌" };
+const inventoryPoNextStatus = { Approved: "Sent to Supplier", "Sent to Supplier": "In Transit", "In Transit": "For Receiving" };
+function poStatusLabel(status) { return `${inventoryPoStatusEmoji[status] ? `${inventoryPoStatusEmoji[status]} ` : ""}${status}`; }
+
+function inventoryPoActionsCell(po, index) {
+  const printBtn = `<button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`;
+  const timelineBtn = `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button>`;
+  const cancelBtn = `<button class="mini-button danger-button" data-inventory-po-cancel="${index}">Cancel Order</button>`;
+  let statusButtons = "";
+  if (po.status === "Pending Approval") {
+    statusButtons = canApprovePurchaseOrders() ? `<button class="mini-button" data-inventory-po-approve="${index}">Approve</button>` : `<small>Awaiting Superadmin approval</small>`;
+  } else if (inventoryPoNextStatus[po.status]) {
+    statusButtons = canManagePoReceiving() ? `<button class="mini-button" data-inventory-po-advance="${index}">Mark ${poStatusLabel(inventoryPoNextStatus[po.status])}</button>${cancelBtn}` : `<small>Awaiting Logistics update</small>`;
+  } else if (po.status === "For Receiving") {
+    statusButtons = canManagePoReceiving() ? `<button class="mini-button" data-inventory-po-receive="${index}">Receive Stock</button>${cancelBtn}` : `<small>Awaiting receiving</small>`;
+  } else if (po.status === "Partially Received") {
+    statusButtons = canManagePoReceiving() ? `<button class="mini-button" data-inventory-po-receive="${index}">Receive Remaining Stock</button>${cancelBtn}` : `<small>Partially received</small>`;
+  }
+  return `<div class="inline-actions">${statusButtons}${timelineBtn}${printBtn}</div>`;
+}
+
+function approvePurchaseOrder(index) {
+  if (!canApprovePurchaseOrders()) return toast("Only Superadmin can approve purchase orders.");
+  const po = (data.inventoryPurchaseOrders || [])[index];
+  if (!po || po.status !== "Pending Approval") return toast("This purchase order is not pending approval.");
+  if (!confirm(`Approve ${po.id} for ${po.supplier}?`)) return;
+  const by = currentUser?.name || "System User";
+  po.status = "Approved";
+  po.approvedBy = by;
+  po.approvedAt = fmtDate(today);
+  po.history = poHistory(po);
+  po.history.push({ date: poHistoryTimestamp(), status: "Approved", note: `Approved by ${by}.`, by });
+  log("Approved purchase order", "Inventory", po.id);
+  notify("Purchase Order", `${po.id} approved by ${by}.`, "inventory", po.id);
+  saveData();
+  renderAll();
+  toast(`${po.id} approved.`);
+}
+
+function advancePurchaseOrderStatus(index) {
+  if (!canManagePoReceiving()) return toast("Only Logistics/Superadmin can update purchase order status.");
+  const po = (data.inventoryPurchaseOrders || [])[index];
+  const next = po && inventoryPoNextStatus[po.status];
+  if (!next) return toast("This purchase order cannot be advanced right now.");
+  if (!confirm(`Mark ${po.id} as ${poStatusLabel(next)}?`)) return;
+  const by = currentUser?.name || "System User";
+  po.status = next;
+  po.history = poHistory(po);
+  po.history.push({ date: poHistoryTimestamp(), status: next, note: `Marked ${poStatusLabel(next)} by ${by}.`, by });
+  log("Updated purchase order status", "Inventory", `${po.id}: ${next}`);
+  notify("Purchase Order", `${po.id} marked ${poStatusLabel(next)}.`, "inventory", po.id);
+  saveData();
+  renderAll();
+  toast(`${po.id} marked ${poStatusLabel(next)}.`);
+}
+
+function cancelPurchaseOrder(index) {
+  if (!canManagePoReceiving()) return toast("Only Logistics/Superadmin can cancel purchase orders.");
+  const po = (data.inventoryPurchaseOrders || [])[index];
+  if (!po || !inventoryPoCancellableStatuses.includes(po.status)) return toast("This purchase order cannot be cancelled right now.");
+  const reason = (prompt(`Reason for cancelling ${po.id}:`, "") || "").trim();
+  if (!confirm(`Cancel ${po.id}? This cannot be undone.`)) return;
+  const by = currentUser?.name || "System User";
+  po.status = "Cancelled";
+  po.cancelledBy = by;
+  po.cancelledAt = fmtDate(today);
+  po.history = poHistory(po);
+  po.history.push({ date: poHistoryTimestamp(), status: "Cancelled", note: reason || "Order cancelled.", by });
+  log("Cancelled purchase order", "Inventory", po.id);
+  notify("Purchase Order", `${po.id} cancelled by ${by}.`, "inventory", po.id);
+  saveData();
+  renderAll();
+  toast(`${po.id} cancelled.`);
+}
+
+function inventoryPoHistoryClass(status) {
+  if (status === "Fully Received") return "done";
+  if (status === "Cancelled") return "blocked";
+  return "pending";
+}
+
+function renderInventoryPoDetail(id) {
+  const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === id);
+  if (!po) return toast("Purchase order not found.");
+  const events = poHistory(po);
+  const lineRows = (po.lines || []).map((line) => `<tr><td>${escapeHtml(line.item)}</td><td>${escapeHtml(line.lot || "-")}</td><td>${Number(line.qty || 0)}</td><td>${Number(line.receivedQty || 0)}</td></tr>`).join("");
+  qs("#inventory-po-detail-title").textContent = `${po.id} · ${po.supplier}`;
+  qs("#inventory-po-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(po.supplier)}</p><h2>${escapeHtml(po.branch || "No branch")}</h2></div><span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>PO Date</small><strong>${escapeHtml(po.date || "-")}</strong></div><div class="report-preview-card"><small>Terms</small><strong>${Number(po.terms || 30)} days</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(po.approvedBy || "-")}</strong></div><div class="report-preview-card"><small>Completed By</small><strong>${escapeHtml(po.receivedBy || po.cancelledBy || "-")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Lot</th><th>Ordered Qty</th><th>Received Qty</th></tr></thead><tbody>${lineRows}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${inventoryPoHistoryClass(event.status)}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(poStatusLabel(event.status || ""))}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  showSection("inventory-po-detail");
+}
+
+function openStockSheetForPo(poId) {
+  renderStockSheet();
+  const picker = qs("#inventory-po-receive-picker");
+  if (picker) picker.value = poId;
+  fillStockSheetFromInventoryPo(poId);
+  qs("#stock-sheet-modal").showModal();
+}
 
 function transferItemizedDetail(transfer) {
   const lines = transfer.lines?.length ? transfer.lines : [{ item: transfer.item, code: transfer.code, brand: transfer.brand, qty: transfer.qty, lot: transfer.lot, expiry: transfer.expiry || "N/A" }];
@@ -718,7 +821,7 @@ function renderMasterlists() {
   qsa("#master-tabs .tab[data-master='employees']").forEach((tab) => { tab.hidden = !canManageEmployees(); });
   qsa("#master-tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.master === data.masterTab));
   qs("#platform-branch-panel").hidden = data.masterTab !== "branches";
-  qs("#master-table").parentElement.classList.toggle("hidden", data.masterTab === "branches");
+  qs("#master-table").parentElement.hidden = data.masterTab === "branches";
   qs("#master-add-button").hidden = !canEditModule("masterlists") || data.masterTab === "branches";
   qs("#master-table").classList.toggle("employee-table", data.masterTab === "employees");
   qs("#master-table").classList.toggle("client-table", data.masterTab === "clients");
@@ -797,7 +900,9 @@ function renderInventory() {
     visualCard("▤", "Stock Health", `${visibleInventory.length} total`, barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((itemStatus) => [itemStatus, visibleInventory.filter((item) => inventoryStatus(item) === itemStatus).length]), (value) => `${value} records`, ["green", "orange", "red", "red", "red"]), "info", "Computed by classifying each inventory record by quantity and expiry rules."),
   ].join("");
   table("#inventory-table", ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Min", "Status"], rows.map((i) => ({ focus: i.lot, cells: [i.branch, i.brand, i.code, i.item, `${i.serial || "N/A"}<small>${i.lot}</small>`, i.expiry, i.qty, i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`] })));
-  table("#inventory-po-table", ["PO", "Supplier", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.date, `${po.terms || 30} days`, itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []), `<span class="pill ${statusClass(po.status)}">${po.status}</span>`, `<button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
+  const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
+  table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
+  table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
   table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, transfer.qty, (transfer.lines?.length ? transfer.lines : [transfer]).map((line) => `${line.lot || "-"}<small>${line.expiry || "N/A"}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, transferAuthorizationCell(transfer, index)] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Item", "From", "To", "Qty", "Lot", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, entry.transferId, entry.action, entry.item, entry.from, entry.to, entry.qty, entry.lot, entry.user, entry.notes]));
 }
@@ -819,18 +924,22 @@ function stockSheetRow(index) {
   return `<tr><td><select class="stock-branch">${branchOptions(inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" /></td><td><input class="stock-code" list="inventory-code-options" /></td><td><input class="stock-item" list="inventory-item-options" /></td><td><input class="stock-lot" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" /></td><td><input class="stock-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
+function receivablePurchaseOrders() { return (data.inventoryPurchaseOrders || []).filter((po) => ["For Receiving", "Partially Received"].includes(po.status)); }
+
 function renderStockSheet() {
   const tableEl = qs("#stock-sheet-table");
   if (!tableEl) return;
-  if (!qs("#inventory-po-receive-picker")) tableEl.closest(".table-card")?.insertAdjacentHTML("beforebegin", `<div class="toolbar"><div class="field"><label for="inventory-po-receive-picker">Inventory Purchase Order</label><select id="inventory-po-receive-picker"><option value="">Manual receive</option>${(data.inventoryPurchaseOrders || []).filter((po) => po.status !== "Received").map((po) => `<option value="${escapeHtml(po.id)}">${escapeHtml(po.id)} · ${escapeHtml(po.supplier)}</option>`).join("")}</select></div></div>`);
-  else qs("#inventory-po-receive-picker").innerHTML = `<option value="">Manual receive</option>${(data.inventoryPurchaseOrders || []).filter((po) => po.status !== "Received").map((po) => `<option value="${escapeHtml(po.id)}">${escapeHtml(po.id)} · ${escapeHtml(po.supplier)}</option>`).join("")}`;
+  const pickerOptions = `<option value="">Manual receive</option>${receivablePurchaseOrders().map((po) => `<option value="${escapeHtml(po.id)}">${escapeHtml(po.id)} · ${escapeHtml(po.supplier)}</option>`).join("")}`;
+  if (!qs("#inventory-po-receive-picker")) tableEl.closest(".table-card")?.insertAdjacentHTML("beforebegin", `<div class="toolbar"><div class="field"><label for="inventory-po-receive-picker">Inventory Purchase Order</label><select id="inventory-po-receive-picker">${pickerOptions}</select></div></div>`);
+  else qs("#inventory-po-receive-picker").innerHTML = pickerOptions;
   tableEl.innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${stockSheetRow(0)}</tbody>`;
 }
 
 function fillStockSheetFromInventoryPo(poId) {
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
   if (!po) return renderStockSheet();
-  const bodyRows = po.lines.map((line) => `<tr><td><select class="stock-branch">${branchOptions(inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" list="inventory-code-options" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" list="inventory-item-options" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`).join("");
+  const remainingLines = po.lines.filter((line) => Number(line.qty || 0) - Number(line.receivedQty || 0) > 0);
+  const bodyRows = (remainingLines.length ? remainingLines : po.lines).map((line) => `<tr><td><select class="stock-branch">${branchOptions(po.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" list="inventory-code-options" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" list="inventory-item-options" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
 }
 
@@ -885,7 +994,10 @@ function syncStockSheetRow(input, allowPartial = false) {
 }
 
 function saveStockSheet() {
-  if (!canApproveInventoryChanges()) return toast("Receiving stock needs Admin approval.");
+  const poId = qs("#inventory-po-receive-picker")?.value;
+  const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
+  if (!(po ? canManagePoReceiving() : canApproveInventoryChanges())) return toast(po ? "Receiving this purchase order needs Logistics or Superadmin access." : "Receiving stock needs Admin approval.");
+  if (po && !["For Receiving", "Partially Received"].includes(po.status)) return toast(`${po.id} is not ready for receiving.`);
   const rows = qsa("#stock-sheet-table tbody tr").map((row) => {
     const branch = row.querySelector(".stock-branch")?.value;
     const code = row.querySelector(".stock-code")?.value.trim();
@@ -906,10 +1018,22 @@ function saveStockSheet() {
     if (existing) existing.qty += qty;
     else data.inventory.push({ code: item.code, item: item.name, brand, branch, lot, serial: lot, expiry, qty, min: 10 });
   });
-  const poId = qs("#inventory-po-receive-picker")?.value;
-  const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
-  if (po) po.status = "Received";
-  log("Received stock from sheet", "Inventory", `${rows.length} row(s)`);
+  if (po) {
+    const by = currentUser?.name || "System User";
+    rows.forEach(({ item, lot, qty }) => {
+      const line = po.lines.find((entry) => entry.code === item.code && entry.lot === lot);
+      if (line) line.receivedQty = Number(line.receivedQty || 0) + qty;
+    });
+    const fullyReceived = po.lines.every((line) => Number(line.receivedQty || 0) >= Number(line.qty || 0));
+    po.status = fullyReceived ? "Fully Received" : "Partially Received";
+    if (fullyReceived) { po.receivedBy = by; po.receivedAt = fmtDate(today); }
+    po.history = poHistory(po);
+    po.history.push({ date: poHistoryTimestamp(), status: po.status, note: `Received ${rows.reduce((sum, row) => sum + row.qty, 0)} unit(s) across ${rows.length} line(s).`, by });
+    notify("Purchase Order", `${po.id} ${fullyReceived ? "fully received" : "partially received"}.`, "inventory", po.id);
+    log("Received stock from purchase order", "Inventory", `${po.id}: ${rows.length} row(s)`);
+  } else {
+    log("Received stock from sheet", "Inventory", `${rows.length} row(s)`);
+  }
   saveData();
   qs("#stock-sheet-modal")?.close();
   renderAll();
@@ -2857,7 +2981,7 @@ const modalConfigs = {
   client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
   item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...data.items.map((item) => item.brand), ...data.suppliers.map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["source", "From", "select", ["Supplier", "Client"]], ["supplier", "Supplier/Client", "datalist", () => [...new Set([...data.suppliers.map((supplier) => supplier.name), ...data.clients.map((client) => client.name)])]], ["lot", "Default Lot No."], ["expiry", "Default Expiry", "date"]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea"]] },
-  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["contact", "Contact Information"]] },
+  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["benefits", "Govt. Benefits", "benefit-checkboxes"]] },
   purchaseOrder: { title: "Create PO", fields: [["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
@@ -2866,7 +2990,7 @@ const modalConfigs = {
   paymentRequest: { title: "Payment Request", fields: [["employee", "Employee / Vendor", "datalist", () => [...new Set([...data.clients.map((client) => client.name), ...data.employees.map((employee) => employee.name), currentUser?.name || "System User"].filter(Boolean))]], ["department", "Department"], ["cvNo", "CV Number"], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["requestType", "Mode of Request", "select", ["Reimbursement or Liquidation", "Fees, Supplier or Utilities", "Priority"]]] },
   payable: { title: "Payable Request", fields: [["supplier", "Supplier", "select", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["requestNote", "Request Notes", "textarea"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["file", "Receipt/File Name"]] },
-  inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["date", "PO Date", "date"]] },
+  inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
   productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
@@ -3148,6 +3272,11 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
     if (data.clients.some((client, index) => index !== exceptIndex && client.tin === tin)) throw new Error("Duplicate client TIN detected.");
     if (Number(values.creditLimit) < 0) throw new Error("Credit limit cannot be negative.");
   }
+  if (type === "supplier") {
+    const tin = values.tin?.trim();
+    if (String(tin || "").replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000).");
+    if (data.suppliers.some((supplier, index) => index !== exceptIndex && supplier.tin === tin)) throw new Error("Duplicate supplier TIN detected.");
+  }
   if (type === "item") {
     const code = values.code?.trim().toLowerCase();
     const name = values.name?.trim().toLowerCase();
@@ -3170,9 +3299,20 @@ function nextInventoryPurchaseOrderId() {
 function buildInventoryPurchaseOrder(values) {
   const supplier = data.suppliers.find((entry) => entry.name === values.supplier);
   if (!supplier) throw new Error("Supplier is required.");
-  const lines = parseInvoiceLines(values.itemsText || "", { requireLot: true });
+  const branch = values.branch;
+  if (!branch || !platformBranches().includes(branch)) throw new Error("Receiving branch is required.");
+  const lines = parseInvoiceLines(values.itemsText || "", { requireLot: true }).map((line) => ({ ...line, receivedQty: 0 }));
   if (!lines.length) throw new Error("At least one inventory PO line is required.");
-  return { id: nextInventoryPurchaseOrderId(), supplier: supplier.name, date: values.date || fmtDate(today), terms: 30, status: "Purchase Receiving", lines };
+  const by = currentUser?.name || "System User";
+  return { id: nextInventoryPurchaseOrderId(), supplier: supplier.name, branch, date: values.date || fmtDate(today), terms: 30, status: "Pending Approval", approvedBy: "", approvedAt: "", cancelledBy: "", cancelledAt: "", history: [{ date: poHistoryTimestamp(), status: "Pending Approval", note: `Purchase order created for ${branch}.`, by }], lines };
+}
+
+function poHistoryTimestamp() {
+  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function poHistory(po) {
+  return po.history?.length ? po.history : [{ date: po.date, status: po.status || "Pending Approval", note: "Purchase order created.", by: "System User" }];
 }
 
 async function previewInventoryPurchaseOrder(identifier) {

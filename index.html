@@ -352,6 +352,7 @@
           <button class="ghost-button" id="open-transfer-history" type="button">Transfer History</button>
         </div>
         <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div></article>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article>
         <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div></article>
         <div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div>
         <div class="table-card"><table id="inventory-table"></table></div>
@@ -436,6 +437,11 @@
       <section class="section" id="product-issue-detail">
         <div class="section-header"><div><p class="eyebrow">Support Report Detail</p><h2 id="product-issue-detail-title">Report timeline</h2></div><button class="ghost-button" data-go-section="product-issues">Back to Product Issues</button></div>
         <article class="panel" id="product-issue-detail-panel"></article>
+      </section>
+
+      <section class="section" id="inventory-po-detail">
+        <div class="section-header"><div><p class="eyebrow">Purchase Order Detail</p><h2 id="inventory-po-detail-title">Order timeline</h2></div><button class="ghost-button" data-go-section="inventory">Back to Inventory</button></div>
+        <article class="panel" id="inventory-po-detail-panel"></article>
       </section>
 
       <section class="section" id="purchase-history">

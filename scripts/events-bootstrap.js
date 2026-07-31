@@ -227,8 +227,6 @@ async function submitModal(event) {
 }
 
 qsa(".nav-item").forEach((button) => button.addEventListener("click", () => showSection(button.dataset.section, { scrollTop: true })));
-window.addEventListener("scroll", loadVisibleTableBatches, { passive: true });
-document.addEventListener("scroll", (event) => { if (event.target.closest?.(".table-card")) loadVisibleTableBatches(); }, true);
 document.body.addEventListener("click", (event) => {
   const modalButton = event.target.closest("[data-action='open-modal']");
   if (modalButton) {
@@ -268,6 +266,16 @@ document.body.addEventListener("click", (event) => {
   if (removeBranchButton) return removePlatformBranch(removeBranchButton.dataset.removePlatformBranch);
   const inventoryPoPrint = event.target.closest("[data-inventory-po-print]");
   if (inventoryPoPrint) return previewInventoryPurchaseOrder(inventoryPoPrint.dataset.inventoryPoPrint);
+  const inventoryPoTimeline = event.target.closest("[data-inventory-po-timeline]");
+  if (inventoryPoTimeline) return renderInventoryPoDetail(inventoryPoTimeline.dataset.inventoryPoTimeline);
+  const inventoryPoApprove = event.target.closest("[data-inventory-po-approve]");
+  if (inventoryPoApprove) return approvePurchaseOrder(Number(inventoryPoApprove.dataset.inventoryPoApprove));
+  const inventoryPoAdvance = event.target.closest("[data-inventory-po-advance]");
+  if (inventoryPoAdvance) return advancePurchaseOrderStatus(Number(inventoryPoAdvance.dataset.inventoryPoAdvance));
+  const inventoryPoCancel = event.target.closest("[data-inventory-po-cancel]");
+  if (inventoryPoCancel) return cancelPurchaseOrder(Number(inventoryPoCancel.dataset.inventoryPoCancel));
+  const inventoryPoReceive = event.target.closest("[data-inventory-po-receive]");
+  if (inventoryPoReceive) { const po = data.inventoryPurchaseOrders[Number(inventoryPoReceive.dataset.inventoryPoReceive)]; if (po) openStockSheetForPo(po.id); return; }
   const productIssuePrint = event.target.closest("[data-product-issue-print]");
   if (productIssuePrint) return previewProductIssue(productIssuePrint.dataset.productIssuePrint);
   const productIssueTimeline = event.target.closest("[data-product-issue-timeline]");

@@ -8,7 +8,8 @@ const requiredClientDocs = ["Mayor's Permit", "2303", "SEC or DTI", "FDALTO", "G
 const employeeBenefitOptions = ["SSS", "PhilHealth", "Pag-IBIG"];
 const supportTypeOptions = ["Application Troubleshooting", "Training Support", "Technical Support"];
 const supportTopicOptions = ["Theories and Principles", "Unit Operation", "Parameter Prog.", "Unit Maintenance", "Basic Troubleshooting", "PM and Calibration"];
-const tableBatchSize = 15;
+const tableInitialBatchSize = 20;
+const tableBatchSize = 10;
 const tableState = new Map();
 
 const initialData = {

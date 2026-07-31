@@ -1045,6 +1045,7 @@ select, .search-input {
 .table-card::-webkit-scrollbar-track { border-radius: 999px; background: rgba(215, 228, 240, 0.9); }
 .table-card::-webkit-scrollbar-thumb { border: 3px solid rgba(215, 228, 240, 0.9); border-radius: 999px; background: linear-gradient(90deg, var(--blue), #38bdf8); }
 .table-card::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, var(--blue-dark), var(--blue)); }
+.table-view-more { display: flex; width: 100%; justify-content: center; margin: 12px 0 4px; }
 .table-card.has-more-right { border-right: 7px solid #0b8ed0; box-shadow: var(--shadow), inset -42px 0 34px -24px rgba(0, 110, 182, 0.42); }
 .table-card.has-more-left { border-left: 7px solid #0b8ed0; box-shadow: var(--shadow), inset 42px 0 34px -24px rgba(0, 110, 182, 0.36); }
 .table-card.has-more-left.has-more-right { border-left: 7px solid #0b8ed0; border-right: 7px solid #0b8ed0; box-shadow: var(--shadow), inset 42px 0 34px -24px rgba(0, 110, 182, 0.36), inset -42px 0 34px -24px rgba(0, 110, 182, 0.42); }
