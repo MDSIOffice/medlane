@@ -165,17 +165,17 @@ async function generateSupabaseActionLink(env, { email, fullName, role, branch, 
     method: "POST",
     body: JSON.stringify({ email, email_confirm: true, user_metadata: { full_name: fullName, role, branch } }),
   }).catch((error) => ({ _error: error.message }));
+  const detail = invitePayload?._error || recoveryPayload?._error || adminUserPayload?._error || "Unknown Supabase response";
   if (adminUserPayload?.id) {
-    return { authUser: adminUserPayload, actionLink: "" };
+    return { authUser: adminUserPayload, actionLink: "", linkError: detail };
   }
   // Every attempt above failed, but a "duplicate" error means the account genuinely already
   // exists in Supabase even though our earlier lookup missed it (e.g. a concurrent invite for
   // the same email). Re-fetch it directly instead of surfacing a confusing failure while leaving
   // the account orphaned with no profile row.
-  const detail = invitePayload?._error || recoveryPayload?._error || adminUserPayload?._error || "Unknown Supabase response";
   if (/already.*regist|already.*exist/i.test(detail)) {
     const existing = await findAuthUserByEmail(env, email);
-    if (existing) return { authUser: existing, actionLink: "" };
+    if (existing) return { authUser: existing, actionLink: "", linkError: detail };
   }
   throw new Error(`Could not create Supabase user: ${detail}`);
 }
@@ -980,11 +980,12 @@ export default {
           const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) });
           authUser = generated.authUser;
           actionLink = generated.actionLink;
+          linkError = generated.linkError || "";
         } else {
           const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) }).catch((error) => ({ _error: error.message }));
           authUser = generated?.authUser || authUser;
           actionLink = generated?.actionLink || "";
-          linkError = generated?._error || "";
+          linkError = generated?._error || generated?.linkError || "";
         }
         if (!authUser?.id) throw new Error("Could not create or find the Supabase user account");
 
