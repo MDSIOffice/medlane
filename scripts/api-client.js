@@ -109,6 +109,14 @@ const MedlaneAPI = (() => {
     return request("/api/users/invite/resend", { method: "POST", body: JSON.stringify({ email }) });
   }
 
+  async function getInviteLink(email) {
+    return request("/api/users/invite/link", { method: "POST", body: JSON.stringify({ email }) });
+  }
+
+  async function setUserPassword(email, password) {
+    return request("/api/users/set-password", { method: "POST", body: JSON.stringify({ email, password }) });
+  }
+
   async function setUserDisabled(email, disabled, reason = "") {
     return request("/api/users/status", { method: "POST", body: JSON.stringify({ email, disabled, reason }) });
   }
@@ -194,5 +202,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue };
 })();

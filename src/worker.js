@@ -162,14 +162,12 @@ async function generateSupabaseActionLink(env, { email, fullName, role, branch, 
     method: "POST",
     body: JSON.stringify({ type: "invite", email, options }),
   }).catch((error) => ({ _error: error.message }));
-  console.error(JSON.stringify({ message: "generate_link invite response", email, payload: invitePayload }));
   const inviteResult = extractLinkResult(invitePayload);
   if (inviteResult) return inviteResult;
   const recoveryPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
     method: "POST",
     body: JSON.stringify({ type: "recovery", email, options }),
   }).catch((error) => ({ _error: error.message }));
-  console.error(JSON.stringify({ message: "generate_link recovery response", email, payload: recoveryPayload }));
   const recoveryResult = extractLinkResult(recoveryPayload);
   if (recoveryResult) return recoveryResult;
   const adminUserPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users", {
@@ -193,6 +191,16 @@ async function generateSupabaseActionLink(env, { email, fullName, role, branch, 
     if (existing) return { authUser: existing, actionLink: "", linkError: detail };
   }
   throw new Error(`Could not create Supabase user: ${detail}`);
+}
+
+async function resolveInviteLink(env, email, origin) {
+  const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
+  if (!profiles[0]) throw new Error("User profile not found");
+  const role = profiles[0].role || "Sales";
+  const fullName = profiles[0].full_name || email;
+  const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch: profiles[0].branch || "all", origin });
+  if (!generated.actionLink) throw new Error(generated.linkError ? `Invitation link could not be generated: ${generated.linkError}` : "Invitation link could not be generated");
+  return { actionLink: generated.actionLink, fullName, role };
 }
 
 async function authenticatedUser(request, env) {
@@ -1014,7 +1022,7 @@ export default {
             body: JSON.stringify(view.map((moduleKey) => ({ user_id: authUser.id, module_key: moduleKey, can_view: true, can_edit: edit.includes(moduleKey) }))),
           });
         }
-        const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: inviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }) : { sent: false, reason: linkError ? `Invitation link could not be generated: ${linkError}` : "Invitation link could not be generated" };
+        const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: inviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message })) : { sent: false, reason: linkError ? `Invitation link could not be generated: ${linkError}` : "Invitation link could not be generated" };
         return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: emailDelivery.sent ? "Invited" : "Email Not Sent" }, emailDelivery }, { status: 201 });
       }
 
@@ -1025,14 +1033,38 @@ export default {
         const { email: rawEmail } = await request.json();
         const email = cleanEmail(rawEmail);
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
-        const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
-        if (!profiles[0]) return json({ error: "User profile not found" }, { status: 404 });
-        const role = profiles[0].role || "Sales";
-        const fullName = profiles[0].full_name || email;
-        const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch: profiles[0].branch || "all", origin: requestOrigin(request) });
-        if (!generated.actionLink) throw new Error(generated.linkError ? `Invitation link could not be generated: ${generated.linkError}` : "Invitation link could not be generated");
-        const emailDelivery = await sendResendEmail(env, { to: email, subject: "Your Medlane OS invitation link", html: inviteEmailHtml({ fullName, email, role, actionLink: generated.actionLink, origin: requestOrigin(request) }) });
+        const { actionLink, fullName, role } = await resolveInviteLink(env, email, requestOrigin(request));
+        const emailDelivery = await sendResendEmail(env, { to: email, subject: "Your Medlane OS invitation link", html: inviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message }));
         return json({ ok: true, emailDelivery });
+      }
+
+      if (url.pathname === "/api/users/invite/link") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { email: rawEmail } = await request.json();
+        const email = cleanEmail(rawEmail);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        const { actionLink } = await resolveInviteLink(env, email, requestOrigin(request));
+        return json({ actionLink });
+      }
+
+      if (url.pathname === "/api/users/set-password") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { email: rawEmail, password } = await request.json();
+        const email = cleanEmail(rawEmail);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        const policyError = passwordPolicyError(password);
+        if (policyError) return json({ error: policyError }, { status: 400 });
+        const target = await findAuthUserByEmail(env, email);
+        if (!target?.id) return json({ error: "Supabase Auth user not found" }, { status: 404 });
+        await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, {
+          method: "PUT",
+          body: JSON.stringify({ password, email_confirm: true }),
+        });
+        return json({ ok: true });
       }
 
       if (url.pathname === "/api/users/status") {

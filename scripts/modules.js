@@ -2703,7 +2703,7 @@ function renderUsers() {
     const statusAction = isSelf ? "" : `<button class="mini-button ${disabled ? "" : "danger-button"}" data-toggle-user-disabled="${index}">${disabled ? "Enable" : "Disable"}</button>`;
     const statusCell = `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>${u.disabledReason ? `<small>${escapeHtml(u.disabledReason)}</small>` : ""}`;
     const deleteAction = isSelf ? "" : `<button class="mini-button danger-button" data-delete-user="${index}">Delete Permanently</button>`;
-    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-reset-user-password="${index}">Reset Password</button>${resend}${statusAction}${deleteAction}</div></details>`;
+    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-copy-invite-link="${index}">Copy Invite Link</button><button class="mini-button" data-reset-user-password="${index}">Set Password</button>${resend}${statusAction}${deleteAction}</div></details>`;
     return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, statusCell, grantControl, accessSummary, canManageUsers() ? actions : "Superadmin/CEO only"] };
   }));
 }

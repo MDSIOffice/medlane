@@ -421,7 +421,9 @@ qs("#users-table").addEventListener("click", async (event) => {
   const statusButton = event.target.closest("[data-toggle-user-disabled]");
   if (statusButton) return toggleUserDisabled(Number(statusButton.dataset.toggleUserDisabled));
   const resetButton = event.target.closest("[data-reset-user-password]");
-  if (resetButton) return sendPasswordResetLink(Number(resetButton.dataset.resetUserPassword));
+  if (resetButton) return setUserPasswordPrompt(Number(resetButton.dataset.resetUserPassword));
+  const copyLinkButton = event.target.closest("[data-copy-invite-link]");
+  if (copyLinkButton) return copyInviteLink(Number(copyLinkButton.dataset.copyInviteLink));
   const button = event.target.closest("[data-delete-user]");
   if (!button) return;
   if (!canManageUsers()) return toast("Only Superadmin/CEO can delete users.");
@@ -884,12 +886,35 @@ function showWelcomeTransition(name, done) {
   }, 2950);
 }
 
-function sendPasswordResetLink(index) {
-  if (!canManageUsers()) return toast("Only Superadmin/CEO can send reset links.");
+async function setUserPasswordPrompt(index) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can set passwords.");
   const user = data.users[index];
   const email = String(user?.email || "").trim().toLowerCase();
-  if (!user || !email) return toast("User email is required before sending a reset link.");
-  toast("Use Supabase password recovery for existing users. Invitation links are sent when creating a new user.");
+  if (!user || !email) return toast("User email is required before setting a password.");
+  const password = prompt(`Set a new password for ${user.name || email}:\n\nMust be 8+ characters with a letter, a number, and a special character.`);
+  if (password === null) return;
+  const policyError = passwordPolicyError(password);
+  if (policyError) return toast(policyError);
+  const result = await MedlaneAPI.setUserPassword(email, password).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to set password.");
+  log("Set user password", "Users", email);
+  toast(`Password set for ${user.name || email}. Share it with them securely.`);
+}
+
+async function copyInviteLink(index) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can generate invite links.");
+  const user = data.users[index];
+  const email = String(user?.email || "").trim().toLowerCase();
+  if (!user || !email) return toast("User email is required to generate an invite link.");
+  toast("Generating invite link...");
+  const result = await MedlaneAPI.getInviteLink(email).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to generate invite link.");
+  try {
+    await navigator.clipboard.writeText(result.actionLink);
+    toast(`Invite link copied for ${user.name || email}.`);
+  } catch {
+    prompt(`Copy this invite link for ${user.name || email}:`, result.actionLink);
+  }
 }
 
 function openPasswordResetPage(email, token) {
