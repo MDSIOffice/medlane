@@ -28,6 +28,25 @@ function confirmInviteUser(values, view, edit) {
   });
 }
 
+async function handleUserInvite(values, view, edit) {
+  try {
+    const confirmed = await confirmInviteUser(values, view, edit);
+    if (!confirmed) return;
+    toast("Sending invitation email...");
+    const result = await MedlaneAPI.inviteUser({ ...values, modules: view, editModules: edit });
+    mergeUsersFromBackend([result.user]);
+    await syncBackendUsers();
+    log("Invited user", "Users", `${result.user.email} · ${result.user.role}`);
+    const deliveryNote = result.emailDelivery?.sent ? "Email sent via Resend" : result.emailDelivery?.reason || "Email not sent";
+    notify("User Invite", `${result.user.email} ${result.existing ? "already exists and was loaded" : "was invited"} as ${result.user.role}. ${deliveryNote}.`, "users", result.user.email);
+    renderAll();
+    toast(`${result.user.email} invited. ${deliveryNote}.`);
+  } catch (error) {
+    console.error("Invite user failed", error);
+    toast(`Invite failed: ${error.message || "Unable to invite user."}`);
+  }
+}
+
 function passwordPolicyError(password) {
   const value = String(password || "");
   if (value.length < 8) return "Password must be at least 8 characters.";
@@ -40,7 +59,8 @@ function passwordPolicyError(password) {
 
 async function submitModal(event) {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = qs("#modal-form");
+  if (!form) return toast("Form not found. Close and reopen the modal.");
   const values = formObject(form);
   if (["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder"].includes(modalType)) {
     try { values.itemsText = collectInvoiceEditorLines(); }
@@ -61,7 +81,7 @@ async function submitModal(event) {
     editContext = null;
     saveData();
     qs("#demo-modal").close();
-    event.currentTarget.reset();
+    form.reset();
     renderAll();
     toast("Masterlist record updated.");
     return;
@@ -168,29 +188,10 @@ async function submitModal(event) {
     if (values.role === "Superadmin") values.superadminPermissions = true;
     const view = qsa("input[name='userViewModules']:checked").map((input) => input.value);
     const edit = qsa("input[name='userEditModules']:checked").map((input) => input.value).filter((module) => view.includes(module));
-    const submitButton = form.querySelector("button[type='submit']");
-    if (!await confirmInviteUser(values, view, edit)) return;
-    const originalLabel = submitButton?.textContent || "Save Record";
-    if (submitButton) { submitButton.disabled = true; submitButton.classList.add("is-loading"); submitButton.textContent = "Sending invite..."; }
-    toast("Sending invitation email...");
-    try {
-      const result = await MedlaneAPI.inviteUser({ ...values, modules: view, editModules: edit });
-      mergeUsersFromBackend([result.user]);
-      await syncBackendUsers();
-      log("Invited user", "Users", `${result.user.email} · ${result.user.role}`);
-      const deliveryNote = result.emailDelivery?.sent ? "Email sent via Resend" : result.emailDelivery?.reason || "Email not sent";
-      notify("User Invite", `${result.user.email} ${result.existing ? "already exists and was loaded" : "was invited"} as ${result.user.role}. ${deliveryNote}.`, "users", result.user.email);
-      qs("#demo-modal").close();
-      form.reset();
-      renderAll();
-      toast(`${result.user.email} invited. ${deliveryNote}.`);
-      return;
-    } catch (error) {
-      console.error("Invite user failed", error);
-      return toast(`Invite failed: ${error.message || "Unable to invite user."}`);
-    } finally {
-      if (submitButton) { submitButton.disabled = false; submitButton.classList.remove("is-loading"); submitButton.textContent = originalLabel; }
-    }
+    qs("#demo-modal").close();
+    form.reset();
+    handleUserInvite(values, view, edit);
+    return;
   }
   log(`Saved ${modalType}`, modalConfigs[modalType].title, Object.values(values)[0]);
     saveData();
@@ -777,7 +778,8 @@ window.addEventListener("resize", updateTableScrollHints);
 document.addEventListener("scroll", (event) => { if (event.target?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
 qs("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const loginButton = event.currentTarget.querySelector("button[type='submit']");
+  const loginForm = qs("#login-form");
+  const loginButton = loginForm?.querySelector("button[type='submit']");
   const originalLabel = loginButton?.textContent || "Login";
   if (loginButton) {
     loginButton.disabled = true;
@@ -894,12 +896,13 @@ qs("#reset-password-cancel").addEventListener("click", () => qs("#reset-screen")
 qsa("#reset-confirm-password, #confirm-password").forEach((input) => input.addEventListener("paste", (event) => { event.preventDefault(); toast("Paste is disabled for confirm password. Please type it manually."); }));
 qs("#reset-password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const values = formObject(event.currentTarget);
+  const resetForm = qs("#reset-password-form");
+  const values = formObject(resetForm);
   const policyError = passwordPolicyError(values.newPassword);
   if (policyError) return toast(policyError);
   if (values.newPassword !== values.confirmPassword) return toast("Confirm password does not match.");
   if (String(values.token || "").startsWith("supabase:")) {
-    const submitButton = event.currentTarget.querySelector("button[type='submit']");
+    const submitButton = resetForm?.querySelector("button[type='submit']");
     const originalLabel = submitButton?.textContent || "Update Password";
     if (submitButton) { submitButton.disabled = true; submitButton.classList.add("is-loading"); submitButton.textContent = "Setting password..."; }
     try {
