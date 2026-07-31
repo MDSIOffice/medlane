@@ -918,14 +918,24 @@ export default {
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
         if (!validRole(role)) return json({ error: "Invalid role" }, { status: 400 });
         const existingProfiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
-        if (existingProfiles.length) {
+        const existingAuthUsers = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] }));
+        const existingAuthUser = (existingAuthUsers.users || []).find((user) => cleanEmail(user.email) === email);
+
+        if (existingProfiles.length && existingAuthUser) {
+          // A real, fully-registered user already exists: return it as-is instead of re-inviting.
           const existingPermissions = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(existingProfiles[0].id)}&select=user_id,module_key,can_view,can_edit`);
-          const existingUser = userFromProfileAndAuth(existingProfiles[0], null, existingPermissions);
+          const existingUser = userFromProfileAndAuth(existingProfiles[0], existingAuthUser, existingPermissions);
           return json({ user: existingUser, existing: true, emailDelivery: { sent: false, reason: "User profile already exists" } });
         }
 
-        const existingAuthUsers = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] }));
-        const existingAuthUser = (existingAuthUsers.users || []).find((user) => cleanEmail(user.email) === email);
+        if (existingProfiles.length && !existingAuthUser) {
+          // Orphaned profile row left over from a deletion that only removed the Supabase Auth
+          // account (e.g. deleted directly in the Supabase dashboard instead of through this app).
+          // Clean it up so the invite below can create a fresh, consistent account for this email.
+          await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(existingProfiles[0].id)}`, { method: "DELETE" }).catch(() => null);
+          await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(existingProfiles[0].id)}`, { method: "DELETE" }).catch(() => null);
+        }
+
         let authUser = existingAuthUser;
         let actionLink = "";
         if (!authUser) {
