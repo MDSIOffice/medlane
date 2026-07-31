@@ -165,7 +165,11 @@ async function generateSupabaseActionLink(env, { email, fullName, role, branch, 
     method: "POST",
     body: JSON.stringify({ email, email_confirm: true, user_metadata: { full_name: fullName, role, branch } }),
   }).catch((error) => ({ _error: error.message }));
-  const detail = invitePayload?._error || recoveryPayload?._error || adminUserPayload?._error || "Unknown Supabase response";
+  // Prefer the recovery-call failure reason: for an account that already exists, the invite call
+  // failing with "already registered" is expected noise, not the real problem. Recovery is the
+  // correct call for an existing account, so its error (or the final create attempt's) is what
+  // actually explains why no link came back.
+  const detail = recoveryPayload?._error || adminUserPayload?._error || invitePayload?._error || "Unknown Supabase response";
   if (adminUserPayload?.id) {
     return { authUser: adminUserPayload, actionLink: "", linkError: detail };
   }
@@ -1015,7 +1019,7 @@ export default {
         const role = profiles[0].role || "Sales";
         const fullName = profiles[0].full_name || email;
         const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch: profiles[0].branch || "all", origin: requestOrigin(request) });
-        if (!generated.actionLink) throw new Error("Invitation link could not be generated");
+        if (!generated.actionLink) throw new Error(generated.linkError ? `Invitation link could not be generated: ${generated.linkError}` : "Invitation link could not be generated");
         const emailDelivery = await sendResendEmail(env, { to: email, subject: "Your Medlane OS invitation link", html: inviteEmailHtml({ fullName, email, role, actionLink: generated.actionLink, origin: requestOrigin(request) }) });
         return json({ ok: true, emailDelivery });
       }
