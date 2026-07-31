@@ -975,14 +975,16 @@ export default {
 
         let authUser = existingAuthUser;
         let actionLink = "";
+        let linkError = "";
         if (!authUser) {
           const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) });
           authUser = generated.authUser;
           actionLink = generated.actionLink;
         } else {
-          const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) }).catch(() => null);
+          const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) }).catch((error) => ({ _error: error.message }));
           authUser = generated?.authUser || authUser;
           actionLink = generated?.actionLink || "";
+          linkError = generated?._error || "";
         }
         if (!authUser?.id) throw new Error("Could not create or find the Supabase user account");
 
@@ -996,7 +998,7 @@ export default {
             body: JSON.stringify(view.map((moduleKey) => ({ user_id: authUser.id, module_key: moduleKey, can_view: true, can_edit: edit.includes(moduleKey) }))),
           });
         }
-        const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: inviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }) : { sent: false, reason: "Invitation link could not be generated" };
+        const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: inviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }) : { sent: false, reason: linkError ? `Invitation link could not be generated: ${linkError}` : "Invitation link could not be generated" };
         return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: emailDelivery.sent ? "Invited" : "Email Not Sent" }, emailDelivery }, { status: 201 });
       }
 
