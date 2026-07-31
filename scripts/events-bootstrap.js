@@ -826,7 +826,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
 
 function playDashboardLoginSound() {
   if (!currentUser || sessionStorage.getItem("medlane-dashboard-sound-played") === "1") return;
-  if (!data.notifications?.some((notice) => notice.status === "Unread")) return;
+  if (!visibleNotifications().some((notice) => notice.status === "Unread")) return;
   sessionStorage.setItem("medlane-dashboard-sound-played", "1");
   const audio = new Audio("/Notification Sound.mp3");
   audio.volume = 0.55;
