@@ -28,7 +28,10 @@ function confirmInviteUser(values, view, edit) {
   });
 }
 
+let inviteInFlight = false;
 async function handleUserInvite(values, view, edit) {
+  if (inviteInFlight) return toast("An invite for this user is already in progress.");
+  inviteInFlight = true;
   try {
     const confirmed = await confirmInviteUser(values, view, edit);
     if (!confirmed) return;
@@ -44,6 +47,8 @@ async function handleUserInvite(values, view, edit) {
   } catch (error) {
     console.error("Invite user failed", error);
     toast(`Invite failed: ${error.message || "Unable to invite user."}`);
+  } finally {
+    inviteInFlight = false;
   }
 }
 

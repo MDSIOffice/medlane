@@ -133,6 +133,17 @@ async function sendResendEmail(env, { to, subject, html }) {
   return { sent: true, provider: "resend", id: payload?.id || null };
 }
 
+async function findAuthUserByEmail(env, email) {
+  const target = cleanEmail(email);
+  for (let page = 1; page <= 25; page += 1) {
+    const payload = await supabaseAuthAdminFetch(env, `/auth/v1/admin/users?page=${page}&per_page=1000`).catch((error) => ({ _error: error.message, users: [] }));
+    const match = (payload.users || []).find((user) => cleanEmail(user.email) === target);
+    if (match) return match;
+    if (!payload.users || payload.users.length < 1000) break;
+  }
+  return null;
+}
+
 async function generateSupabaseActionLink(env, { email, fullName, role, branch, origin }) {
   const redirectTo = `${origin}/?login=1`;
   const options = { redirect_to: redirectTo, data: { full_name: fullName, role, branch } };
@@ -157,7 +168,15 @@ async function generateSupabaseActionLink(env, { email, fullName, role, branch, 
   if (adminUserPayload?.id) {
     return { authUser: adminUserPayload, actionLink: "" };
   }
+  // Every attempt above failed, but a "duplicate" error means the account genuinely already
+  // exists in Supabase even though our earlier lookup missed it (e.g. a concurrent invite for
+  // the same email). Re-fetch it directly instead of surfacing a confusing failure while leaving
+  // the account orphaned with no profile row.
   const detail = invitePayload?._error || recoveryPayload?._error || adminUserPayload?._error || "Unknown Supabase response";
+  if (/already.*regist|already.*exist/i.test(detail)) {
+    const existing = await findAuthUserByEmail(env, email);
+    if (existing) return { authUser: existing, actionLink: "" };
+  }
   throw new Error(`Could not create Supabase user: ${detail}`);
 }
 
@@ -937,8 +956,7 @@ export default {
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
         if (!validRole(role)) return json({ error: "Invalid role" }, { status: 400 });
         const existingProfiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
-        const existingAuthUsers = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] }));
-        const existingAuthUser = (existingAuthUsers.users || []).find((user) => cleanEmail(user.email) === email);
+        const existingAuthUser = await findAuthUserByEmail(env, email);
 
         if (existingProfiles.length && existingAuthUser) {
           // A real, fully-registered user already exists: return it as-is instead of re-inviting.
