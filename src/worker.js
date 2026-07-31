@@ -144,6 +144,17 @@ async function findAuthUserByEmail(env, email) {
   return null;
 }
 
+function extractLinkResult(payload) {
+  // Supabase's raw /admin/generate_link REST response puts the user's fields at the top level
+  // of the payload (not nested under a "user" key the way the supabase-js SDK abstracts it), with
+  // the link fields alongside them. Support both shapes defensively.
+  if (!payload) return null;
+  const user = payload.user?.id ? payload.user : payload.id ? payload : null;
+  if (!user) return null;
+  const actionLink = payload.action_link || payload.properties?.action_link || "";
+  return { authUser: user, actionLink };
+}
+
 async function generateSupabaseActionLink(env, { email, fullName, role, branch, origin }) {
   const redirectTo = `${origin}/?login=1`;
   const options = { redirect_to: redirectTo, data: { full_name: fullName, role, branch } };
@@ -151,16 +162,14 @@ async function generateSupabaseActionLink(env, { email, fullName, role, branch, 
     method: "POST",
     body: JSON.stringify({ type: "invite", email, options }),
   }).catch((error) => ({ _error: error.message }));
-  if (invitePayload.user?.id) {
-    return { authUser: invitePayload.user, actionLink: invitePayload.action_link || invitePayload.properties?.action_link || "" };
-  }
+  const inviteResult = extractLinkResult(invitePayload);
+  if (inviteResult) return inviteResult;
   const recoveryPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
     method: "POST",
     body: JSON.stringify({ type: "recovery", email, options }),
   }).catch((error) => ({ _error: error.message }));
-  if (recoveryPayload.user?.id) {
-    return { authUser: recoveryPayload.user, actionLink: recoveryPayload.action_link || recoveryPayload.properties?.action_link || "" };
-  }
+  const recoveryResult = extractLinkResult(recoveryPayload);
+  if (recoveryResult) return recoveryResult;
   const adminUserPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users", {
     method: "POST",
     body: JSON.stringify({ email, email_confirm: true, user_metadata: { full_name: fullName, role, branch } }),
