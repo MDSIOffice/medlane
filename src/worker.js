@@ -134,15 +134,30 @@ async function sendResendEmail(env, { to, subject, html }) {
 
 async function generateSupabaseActionLink(env, { email, fullName, role, branch, origin }) {
   const redirectTo = `${origin}/?login=1`;
-  const body = { email, options: { redirect_to: redirectTo, data: { full_name: fullName, role, branch } } };
-  const payload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
+  const options = { redirect_to: redirectTo, data: { full_name: fullName, role, branch } };
+  const invitePayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
     method: "POST",
-    body: JSON.stringify({ type: "invite", ...body }),
-  }).catch(() => supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
+    body: JSON.stringify({ type: "invite", email, options }),
+  }).catch((error) => ({ _error: error.message }));
+  if (invitePayload.user?.id) {
+    return { authUser: invitePayload.user, actionLink: invitePayload.action_link || invitePayload.properties?.action_link || "" };
+  }
+  const recoveryPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
     method: "POST",
-    body: JSON.stringify({ type: "recovery", ...body }),
-  }));
-  return { authUser: payload.user, actionLink: payload.action_link || payload.actionLink || payload.properties?.action_link };
+    body: JSON.stringify({ type: "recovery", email, options }),
+  }).catch((error) => ({ _error: error.message }));
+  if (recoveryPayload.user?.id) {
+    return { authUser: recoveryPayload.user, actionLink: recoveryPayload.action_link || recoveryPayload.properties?.action_link || "" };
+  }
+  const adminUserPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users", {
+    method: "POST",
+    body: JSON.stringify({ email, email_confirm: true, user_metadata: { full_name: fullName, role, branch } }),
+  }).catch((error) => ({ _error: error.message }));
+  if (adminUserPayload?.id) {
+    return { authUser: adminUserPayload, actionLink: "" };
+  }
+  const detail = invitePayload?._error || recoveryPayload?._error || adminUserPayload?._error || "Unknown Supabase response";
+  throw new Error(`Could not create Supabase user: ${detail}`);
 }
 
 async function authenticatedUser(request, env) {
@@ -856,7 +871,8 @@ export default {
         }
 
         const existingAuthUsers = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] }));
-        let authUser = (existingAuthUsers.users || []).find((user) => cleanEmail(user.email) === email);
+        const existingAuthUser = (existingAuthUsers.users || []).find((user) => cleanEmail(user.email) === email);
+        let authUser = existingAuthUser;
         let actionLink = "";
         if (!authUser) {
           const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) });
@@ -864,9 +880,10 @@ export default {
           actionLink = generated.actionLink;
         } else {
           const generated = await generateSupabaseActionLink(env, { email, fullName, role, branch, origin: requestOrigin(request) }).catch(() => null);
+          authUser = generated?.authUser || authUser;
           actionLink = generated?.actionLink || "";
         }
-        if (!authUser?.id) throw new Error("Supabase did not return an invited user ID");
+        if (!authUser?.id) throw new Error("Could not create or find the Supabase user account");
 
         await supabaseFetch(env, "/rest/v1/profiles", {
           method: "POST",
