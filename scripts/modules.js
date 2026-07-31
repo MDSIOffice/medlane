@@ -1337,6 +1337,34 @@ function syncPostedCollectionReminders() {
   });
 }
 
+function parameterRowTemplate(row = {}) {
+  const level = (prefix) => `<td><input class="param-${prefix}-range" placeholder="Ref. Range" value="${escapeHtml(row[`${prefix}Range`] || "")}" /></td><td><input class="param-${prefix}-result" placeholder="Result" value="${escapeHtml(row[`${prefix}Result`] || "")}" /></td><td class="param-p-cell"><input class="param-${prefix}-p" type="checkbox" ${row[`${prefix}P`] ? "checked" : ""} /></td><td class="param-f-cell"><input class="param-${prefix}-f" type="checkbox" ${row[`${prefix}F`] ? "checked" : ""} /></td>`;
+  return `<tr class="parameter-row"><td><input class="param-name" placeholder="Parameter" value="${escapeHtml(row.parameter || "")}" /></td><td><input class="param-factor" placeholder="Factor" value="${escapeHtml(row.factor || "")}" /></td>${level("l1")}${level("l2")}${level("l3")}<td class="sheet-action-cell"><button class="icon-button danger-button remove-parameter-row" type="button" aria-label="Remove parameter" title="Remove parameter">×</button></td></tr>`;
+}
+
+function renderProductIssueParameterTable(rows = [{}], lots = {}) {
+  return `<div class="field full parameter-table-editor" id="parameter-table-editor"><label>Calibration / Control Parameter Table</label><div class="parameter-table-lots"><div class="field"><label for="qcLevel1Lot">Level 1 Lot</label><input id="qcLevel1Lot" name="qcLevel1Lot" value="${escapeHtml(lots.qcLevel1Lot || "")}" /></div><div class="field"><label for="qcLevel2Lot">Level 2 Lot</label><input id="qcLevel2Lot" name="qcLevel2Lot" value="${escapeHtml(lots.qcLevel2Lot || "")}" /></div><div class="field"><label for="qcLevel3Lot">Level 3 Lot</label><input id="qcLevel3Lot" name="qcLevel3Lot" value="${escapeHtml(lots.qcLevel3Lot || "")}" /></div></div><div class="table-card compact-table"><table id="parameter-qc-table"><thead><tr><th rowspan="2">Parameters</th><th rowspan="2">Calibrator Factor</th><th colspan="4">Level 1</th><th colspan="4">Level 2</th><th colspan="4">Level 3</th><th rowspan="2"></th></tr><tr><th>Ref. Range</th><th>Result</th><th>P</th><th>F</th><th>Ref. Range</th><th>Result</th><th>P</th><th>F</th><th>Ref. Range</th><th>Result</th><th>P</th><th>F</th></tr></thead><tbody id="parameter-row-list">${rows.map((row) => parameterRowTemplate(row)).join("")}</tbody></table></div><button class="ghost-button" id="add-parameter-row" type="button">Add Parameter</button></div>`;
+}
+
+function collectProductIssueParameters() {
+  return qsa(".parameter-row").map((row) => ({
+    parameter: row.querySelector(".param-name")?.value.trim() || "",
+    factor: row.querySelector(".param-factor")?.value.trim() || "",
+    l1Range: row.querySelector(".param-l1-range")?.value.trim() || "",
+    l1Result: row.querySelector(".param-l1-result")?.value.trim() || "",
+    l1P: row.querySelector(".param-l1-p")?.checked || false,
+    l1F: row.querySelector(".param-l1-f")?.checked || false,
+    l2Range: row.querySelector(".param-l2-range")?.value.trim() || "",
+    l2Result: row.querySelector(".param-l2-result")?.value.trim() || "",
+    l2P: row.querySelector(".param-l2-p")?.checked || false,
+    l2F: row.querySelector(".param-l2-f")?.checked || false,
+    l3Range: row.querySelector(".param-l3-range")?.value.trim() || "",
+    l3Result: row.querySelector(".param-l3-result")?.value.trim() || "",
+    l3P: row.querySelector(".param-l3-p")?.checked || false,
+    l3F: row.querySelector(".param-l3-f")?.checked || false,
+  })).filter((row) => row.parameter || row.factor || row.l1Result || row.l2Result || row.l3Result);
+}
+
 function chequeLineTemplate(line = {}) {
   return `<div class="cheque-line-row"><div class="field"><label>Reference Number</label><input class="cheque-reference" value="${escapeHtml(line.reference || "")}" /></div><div class="field"><label>Date of Cheque</label><input class="cheque-date" type="date" value="${escapeHtml(line.chequeDate || "")}" /></div><div class="field"><label>Amount</label><input class="cheque-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" /></div><button class="icon-button danger-button remove-cheque-line" type="button" aria-label="Remove cheque">Remove</button></div>`;
 }
@@ -1922,7 +1950,14 @@ function renderProductIssues() {
     visualCard("🛠", "Case Status", `${open} open`, barRows([["Open", open], ["Pass to Engineering", passed], ["Resolved", resolved.length]], (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "orange", "green"]), open ? "warning" : "success", "Computed from current support report status across all logged cases."),
     visualCard("⏱", "Avg. Turnaround", avgTurnaround === null ? "No resolved cases yet" : `${avgTurnaround} day${avgTurnaround === 1 ? "" : "s"}`, `<p>Average days between start date and resolution for resolved reports.</p>`, "info", "Computed as the average of (resolved date - start date) across resolved reports."),
   ].join("");
-  table("#product-issues-table", ["Report No.", "Start Date", "Company", "Equipment", "Support Type", "Status", "Performed By", "Actions"], reports.filter((report) => includesSearch(Object.values(report))).map((report) => ({ focus: report.id, cells: [report.id, report.startDate, report.companyName, `${report.equipment || "-"}${report.serialNo ? `<small>${report.serialNo}</small>` : ""}`, report.typeOfSupport || "-", `<span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span>`, report.performedBy, productIssueActionsMenu(report)] })));
+  table("#product-issues-table", ["Document No.", "Start Date", "Company", "Equipment", "Support Type", "Status", "Performed By", "Actions"], reports.filter((report) => includesSearch(Object.values(report))).map((report) => ({ focus: report.id, cells: [report.id, report.startDate, report.companyName, `${report.equipment || "-"}${report.serialNo ? `<small>${report.serialNo}</small>` : ""}`, report.typeOfSupport || "-", `<span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span>`, report.performedBy, productIssueActionsMenu(report)] })));
+}
+
+function productIssueParameterSummaryHtml(report) {
+  const rows = report.qcParameters?.length ? report.qcParameters : [];
+  if (!rows.length) return "";
+  const cell = (row, prefix) => `<td>${escapeHtml(row[`${prefix}Range`] || "-")}</td><td>${escapeHtml(row[`${prefix}Result`] || "-")}</td><td>${row[`${prefix}P`] ? "✓" : ""}</td><td>${row[`${prefix}F`] ? "✓" : ""}</td>`;
+  return `<details class="full-event-details"><summary>Calibration / control parameter table</summary><div class="table-card compact-table"><table><thead><tr><th>Parameters</th><th>Calibrator Factor</th><th colspan="4">Level 1 · Lot ${escapeHtml(report.qcLevel1Lot || "-")}</th><th colspan="4">Level 2 · Lot ${escapeHtml(report.qcLevel2Lot || "-")}</th><th colspan="4">Level 3 · Lot ${escapeHtml(report.qcLevel3Lot || "-")}</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.parameter || "-")}</td><td>${escapeHtml(row.factor || "-")}</td>${cell(row, "l1")}${cell(row, "l2")}${cell(row, "l3")}</tr>`).join("")}</tbody></table></div></details>`;
 }
 
 function renderProductIssueDetail(id) {
@@ -1930,7 +1965,7 @@ function renderProductIssueDetail(id) {
   if (!report) return toast("Support report not found.");
   const events = productIssueHistory(report);
   qs("#product-issue-detail-title").textContent = `${report.id} · ${report.companyName}`;
-  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Performed By</small><strong>${escapeHtml(report.performedBy || "-")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Update / Actions Taken:</strong> ${escapeHtml(report.actionsTaken || "-")}</p><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Resolved" ? "done" : event.status === "Pass to Engineering" ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Performed By</small><strong>${escapeHtml(report.performedBy || "-")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Concerns / Inquiries:</strong> ${escapeHtml(report.concerns || "-")}</p><p><strong>Update / Actions Taken:</strong> ${escapeHtml(report.actionsTaken || "-")}</p>${productIssueParameterSummaryHtml(report)}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Resolved" ? "done" : event.status === "Pass to Engineering" ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
   showSection("product-issue-detail");
 }
 
@@ -2833,7 +2868,7 @@ const modalConfigs = {
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
-  productIssue: { title: "New Support Report", fields: [["id", "Report No.", "readonly"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)"], ["conforme", "Conforme (Client Representative)"]] },
+  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
 };
 
 function openModal(type, edit = null) {
@@ -2873,6 +2908,7 @@ function openModal(type, edit = null) {
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false }));
   if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
   if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: true, allowDiscount: true }));
+  if (type === "productIssue") qs("#modal-fields").insertAdjacentHTML("beforeend", renderProductIssueParameterTable(edit?.record?.qcParameters?.length ? edit.record.qcParameters : [{}], edit?.record || {}));
   if (type === "purchaseOrder") qs("#date").value = fmtDate(today);
   if (type === "inventoryPurchaseOrder") qs("#date").value = fmtDate(today);
   if (type === "invoice") {

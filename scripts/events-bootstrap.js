@@ -183,7 +183,9 @@ async function submitModal(event) {
     if (!values.actionsTaken?.trim()) return toast("Update / actions taken is required.");
     if (values.status === "Resolved" && !values.resolvedBy) return toast("Select who resolved this report.");
     values.id = values.id?.trim() || nextProductIssueId();
-    if (data.productIssues.some((report) => report.id === values.id)) return toast("Duplicate report number detected.");
+    if (data.productIssues.some((report) => report.id === values.id)) return toast("Duplicate document number detected.");
+    values.performedBy = currentUser?.name || "System User";
+    values.qcParameters = collectProductIssueParameters();
     values.resolvedAt = values.status === "Resolved" ? fmtDate(today) : "";
     values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: "Report started", by: values.performedBy || currentUser?.name || "System User" }];
     data.productIssues.push(values);
@@ -632,6 +634,9 @@ qs("#modal-fields").addEventListener("click", (event) => {
     remove.closest(".invoice-line-row").remove();
     renderInvoiceComputePreview();
   }
+  if (event.target.closest("#add-parameter-row")) qs("#parameter-row-list").insertAdjacentHTML("beforeend", parameterRowTemplate());
+  const parameterRemove = event.target.closest(".remove-parameter-row");
+  if (parameterRemove && qsa(".parameter-row").length > 1) parameterRemove.closest(".parameter-row").remove();
 });
 qs("#modal-fields").addEventListener("input", (event) => {
   if (event.target.id === "invoice" && modalType === "payment") syncPaymentInvoice();

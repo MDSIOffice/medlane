@@ -6,8 +6,8 @@ const productClassificationOptions = ["Accessories", "Consumables", "Equipment",
 const requiredSecurityApprovals = ["Discount approval", "Credit-limit override", "Cancelled invoice replacement", "Cheque collection review", "Stock transfer receiving"];
 const requiredClientDocs = ["Mayor's Permit", "2303", "SEC or DTI", "FDALTO", "GAIA"];
 const employeeBenefitOptions = ["SSS", "PhilHealth", "Pag-IBIG"];
-const supportTypeOptions = ["Installation", "Preventive Maintenance", "Corrective Maintenance / Repair", "Calibration", "Training", "Troubleshooting", "Consultation", "Others"];
-const supportTopicOptions = ["Equipment Operation", "Software / System Configuration", "Error Codes / Troubleshooting", "Reagent / Consumables Handling", "Quality Control", "Maintenance Schedule", "Safety Procedures", "Others"];
+const supportTypeOptions = ["Application Troubleshooting", "Training Support", "Technical Support"];
+const supportTopicOptions = ["Theories and Principles", "Unit Operation", "Parameter Prog.", "Unit Maintenance", "Basic Troubleshooting", "PM and Calibration"];
 const tableBatchSize = 15;
 const tableState = new Map();
 
@@ -101,7 +101,9 @@ const initialData = {
     { client: "SouthMed Hospital", equipment: "Chemistry Analyzer", serial: "CA-LP-1188", installDate: "2025-11-10", warrantyEnd: "2026-11-10", status: "Active", service: "Preventive maintenance completed" },
   ],
   productIssues: [
-    { id: "TSR-2026-001", startDate: "2026-07-10", companyName: "Naga City Lab", address: "Magsaysay Avenue, Naga City", contactPerson: "Dr. Elena Reyes", typeOfSupport: "Corrective Maintenance / Repair, Troubleshooting", topicsDiscussed: "Error Codes / Troubleshooting, Equipment Operation", equipment: "Centrifuge 12-Slot", serialNo: "CN12-NGA-004", actionsTaken: "Replaced worn rotor bearing and recalibrated speed sensor. Ran 3 test cycles with no error codes.", status: "Resolved", resolvedBy: "Service Engineer", performedBy: "Ramon Dela Cruz", conforme: "Dr. Elena Reyes", resolvedAt: "2026-07-11", history: [
+    { id: "TSR-2026-001", startDate: "2026-07-10", companyName: "Naga City Lab", address: "Magsaysay Avenue, Naga City", contactPerson: "Dr. Elena Reyes", typeOfSupport: "Technical Support, Application Troubleshooting", topicsDiscussed: "Basic Troubleshooting, Unit Operation", equipment: "Centrifuge 12-Slot", serialNo: "CN12-NGA-004", concerns: "Unit showing intermittent error code E-04 during spin cycle.", actionsTaken: "Replaced worn rotor bearing and recalibrated speed sensor. Ran 3 test cycles with no error codes.", status: "Resolved", resolvedBy: "Service Engineer", performedBy: "Ramon Dela Cruz", conforme: "Dr. Elena Reyes", resolvedAt: "2026-07-11", qcLevel1Lot: "L1-2607", qcLevel2Lot: "L2-2607", qcLevel3Lot: "L3-2607", qcParameters: [
+      { parameter: "Speed Accuracy", factor: "1.00", l1Range: "3200-3400", l1Result: "3310", l1P: true, l1F: false, l2Range: "4200-4400", l2Result: "4320", l2P: true, l2F: false, l3Range: "5200-5400", l3Result: "5290", l3P: true, l3F: false },
+    ], history: [
       { date: "2026-07-10", status: "Open", note: "Report started - unit showing error code E-04 intermittently.", by: "Ramon Dela Cruz" },
       { date: "2026-07-11", status: "Resolved", note: "Bearing replaced and recalibrated. Client confirmed unit running normally.", by: "Ramon Dela Cruz" },
     ] },
