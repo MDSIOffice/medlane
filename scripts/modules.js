@@ -1876,6 +1876,96 @@ function renderWarranty() {
   table("#warranty-table", ["Client", "Equipment", "Serial No.", "Install Date", "Warranty End", "Status", "Service Notes"], data.warranties.filter((w) => includesSearch(Object.values(w))).map((w) => ({ focus: w.serial, cells: [w.client, w.equipment, w.serial, w.installDate, w.warrantyEnd, `<span class="pill ${statusClass(w.status)}">${w.status}</span>`, w.service] })));
 }
 
+function productIssueStatusClass(status) {
+  if (status === "Resolved") return "green";
+  if (status === "Pass to Engineering") return "orange";
+  return "gray";
+}
+
+function productIssueTurnaroundDays(report) {
+  if (!report.startDate) return null;
+  const start = new Date(report.startDate).getTime();
+  const end = report.resolvedAt ? new Date(report.resolvedAt).getTime() : Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  return Math.max(0, Math.round((end - start) / 86400000));
+}
+
+function productIssueTurnaroundLabel(report) {
+  const days = productIssueTurnaroundDays(report);
+  if (days === null) return "N/A";
+  return `${days} day${days === 1 ? "" : "s"}${report.status === "Resolved" ? "" : " (ongoing)"}`;
+}
+
+function productIssueHistory(report) {
+  return report.history?.length ? report.history : [{ date: report.startDate, status: "Open", note: "Report started", by: report.performedBy }];
+}
+
+function productIssueActionsMenu(report) {
+  const canEdit = canEditModule("product-issues");
+  const statusButtons = canEdit ? [
+    report.status !== "Resolved" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Resolved">Mark Resolved</button>` : "",
+    report.status !== "Pass to Engineering" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineering</button>` : "",
+    report.status !== "Open" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Open">Reopen</button>` : "",
+  ].join("") : "";
+  return `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-product-issue-timeline="${escapeHtml(report.id)}">View Timeline</button><button class="mini-button" data-product-issue-print="${escapeHtml(report.id)}">Print</button>${statusButtons}</div></details>`;
+}
+
+function renderProductIssues() {
+  qs("#product-issues [data-action='open-modal'][data-type='productIssue']").hidden = !canEditModule("product-issues");
+  const statusFilter = qs("#product-issue-status")?.value || "all";
+  const reports = data.productIssues.filter((report) => statusFilter === "all" || report.status === statusFilter);
+  const open = data.productIssues.filter((report) => report.status === "Open").length;
+  const passed = data.productIssues.filter((report) => report.status === "Pass to Engineering").length;
+  const resolved = data.productIssues.filter((report) => report.status === "Resolved");
+  const avgTurnaround = resolved.length ? Math.round(resolved.reduce((sum, report) => sum + (productIssueTurnaroundDays(report) || 0), 0) / resolved.length) : null;
+  qs("#product-issue-visuals").innerHTML = [
+    visualCard("🛠", "Case Status", `${open} open`, barRows([["Open", open], ["Pass to Engineering", passed], ["Resolved", resolved.length]], (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "orange", "green"]), open ? "warning" : "success", "Computed from current support report status across all logged cases."),
+    visualCard("⏱", "Avg. Turnaround", avgTurnaround === null ? "No resolved cases yet" : `${avgTurnaround} day${avgTurnaround === 1 ? "" : "s"}`, `<p>Average days between start date and resolution for resolved reports.</p>`, "info", "Computed as the average of (resolved date - start date) across resolved reports."),
+  ].join("");
+  table("#product-issues-table", ["Report No.", "Start Date", "Company", "Equipment", "Support Type", "Status", "Performed By", "Actions"], reports.filter((report) => includesSearch(Object.values(report))).map((report) => ({ focus: report.id, cells: [report.id, report.startDate, report.companyName, `${report.equipment || "-"}${report.serialNo ? `<small>${report.serialNo}</small>` : ""}`, report.typeOfSupport || "-", `<span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span>`, report.performedBy, productIssueActionsMenu(report)] })));
+}
+
+function renderProductIssueDetail(id) {
+  const report = data.productIssues.find((item) => item.id === id);
+  if (!report) return toast("Support report not found.");
+  const events = productIssueHistory(report);
+  qs("#product-issue-detail-title").textContent = `${report.id} · ${report.companyName}`;
+  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Performed By</small><strong>${escapeHtml(report.performedBy || "-")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Update / Actions Taken:</strong> ${escapeHtml(report.actionsTaken || "-")}</p><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Resolved" ? "done" : event.status === "Pass to Engineering" ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  showSection("product-issue-detail");
+}
+
+async function previewProductIssue(id) {
+  const printable = await MedlaneAPI.printableProductIssue(id).catch((error) => { toast(error.message || "Unable to load support report."); return null; });
+  if (!printable) return;
+  qs("#report-preview-title").textContent = printable.title;
+  qs("#report-preview-description").textContent = printable.description;
+  qs("#report-preview-content").innerHTML = printable.html;
+  qs("#report-preview-modal").showModal();
+}
+
+function updateProductIssueStatus(id, status) {
+  if (!canEditModule("product-issues")) return toast("Editing is disabled for this module in User Settings.");
+  const report = data.productIssues.find((item) => item.id === id);
+  if (!report) return toast("Support report not found.");
+  let resolvedBy = report.resolvedBy || "";
+  if (status === "Resolved") {
+    const input = (prompt("Resolved by: type \"Product Specialist\" or \"Service Engineer\"", resolvedBy || "Product Specialist") || "").trim();
+    if (!["Product Specialist", "Service Engineer"].includes(input)) return toast("Enter Product Specialist or Service Engineer.");
+    resolvedBy = input;
+  }
+  const note = prompt(`Add a note for marking ${id} as ${status}:`, "") || "";
+  report.status = status;
+  report.resolvedBy = status === "Resolved" ? resolvedBy : status === "Open" ? "" : report.resolvedBy;
+  report.resolvedAt = status === "Resolved" ? fmtDate(today) : "";
+  report.history = productIssueHistory(report);
+  report.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, note: note.trim() || `Marked ${status}`, by: currentUser?.name || "System User" });
+  log("Updated support report status", "Product Issues", `${id}: ${status}`);
+  notify("Support Report", `${id} marked ${status}.`, "product-issues", id);
+  saveData();
+  renderProductIssues();
+  toast(`${id} marked ${status}.`);
+}
+
 function renderPurchaseHistory() {
   const rows = data.clients.filter((client) => includesSearch(Object.values(client))).map((client) => {
     const purchases = data.sales.filter((sale) => sale.client === client.name);
@@ -2641,7 +2731,7 @@ function renderLogs() {
     .filter((log) => module === "all" || log.module === module);
   table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address"], rows.map((l) => ({ focus: [l.record, l.action, l.user, l.ipAddress].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(logRole(l)), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record), formatLogCell(l.device || "-"), formatLogCell(l.browser || "-"), formatLogCell(l.ipAddress || "-")] })));
 }
-function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
+function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
 
 function runReconciliationWorkflow() {
   const scope = getReconScope();
@@ -2743,6 +2833,7 @@ const modalConfigs = {
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
+  productIssue: { title: "New Support Report", fields: [["id", "Report No.", "readonly"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)"], ["conforme", "Conforme (Client Representative)"]] },
 };
 
 function openModal(type, edit = null) {
@@ -2773,6 +2864,10 @@ function openModal(type, edit = null) {
     if (kind === "doc-files") return `<div class="field full"><label>${label}</label><div class="doc-upload-grid modal-doc-upload-grid">${requiredClientDocs.map((doc) => `<label class="doc-upload-button missing"><span>${escapeHtml(doc)}</span><strong>Upload File</strong><em>Choose document</em><input class="doc-file-input" name="docsSelected" type="file" data-doc-name="${escapeHtml(doc)}" /></label>`).join("")}</div><input id="docs" name="docs" type="hidden" /></div>`;
     if (kind === "user-permissions") return `<div class="field full user-permissions-field"><label>${label}</label><p class="field-help">Selecting a role preselects the allowed modules. Check extra boxes to grant additional view or edit access.</p><div id="user-permissions-panel"></div></div>`;
     if (kind === "benefit-checkboxes") return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${employeeBenefitOptions.map((benefit) => `<label class="ios-check-row compact-doc-check"><input name="benefitsSelected" type="checkbox" value="${escapeHtml(benefit)}" /><span></span><strong>${escapeHtml(benefit)}</strong></label>`).join("")}</div><input id="benefits" name="benefits" type="hidden" /></div>`;
+    if (kind === "checkbox-group") {
+      const values = typeof options === "function" ? options() : options;
+      return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${values.map((value) => `<label class="ios-check-row compact-doc-check"><input name="${name}Selected" type="checkbox" value="${escapeHtml(value)}" /><span></span><strong>${escapeHtml(value)}</strong></label>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /></div>`;
+    }
     return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${kind}" ${kind === "date" && name.toLowerCase().includes("expiry") ? `min="${fmtDate(today)}"` : ""} ${kind !== "date" ? "required" : ""} /></div>`;
   }).join("");
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false }));
@@ -2827,6 +2922,13 @@ function openModal(type, edit = null) {
   if (type === "user") {
     qs("#role").value = "Admin";
     syncInviteUserPermissions();
+  }
+  if (type === "productIssue" && !edit) {
+    qs("#id").value = nextProductIssueId();
+    qs("#startDate").value = fmtDate(today);
+    qs("#performedBy").value = currentUser?.name || "System User";
+    qs("#status").value = "Open";
+    toggleProductIssueResolvedByField();
   }
   if (type === "client" && !edit) {
     qs("#creditLimit").value = 150000;
@@ -2926,6 +3028,7 @@ function syncInviteUserPermissions() {
     ["Master Data", ["masterlists", "users", "settings", "backup", "security", "logs"]],
     ["Inventory & Orders", ["inventory", "purchase-orders", "warranty"]],
     ["Sales & Receivables", ["sales", "invoicing", "collections", "receivables-tracker", "purchase-history"]],
+    ["Support", ["product-issues"]],
     ["Finance", ["payables", "replenishments", "reconciliation", "reports", "imports"]],
   ].map(([label, items]) => [label, items.filter((module) => modules.includes(module))]).filter(([, items]) => items.length);
   const renderGroup = (name, items, inputName, defaults) => `<details class="permission-feature-group"><summary><strong>${escapeHtml(name)}</strong><span>${items.filter((module) => defaults.has(module)).length}/${items.length} selected</span></summary><div>${items.map((module) => `<label class="ios-check-row compact-doc-check"><input name="${inputName}" type="checkbox" value="${escapeHtml(module)}" ${defaults.has(module) ? "checked" : ""} /><span></span><strong>${escapeHtml(module)}</strong></label>`).join("")}</div></details>`;
@@ -2936,6 +3039,26 @@ function syncEmployeeBenefitsHidden() {
   const benefitsField = qs("#benefits");
   if (!benefitsField) return;
   benefitsField.value = qsa("input[name='benefitsSelected']:checked").map((input) => input.value).join(", ");
+}
+
+function syncCheckboxGroupHidden(name) {
+  const field = qs(`#${name}`);
+  if (!field) return;
+  field.value = qsa(`input[name='${name}Selected']:checked`).map((input) => input.value).join(", ");
+}
+
+function toggleProductIssueResolvedByField() {
+  const status = qs("#status")?.value;
+  const field = qs("#resolvedBy");
+  if (!field) return;
+  field.closest(".field").hidden = status !== "Resolved";
+  field.required = status === "Resolved";
+}
+
+function nextProductIssueId() {
+  const year = new Date(fmtDate(today)).getFullYear();
+  const count = data.productIssues.filter((report) => String(report.id || "").includes(`-${year}-`)).length + 1;
+  return `TSR-${year}-${String(count).padStart(3, "0")}`;
 }
 
 function canManageEmployeeSalary() {

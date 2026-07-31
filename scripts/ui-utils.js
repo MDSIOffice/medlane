@@ -263,6 +263,7 @@ function prepareFocusedSection(section, record) {
   if (section === "receivables-tracker") return renderReceivablesTracker();
   if (section === "payables") return renderPayables();
   if (section === "warranty") return renderWarranty();
+  if (section === "product-issues") return renderProductIssues();
   if (section === "replenishments") return renderReplenishments();
   if (section === "collections") return renderCollections();
   if (section === "sales") return renderSales();

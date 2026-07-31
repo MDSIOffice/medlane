@@ -178,6 +178,18 @@ async function submitModal(event) {
     data.replenishments.push({ id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "" });
   }
   if (modalType === "warranty") data.warranties.push(values);
+  if (modalType === "productIssue") {
+    if (!values.companyName?.trim()) return toast("Company name is required.");
+    if (!values.actionsTaken?.trim()) return toast("Update / actions taken is required.");
+    if (values.status === "Resolved" && !values.resolvedBy) return toast("Select who resolved this report.");
+    values.id = values.id?.trim() || nextProductIssueId();
+    if (data.productIssues.some((report) => report.id === values.id)) return toast("Duplicate report number detected.");
+    values.resolvedAt = values.status === "Resolved" ? fmtDate(today) : "";
+    values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: "Report started", by: values.performedBy || currentUser?.name || "System User" }];
+    data.productIssues.push(values);
+    log("Created support report", "Product Issues", `${values.id} · ${values.companyName}`);
+    notify("Support Report", `${values.id} started for ${values.companyName}.`, "product-issues", values.id);
+  }
   if (modalType === "user") {
     if (!canManageUsers()) return toast("Only Superadmin/CEO can add users.");
     const email = String(values.email || "").trim().toLowerCase();
@@ -244,6 +256,12 @@ document.body.addEventListener("click", (event) => {
   if (removeBranchButton) return removePlatformBranch(removeBranchButton.dataset.removePlatformBranch);
   const inventoryPoPrint = event.target.closest("[data-inventory-po-print]");
   if (inventoryPoPrint) return previewInventoryPurchaseOrder(inventoryPoPrint.dataset.inventoryPoPrint);
+  const productIssuePrint = event.target.closest("[data-product-issue-print]");
+  if (productIssuePrint) return previewProductIssue(productIssuePrint.dataset.productIssuePrint);
+  const productIssueTimeline = event.target.closest("[data-product-issue-timeline]");
+  if (productIssueTimeline) return renderProductIssueDetail(productIssueTimeline.dataset.productIssueTimeline);
+  const productIssueStatus = event.target.closest("[data-product-issue-status]");
+  if (productIssueStatus) { const [issueId, issueStatus] = productIssueStatus.dataset.productIssueStatus.split(":"); return updateProductIssueStatus(issueId, issueStatus); }
   const invoicePoButton = event.target.closest("[data-create-invoice-po]");
   if (invoicePoButton) return openInvoiceForPurchaseOrder(invoicePoButton.dataset.createInvoicePo);
   const clientInvoices = event.target.closest("[data-client-invoices]");
@@ -642,6 +660,8 @@ qs("#modal-fields").addEventListener("change", (event) => {
     syncClientDocsHidden();
   }
   if (event.target.name === "benefitsSelected") syncEmployeeBenefitsHidden();
+  if (event.target.name?.endsWith("Selected") && !["docsSelected", "benefitsSelected"].includes(event.target.name)) syncCheckboxGroupHidden(event.target.name.replace(/Selected$/, ""));
+  if (event.target.id === "status" && modalType === "productIssue") toggleProductIssueResolvedByField();
   if (event.target.id === "type") updateDocumentLabel();
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
@@ -685,6 +705,7 @@ qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
 qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
 qs("#inventory-status").addEventListener("change", renderInventory);
 qs("#sales-status").addEventListener("change", renderSales);
+qs("#product-issue-status").addEventListener("change", renderProductIssues);
 qs("#sales-type").addEventListener("change", renderSales);
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
 qs("#export-demo")?.addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export logged."); });

@@ -118,6 +118,10 @@ const MedlaneAPI = (() => {
     return request(`/api/printables/financial-request?${new URLSearchParams({ type, id })}`);
   }
 
+  async function printableProductIssue(id) {
+    return request(`/api/printables/product-issue?${new URLSearchParams({ id })}`);
+  }
+
   async function runBackup(backupType = "manual") {
     return request("/api/backups", { method: "POST", body: JSON.stringify({ backupType }) });
   }
@@ -145,5 +149,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest };
+  return { session, setSession, request, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue };
 })();

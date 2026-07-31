@@ -6,6 +6,8 @@ const productClassificationOptions = ["Accessories", "Consumables", "Equipment",
 const requiredSecurityApprovals = ["Discount approval", "Credit-limit override", "Cancelled invoice replacement", "Cheque collection review", "Stock transfer receiving"];
 const requiredClientDocs = ["Mayor's Permit", "2303", "SEC or DTI", "FDALTO", "GAIA"];
 const employeeBenefitOptions = ["SSS", "PhilHealth", "Pag-IBIG"];
+const supportTypeOptions = ["Installation", "Preventive Maintenance", "Corrective Maintenance / Repair", "Calibration", "Training", "Troubleshooting", "Consultation", "Others"];
+const supportTopicOptions = ["Equipment Operation", "Software / System Configuration", "Error Codes / Troubleshooting", "Reagent / Consumables Handling", "Quality Control", "Maintenance Schedule", "Safety Procedures", "Others"];
 const tableBatchSize = 15;
 const tableState = new Map();
 
@@ -97,6 +99,12 @@ const initialData = {
   warranties: [
     { client: "Naga City Lab", equipment: "Centrifuge 12-Slot", serial: "CN12-NGA-004", installDate: "2026-06-28", warrantyEnd: "2027-06-28", status: "Active", service: "Quarterly calibration due Sep 2026" },
     { client: "SouthMed Hospital", equipment: "Chemistry Analyzer", serial: "CA-LP-1188", installDate: "2025-11-10", warrantyEnd: "2026-11-10", status: "Active", service: "Preventive maintenance completed" },
+  ],
+  productIssues: [
+    { id: "TSR-2026-001", startDate: "2026-07-10", companyName: "Naga City Lab", address: "Magsaysay Avenue, Naga City", contactPerson: "Dr. Elena Reyes", typeOfSupport: "Corrective Maintenance / Repair, Troubleshooting", topicsDiscussed: "Error Codes / Troubleshooting, Equipment Operation", equipment: "Centrifuge 12-Slot", serialNo: "CN12-NGA-004", actionsTaken: "Replaced worn rotor bearing and recalibrated speed sensor. Ran 3 test cycles with no error codes.", status: "Resolved", resolvedBy: "Service Engineer", performedBy: "Ramon Dela Cruz", conforme: "Dr. Elena Reyes", resolvedAt: "2026-07-11", history: [
+      { date: "2026-07-10", status: "Open", note: "Report started - unit showing error code E-04 intermittently.", by: "Ramon Dela Cruz" },
+      { date: "2026-07-11", status: "Resolved", note: "Bearing replaced and recalibrated. Client confirmed unit running normally.", by: "Ramon Dela Cruz" },
+    ] },
   ],
   imports: [
     { date: "Jul 15, 2026", module: "Clients", file: "manual sample", records: 4, status: "Ready" },

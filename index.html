@@ -188,6 +188,7 @@
         <button class="nav-item" data-section="collections" data-title="Collections" data-description="Record client payments, monitor partial payments, and identify near-due or overdue accounts."><span class="nav-icon">💳</span><span>Collections</span></button>
         <button class="nav-item" data-section="receivables-tracker" data-title="Receivables" data-description="Track each invoice from purchase order to sale, delivery, payment, and collection status."><span class="nav-icon">🧭</span><span>Receivables</span></button>
         <button class="nav-item" data-section="warranty" data-title="Warranty" data-description="Monitor diagnostic equipment warranty, serial numbers, installation dates, and service follow-up notes."><span class="nav-icon">🛡️</span><span>Warranty</span></button>
+        <button class="nav-item" data-section="product-issues" data-title="Product Issues Tracker" data-description="Log technical support and service reports, track resolution status, and print the official support report form."><span class="nav-icon">🧰</span><span>Product Issues</span></button>
         <button class="nav-item" data-section="purchase-history" data-title="Client History" data-description="See each client’s purchase count, purchased items, lifetime value, AR balance, and last purchase date."><span class="nav-icon">📜</span><span>History</span></button>
         <button class="nav-item" data-section="payables" data-title="Payables" data-description="Track supplier bills, cheque details, partial payments, balances, and payment voucher information."><span class="nav-icon">🏦</span><span>Payables</span></button>
         <button class="nav-item" data-section="replenishments" data-title="Expenses" data-description="Submit and monitor petty cash, per diem, and expense requests for HR and Accounting approval."><span class="nav-icon">🧮</span><span>Expenses</span></button>
@@ -423,6 +424,18 @@
         <div class="section-header"><div><p class="eyebrow">Equipment Warranty</p><h2>Serial numbers, installs, service status</h2></div><button class="primary-button" data-action="open-modal" data-type="warranty">Add Warranty</button></div>
         <div class="visual-grid" id="warranty-visuals"></div>
         <div class="table-card"><table id="warranty-table"></table></div>
+      </section>
+
+      <section class="section" id="product-issues">
+        <div class="section-header"><div><p class="eyebrow">Product Issues Tracker</p><h2>Technical support / service reports</h2></div><button class="primary-button" data-action="open-modal" data-type="productIssue">New Support Report</button></div>
+        <div class="toolbar"><select id="product-issue-status"><option value="all">All Status</option><option>Open</option><option>Pass to Engineering</option><option>Resolved</option></select></div>
+        <div class="visual-grid" id="product-issue-visuals"></div>
+        <div class="table-card"><table id="product-issues-table"></table></div>
+      </section>
+
+      <section class="section" id="product-issue-detail">
+        <div class="section-header"><div><p class="eyebrow">Support Report Detail</p><h2 id="product-issue-detail-title">Report timeline</h2></div><button class="ghost-button" data-go-section="product-issues">Back to Product Issues</button></div>
+        <article class="panel" id="product-issue-detail-panel"></article>
       </section>
 
       <section class="section" id="purchase-history">

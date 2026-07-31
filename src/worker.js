@@ -4,12 +4,12 @@ const jsonHeaders = {
 };
 
 const roleModules = {
-  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs"],
-  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs"],
-  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs"],
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues"],
   Accounting: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"],
-  Sales: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings"],
-  Logistics: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "logs"],
+  Sales: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
+  Logistics: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "logs", "product-issues"],
   HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
 };
 
@@ -33,6 +33,7 @@ const moduleRecordKeys = {
   settings: ["branch", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
   "audit-logs": ["logs"],
   system: ["branch", "logs", "notifications", "imports", "reconHistory"],
+  "product-issues": ["productIssues"],
 };
 
 const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
@@ -288,7 +289,7 @@ function userFromProfileAndAuth(profile, authUser, permissions = []) {
   const email = cleanEmail(profile?.email || authUser?.email || "");
   return {
     id: profile?.id || authUser?.id || email,
-    name: profile?.full_name || authUser?.user_metadata?.full_name || email || "Supabase User",
+    name: profile?.full_name || authUser?.user_metadata?.full_name || (profile ? email : "Unlinked Auth Account (no profile)"),
     email,
     role,
     branch: profile?.branch || authUser?.user_metadata?.branch || "all",
@@ -521,6 +522,36 @@ function paymentRequestPrintableHtml(request) {
 function inventoryPoPrintableHtml(po) {
   const total = (po.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0);
   return `<section class="payment-request-print inventory-po-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS INC.</strong><span>${escapeHtml(po.id)}</span></header><div class="pr-meta"><span>Supplier: <strong>${escapeHtml(po.supplier)}</strong></span><span>Date: <strong>${escapeHtml(po.date)}</strong></span><span>Terms: <strong>${Number(po.terms || 30)} Days</strong></span></div><table><thead><tr><th>Qty.</th><th>U/M</th><th>Item Description</th><th>Lot</th><th>Expiry</th><th>Unit Cost</th><th>Disc. Amt</th><th>Total Amount</th></tr></thead><tbody>${(po.lines || []).map((line) => { const discount = Number(line.discount || 0); const totalLine = Number(line.qty || 0) * Number(line.price || 0) - discount; return `<tr><td>${Number(line.qty || 0)}</td><td>${escapeHtml(line.uom || "")}</td><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.brand || "")}</small></td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${money(line.price || 0)}</td><td>${money(discount)}</td><td>${money(totalLine)}</td></tr>`; }).join("")}<tr><td colspan="7"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table></section>`;
+}
+
+const supportTypeOptions = ["Installation", "Preventive Maintenance", "Corrective Maintenance / Repair", "Calibration", "Training", "Troubleshooting", "Consultation", "Others"];
+const supportTopicOptions = ["Equipment Operation", "Software / System Configuration", "Error Codes / Troubleshooting", "Reagent / Consumables Handling", "Quality Control", "Maintenance Schedule", "Safety Procedures", "Others"];
+
+function splitList(value) {
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function turnaroundTime(report) {
+  if (!report.startDate) return "N/A";
+  const start = new Date(report.startDate).getTime();
+  const end = report.resolvedAt ? new Date(report.resolvedAt).getTime() : Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "N/A";
+  const days = Math.max(0, Math.round((end - start) / 86400000));
+  const label = report.status === "Resolved" ? "Turnaround" : "Elapsed (ongoing)";
+  return `${label}: ${days} day${days === 1 ? "" : "s"}`;
+}
+
+function productIssueHistoryRows(report) {
+  const rows = report.history?.length ? report.history : [{ date: report.startDate, status: "Open", note: "Report started", by: report.performedBy }];
+  return rows.map((entry) => `<tr><td>${escapeHtml(formDate(entry.date))}</td><td>${escapeHtml(entry.status || "")}</td><td>${escapeHtml(entry.note || "-")}</td><td>${escapeHtml(entry.by || "-")}</td></tr>`).join("");
+}
+
+function productIssuePrintableHtml(report) {
+  const selectedTypes = new Set(splitList(report.typeOfSupport));
+  const selectedTopics = new Set(splitList(report.topicsDiscussed));
+  const isResolved = report.status === "Resolved";
+  const isPassed = report.status === "Pass to Engineering";
+  return `<section class="payment-request-print support-report-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(report.id)}</span></header><div class="pr-meta"><span>Start Date: <strong>${escapeHtml(formDate(report.startDate))}</strong></span><span>Company Name: <strong>${escapeHtml(report.companyName)}</strong></span><span>Contact Person: <strong>${escapeHtml(report.contactPerson)}</strong></span></div><div class="pr-meta"><span class="full-row">Address: <strong>${escapeHtml(report.address)}</strong></span></div><div class="pr-checks support-report-checks"><strong>Type of Support:</strong>${supportTypeOptions.map((option) => `<span>${selectedTypes.has(option) ? "[x]" : "[ ]"} ${escapeHtml(option)}</span>`).join("")}</div><div class="pr-checks support-report-checks"><strong>Topics Discussed:</strong>${supportTopicOptions.map((option) => `<span>${selectedTopics.has(option) ? "[x]" : "[ ]"} ${escapeHtml(option)}</span>`).join("")}</div><table><thead><tr><th>Equipment / Model</th><th>Serial No.</th></tr></thead><tbody><tr><td>${escapeHtml(report.equipment || "-")}</td><td>${escapeHtml(report.serialNo || "-")}</td></tr></tbody></table><p class="pr-instructions"><strong>Update / Actions Taken:</strong><br>${escapeHtml(report.actionsTaken || "No actions recorded.")}</p><div class="pr-checks support-report-checks"><strong>Status:</strong><span>${isResolved ? "[x]" : "[ ]"} Resolved</span><span>${isPassed ? "[x]" : "[ ]"} Pass to Engineering</span></div>${isResolved ? `<div class="pr-checks support-report-checks"><strong>Resolved By:</strong><span>${report.resolvedBy === "Product Specialist" ? "[x]" : "[ ]"} Product Specialist</span><span>${report.resolvedBy === "Service Engineer" ? "[x]" : "[ ]"} Service Engineer</span></div>` : ""}<div class="pr-meta"><span class="full-row">${escapeHtml(turnaroundTime(report))}</span></div><table><thead><tr><th>Date</th><th>Status</th><th>Note</th><th>By</th></tr></thead><tbody>${productIssueHistoryRows(report)}</tbody></table><footer><div>Performed by:<br><strong>${escapeHtml(report.performedBy)}</strong><br>Reported the case</div><div>Conforme:<br><strong>${escapeHtml(report.conforme || "________________")}</strong><br>Client Representative</div></footer></section>`;
 }
 
 async function storageUsage(env) {
@@ -811,6 +842,19 @@ export default {
         return json({ id: po.id, title: `Purchase Order ${po.id}`, description: `${po.supplier} · Terms ${po.terms || 30} days`, html: inventoryPoPrintableHtml(po) });
       }
 
+      if (url.pathname === "/api/printables/product-issue") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        if (!canAccessKey(profile, "productIssues", "view")) throw new Error("You do not have permission to print support reports");
+        const id = String(url.searchParams.get("id") || "").trim();
+        if (!id) return json({ error: "Report ID is required" }, { status: 400 });
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.productIssues&select=module_name,record_key,data&order=updated_at.asc`);
+        const state = stateFromRecords(rows);
+        const report = (state.productIssues || []).find((item) => item.id === id);
+        if (!report) return json({ error: "Support report not found" }, { status: 404 });
+        return json({ id: report.id, title: `Technical Support Report ${report.id}`, description: `${report.companyName || "Client"} · ${report.status || "Open"}`, html: productIssuePrintableHtml(report) });
+      }
+
       if (url.pathname === "/api/printables/financial-request") {
         const { profile } = await authenticatedProfile(request, env);
         if (request.method !== "GET") return methodNotAllowed();
@@ -951,9 +995,15 @@ export default {
         const userId = profiles[0]?.id || target?.id;
         const blockers = await userDeleteBlockers(env, { id: userId, email, name: fullName });
         if (blockers.length) return json({ error: `Cannot delete user with active or linked records: ${blockers.join(", ")}` }, { status: 409 });
+        // Delete the Supabase Auth account first so failures here are not silently
+        // hidden. If this throws, the profile/permissions rows are left intact so
+        // the delete can be retried, and the frontend surfaces a real error instead
+        // of reporting success while the Auth user (and its email) stays registered.
+        if (target?.id) {
+          await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, { method: "DELETE" });
+        }
         if (userId) await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }).catch(() => null);
         if (profiles[0]?.id) await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(profiles[0].id)}`, { method: "DELETE" }).catch(() => null);
-        if (target?.id) await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, { method: "DELETE" }).catch(() => null);
         return json({ ok: true });
       }
 
