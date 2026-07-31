@@ -1049,8 +1049,10 @@ export default {
         const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
         const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
         const target = (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
+        const hasRealName = Boolean(profiles[0]?.full_name || target?.user_metadata?.full_name);
         const fullName = profiles[0]?.full_name || target?.user_metadata?.full_name || email;
-        if (String(confirmation || "").trim() !== fullName) return json({ error: `Type the full name exactly: ${fullName}` }, { status: 400 });
+        const confirmLabel = hasRealName ? "full name" : "email";
+        if (String(confirmation || "").trim().toLowerCase() !== fullName.toLowerCase()) return json({ error: `Type the ${confirmLabel} exactly: ${fullName}` }, { status: 400 });
         const userId = profiles[0]?.id || target?.id;
         const blockers = await userDeleteBlockers(env, { id: userId, email, name: fullName });
         if (blockers.length) return json({ error: `Cannot delete user with active or linked records: ${blockers.join(", ")}` }, { status: 409 });

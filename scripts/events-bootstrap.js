@@ -423,9 +423,10 @@ qs("#users-table").addEventListener("click", async (event) => {
   const index = Number(button.dataset.deleteUser);
   const user = data.users[index];
   if (!user) return;
-  const confirmation = prompt(`Type the full name to delete this user permanently:\n\n${user.name}`);
+  const hasRealName = String(user.name || "").toLowerCase() !== String(user.email || "").toLowerCase();
+  const confirmation = prompt(`Type the user's ${hasRealName ? "full name" : "email"} to delete this user permanently:\n\n${user.name}`);
   if (confirmation === null) return;
-  if (confirmation.trim() !== user.name) return toast("Full name did not match. User was not deleted.");
+  if (confirmation.trim().toLowerCase() !== String(user.name || "").toLowerCase()) return toast("Full name did not match. User was not deleted.");
   const result = await MedlaneAPI.deleteUser(user.email || user.username, confirmation).catch((error) => ({ error }));
   if (result.error) return toast(result.error.message || "Unable to delete user.");
   data.users.splice(index, 1);
