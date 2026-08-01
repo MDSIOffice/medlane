@@ -237,7 +237,11 @@ function paymentRequestActionsCell(request) {
   const approveBtn = request.invoice && request.requestStatus === "Pending"
     ? (canApprovePaymentRequests() ? `<button class="mini-button" data-payment-request-approve="${escapeHtml(request.cvNo)}">Approve</button>` : `<small>Awaiting Superadmin/CEO</small>`)
     : "";
-  return `<div class="inline-actions">${approveBtn}${timelineBtn}${printBtn}</div>`;
+  const linkedPayment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
+  const isDepositFinal = linkedPayment?.collectionStatus === "Deposited";
+  const isCancellable = request.requestStatus !== "Cancelled" && !isDepositFinal;
+  const cancelBtn = isCancellable && canApprovePaymentRequests() ? `<button class="mini-button danger-button" data-payment-request-cancel="${escapeHtml(request.cvNo)}">Cancel</button>` : "";
+  return `<div class="inline-actions">${approveBtn}${cancelBtn}${timelineBtn}${printBtn}</div>`;
 }
 
 async function approvePaymentRequest(cvNo) {
@@ -276,13 +280,59 @@ async function approvePaymentRequest(cvNo) {
   toast(`${request.cvNo} approved and payment recorded.`);
 }
 
+async function cancelPaymentRequest(cvNo) {
+  if (!canApprovePaymentRequests()) return toast("Only Superadmin or CEO can cancel payment requests.");
+  const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
+  if (!request) return toast("Payment request not found.");
+  if (request.requestStatus === "Cancelled") return toast("This payment request is already cancelled.");
+  const payment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
+  if (payment?.collectionStatus === "Deposited") return toast("This payment has already been deposited and can no longer be cancelled.");
+  const sale = request.invoice ? findSaleByDocumentInput(request.invoice) : null;
+  const { ok, reason } = await confirmDetailsModal({
+    eyebrow: "Confirm Cancellation",
+    title: `Cancel ${request.cvNo}`,
+    fields: [["Invoice", request.invoice || "-"], ["Employee / Vendor", request.employee], ["Total", peso.format(request.total || 0)], ["Status", request.requestStatus || request.status || "-"]],
+    confirmLabel: "Cancel Request",
+    danger: true,
+    collectReason: true,
+    reasonLabel: "Reason for cancellation",
+    note: payment ? "This will also reverse the recorded payment and the invoice's paid amount, since the payment has not been deposited yet." : "",
+  });
+  if (!ok) return;
+  if (!reason) return toast("A cancellation reason is required.");
+  const by = currentUser?.name || "System User";
+  if (payment && sale) {
+    sale.paid = Math.max(Number(sale.paid || 0) - Number(payment.amount || 0), 0);
+    payment.collectionStatus = "Cancelled";
+    payment.voided = true;
+    payment.statusHistory ||= [];
+    payment.statusHistory.push(...collectionStatusHistory("Cancelled"));
+  }
+  request.requestStatus = "Cancelled";
+  request.status = "Cancelled";
+  request.cancelledBy = by;
+  request.cancelledAt = fmtDate(today);
+  request.cancelReason = reason;
+  request.history = paymentRequestHistory(request);
+  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Cancelled", note: `Cancelled by ${by}. Reason: ${reason}`, by });
+  log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`);
+  notify("Payment Request", `${request.cvNo} cancelled.`, "collections", request.cvNo);
+  saveData();
+  renderAll();
+  toast(`${request.cvNo} cancelled.`);
+}
+
 function renderPaymentRequestDetail(cvNo) {
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
   if (!request) return toast("Payment request not found.");
   const events = paymentRequestHistory(request);
   const payment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
   const depositHistory = payment?.statusHistory?.length ? payment.statusHistory.map((entry) => `<li>${escapeHtml(entry.date)} · ${escapeHtml(entry.status)} · ${escapeHtml(entry.user || "System User")}</li>`).join("") : `<li>No status history yet.</li>`;
-  const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposition</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposition")}">${escapeHtml(payment.collectionStatus || "For Deposition")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div><div class="modal-actions collection-status-actions"><button class="ghost-button" data-collection-status="${escapeHtml(payment.receiptNo)}:For Deposition">For Deposition</button><button class="ghost-button" data-collection-status="${escapeHtml(payment.receiptNo)}:Deposited">Deposited</button><button class="ghost-button danger-button" data-collection-status="${escapeHtml(payment.receiptNo)}:Bounced">Bounced</button><button class="ghost-button" data-collection-status="${escapeHtml(payment.receiptNo)}:Posted Date">Posted Date</button></div></div>` : "";
+  const isDepositFinal = payment?.collectionStatus === "Deposited" || request.requestStatus === "Cancelled";
+  const depositActions = isDepositFinal
+    ? `<p class="page-description">${request.requestStatus === "Cancelled" ? "This payment request was cancelled." : "Deposited — this payment is final and its status can no longer be changed."}</p>`
+    : `<div class="modal-actions collection-status-actions"><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:For Deposition">For Deposition</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Deposited">Deposited</button><button class="ghost-button danger-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Bounced">Bounced</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Posted Date">Posted Date</button></div>`;
+  const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposition</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposition")}">${escapeHtml(payment.collectionStatus || "For Deposition")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
   qs("#payment-request-detail-title").textContent = `${request.cvNo} · ${request.employee}`;
   qs("#payment-request-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.employee || "-")}</p><h2>${escapeHtml(request.invoice ? `Linked to ${request.invoice}` : "CV Voucher")}</h2></div><span class="pill ${statusClass(request.requestStatus || request.status)}">${escapeHtml(request.requestStatus || request.status || "-")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(request.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(request.total || 0)}</strong></div><div class="report-preview-card"><small>Prepared By</small><strong>${escapeHtml(request.preparedBy || "-")}</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(request.approvedBy || "-")}</strong></div></div>${depositSection}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Approved" ? "done" : "pending"}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
   showSection("payment-request-detail");
@@ -1213,7 +1263,7 @@ function renderSales() {
   qs("#near-expiry-sales-alert").innerHTML = nearExpiry.length
     ? `<button class="near-expiry-banner-button" type="button" data-go-section="inventory" data-focus-record="${escapeHtml(firstNearExpiry.lot)}"><span class="feature-icon">!</span><div><strong>Near-expiry sales alert</strong><small>${nearExpiry.map((item) => `${item.item} (${item.branch}, ${item.expiry})`).join(" · ")}</small></div></button>`
     : `<span class="feature-icon">✓</span><div><strong>No near-expiry sales alert</strong><small>All selected branch inventory is outside the near-expiry window.</small></div>`;
-  table("#sales-table", ["Document", "Client", "Area", "Sales Person", "Date", "Total Due", "Terms", "Source", "Status", "Actions"], rows.map((s) => ({ focus: s.documentNo || s.id, attrs: { "data-sale-row": s.id }, cells: [`<span class="invoice-type-badge type-${escapeHtml(documentType(s.type))}"><span>${invoiceTypeIcon(s.type)}</span>${escapeHtml(s.documentNo || s.id)}</span>`, s.client, s.area, s.salesperson, s.date, peso.format(s.net), `${s.terms} days`, s.migrated ? `<span class="pill warning">Migrated</span>` : `<span class="pill success">Native</span>`, `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`, `<button class="mini-button sticky-view" data-sale-detail="${s.id}">View</button>`] })));
+  table("#sales-table", ["Document", "Client", "Area", "Sales Person", "Date", "Total Due", "Terms", "Source", "Status", "Actions"], rows.map((s) => ({ focus: s.documentNo || s.id, attrs: { "data-sale-row": s.id }, cells: [`<span class="invoice-type-badge type-${escapeHtml(documentType(s.type))}"><span>${invoiceTypeIcon(s.type)}</span>${escapeHtml(s.documentNo || s.id)}</span>`, s.client, s.area, s.salesperson, s.date, peso.format(s.net), `${s.terms} days`, s.migrated ? `<span class="pill warning">Migrated</span>` : `<span class="pill success">Native</span>`, `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`, `<div class="inline-actions"><button class="mini-button sticky-view" data-sale-detail="${s.id}">View</button><button class="mini-button" data-sale-timeline="${s.id}">View Timeline</button></div>`] })));
   const totalSales = rows.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
   const totalCollected = rows.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
   const outstanding = rows.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
@@ -1432,6 +1482,36 @@ function showSaleDetail(invoiceId) {
   qs("#report-preview-modal").showModal();
 }
 
+function saleCollectionTimeline(sale) {
+  const events = [];
+  events.push({ date: sale.date, status: "Created", note: `${sale.type} ${sale.documentNo || sale.id} created for ${sale.client}, ${peso.format(sale.net || 0)}.${sale.migrated ? " (migrated record)" : ""}`, by: sale.migrated ? "Migrated" : (sale.salesperson || "System User") });
+  if (sale.cancelledFrom) events.push({ date: sale.date, status: "Replacement", note: `Created as a replacement for ${sale.cancelledFrom}.`, by: sale.cancelledBy || "-" });
+  if (sale.status === "Cancelled") events.push({ date: sale.cancelledAt || sale.date, status: "Cancelled", note: `${sale.cancelReason || "No reason given."}${sale.replacementId ? ` Replaced by ${sale.replacementId}.` : ""}`, by: sale.cancelledBy || "-" });
+  data.payments.filter((payment) => payment.invoice === sale.documentNo || payment.invoice === sale.id).forEach((payment) => {
+    (payment.statusHistory || []).forEach((entry) => events.push({ date: entry.date, status: entry.status, note: `${payment.receiptNo} — ${peso.format(Number(payment.amount || 0))}${entry.status === "Posted Date" && payment.postedDate ? ` (claim ${payment.postedDate})` : ""}`, by: entry.user || "System User" }));
+  });
+  data.paymentRequests.filter((request) => request.invoice === sale.documentNo || request.invoice === sale.id).forEach((request) => {
+    paymentRequestHistory(request).forEach((entry) => events.push({ date: entry.date, status: `Payment Request: ${entry.status}`, note: `${request.cvNo} — ${entry.note || "-"}`, by: entry.by || "-" }));
+  });
+  return events.sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+function saleEventClass(status) {
+  if (["Deposited", "Created"].includes(status)) return "done";
+  if (["Bounced", "Cancelled"].includes(status)) return "blocked";
+  return "pending";
+}
+
+function renderSaleDetail(invoiceId) {
+  const sale = data.sales.find((item) => item.id === invoiceId);
+  if (!sale) return toast("Invoice not found.");
+  const events = saleCollectionTimeline(sale);
+  const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+  qs("#sale-detail-title").textContent = `${sale.type} ${sale.documentNo || sale.id} · ${sale.client}`;
+  qs("#sale-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(sale.client)}</p><h2>${escapeHtml(sale.area || "-")}</h2></div><span class="pill ${statusClass(statusForSale(sale))}">${escapeHtml(statusForSale(sale))}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(sale.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(sale.net || 0)}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(sale.paid || 0)}</strong></div><div class="report-preview-card"><small>Balance</small><strong>${peso.format(balance)}</strong></div></div><details class="full-event-details" open><summary>Collection timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${saleEventClass(event.status)}"><span>${escapeHtml((event.status || "E")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  showSection("sale-detail");
+}
+
 function renderCollections() {
   syncCollectionContactsForBalances();
   syncPostedCollectionReminders();
@@ -1492,6 +1572,7 @@ function openPaymentRequestForInvoice(documentNo) {
 function updateCollectionPaymentStatus(receiptNo, status) {
   const payment = data.payments.find((entry) => entry.receiptNo === receiptNo);
   if (!payment) return toast("Collection not found.");
+  if (payment.collectionStatus === "Deposited") return toast("This payment is already Deposited and can no longer be changed.");
   payment.collectionStatus = status;
   payment.postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payment.postedDate || fmtDate(today)) || "" : "";
   payment.statusHistory ||= [];
@@ -2640,13 +2721,18 @@ async function previewFinancialRequest(type, index) {
   qs("#report-preview-content").innerHTML = printable.html;
 }
 
-function confirmDetailsModal({ eyebrow = "Confirm Action", title, fields = [], note = "", confirmLabel = "Confirm", danger = false }) {
+function confirmDetailsModal({ eyebrow = "Confirm Action", title, fields = [], note = "", confirmLabel = "Confirm", danger = false, collectReason = false, reasonLabel = "Reason" }) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     dialog.className = "modal invite-confirm-modal";
-    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2>${escapeHtml(title)}</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="report-preview-grid">${fields.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value ?? "-"))}</strong></div>`).join("")}</div>${note ? `<p class="page-description">${escapeHtml(note)}</p>` : ""}<div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button${danger ? " danger-button" : ""}" value="confirm">${escapeHtml(confirmLabel)}</button></div></form>`;
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2>${escapeHtml(title)}</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div><div class="report-preview-grid">${fields.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value ?? "-"))}</strong></div>`).join("")}</div>${note ? `<p class="page-description">${escapeHtml(note)}</p>` : ""}${collectReason ? `<div class="field full"><label for="confirm-modal-reason">${escapeHtml(reasonLabel)}</label><textarea id="confirm-modal-reason" required></textarea></div>` : ""}<div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Go Back</button><button class="primary-button${danger ? " danger-button" : ""}" value="confirm">${escapeHtml(confirmLabel)}</button></div></form>`;
     document.body.appendChild(dialog);
-    dialog.addEventListener("close", () => { const ok = dialog.returnValue === "confirm"; dialog.remove(); resolve(ok); });
+    dialog.addEventListener("close", () => {
+      const ok = dialog.returnValue === "confirm";
+      const reason = collectReason ? (dialog.querySelector("#confirm-modal-reason")?.value || "").trim() : "";
+      dialog.remove();
+      resolve(collectReason ? { ok, reason } : ok);
+    });
     dialog.showModal();
   });
 }

@@ -50,6 +50,7 @@ const sectionMeta = {
   "product-issue-detail": ["Support Report Detail", "Full status history and turnaround timeline for this technical support report."],
   "inventory-po-detail": ["Purchase Order Detail", "Approval, dispatch, and receiving history for this purchase order."],
   "payment-request-detail": ["Payment Request Detail", "Approval and payment history for this collection payment request."],
+  "sale-detail": ["Invoice Detail", "How and when this invoice was created and collected."],
 };
 
 function userProfileKey() { return `medlane-profile-${currentUser?.role || "guest"}`; }

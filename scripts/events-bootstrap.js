@@ -252,6 +252,8 @@ document.body.addEventListener("click", (event) => {
   if (paymentRequestPreview) return previewPaymentRequest(paymentRequestPreview.dataset.paymentRequestPreview);
   const paymentRequestApprove = event.target.closest("[data-payment-request-approve]");
   if (paymentRequestApprove) return approvePaymentRequest(paymentRequestApprove.dataset.paymentRequestApprove);
+  const paymentRequestCancel = event.target.closest("[data-payment-request-cancel]");
+  if (paymentRequestCancel) return cancelPaymentRequest(paymentRequestCancel.dataset.paymentRequestCancel);
   const paymentRequestTimeline = event.target.closest("[data-payment-request-timeline]");
   if (paymentRequestTimeline) return renderPaymentRequestDetail(paymentRequestTimeline.dataset.paymentRequestTimeline);
   const requestPreview = event.target.closest("[data-request-preview]");
@@ -599,6 +601,8 @@ qs("#invoice-grid").addEventListener("click", (event) => {
   if (cancelButton) openCancelReplaceModal(cancelButton.dataset.cancelReplace);
 });
 qs("#sales-table").addEventListener("click", (event) => {
+  const timelineButton = event.target.closest("[data-sale-timeline]");
+  if (timelineButton) return renderSaleDetail(timelineButton.dataset.saleTimeline);
   const detailButton = event.target.closest("[data-sale-detail]");
   if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
   const row = event.target.closest("tr[data-sale-row]");
