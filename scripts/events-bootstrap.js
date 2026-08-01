@@ -374,6 +374,7 @@ qs("#password-form").addEventListener("submit", async (event) => {
   catch (error) { return toast(error.message || "Password update failed."); }
   event.currentTarget.reset();
   qs("#password-modal").close();
+  if (currentUser) { currentUser.passwordKycDue = false; localStorage.setItem("medlane-session", JSON.stringify(currentUser)); }
   log("Changed password", "User Settings", currentUser?.role || "User");
   notify("Password", `${currentUser?.name || "A user"} changed password.`, "logs", currentUser?.role || "User");
   toast("Password updated.");
@@ -914,6 +915,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
     renderAll();
     playDashboardLoginSound();
     toast(`Logged in as ${currentUser.name || currentUser.role}.`);
+    maybeShowPasswordKycModal();
   });
 });
 
@@ -922,6 +924,26 @@ function playLoginSuccessSound() {
   audio.volume = 0.55;
   audio.play().catch(() => null);
 }
+
+function maybeShowPasswordKycModal() {
+  if (!currentUser?.passwordKycDue) return;
+  qs("#password-kyc-modal").showModal();
+}
+qs("#password-kyc-modal").addEventListener("cancel", (event) => event.preventDefault());
+qs("#password-kyc-keep").addEventListener("click", async () => {
+  try { await MedlaneAPI.keepCurrentPasswordForKyc(); }
+  catch (error) { return toast(error.message || "Could not save your choice. Please try again."); }
+  currentUser.passwordKycDue = false;
+  localStorage.setItem("medlane-session", JSON.stringify(currentUser));
+  qs("#password-kyc-modal").close();
+  log("Confirmed current password (annual check)", "Authentication", currentUser?.role || "User");
+  toast("Thanks — you can keep using your current password.");
+});
+qs("#password-kyc-change").addEventListener("click", () => {
+  qs("#password-kyc-modal").close();
+  qs("#password-form").reset();
+  qs("#password-modal").showModal();
+});
 
 function playDashboardLoginSound() {
   if (!currentUser || sessionStorage.getItem("medlane-dashboard-sound-played") === "1") return;

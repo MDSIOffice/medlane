@@ -49,7 +49,12 @@ const MedlaneAPI = (() => {
     const payload = await response.json().catch(() => null);
     const errorText = payload?.error || "";
     const sessionRevoked = /SESSION_REVOKED|Invalid app session/i.test(errorText);
+    const sessionHardExpired = /SESSION_EXPIRED_12H/.test(errorText);
     const sessionExpired = /Invalid or expired session|Authentication required/i.test(errorText);
+    if (response.status === 401 && sessionHardExpired) {
+      forceSessionLogout("Your 12-hour session has expired. Please log in again.");
+      throw new Error("Your 12-hour session has expired. Please log in again.");
+    }
     if (response.status === 401 && sessionExpired && !retried && active?.refresh_token) {
       try {
         await refreshSession();
@@ -149,6 +154,10 @@ const MedlaneAPI = (() => {
     return request("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
   }
 
+  async function keepCurrentPasswordForKyc() {
+    return request("/api/auth/password-kyc/keep", { method: "POST" });
+  }
+
   async function listUserSessions(params = {}) {
     const query = new URLSearchParams();
     if (params.userId) query.set("userId", params.userId);
@@ -218,5 +227,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
 })();

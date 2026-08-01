@@ -269,18 +269,23 @@ async function createAppSession(env, request, userId) {
   }
 }
 
+const APP_SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
 async function validateAppSession(env, request, userId) {
   const id = sessionHeader(request);
   if (!id) return;
-  const rows = await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(userId)}&select=id,revoked_at`);
+  const rows = await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(userId)}&select=id,revoked_at,created_at`);
   if (!rows[0]) throw new Error("Invalid app session");
   if (rows[0].revoked_at) throw new Error("SESSION_REVOKED");
+  if (Date.now() - new Date(rows[0].created_at).getTime() >= APP_SESSION_MAX_AGE_MS) throw new Error("SESSION_EXPIRED_12H");
   await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { prefer: "return=minimal" },
     body: JSON.stringify({ last_seen_at: new Date().toISOString(), ip_address: clientIp(request) }),
   });
 }
+
+const PASSWORD_KYC_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
 async function profileForUser(env, userId, email) {
   const profile = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`);
@@ -293,6 +298,8 @@ async function profileForUser(env, userId, email) {
     if (!view.includes("backup")) view.push("backup");
     if (!edit.includes("backup")) edit.push("backup");
   }
+  const passwordConfirmedAt = profile[0].password_confirmed_at || profile[0].created_at;
+  const passwordKycDue = !passwordConfirmedAt || Date.now() - new Date(passwordConfirmedAt).getTime() >= PASSWORD_KYC_MAX_AGE_MS;
   return {
     id: profile[0].id,
     name: profile[0].full_name,
@@ -302,7 +309,20 @@ async function profileForUser(env, userId, email) {
     phone: profile[0].phone || "",
     modules: view,
     customPermissions: { enabled: true, view, edit },
+    passwordKycDue,
   };
+}
+
+async function markPasswordConfirmed(env, userId) {
+  try {
+    await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      headers: { prefer: "return=minimal" },
+      body: JSON.stringify({ password_confirmed_at: new Date().toISOString() }),
+    });
+  } catch (error) {
+    console.error(JSON.stringify({ message: "Failed to mark password confirmed", error: error.message }));
+  }
 }
 
 async function authenticatedProfile(request, env) {
@@ -811,6 +831,14 @@ export default {
         });
         const payload = await response.json().catch(() => null);
         if (!response.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password setup failed" }, { status: 400 });
+        if (payload?.id) await markPasswordConfirmed(env, payload.id);
+        return json({ ok: true });
+      }
+
+      if (url.pathname === "/api/auth/password-kyc/keep") {
+        if (request.method !== "POST") return methodNotAllowed();
+        const { authUser } = await authenticatedProfile(request, env);
+        await markPasswordConfirmed(env, authUser.id);
         return json({ ok: true });
       }
 
@@ -835,6 +863,7 @@ export default {
         });
         const payload = await updateResponse.json().catch(() => null);
         if (!updateResponse.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password update failed" }, { status: 400 });
+        await markPasswordConfirmed(env, user.id);
         return json({ ok: true });
       }
 
@@ -1329,7 +1358,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED/.test(error.message) ? 401 : /No Medlane profile|permission/.test(error.message) ? 403 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission/.test(error.message) ? 403 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },
