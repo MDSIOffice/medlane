@@ -895,6 +895,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
   }
   sessionStorage.setItem("medlane-session", JSON.stringify(currentUser));
   log("Logged in", "Authentication", currentUser.role);
+  playLoginSuccessSound();
   showWelcomeTransition(currentUser.name || currentUser.role, () => {
     if (loginButton) {
       loginButton.disabled = false;
@@ -910,6 +911,12 @@ qs("#login-form").addEventListener("submit", async (event) => {
     toast(`Logged in as ${currentUser.name || currentUser.role}.`);
   });
 });
+
+function playLoginSuccessSound() {
+  const audio = new Audio("/Startup Sound.mp3");
+  audio.volume = 0.55;
+  audio.play().catch(() => null);
+}
 
 function playDashboardLoginSound() {
   if (!currentUser || sessionStorage.getItem("medlane-dashboard-sound-played") === "1") return;
