@@ -104,11 +104,7 @@ function getDashboardRange() {
   return { from: qs("#dashboard-date-from")?.value || "", to: qs("#dashboard-date-to")?.value || "" };
 }
 function log(action, module, record) {
-  const ua = navigator.userAgent || "";
-  const device = /Mobile|iPhone|Android/i.test(ua) ? "Mobile" : /iPad|Tablet/i.test(ua) ? "Tablet" : "Desktop";
-  const browser = /Edg\//.test(ua) ? "Microsoft Edge" : /OPR\//.test(ua) ? "Opera" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Unknown browser";
-  data.logs.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), user: currentUser?.name || "System User", role: currentUser?.role || "System", action, module, record, device, browser, ipAddress: "Server captured on save" });
-  data.logs = data.logs.slice(0, 60);
+  MedlaneAPI.recordLog({ action, module, record: String(record ?? "") }).catch(() => {});
   saveData();
 }
 function notify(type, message, section = "notifications", record = "") {
@@ -149,7 +145,6 @@ function syncGeneratedNotifications() {
   const forDepositCheques = data.payments.filter((payment) => ["Cheque", "Multiple Cheques"].includes(payment.method) && ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
   const blockedImports = data.imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status));
   const latestRecon = data.reconHistory[0];
-  const riskyLogs = data.logs.filter((entry) => /cancel|override|discount|password|permission|delete|clear|failed|security/i.test(`${entry.action} ${entry.module}`));
 
   if (facts.lowStock.length) add("inventory-low-stock", "Low Stock", `${facts.lowStock.length} inventory lot${facts.lowStock.length === 1 ? "" : "s"} are low or critical.`, "inventory", facts.lowStock.map((item) => item.lot || item.code).join("|"));
   if (facts.nearExpiry.length) add("inventory-near-expiry", "Near Expiry", `${facts.nearExpiry.length} inventory lot${facts.nearExpiry.length === 1 ? "" : "s"} should be sold or transferred using FEFO.`, "inventory", facts.nearExpiry.map((item) => item.lot || item.code).join("|"));
@@ -171,7 +166,6 @@ function syncGeneratedNotifications() {
   if (blockedImports.length) add("imports-review", "Import Review", `${blockedImports.length} import batch${blockedImports.length === 1 ? "" : "es"} have skipped, invalid, or blocked rows.`, "imports", blockedImports.map((item) => `${item.date} ${item.module} ${item.file}`).join("|"));
   if (latestRecon?.high > 0) add("recon-high-findings", "Reconciliation Risk", `Latest reconciliation has ${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"}.`, "reconciliation", latestRecon.date || "High");
   if (facts.overdue.length || facts.lowStock.length || facts.duePayables.length) add("reports-management-pack", "Report Pack", "Management reports have current AR, inventory, or payable risks to export.", "reports", facts.overdue.length ? "Collections & AR" : facts.lowStock.length ? "Reagent Expiry" : "Supplier Payables");
-  if (riskyLogs.length) add("security-risky-actions", "Security Review", `${riskyLogs.length} sensitive audit action${riskyLogs.length === 1 ? "" : "s"} should be reviewed.`, "logs", riskyLogs.map((entry) => entry.record || entry.action).slice(0, 3).join("|"));
   const manual = data.notifications.filter((notice) => !notice.generated);
   data.notifications = [...notices, ...manual].slice(0, 100);
 }

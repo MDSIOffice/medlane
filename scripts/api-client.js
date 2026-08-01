@@ -150,6 +150,21 @@ const MedlaneAPI = (() => {
     return request("/api/auth/set-password", { method: "POST", body: JSON.stringify({ accessToken, password }) });
   }
 
+  async function recordLog({ action, module, record }) {
+    return request("/api/logs", { method: "POST", body: JSON.stringify({ action, module, record }) });
+  }
+
+  async function listLogs(params = {}) {
+    const query = new URLSearchParams();
+    if (params.dateFrom) query.set("dateFrom", params.dateFrom);
+    if (params.dateTo) query.set("dateTo", params.dateTo);
+    if (params.role) query.set("role", params.role);
+    if (params.module) query.set("module", params.module);
+    if (params.limit) query.set("limit", params.limit);
+    if (params.before) query.set("before", params.before);
+    return request(`/api/logs${query.toString() ? `?${query}` : ""}`);
+  }
+
   async function changePassword(currentPassword, newPassword) {
     return request("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
   }
@@ -227,5 +242,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
 })();

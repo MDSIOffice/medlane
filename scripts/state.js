@@ -115,7 +115,6 @@ function emptyProductionData() {
     payables: [],
     replenishments: [],
     users: [],
-    logs: [],
     warranties: [],
     productIssues: [],
     imports: [],

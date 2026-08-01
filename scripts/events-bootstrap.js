@@ -751,6 +751,7 @@ qs("#logs-date-to").addEventListener("change", renderLogs);
 qs("#logs-role-filter").addEventListener("change", renderLogs);
 qs("#logs-module-filter").addEventListener("change", renderLogs);
 qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
+qs("#load-more-logs").addEventListener("click", loadMoreLogs);
 qs("#clear-notifications").addEventListener("click", () => {
   const dismissed = new Set(data.notificationsDismissed || []);
   data.notifications.filter((notice) => notice.generated && notice.status !== "Unread").forEach((notice) => dismissed.add(`${notice.key}::${notice.record || ""}`));

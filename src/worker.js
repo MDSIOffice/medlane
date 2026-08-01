@@ -31,10 +31,9 @@ const moduleRecordKeys = {
   imports: ["imports"],
   reports: ["reports"],
   reconciliation: ["reconHistory"],
-  security: ["logs", "notifications"],
+  security: ["notifications"],
   settings: ["branch", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
-  "audit-logs": ["logs"],
-  system: ["branch", "logs", "notifications", "imports", "reconHistory"],
+  system: ["branch", "notifications", "imports", "reconHistory"],
   "product-issues": ["productIssues"],
 };
 
@@ -727,9 +726,194 @@ async function createBackup(env, backupType = "manual", actor = null) {
   }
 }
 
+// ---- Automated alert / digest emails (threshold, approval-needed, daily/weekly digest) ----
+
+const DIGEST_ROLE_RECIPIENTS = {
+  thresholdInventory: ["Logistics", "Product Specialist"],
+  thresholdCredit: ["Accounting", "Sales"],
+  thresholdWarranty: ["Engineering", "Product Specialist"],
+  approvalPo: ["Superadmin"],
+  approvalPaymentRequest: ["Superadmin", "CEO"],
+  approvalPayable: ["Superadmin", "CEO"],
+  approvalProductIssue: ["Engineering"],
+  digestBusiness: ["Accounting", "CEO", "Superadmin"],
+  digestAuditLog: ["Superadmin", "CEO"],
+};
+
+const DAILY_DIGEST_CRON = "0 10 * * *";
+const WEEKLY_DIGEST_CRON = "0 10 * * fri";
+
+function digestDaysUntil(dateStr) {
+  if (!dateStr || dateStr === "N/A") return NaN;
+  return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+}
+
+function digestInventoryStatus(item) {
+  const min = Number(item.min || 0);
+  if (item.expiry && item.expiry !== "N/A" && digestDaysUntil(item.expiry) < 0) return "For Disposal";
+  if (item.qty <= Math.ceil(min * 0.5)) return "Critical";
+  if (item.qty < min) return "Low Stock";
+  if (item.expiry && item.expiry !== "N/A" && digestDaysUntil(item.expiry) <= 183) return "Near Expiry";
+  return "Available";
+}
+
+function digestSaleStatus(sale) {
+  if (sale.status === "Cancelled") return "Cancelled";
+  const balance = Number(sale.net || 0) - Number(sale.paid || 0);
+  const dueIn = digestDaysUntil(addDays(sale.date, sale.terms));
+  if (balance <= 0) return "Paid";
+  if (dueIn < 0) return "Overdue";
+  if (dueIn <= 7) return "Near Due";
+  if (Number(sale.paid || 0) > 0) return "Partially Paid";
+  return "Unpaid";
+}
+
+function digestClientBalance(clientName, sales) {
+  return sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+}
+
+async function loadDigestState(env) {
+  const stateKey = appStateKey(env);
+  const modules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues"];
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(modules))}&select=module_name,record_key,data`);
+  return stateFromRecords(rows);
+}
+
+function detectThresholdsAndApprovals(state) {
+  const sections = {};
+  const pushSection = (roles, title, lines) => {
+    if (!lines.length) return;
+    roles.forEach((role) => {
+      sections[role] ||= [];
+      sections[role].push({ title, lines });
+    });
+  };
+
+  const inventory = state.inventory || [];
+  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item)));
+  const nearExpiry = inventory.filter((item) => digestInventoryStatus(item) === "Near Expiry");
+  if (lowStock.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Low / Critical Stock", lowStock.map((item) => `${item.item} (${item.branch}) — ${item.qty} left, lot ${item.lot}`));
+  if (nearExpiry.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Near-Expiry Stock", nearExpiry.map((item) => `${item.item} (${item.branch}) — lot ${item.lot}, expires ${item.expiry}`));
+
+  const sales = state.sales || [];
+  const clients = state.clients || [];
+  const overdue = sales.filter((sale) => digestSaleStatus(sale) === "Overdue");
+  if (overdue.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Overdue Invoices", overdue.map((sale) => `${sale.documentNo || sale.id} — ${sale.client}, ${money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))} overdue`));
+  const creditBreach = clients.filter((client) => Number(client.creditLimit || 0) > 0 && digestClientBalance(client.name, sales) > Number(client.creditLimit));
+  if (creditBreach.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Credit Limit Breach", creditBreach.map((client) => `${client.name} — ${money(digestClientBalance(client.name, sales))} used / ${money(client.creditLimit)} limit`));
+
+  const warranties = state.warranties || [];
+  const warrantyEnding = warranties.filter((item) => { const d = digestDaysUntil(item.warrantyEnd); return d >= 0 && d <= 30; });
+  const warrantyExpired = warranties.filter((item) => digestDaysUntil(item.warrantyEnd) < 0 || String(item.status || "").toLowerCase().includes("expired"));
+  if (warrantyEnding.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdWarranty, "Warranty Ending Soon", warrantyEnding.map((item) => `${item.client} — ${item.equipment} (${item.serial}), ends ${item.warrantyEnd}`));
+  if (warrantyExpired.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdWarranty, "Warranty Expired", warrantyExpired.map((item) => `${item.client} — ${item.equipment} (${item.serial})`));
+
+  const inventoryPOs = state.inventoryPurchaseOrders || [];
+  const poPending = inventoryPOs.filter((po) => po.status === "Pending Approval");
+  if (poPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPo, "Purchase Orders Awaiting Approval", poPending.map((po) => `${po.id} — ${po.supplier}`));
+
+  const paymentRequests = state.paymentRequests || [];
+  const paymentPending = paymentRequests.filter((request) => request.invoice && request.requestStatus === "Pending");
+  if (paymentPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPaymentRequest, "Payment Requests Awaiting Approval", paymentPending.map((request) => `${request.cvNo} — ${request.invoice}, ${money(request.total)}`));
+
+  const payables = state.payables || [];
+  const payablesPending = payables.filter((payable) => (payable.requestStatus || payable.status) === "For Approval");
+  const replenishments = state.replenishments || [];
+  const replenishmentsPending = replenishments.filter((item) => (item.requestStatus || item.status) === "For Approval");
+  const financialPending = [...payablesPending.map((p) => `Payable — ${p.supplier}, ${money(p.amount)}`), ...replenishmentsPending.map((r) => `Expense — ${r.type}, ${money(r.amount)}`)];
+  if (financialPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPayable, "Payables / Expenses Awaiting Approval", financialPending);
+
+  const productIssues = state.productIssues || [];
+  const passedToEngineering = productIssues.filter((report) => report.status === "Pass to Engineering");
+  if (passedToEngineering.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalProductIssue, "Product Issues Passed to Engineering", passedToEngineering.map((report) => `${report.id} — ${report.companyName}`));
+
+  return sections;
+}
+
+function buildBusinessSummaryLines(state) {
+  const sales = (state.sales || []).filter((sale) => sale.status !== "Cancelled");
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const overdueCount = sales.filter((sale) => digestSaleStatus(sale) === "Overdue").length;
+  return [
+    `Total invoiced: ${money(totalSales)}`,
+    `Total collected: ${money(totalCollected)}`,
+    `Open receivables: ${money(Math.max(totalSales - totalCollected, 0))}`,
+    `Overdue invoices: ${overdueCount}`,
+  ];
+}
+
+async function auditLogDigestRows(env, sinceIso) {
+  const stateKey = appStateKey(env);
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(sinceIso)}&select=data&order=updated_at.desc&limit=200`);
+  return rows.map((row) => row.data);
+}
+
+async function emailsForRoles(env, roles) {
+  if (!roles.length) return [];
+  const rows = await supabaseFetch(env, `/rest/v1/profiles?role=in.${encodeURIComponent(postgrestIn(roles))}&select=email`);
+  return rows.map((row) => row.email).filter(Boolean);
+}
+
+function digestSectionHtml(sections) {
+  return sections.map((section) => `<h3 style="margin:18px 0 8px;color:#005a9c;">${escapeHtml(section.title)}</h3><ul style="margin:0 0 12px;padding-left:18px;">${section.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`).join("");
+}
+
+function auditLogTableHtml(rows) {
+  if (!rows.length) return "<p>No recorded actions in this period.</p>";
+  const truncated = rows.length >= 200;
+  const body = rows.map((entry) => `<tr><td>${escapeHtml(entry.date)}</td><td>${escapeHtml(entry.user)}</td><td>${escapeHtml(entry.role)}</td><td>${escapeHtml(entry.action)}</td><td>${escapeHtml(entry.module)}</td><td>${escapeHtml(String(entry.record || "").slice(0, 140))}</td></tr>`).join("");
+  return `<table style="width:100%;border-collapse:collapse;font-size:13px;" border="1" cellpadding="6"><thead><tr><th>Date</th><th>User</th><th>Role</th><th>Action</th><th>Module</th><th>Record</th></tr></thead><tbody>${body}</tbody></table>${truncated ? "<p>Showing the first 200 entries — see the Audit Logs page in Medlane OS for the full list.</p>" : ""}`;
+}
+
+function digestEmailHtml({ title, bodyHtml }) {
+  const year = new Date().getFullYear();
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:26px 30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:10px 0 0;font-size:26px;">${escapeHtml(title)}</h1></td></tr><tr><td style="padding:26px 30px;font-size:14px;line-height:1.6;">${bodyHtml || "<p>Nothing to report for this period.</p>"}</td></tr><tr><td style="padding:18px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. Automated system email — do not reply.</td></tr></table></td></tr></table></body></html>`;
+}
+
+async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimitLabel }) {
+  const state = await loadDigestState(env);
+  const sections = detectThresholdsAndApprovals(state);
+  const allRoles = new Set([...Object.keys(sections), ...DIGEST_ROLE_RECIPIENTS.digestBusiness, ...DIGEST_ROLE_RECIPIENTS.digestAuditLog]);
+  const businessSummary = buildBusinessSummaryLines(state);
+  const auditRows = await auditLogDigestRows(env, auditSinceIso);
+  const sends = [];
+  for (const role of allRoles) {
+    const parts = [];
+    if (sections[role]?.length) parts.push(digestSectionHtml(sections[role]));
+    if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) parts.push(digestSectionHtml([{ title: `${periodLabel} Business Summary`, lines: businessSummary }]));
+    if (DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role)) parts.push(`<h3 style="margin:18px 0 8px;color:#005a9c;">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
+    if (!parts.length) continue;
+    const emails = await emailsForRoles(env, [role]);
+    const html = digestEmailHtml({ title: `${periodLabel} Digest`, bodyHtml: parts.join("") });
+    for (const email of emails) {
+      sends.push(sendResendEmail(env, { to: email, subject: `Medlane OS — ${periodLabel} Digest`, html }).catch((error) => console.error(JSON.stringify({ message: "Digest email failed", role, email, error: error.message }))));
+    }
+  }
+  await Promise.all(sends);
+}
+
+async function runDailyDigest(env) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  await composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: "last 24 hours" });
+}
+
+async function runWeeklyDigest(env) {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  await composeAndSendDigest(env, { periodLabel: "Weekly", auditSinceIso: since, auditLimitLabel: "last 7 days" });
+}
+
 export default {
   async scheduled(event, env, ctx) {
     if (env.ENVIRONMENT !== "production") return;
+    if (event.cron === DAILY_DIGEST_CRON) {
+      ctx.waitUntil(runDailyDigest(env).catch((error) => console.error(JSON.stringify({ message: "Daily digest failed", error: error.message }))));
+      return;
+    }
+    if (event.cron === WEEKLY_DIGEST_CRON) {
+      ctx.waitUntil(runWeeklyDigest(env).catch((error) => console.error(JSON.stringify({ message: "Weekly digest failed", error: error.message }))));
+      return;
+    }
     ctx.waitUntil(createBackup(env, backupTypeForCron(event.cron), null).catch((error) => console.error(JSON.stringify({ message: "Scheduled backup failed", cron: event.cron, error: error.message }))));
   },
   async fetch(request, env) {
@@ -867,11 +1051,62 @@ export default {
         return json({ ok: true });
       }
 
+      if (url.pathname === "/api/logs" && request.method === "POST") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const { action, module, record } = await request.json();
+        if (!action) return json({ error: "Action is required" }, { status: 400 });
+        const context = auditContextForRequest(request);
+        const entry = {
+          date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+          user: profile.name || profile.email || "System User",
+          role: profile.role || "Unknown",
+          action,
+          module: module || "",
+          record: record || "",
+          device: context.device,
+          browser: context.browser,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+          serverCapturedAt: context.serverCapturedAt,
+        };
+        await supabaseFetch(env, "/rest/v1/app_records", {
+          method: "POST",
+          headers: { prefer: "return=minimal" },
+          body: JSON.stringify([{ state_key: stateKey, module_name: "logs", record_key: `logs-${crypto.randomUUID()}`, data: entry, updated_by: authUser.id }]),
+        });
+        return json({ ok: true }, { status: 201 });
+      }
+
+      if (url.pathname === "/api/logs" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (!["Superadmin", "CEO"].includes(profile.role) && !profile.customPermissions?.view?.includes("logs")) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
+        const stateKey = appStateKey(env);
+        const now = new Date();
+        const dateFrom = url.searchParams.get("dateFrom") || new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const dateTo = url.searchParams.get("dateTo") || now.toISOString();
+        const roleFilter = url.searchParams.get("role") || "";
+        const moduleFilter = url.searchParams.get("module") || "";
+        const before = url.searchParams.get("before") || "";
+        const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
+        let query = `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(dateFrom)}&updated_at=lte.${encodeURIComponent(dateTo)}`;
+        if (before) query += `&updated_at=lt.${encodeURIComponent(before)}`;
+        query += `&select=data,updated_at&order=updated_at.desc&limit=${limit * 4}`;
+        const rows = await supabaseFetch(env, query);
+        let entries = rows.map((row) => ({ ...row.data, updatedAt: row.updated_at }));
+        if (roleFilter) entries = entries.filter((entry) => entry.role === roleFilter);
+        if (moduleFilter) entries = entries.filter((entry) => entry.module === moduleFilter);
+        const hasMoreRawRows = rows.length === limit * 4;
+        entries = entries.slice(0, limit);
+        const nextCursor = entries.length === limit || hasMoreRawRows ? rows[rows.length - 1]?.updated_at || null : null;
+        return json({ entries, nextCursor });
+      }
+
       if (url.pathname === "/api/modules/state") {
         const { authUser, profile } = await authenticatedProfile(request, env);
         const stateKey = appStateKey(env);
         if (request.method === "GET") {
-          const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data&order=updated_at.asc`);
+          const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=neq.logs&select=module_name,record_key,data&order=updated_at.asc`);
           return json({ data: stateFromRecords(filterRecordsForProfile(rows, profile, "view")), revision: Date.now() });
         }
         if (request.method === "PUT") {

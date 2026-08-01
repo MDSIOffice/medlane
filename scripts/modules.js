@@ -476,6 +476,7 @@ function showSection(sectionId, options = {}) {
   requestAnimationFrame(updateTableScrollHints);
   if (sectionId === "collections") setTimeout(renderCollectionMapVisual, 80);
   if (sectionId === "backup") renderBackup();
+  if (sectionId === "logs") renderLogs();
 }
 
 function renderBranchFilter() {
@@ -777,7 +778,6 @@ function renderDashboard() {
     [`${data.clients.length} client records`, "TIN/docs"],
     [`${data.items.length} products`, "COA/FDA"],
     [`${data.sales.length} SI/TS/DR`, "Client terms"],
-    [`${data.logs.length} audit logs`, "Traceable"],
   ].map(([label, status]) => `<li><span>${label}</span><strong>${status}</strong></li>`).join("");
 }
 
@@ -2923,7 +2923,7 @@ function getReportDefinitions() {
     { icon: "◆", title: "Client Documents", body: "BIR, SEC, TIN, required permits, and account attachments.", section: "masterlists", actionLabel: "Open Masterlists", rows: data.clients.map((c) => [c.name, c.area, c.tin, peso.format(c.creditLimit), c.docs]) },
     { icon: "◇", title: "Supplier Payables", body: `${data.payables.length} supplier payable records with payment method tracking.`, section: "payables", actionLabel: "Open Payables", rows: data.payables.map((p) => [p.supplier, p.item, p.method, peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.status]) },
     { icon: "◉", title: "Service & Warranty", body: "Equipment install, serial number, warranty, and customer support history.", section: "warranty", actionLabel: "Open Warranty", rows: data.warranties.map((w) => [w.client, w.equipment, w.serial, w.installDate, w.warrantyEnd, w.status]) },
-    { icon: "◎", title: "Compliance Audit", body: `${data.logs.length} traceable changes for corrections, exports, and approvals.`, section: "logs", actionLabel: "Open Audit Logs", rows: data.logs.map((l) => [l.date, l.user, l.module, l.action, l.record]) },
+    { icon: "◎", title: "Compliance Audit", body: "Traceable changes for corrections, exports, and approvals.", section: "logs", actionLabel: "Open Audit Logs", rows: [] },
   ];
 }
 
@@ -3069,7 +3069,7 @@ function renderSecurity() {
     ["Money Approval Gates", requiredSecurityApprovals.join(", ")],
     ["Lost Phone Response", "Admin can immediately switch accounts, clear sessions, and review audit logs after a lost device report."],
     ["Compromised Password Response", "Use Supabase password reset, MFA, session expiry, and audit review for account recovery."],
-    ["Audit Trail", `${data.logs.length} recorded actions with user, module, date, and affected record.`],
+    ["Audit Trail", "Every action is recorded server-side with user, module, date, and affected record — see Audit Logs."],
     ["Collection Safety", "Receipt numbers, collection tags, banks, cheque dates, and date-recorded values are captured for reconciliation."],
   ];
   qs("#security-grid").innerHTML = controls.map(([title, body], index) => `<article class="panel security-card"><span class="feature-icon">${["⌖", "₱", "⌕", "●", "◎", "▧"][index]}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(body)}</p></article>`).join("");
@@ -3080,36 +3080,60 @@ function formatLogRecord(record) {
   const short = compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
   return `<span class="log-record" title="${escapeHtml(compact)}">${escapeHtml(short)}</span>`;
 }
-function logRole(log) {
-  return log.role || Object.values(accounts).find((account) => account.name === log.user)?.role || data.users.find((user) => user.name === log.user)?.role || log.user || "Unknown";
-}
-function logDateValue(log) {
-  const value = new Date(log.date);
-  return Number.isNaN(value.getTime()) ? "" : fmtDate(value);
-}
-function renderLogFilters(logs) {
+const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Request", "Product Issues", "Reconciliation", "Reports", "Settings", "User Settings", "Users"];
+function renderLogFilters() {
   const selectedRole = qs("#logs-role-filter")?.value || "all";
   const selectedModule = qs("#logs-module-filter")?.value || "all";
-  const roles = [...new Set(logs.map(logRole).filter(Boolean))].sort();
-  const modules = [...new Set(logs.map((log) => log.module).filter(Boolean))].sort();
+  const roles = Object.keys(roleEditableModules).sort();
   qs("#logs-role-filter").innerHTML = [`<option value="all">All Roles</option>`, ...roles.map((role) => `<option value="${escapeHtml(role)}">${escapeHtml(role)}</option>`)].join("");
-  qs("#logs-module-filter").innerHTML = [`<option value="all">All Modules</option>`, ...modules.map((module) => `<option value="${escapeHtml(module)}">${escapeHtml(module)}</option>`)].join("");
+  qs("#logs-module-filter").innerHTML = [`<option value="all">All Modules</option>`, ...auditLogModules.map((module) => `<option value="${escapeHtml(module)}">${escapeHtml(module)}</option>`)].join("");
   qs("#logs-role-filter").value = roles.includes(selectedRole) ? selectedRole : "all";
-  qs("#logs-module-filter").value = modules.includes(selectedModule) ? selectedModule : "all";
+  qs("#logs-module-filter").value = auditLogModules.includes(selectedModule) ? selectedModule : "all";
 }
-function renderLogs() {
-  renderLogFilters(data.logs);
+let logsState = { entries: [], nextCursor: null, loading: false };
+function logFilterParams() {
   const from = qs("#logs-date-from")?.value || "";
   const to = qs("#logs-date-to")?.value || "";
   const role = qs("#logs-role-filter")?.value || "all";
   const module = qs("#logs-module-filter")?.value || "all";
-  const rows = data.logs
-    .filter((log) => dateInRange(logDateValue(log), from, to))
-    .filter((log) => role === "all" || logRole(log) === role)
-    .filter((log) => module === "all" || log.module === module);
-  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address"], rows.map((l) => ({ focus: [l.record, l.action, l.user, l.ipAddress].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(logRole(l)), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record), formatLogCell(l.device || "-"), formatLogCell(l.browser || "-"), formatLogCell(l.ipAddress || "-")] })));
+  return {
+    dateFrom: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
+    dateTo: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
+    role: role === "all" ? "" : role,
+    module: module === "all" ? "" : module,
+  };
 }
-function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
+function renderLogTable() {
+  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address"], logsState.entries.map((l) => ({ focus: [l.record, l.action, l.user, l.ipAddress].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(l.role), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record), formatLogCell(l.device || "-"), formatLogCell(l.browser || "-"), formatLogCell(l.ipAddress || "-")] })));
+  const loadMoreButton = qs("#load-more-logs");
+  if (loadMoreButton) loadMoreButton.hidden = !logsState.nextCursor;
+}
+async function renderLogs() {
+  renderLogFilters();
+  logsState = { entries: [], nextCursor: null, loading: true };
+  try {
+    const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50 });
+    logsState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
+  } catch (error) {
+    logsState = { entries: [], nextCursor: null, loading: false };
+    toast(error.message || "Could not load audit logs.");
+  }
+  renderLogTable();
+}
+async function loadMoreLogs() {
+  if (!logsState.nextCursor || logsState.loading) return;
+  logsState.loading = true;
+  try {
+    const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50, before: logsState.nextCursor });
+    logsState.entries = [...logsState.entries, ...(result.entries || [])];
+    logsState.nextCursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more audit logs.");
+  }
+  logsState.loading = false;
+  renderLogTable();
+}
+function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); if (document.body.dataset.activeSection === "logs") renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
 
 function runReconciliationWorkflow() {
   const scope = getReconScope();

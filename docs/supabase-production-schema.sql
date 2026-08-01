@@ -64,6 +64,10 @@ create table if not exists file_objects (
   deleted_at timestamptz
 );
 
+-- Note: rows with module_name = 'logs' are written one-at-a-time via POST /api/logs
+-- (record_key = "logs-<uuid>") and are never deleted or replaced, unlike every other
+-- module_name which the generic PUT /api/modules/state save fully replaces on each write.
+-- This keeps the audit trail complete; GET /api/logs paginates over it by date range.
 create table if not exists app_records (
   id uuid primary key default gen_random_uuid(),
   state_key text not null default 'production',
