@@ -1,7 +1,7 @@
 let data;
 let modalType = null;
 let editContext = null;
-let currentUser = JSON.parse(sessionStorage.getItem("medlane-session") || "null");
+let currentUser = JSON.parse(localStorage.getItem("medlane-session") || "null");
 let currentClientView = null;
 let currentInvoiceFlow = null;
 let currentPrintNoDate = false;

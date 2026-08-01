@@ -2,12 +2,12 @@ const MedlaneAPI = (() => {
   const sessionKey = "medlane-api-session";
 
   function session() {
-    return JSON.parse(sessionStorage.getItem(sessionKey) || "null");
+    return JSON.parse(localStorage.getItem(sessionKey) || "null");
   }
 
   function setSession(value) {
-    if (value) sessionStorage.setItem(sessionKey, JSON.stringify(value));
-    else sessionStorage.removeItem(sessionKey);
+    if (value) localStorage.setItem(sessionKey, JSON.stringify(value));
+    else localStorage.removeItem(sessionKey);
   }
 
   let refreshInFlight = null;
@@ -25,7 +25,7 @@ const MedlaneAPI = (() => {
         const payload = await response.json().catch(() => null);
         if (!response.ok || !payload?.session?.access_token) throw new Error(payload?.error || "Session refresh failed");
         setSession({ ...payload.session, app_session_id: active.app_session_id || null });
-        if (payload.user) sessionStorage.setItem("medlane-session", JSON.stringify(payload.user));
+        if (payload.user) localStorage.setItem("medlane-session", JSON.stringify(payload.user));
         return payload;
       })().finally(() => { refreshInFlight = null; });
     }
@@ -34,7 +34,7 @@ const MedlaneAPI = (() => {
 
   function forceSessionLogout(reason) {
     setSession(null);
-    sessionStorage.removeItem("medlane-session");
+    localStorage.removeItem("medlane-session");
     if (typeof logoutCurrentUser === "function") logoutCurrentUser();
     if (typeof toast === "function") toast(reason);
   }
@@ -74,7 +74,7 @@ const MedlaneAPI = (() => {
   async function login(email, password) {
     const payload = await request("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
     setSession(payload.session);
-    sessionStorage.setItem("medlane-session", JSON.stringify(payload.user));
+    localStorage.setItem("medlane-session", JSON.stringify(payload.user));
     return payload;
   }
 

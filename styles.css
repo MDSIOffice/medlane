@@ -1081,9 +1081,9 @@ tbody tr[data-sale-row] { cursor: pointer; }
 tbody tr[data-sale-row]:hover { background: #eef8ff; }
 td small { display: block; color: var(--muted); margin-top: 3px; }
 .focus-target { position: relative; outline: 3px solid rgba(215, 25, 32, 0.72) !important; outline-offset: 3px; animation: focusPulse 1.1s ease-in-out 3; background: #fff7ed !important; }
-#logs-table { min-width: 920px; }
-#logs-table th:last-child, #logs-table td:last-child { min-width: 360px; max-width: 520px; white-space: normal; }
-.log-record { display: block; max-width: 520px; white-space: normal; word-break: break-word; line-height: 1.35; }
+#logs-table { min-width: 1080px; }
+#logs-table th:nth-child(6), #logs-table td:nth-child(6) { min-width: 420px; max-width: 640px; white-space: normal; }
+.log-record { display: block; max-width: 640px; white-space: normal; word-break: break-word; line-height: 1.35; }
 
 .invoice-card strong, .report-card strong { display: block; margin: 9px 0 8px; font-size: 20px; }
 .collapsible-invoice { align-self: start; padding: 0; }

@@ -230,7 +230,12 @@ async function submitModal(event) {
   toast(`${modalConfigs[modalType].title} saved.`);
 }
 
-qsa(".nav-item").forEach((button) => button.addEventListener("click", () => showSection(button.dataset.section, { scrollTop: true })));
+qsa(".nav-item").forEach((button) => button.addEventListener("click", (event) => {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.button === 1) return; // let the browser open a new tab/window natively
+  event.preventDefault();
+  showSection(button.dataset.section, { scrollTop: true });
+  if (location.protocol !== "file:") history.replaceState(null, "", `/dashboard?section=${button.dataset.section}`);
+}));
 document.body.addEventListener("click", (event) => {
   const modalButton = event.target.closest("[data-action='open-modal']");
   if (modalButton) {
@@ -336,7 +341,7 @@ qs("#settings-form").addEventListener("submit", (event) => {
   const values = formObject(event.currentTarget);
   const profile = { email: values.email, phone: values.phone, notes: values.notes };
   currentUser = { ...currentUser, ...profile };
-  sessionStorage.setItem("medlane-session", JSON.stringify(currentUser));
+  localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   renderUserMenu();
   applyRole();
   toast("User settings updated for this session. Profile persistence is managed by Admin users.");
@@ -893,7 +898,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
   } catch (error) {
     toast(`Logged in, but server data sync failed: ${error.message}`);
   }
-  sessionStorage.setItem("medlane-session", JSON.stringify(currentUser));
+  localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   log("Logged in", "Authentication", currentUser.role);
   playLoginSuccessSound();
   showWelcomeTransition(currentUser.name || currentUser.role, () => {
@@ -1032,7 +1037,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
     return toast("Password setup requires a secure Supabase invite or recovery link.");
   }
   currentUser = null;
-  sessionStorage.removeItem("medlane-session");
+  localStorage.removeItem("medlane-session");
   qs("#reset-screen").classList.add("hidden");
   qs("#login-screen").classList.remove("hidden");
   qs("#login-email").value = values.email;
@@ -1042,7 +1047,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
 });
 function logoutCurrentUser() {
   currentUser = null;
-  sessionStorage.removeItem("medlane-session");
+  localStorage.removeItem("medlane-session");
   sessionStorage.removeItem("medlane-dashboard-sound-played");
   MedlaneAPI?.setSession(null);
   document.body.classList.add("login-route");
@@ -1065,19 +1070,21 @@ function isDashboardRoute() {
   return location.pathname.replace(/\/$/, "").endsWith("/dashboard") || new URLSearchParams(location.search).has("dashboard");
 }
 function showAuthenticatedApp() {
+  const requestedSection = new URLSearchParams(location.search).get("section");
   if (location.protocol !== "file:") history.replaceState(null, "", "/dashboard");
   document.body.classList.add("app-route");
   document.body.classList.remove("login-route", "public-landing");
   qs("#login-screen")?.classList.add("hidden");
   applyRole();
   renderAll();
+  if (requestedSection && requestedSection !== "security" && effectiveModules().includes(requestedSection)) showSection(requestedSection);
   playDashboardLoginSound();
 }
 async function hydrateAuthenticatedSession() {
   if (!MedlaneAPI?.session()?.access_token) throw new Error("No active API session");
   const me = await MedlaneAPI.me();
   currentUser = me.user;
-  sessionStorage.setItem("medlane-session", JSON.stringify(currentUser));
+  localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   const serverState = await MedlaneAPI.loadAppState();
   serverRevision = Number(serverState.revision || 0);
   data = serverState.data ? normalizeData({ ...structuredClone(initialData), ...serverState.data }) : normalizeData(emptyProductionData());
@@ -1103,7 +1110,7 @@ async function initializeRoute() {
       return;
     } catch {
       currentUser = null;
-      sessionStorage.removeItem("medlane-session");
+      localStorage.removeItem("medlane-session");
       MedlaneAPI?.setSession(null);
     }
   }

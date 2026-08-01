@@ -1319,7 +1319,7 @@ export default {
         return json({ error: "Not found" }, { status: 404 });
       }
 
-      if (["/", "/index.html", "/login", "/login/", "/dashboard", "/dashboard/"].includes(url.pathname)) {
+      if (["/", "/index.html", "/login", "/login/", "/dashboard", "/dashboard/"].includes(url.pathname) || url.pathname.toLowerCase().endsWith(".mp3")) {
         const response = await env.ASSETS.fetch(request);
         const headers = new Headers(response.headers);
         headers.set("cache-control", "no-cache, must-revalidate");
