@@ -136,8 +136,8 @@ function syncGeneratedNotifications() {
     notices.push({ key, generated: true, date: generatedNoticeDate(), type, message, section, record, status: "Unread" });
   };
   const facts = workflowFacts();
-  const openPurchaseOrders = data.purchaseOrders.filter((po) => !["Completed", "Served", "Cancelled"].includes(po.status));
-  const receivingPurchaseOrders = data.inventoryPurchaseOrders.filter((po) => !["Received", "Completed", "Cancelled"].includes(po.status));
+  const openPurchaseOrders = data.purchaseOrders.filter((po) => poInvoiceable(po));
+  const receivingPurchaseOrders = data.inventoryPurchaseOrders.filter((po) => !inventoryPoTerminalStatuses.includes(po.status));
   const expiredStock = data.inventory.filter((item) => item.expiry !== "N/A" && daysUntil(item.expiry) < 0);
   const warrantyExpired = data.warranties.filter((item) => daysUntil(item.warrantyEnd) < 0 || String(item.status).toLowerCase().includes("expired"));
   const warrantySoon = data.warranties.filter((item) => daysUntil(item.warrantyEnd) >= 0 && daysUntil(item.warrantyEnd) <= 180);
@@ -370,7 +370,7 @@ function workflowFacts() {
   const missingDocs = data.clients.filter((client) => requiredClientDocs.some((doc) => !client.docs?.includes(doc)));
   const pendingContacts = data.collectionContacts.filter((contact) => contact.status === "Pending" || contact.status === "No Response" || contact.status === "Unreached" || contact.status === "Cheque Available");
   const pendingTransfers = data.pendingTransfers.filter((transfer) => transfer.status === "For Receiving");
-  const pendingExpenses = data.replenishments.filter((item) => item.status !== "Approved");
+  const pendingExpenses = data.replenishments.filter((item) => (item.requestStatus || item.status) !== "Approved" && (item.requestStatus || item.status) !== "Cancelled");
   const duePayables = data.payables.filter((payable) => payable.amount > payable.paid);
   const chequeReviews = data.payments.filter((payment) => payment.method === "Cheque" && (!payment.bank || !payment.chequeDate));
   const duplicateClients = data.clients.filter((client, index) => data.clients.findIndex((item) => item.name.toLowerCase() === client.name.toLowerCase() || item.tin === client.tin) !== index);

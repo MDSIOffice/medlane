@@ -400,8 +400,17 @@ function poStatus(po) {
   return "For Invoicing";
 }
 
+function poFullyPaid(po) {
+  const linkedSales = data.sales.filter((sale) => sale.po === po.id && sale.status !== "Cancelled");
+  return linkedSales.length > 0 && linkedSales.every((sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
+}
+
+function poInvoiceable(po) {
+  return !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po)) && !poFullyPaid(po);
+}
+
 function openPurchaseOrdersForClient(clientName) {
-  return data.purchaseOrders.filter((po) => po.client === clientName && !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po)));
+  return data.purchaseOrders.filter((po) => po.client === clientName && poInvoiceable(po));
 }
 
 function renderInvoiceEditor(lines = [{}], options = {}) {
@@ -878,15 +887,22 @@ function renderAnalytics() {
   const totalExpenses = visibleExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   qs("#analytics-revenue-expenses").innerHTML = barRows([["Revenue", totalSales], ["Expenses", totalExpenses], ["Net", totalSales - totalExpenses]], (value) => peso.format(value), ["green", "red", ""]) + graphNote("Computed as invoice revenue compared with expense request totals in the selected view.");
 
+  const issueCounts = ["Open", "In Progress", "Pass to Engineering", "Resolved"].map((status) => [status, data.productIssues.filter((report) => report.status === status).length]);
+  const resolvedIssues = data.productIssues.filter((report) => report.status === "Resolved");
+  const avgIssueTurnaround = resolvedIssues.length ? Math.round(resolvedIssues.reduce((sum, report) => sum + (productIssueTurnaroundDays(report) || 0), 0) / resolvedIssues.length) : null;
+  qs("#analytics-product-issues").innerHTML = barRows(issueCounts, (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "purple", "orange", "green"]) + graphNote(`Computed from support report status across all logged cases.${avgIssueTurnaround === null ? "" : ` Average turnaround: ${avgIssueTurnaround} day${avgIssueTurnaround === 1 ? "" : "s"}.`}`);
+
   const overdue = visibleSales.filter((sale) => statusForSale(sale) === "Overdue");
   const lowStock = visibleInventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
   const nearExpiry = visibleInventory.filter((item) => inventoryStatus(item) === "Near Expiry");
   const forDisposal = visibleInventory.filter((item) => inventoryStatus(item) === "For Disposal");
+  const openIssues = data.productIssues.filter((report) => report.status === "Open").length;
   const topClient = Object.entries(sumBy(visibleSales, "client", (sale) => sale.net)).sort((a, b) => b[1] - a[1])[0];
   const insights = [
     overdue.length ? `${overdue.length} overdue invoice/s need collection follow-up.` : "No overdue invoices in the selected view.",
     lowStock.length ? `${lowStock.length} inventory record/s are low or critical. Reorder or transfer stock.` : "No low or critical stock records in the selected view.",
     forDisposal.length ? `${forDisposal.length} expired inventory lot/s are for disposal and blocked from invoicing.` : nearExpiry.length ? `${nearExpiry.length} reagent/item record/s are near expiry. Prioritize selling or replacement.` : "No near-expiry stock in the selected view.",
+    openIssues ? `${openIssues} open support report/s need action.` : "No open support reports.",
     topClient ? `Top client by sales: ${topClient[0]} at ${peso.format(topClient[1])}.` : "No sales data available.",
   ];
   qs("#analytics-insights").innerHTML = insights.map((text) => `<li><span>${escapeHtml(text)}</span></li>`).join("");
@@ -1985,7 +2001,7 @@ async function renderLeafletCollectionMap() {
     collectionRegionLayer = null;
   }
   mapEl.innerHTML = "";
-  collectionLeafletMap = L.map(mapEl, { attributionControl: false, scrollWheelZoom: false, zoomControl: true, preferCanvas: true });
+  collectionLeafletMap = L.map(mapEl, { attributionControl: false, scrollWheelZoom: false, zoomControl: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false, preferCanvas: true });
   const legend = L.control({ position: "bottomleft" });
   legend.onAdd = () => {
     const div = L.DomUtil.create("div", "leaflet-contact-legend");
@@ -3318,7 +3334,7 @@ const modalConfigs = {
   supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["benefits", "Govt. Benefits", "benefit-checkboxes"]] },
   purchaseOrder: { title: "Create PO", fields: [["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
-  invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
+  invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Payment Request", fields: [["employee", "Employee / Vendor", "datalist", () => [...new Set([...data.clients.map((client) => client.name), ...data.employees.map((employee) => employee.name), currentUser?.name || "System User"].filter(Boolean))]], ["invoice", "Invoice Being Paid (optional, for collections)", "datalist-optional", () => openInvoicesForPaymentRequest().map((sale) => sale.documentNo || sale.id)], ["department", "Department"], ["cvNo", "CV Number"], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["requestType", "Mode of Request", "select", ["Reimbursement or Liquidation", "Fees, Supplier or Utilities", "Priority"]]] },
   payable: { title: "Payable Request", fields: [["supplier", "Supplier", "select", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["requestNote", "Request Notes", "textarea"]] },
