@@ -103,7 +103,14 @@ async function submitModal(event) {
     catch (error) { return toast(error.message); }
   }
   if (modalType === "client") data.clients.push({ ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" });
-  if (modalType === "item") data.items.push(values);
+  if (modalType === "item") {
+    data.items.push(values);
+    if (values.classification === "Equipment") {
+      const serial = values.lot || values.code;
+      data.warranties.push({ client: values.supplier || "Unassigned", equipment: values.name, serial, installDate: fmtDate(today), warrantyEnd: values.expiry || "", status: "Active", service: "Auto-added when equipment was created in the Items masterlist." });
+      notify("Warranty", `${values.name} added to warranty tracking.`, "warranty", serial);
+    }
+  }
   if (modalType === "bank") data.banks.push(values);
   if (modalType === "supplier") data.suppliers.push(values);
   if (modalType === "employee") data.employees.push({ ...values, salary: canManageEmployeeSalary() ? Number(values.salary || 0) : 0 });
@@ -138,30 +145,6 @@ async function submitModal(event) {
       notify("Cancellation", `${oldSale.documentNo || oldSale.id} cancelled and replaced by ${replacement.documentNo}.`, "receivables-tracker", replacement.documentNo || replacement.id);
     } catch (error) { deductSaleStock(oldSale); return toast(error.message); }
   }
-  if (modalType === "payment") {
-    const sale = findSaleByDocumentInput(values.invoice);
-    if (!sale || sale.status === "Cancelled") return toast("Cannot collect against missing or cancelled document.");
-    if (!values.receiptNo?.trim()) return toast("Receipt number is required.");
-    values.receiptNo = values.receiptNo.trim();
-    if (receiptExists(values.receiptNo)) return toast("Duplicate receipt number detected.");
-    const cheques = values.method === "Multiple Cheques" ? collectChequeLines() : [];
-    if (values.method === "Cheque" && (!values.bank || !values.reference || !values.chequeDate)) return toast("Cheque collections require bank, reference, and cheque date.");
-    if (values.method === "Multiple Cheques" && (!values.bank || !cheques.length || cheques.some((cheque) => !cheque.reference || !cheque.chequeDate || cheque.amount <= 0))) return toast("Multiple cheques require one bank and complete reference, date, and amount per cheque.");
-    if (!["Cheque", "Multiple Cheques"].includes(values.method)) { values.bank = ""; values.reference = ""; values.chequeDate = ""; }
-    if (values.collectionStatus === "Posted Date" && !values.postedDate) return toast("Posted Date status requires a claim date.");
-    if (values.collectionStatus !== "Posted Date") values.postedDate = "";
-    const amount = values.method === "Multiple Cheques" ? cheques.reduce((sum, cheque) => sum + cheque.amount, 0) : Number(values.amount);
-    const deductions = collectionDeductions(sale, amount);
-    const appliedAmount = deductions.netApplied;
-    if (amount <= 0) return toast("Payment amount must be greater than zero.");
-    if (appliedAmount <= 0) return toast("Payment net of WTax/EWT must be greater than zero.");
-    if (appliedAmount > sale.net - sale.paid) return toast("Payment amount exceeds remaining invoice balance after WTax/EWT.");
-    sale.paid = Math.min(sale.net, sale.paid + appliedAmount);
-    values.tag = collectionTagForType(sale.type);
-    data.payments.push({ invoice: sale.documentNo || sale.id, tag: values.tag, receiptNo: values.receiptNo, method: values.method, bank: values.bank, reference: values.method === "Multiple Cheques" ? cheques.map((cheque) => cheque.reference).join(", ") : values.reference, chequeDate: values.method === "Multiple Cheques" ? cheques.map((cheque) => cheque.chequeDate).join(", ") : values.chequeDate, cheques, collectionStatus: values.collectionStatus || "For Deposition", postedDate: values.postedDate, statusHistory: collectionStatusHistory(values.collectionStatus || "For Deposition"), dateCollected: values.dateCollected, dateRecorded: fmtDate(today), client: sale.client, grossAmount: amount, withholdingTax: deductions.withholdingTax, expandedWithholdingTax: deductions.expandedWithholdingTax, amount: appliedAmount });
-    log("Recorded collection payment", "Collections", `${values.receiptNo} · ${sale.documentNo || sale.id} · ${peso.format(appliedAmount)}`);
-    notify("Collection", `${peso.format(appliedAmount)} net payment recorded for ${values.invoice}.`, "receivables-tracker", sale.documentNo || sale.id);
-  }
   if (modalType === "paymentRequest") {
     const items = collectPaymentRequestLines();
     const gross = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -171,9 +154,30 @@ async function submitModal(event) {
     if (data.paymentRequests.some((request) => request.cvNo.toLowerCase() === values.cvNo.toLowerCase() && cvYear(request.date || request.createdAt) === cvYear(values.date))) return toast("Duplicate CV number detected for this year.");
     if (!items.length || items.some((item) => !item.particulars || item.amount <= 0)) return toast("Each payment request item needs particulars and an amount greater than zero.");
     if (total <= 0) return toast("Payment request total must be greater than zero.");
-    data.paymentRequests.unshift({ ...values, items, particulars: items.map((item) => item.particulars).join("; "), amount: items[0]?.amount || 0, gross, withholdingTax: deductions.withholdingTax, expandedWithholdingTax: deductions.expandedWithholdingTax, total, instructions: paymentRequestInstructions, preparedBy: currentUser?.name || "System User", preparedRole: currentUser?.role || "Accounting", approvedBy: "Maria Emma F. Llorin", approvedRole: "CEO", status: "Prepared", createdAt: fmtDate(today) });
+    const linkedSale = values.invoice?.trim() ? findSaleByDocumentInput(values.invoice) : null;
+    if (values.invoice?.trim() && !linkedSale) return toast("Invoice not found. Select a valid invoice from the list.");
+    const isCollection = Boolean(linkedSale);
+    const nowStamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    data.paymentRequests.unshift({
+      ...values,
+      items,
+      particulars: items.map((item) => item.particulars).join("; "),
+      amount: items[0]?.amount || 0,
+      gross, withholdingTax: deductions.withholdingTax, expandedWithholdingTax: deductions.expandedWithholdingTax, total,
+      instructions: paymentRequestInstructions,
+      preparedBy: currentUser?.name || "System User",
+      preparedRole: currentUser?.role || "Accounting",
+      invoice: linkedSale ? (linkedSale.documentNo || linkedSale.id) : "",
+      invoiceClient: linkedSale ? linkedSale.client : "",
+      requestStatus: isCollection ? "Pending" : "Approved",
+      approvedBy: isCollection ? "" : "Maria Emma F. Llorin",
+      approvedRole: isCollection ? "" : "CEO",
+      status: isCollection ? "Pending" : "Prepared",
+      history: [{ date: nowStamp, status: isCollection ? "Pending" : "Prepared", note: isCollection ? `Payment request created for ${linkedSale.documentNo || linkedSale.id}.` : "CV voucher created.", by: currentUser?.name || "System User" }],
+      createdAt: fmtDate(today),
+    });
     log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`);
-    notify("Payment Request", `${values.cvNo} prepared for ${values.employee}.`, "collections", values.cvNo);
+    notify("Payment Request", `${values.cvNo} ${isCollection ? "pending approval" : "prepared"} for ${values.employee}.`, "collections", values.cvNo);
   }
   if (modalType === "payable") {
     const items = collectFinancialLines();
@@ -231,7 +235,6 @@ document.body.addEventListener("click", (event) => {
   const modalButton = event.target.closest("[data-action='open-modal']");
   if (modalButton) {
     if (qs("#report-preview-modal")?.open) qs("#report-preview-modal").close();
-    if (qs("#collection-detail-modal")?.open) qs("#collection-detail-modal").close();
     return canEditActiveSection() ? openModal(modalButton.dataset.type) : toast("Editing is disabled for this module in User Settings.");
   }
   const sortButton = event.target.closest("[data-sort-col]");
@@ -242,6 +245,10 @@ document.body.addEventListener("click", (event) => {
   if (workflowAction) return handleWorkflowAction(workflowAction.dataset.workflowAction);
   const paymentRequestPreview = event.target.closest("[data-payment-request-preview]");
   if (paymentRequestPreview) return previewPaymentRequest(paymentRequestPreview.dataset.paymentRequestPreview);
+  const paymentRequestApprove = event.target.closest("[data-payment-request-approve]");
+  if (paymentRequestApprove) return approvePaymentRequest(paymentRequestApprove.dataset.paymentRequestApprove);
+  const paymentRequestTimeline = event.target.closest("[data-payment-request-timeline]");
+  if (paymentRequestTimeline) return renderPaymentRequestDetail(paymentRequestTimeline.dataset.paymentRequestTimeline);
   const requestPreview = event.target.closest("[data-request-preview]");
   if (requestPreview) { const [type, index] = requestPreview.dataset.requestPreview.split(":"); return previewFinancialRequest(type, Number(index)); }
   const requestApprove = event.target.closest("[data-request-approve]");
@@ -256,8 +263,8 @@ document.body.addEventListener("click", (event) => {
   if (downloadBackup) return downloadBackupFile(downloadBackup.dataset.downloadBackup);
   const confirmPayment = event.target.closest("[data-confirm-payment]");
   if (confirmPayment) { const [type, index, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, Number(index), method); }
-  const collectionAction = event.target.closest("[data-collection-action]");
-  if (collectionAction) return openCollectionActionModal(collectionAction.dataset.collectionAction);
+  const makePaymentRequest = event.target.closest("[data-make-payment-request]");
+  if (makePaymentRequest) return openPaymentRequestForInvoice(makePaymentRequest.dataset.makePaymentRequest);
   const collectionStatus = event.target.closest("[data-collection-status]");
   if (collectionStatus) { const [receiptNo, status] = collectionStatus.dataset.collectionStatus.split(":"); return updateCollectionPaymentStatus(receiptNo, status); }
   const addressButton = event.target.closest("[data-edit-branch-address]");
@@ -538,8 +545,6 @@ qs("#transfer-history-cancel").addEventListener("click", () => qs("#transfer-his
 qs("#open-followup-history").addEventListener("click", () => { renderCollectionContactMap(); qs("#followup-history-modal").showModal(); });
 qs("#followup-history-close").addEventListener("click", () => qs("#followup-history-modal").close());
 qs("#followup-history-cancel").addEventListener("click", () => qs("#followup-history-modal").close());
-qs("#collection-detail-close").addEventListener("click", () => qs("#collection-detail-modal").close());
-qs("#collection-detail-cancel").addEventListener("click", () => qs("#collection-detail-modal").close());
 qs("#add-transfer-sheet-row").addEventListener("click", addTransferSheetRow);
 qs("#save-stock-sheet").addEventListener("click", saveStockSheet);
 qs("#stock-sheet-modal").addEventListener("change", (event) => { if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value); });
@@ -639,15 +644,6 @@ qs("#modal-fields").addEventListener("click", (event) => {
     syncPaymentRequestTotal();
     syncFinancialRequestTotal();
   }
-  if (event.target.closest("#add-cheque-line")) {
-    qs("#cheque-line-list").insertAdjacentHTML("beforeend", chequeLineTemplate());
-    syncMultipleChequeAmount();
-  }
-  const chequeRemove = event.target.closest(".remove-cheque-line");
-  if (chequeRemove && qsa(".cheque-line-row").length > 1) {
-    chequeRemove.closest(".cheque-line-row").remove();
-    syncMultipleChequeAmount();
-  }
   if (event.target.closest("#add-invoice-line")) {
     qs("#invoice-line-list").insertAdjacentHTML("beforeend", invoiceLineTemplate({}, { requireLot: modalType !== "purchaseOrder", allowDiscount: modalType === "inventoryPurchaseOrder" }));
     renderInvoiceComputePreview();
@@ -666,12 +662,10 @@ qs("#modal-fields").addEventListener("input", (event) => {
     const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
     event.target.value = digits.replace(/(\d{3})(?=\d)/g, "$1-");
   }
-  if (event.target.id === "invoice" && modalType === "payment") syncPaymentInvoice();
-  if (event.target.id === "amount" && modalType === "payment") renderPaymentDeductionPreview();
+  if (event.target.id === "invoice" && modalType === "paymentRequest") syncPaymentRequestInvoice();
   if (modalType === "paymentRequest" && event.target.closest(".payment-request-line-row")) syncPaymentRequestTotal();
   if (["payable", "replenishment"].includes(modalType) && event.target.closest(".payment-request-line-row")) syncFinancialRequestTotal();
   if (modalType === "paymentRequest" && event.target.id === "employee") syncPaymentRequestTotal();
-  if (modalType === "payment" && event.target.closest(".cheque-line-row")) syncMultipleChequeAmount();
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders();
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
@@ -700,18 +694,14 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
-  if (event.target.id === "invoice" && modalType === "payment") syncPaymentInvoice(true);
   if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (event.target.id === "method" && modalType === "payable") togglePayableFields();
-  if (event.target.id === "method" && modalType === "payment") toggleChequeFields();
-  if (event.target.id === "collectionStatus" && modalType === "payment") qs("#postedDate").closest(".field").hidden = event.target.value !== "Posted Date";
   if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value);
   if (event.target.id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(event.target.value));
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
   if (["invoice", "cancelReplace"].includes(modalType)) renderInvoiceComputePreview();
 });
 qs("#modal-fields").addEventListener("blur", (event) => {
-  if (event.target.id === "invoice" && modalType === "payment") syncPaymentInvoice(true);
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
 }, true);
 qs("#modal-close").addEventListener("click", () => { editContext = null; qs("#demo-modal").close(); });
@@ -728,7 +718,6 @@ qs("#report-preview-modal").addEventListener("click", (event) => { if (event.tar
 qs("#payment-request-preview-modal").addEventListener("click", (event) => { if (event.target.id === "payment-request-preview-modal") qs("#payment-request-preview-modal").close(); });
 qs("#transfer-history-modal").addEventListener("click", (event) => { if (event.target.id === "transfer-history-modal") qs("#transfer-history-modal").close(); });
 qs("#followup-history-modal").addEventListener("click", (event) => { if (event.target.id === "followup-history-modal") qs("#followup-history-modal").close(); });
-qs("#collection-detail-modal").addEventListener("click", (event) => { if (event.target.id === "collection-detail-modal") qs("#collection-detail-modal").close(); });
 qs("#branch-filter").addEventListener("change", (e) => { data.branch = e.target.value; saveData(); renderAll(); });
 qs("#global-search").addEventListener("input", renderAll);
 qs("#dashboard-date-from").addEventListener("change", renderDashboard);
@@ -756,7 +745,15 @@ qs("#logs-date-to").addEventListener("change", renderLogs);
 qs("#logs-role-filter").addEventListener("change", renderLogs);
 qs("#logs-module-filter").addEventListener("change", renderLogs);
 qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
-qs("#clear-notifications").addEventListener("click", () => { data.notifications = data.notifications.filter((notice) => notice.status === "Unread"); saveData(); renderNotifications(); toast("Read notifications cleared."); });
+qs("#clear-notifications").addEventListener("click", () => {
+  const dismissed = new Set(data.notificationsDismissed || []);
+  data.notifications.filter((notice) => notice.generated && notice.status !== "Unread").forEach((notice) => dismissed.add(`${notice.key}::${notice.record || ""}`));
+  data.notificationsDismissed = [...dismissed].slice(-300);
+  data.notifications = data.notifications.filter((notice) => notice.status === "Unread");
+  saveData();
+  renderNotifications();
+  toast("Read notifications cleared.");
+});
 qs("#mark-all-read-notifications").addEventListener("click", () => {
   const unreadCount = data.notifications.filter((notice) => notice.status === "Unread").length;
   if (!unreadCount) return toast("No unread notifications.");

@@ -49,6 +49,7 @@ const sectionMeta = {
   "report-detail": ["Report Detail", "Focused report view with graphs, source records, and connected module actions."],
   "product-issue-detail": ["Support Report Detail", "Full status history and turnaround timeline for this technical support report."],
   "inventory-po-detail": ["Purchase Order Detail", "Approval, dispatch, and receiving history for this purchase order."],
+  "payment-request-detail": ["Payment Request Detail", "Approval and payment history for this collection payment request."],
 };
 
 function userProfileKey() { return `medlane-profile-${currentUser?.role || "guest"}`; }
@@ -139,6 +140,7 @@ function normalizeData(next) {
   next.invoiceApprovals ||= { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" };
   next.transferHistory ||= [];
   next.notifications ||= [];
+  next.notificationsDismissed ||= [];
   next.reconHistory ||= [];
   next.platformAreas ||= structuredClone(initialData.platformAreas);
   next.platformBranches ||= structuredClone(initialData.platformBranches);

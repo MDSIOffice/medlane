@@ -131,10 +131,13 @@ function generatedNoticeDate() {
 function syncGeneratedNotifications() {
   if (!data?.notifications) return;
   const previous = new Map(data.notifications.filter((notice) => notice.generated && notice.key).map((notice) => [notice.key, notice]));
+  const dismissed = new Set(data.notificationsDismissed || []);
   const notices = [];
   const add = (key, type, message, section = "notifications", record = "") => {
     const existing = previous.get(key);
-    notices.push({ key, generated: true, date: existing?.date || generatedNoticeDate(), type, message, section, record, status: existing?.status || "Unread" });
+    if (existing) { notices.push({ key, generated: true, date: existing.date, type, message, section, record, status: existing.status }); return; }
+    if (dismissed.has(`${key}::${record}`)) return;
+    notices.push({ key, generated: true, date: generatedNoticeDate(), type, message, section, record, status: "Unread" });
   };
   const facts = workflowFacts();
   const openPurchaseOrders = data.purchaseOrders.filter((po) => !["Completed", "Served", "Cancelled"].includes(po.status));
@@ -377,6 +380,8 @@ function workflowFacts() {
   const duePayables = data.payables.filter((payable) => payable.amount > payable.paid);
   const chequeReviews = data.payments.filter((payment) => payment.method === "Cheque" && (!payment.bank || !payment.chequeDate));
   const duplicateClients = data.clients.filter((client, index) => data.clients.findIndex((item) => item.name.toLowerCase() === client.name.toLowerCase() || item.tin === client.tin) !== index);
-  return { activeSales, openSales, overdue, nearDue, lowStock, nearExpiry, missingDocs, pendingContacts, pendingTransfers, pendingExpenses, duePayables, chequeReviews, duplicateClients };
+  const openIssues = data.productIssues.filter((report) => report.status === "Open");
+  const escalatedIssues = data.productIssues.filter((report) => report.status === "Pass to Engineering");
+  return { activeSales, openSales, overdue, nearDue, lowStock, nearExpiry, missingDocs, pendingContacts, pendingTransfers, pendingExpenses, duePayables, chequeReviews, duplicateClients, openIssues, escalatedIssues };
 }
 

@@ -386,7 +386,7 @@
       </section>
 
       <section class="section" id="collections">
-        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Collections, due dates, partial payments</h2></div><div class="topbar-actions"><button class="ghost-button" data-action="open-modal" data-type="paymentRequest">Payment Request</button><button class="primary-button" data-action="open-modal" data-type="payment">Record Payment</button></div></div>
+        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Collections, due dates, partial payments</h2></div><div class="topbar-actions"><button class="primary-button" data-action="open-modal" data-type="paymentRequest">Payment Request</button></div></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="collections-summary-grid"></div></article>
         <div class="visual-grid" id="collections-visuals"></div>
         <article class="panel collection-map-panel">
@@ -442,6 +442,11 @@
       <section class="section" id="inventory-po-detail">
         <div class="section-header"><div><p class="eyebrow">Purchase Order Detail</p><h2 id="inventory-po-detail-title">Order timeline</h2></div><button class="ghost-button" data-go-section="inventory">Back to Inventory</button></div>
         <article class="panel" id="inventory-po-detail-panel"></article>
+      </section>
+
+      <section class="section" id="payment-request-detail">
+        <div class="section-header"><div><p class="eyebrow">Payment Request Detail</p><h2 id="payment-request-detail-title">Request timeline</h2></div><button class="ghost-button" data-go-section="collections">Back to Collections</button></div>
+        <article class="panel" id="payment-request-detail-panel"></article>
       </section>
 
       <section class="section" id="purchase-history">
@@ -644,14 +649,6 @@
         <p id="report-preview-description"></p>
         <div id="report-preview-content"></div>
         <div class="modal-actions"><button class="ghost-button" id="report-preview-cancel" type="button">Close</button><button class="ghost-button" id="report-preview-print-no-date" type="button">Print Without Date</button><button class="primary-button" id="report-preview-print" type="button">Print Preview</button></div>
-      </div>
-    </dialog>
-
-    <dialog class="modal report-modal collection-detail-modal" id="collection-detail-modal">
-      <div class="report-preview collection-detail-preview">
-        <div class="modal-header"><div><p class="eyebrow">Collections</p><h2 id="collection-detail-title">Collection Detail</h2></div><button class="icon-button" id="collection-detail-close" type="button" aria-label="Close">x</button></div>
-        <div id="collection-detail-content"></div>
-        <div class="modal-actions"><button class="ghost-button" id="collection-detail-cancel" type="button">Close</button></div>
       </div>
     </dialog>
 

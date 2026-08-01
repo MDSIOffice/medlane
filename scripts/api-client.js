@@ -113,6 +113,22 @@ const MedlaneAPI = (() => {
     return request("/api/users/invite/link", { method: "POST", body: JSON.stringify({ email }) });
   }
 
+  async function approvePurchaseOrder(id) {
+    return request(`/api/purchase-orders/${encodeURIComponent(id)}/approve`, { method: "POST" });
+  }
+
+  async function advancePurchaseOrder(id) {
+    return request(`/api/purchase-orders/${encodeURIComponent(id)}/advance`, { method: "POST" });
+  }
+
+  async function cancelPurchaseOrder(id, reason) {
+    return request(`/api/purchase-orders/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+  }
+
+  async function receivePurchaseOrderStock(id, lines) {
+    return request(`/api/purchase-orders/${encodeURIComponent(id)}/receive`, { method: "POST", body: JSON.stringify({ lines }) });
+  }
+
   async function setUserPassword(email, password) {
     return request("/api/users/set-password", { method: "POST", body: JSON.stringify({ email, password }) });
   }
@@ -202,5 +218,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
 })();

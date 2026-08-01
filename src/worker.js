@@ -47,6 +47,16 @@ function json(data, init = {}) {
   });
 }
 
+function shortDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+const poNextStatus = { Approved: "Sent to Supplier", "Sent to Supplier": "In Transit", "In Transit": "For Receiving" };
+const poCancellableStatuses = ["Approved", "Sent to Supplier", "In Transit", "For Receiving", "Partially Received"];
+function poTimestamp() {
+  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 function appStateKey(env) {
   return env.APP_STATE_KEY || env.ENVIRONMENT || "production";
 }
@@ -315,6 +325,18 @@ function requireUserAdmin(profile) {
 
 function requireBackupAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage backups");
+}
+
+function requirePoApprover(profile) {
+  if (profile?.role !== "Superadmin") throw new Error("Only Superadmin can approve purchase orders");
+}
+
+function requirePoReceiver(profile) {
+  if (!["Superadmin", "Logistics"].includes(profile?.role)) throw new Error("Only Logistics/Superadmin can update purchase order receiving");
+}
+
+function requirePaymentRequestApprover(profile) {
+  if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve payment requests");
 }
 
 function userStatusFromAuth(authUser) {
@@ -840,6 +862,82 @@ export default {
           return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
         }
         return methodNotAllowed();
+      }
+
+      if (url.pathname.startsWith("/api/purchase-orders/")) {
+        const segments = url.pathname.split("/").filter(Boolean);
+        const poId = decodeURIComponent(segments[2] || "");
+        const action = segments[3] || "";
+        if (request.method !== "POST") return methodNotAllowed();
+        if (!poId || !["approve", "advance", "cancel", "receive"].includes(action)) return json({ error: "Unknown purchase order action" }, { status: 404 });
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const poRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}&select=data`);
+        const po = poRows[0]?.data;
+        if (!po) return json({ error: "Purchase order not found" }, { status: 404 });
+        const by = profile.name || profile.email || "System User";
+        const timestamp = poTimestamp();
+        po.history = po.history || [];
+
+        if (action === "approve") {
+          requirePoApprover(profile);
+          if (po.status !== "Pending Approval") throw new Error(`Cannot approve a purchase order with status "${po.status}"`);
+          po.status = "Approved";
+          po.approvedBy = by;
+          po.approvedAt = shortDate();
+          po.history.push({ date: timestamp, status: "Approved", note: `Approved by ${by}.`, by });
+        } else if (action === "advance") {
+          requirePoReceiver(profile);
+          const next = poNextStatus[po.status];
+          if (!next) throw new Error(`Cannot advance a purchase order with status "${po.status}"`);
+          po.status = next;
+          po.history.push({ date: timestamp, status: next, note: `Marked ${next} by ${by}.`, by });
+        } else if (action === "cancel") {
+          requirePoReceiver(profile);
+          if (!poCancellableStatuses.includes(po.status)) throw new Error(`Cannot cancel a purchase order with status "${po.status}"`);
+          const body = await request.json().catch(() => ({}));
+          po.status = "Cancelled";
+          po.cancelledBy = by;
+          po.cancelledAt = shortDate();
+          po.history.push({ date: timestamp, status: "Cancelled", note: String(body.reason || "").trim() || "Order cancelled.", by });
+        } else if (action === "receive") {
+          requirePoReceiver(profile);
+          if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot receive stock for a purchase order with status "${po.status}"`);
+          const body = await request.json().catch(() => ({}));
+          const submittedLines = Array.isArray(body.lines) ? body.lines : [];
+          if (!submittedLines.length) throw new Error("No receiving lines provided");
+          const invRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=record_key,data`);
+          const inventory = invRows.map((row) => row.data);
+          let totalReceived = 0;
+          for (const submitted of submittedLines) {
+            const line = (po.lines || []).find((entry) => entry.code === submitted.code && entry.lot === submitted.lot);
+            if (!line) throw new Error(`Line not found on this purchase order: ${submitted.code} / ${submitted.lot}`);
+            const remaining = Number(line.qty || 0) - Number(line.receivedQty || 0);
+            const qty = Number(submitted.qty || 0);
+            if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Invalid quantity for ${submitted.code}`);
+            if (qty > remaining) throw new Error(`Cannot receive ${qty} of ${submitted.code} — only ${remaining} remain on this order`);
+            const branch = String(submitted.branch || po.branch || "").trim();
+            if (!branch) throw new Error(`Branch is required for ${submitted.code}`);
+            line.receivedQty = Number(line.receivedQty || 0) + qty;
+            totalReceived += qty;
+            const existing = inventory.find((entry) => entry.code === submitted.code && entry.branch === branch && entry.lot === submitted.lot);
+            if (existing) existing.qty = Number(existing.qty || 0) + qty;
+            else inventory.push({ code: submitted.code, item: line.item, brand: line.brand || "Medlane", branch, lot: submitted.lot, serial: submitted.lot, expiry: line.expiry || "N/A", qty, min: 10 });
+          }
+          const fullyReceived = (po.lines || []).every((line) => Number(line.receivedQty || 0) >= Number(line.qty || 0));
+          po.status = fullyReceived ? "Fully Received" : "Partially Received";
+          if (fullyReceived) { po.receivedBy = by; po.receivedAt = shortDate(); }
+          po.history.push({ date: timestamp, status: po.status, note: `Received ${totalReceived} unit(s) across ${submittedLines.length} line(s).`, by });
+          const invRecords = recordsFromState({ inventory }, authUser.id, stateKey, ["inventory"]);
+          await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory`, { method: "DELETE" });
+          if (invRecords.length) await supabaseFetch(env, "/rest/v1/app_records", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify(invRecords) });
+        }
+
+        await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ data: po, updated_by: authUser.id }),
+        });
+        return json({ ok: true, po });
       }
 
       if (url.pathname === "/api/reports") {
