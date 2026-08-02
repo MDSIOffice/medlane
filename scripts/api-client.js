@@ -173,6 +173,10 @@ const MedlaneAPI = (() => {
     return request("/api/auth/password-kyc/keep", { method: "POST" });
   }
 
+  async function setTheme(theme) {
+    return request("/api/auth/theme", { method: "POST", body: JSON.stringify({ theme }) });
+  }
+
   async function listUserSessions(params = {}) {
     const query = new URLSearchParams();
     if (params.userId) query.set("userId", params.userId);
@@ -242,5 +246,5 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
 })();

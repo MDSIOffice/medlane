@@ -24,12 +24,14 @@ create table if not exists profiles (
   is_superadmin boolean not null default false,
   phone text,
   password_confirmed_at timestamptz not null default now(),
+  theme_preference text not null default 'light',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 -- Run this against an existing database that already has a profiles table:
 -- alter table profiles add column if not exists password_confirmed_at timestamptz not null default now();
+-- alter table profiles add column if not exists theme_preference text not null default 'light';
 
 create table if not exists module_permissions (
   id uuid primary key default gen_random_uuid(),

@@ -2,6 +2,10 @@ let data;
 let modalType = null;
 let editContext = null;
 let currentUser = JSON.parse(localStorage.getItem("medlane-session") || "null");
+function applyThemePreference(theme) {
+  document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
+}
+applyThemePreference(currentUser?.themePreference);
 let currentClientView = null;
 let currentInvoiceFlow = null;
 let currentPrintNoDate = false;

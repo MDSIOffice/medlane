@@ -352,6 +352,7 @@ async function profileForUser(env, userId, email) {
     modules: view,
     customPermissions: { enabled: true, view, edit },
     passwordKycDue,
+    themePreference: profile[0].theme_preference === "dark" ? "dark" : "light",
   };
 }
 
@@ -1123,6 +1124,19 @@ export default {
         const { authUser } = await authenticatedProfile(request, env);
         await markPasswordConfirmed(env, authUser.id);
         return json({ ok: true });
+      }
+
+      if (url.pathname === "/api/auth/theme") {
+        if (request.method !== "POST") return methodNotAllowed();
+        const { authUser } = await authenticatedProfile(request, env);
+        const { theme } = await request.json();
+        if (!["light", "dark"].includes(theme)) return json({ error: "Theme must be \"light\" or \"dark\"" }, { status: 400 });
+        await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(authUser.id)}`, {
+          method: "PATCH",
+          headers: { prefer: "return=minimal" },
+          body: JSON.stringify({ theme_preference: theme }),
+        });
+        return json({ ok: true, theme });
       }
 
       if (url.pathname === "/api/auth/change-password") {

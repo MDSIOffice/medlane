@@ -1,6 +1,12 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      try {
+        var medlaneSession = JSON.parse(localStorage.getItem("medlane-session") || "null");
+        document.documentElement.dataset.theme = medlaneSession && medlaneSession.themePreference === "dark" ? "dark" : "light";
+      } catch (e) {}
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Medlane OS</title>
@@ -236,6 +242,7 @@
               <strong id="user-popover-name">User</strong>
               <span id="user-popover-role">Role</span>
               <button class="ghost-button" id="open-settings" type="button">User settings</button>
+              <button class="ghost-button" id="theme-toggle" type="button">Switch to dark mode</button>
               <button class="link-button dark" id="logout-top-button" type="button">Logout</button>
             </div>
           </div>

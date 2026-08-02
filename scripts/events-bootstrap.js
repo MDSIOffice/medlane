@@ -337,6 +337,24 @@ qs("#user-menu-toggle").addEventListener("click", (event) => {
   event.currentTarget.setAttribute("aria-expanded", String(!popover.hidden));
 });
 qs("#open-settings").addEventListener("click", () => { qs("#user-popover").hidden = true; qs("#user-menu-toggle").setAttribute("aria-expanded", "false"); renderUserSettings(); showSection("user-settings"); });
+function syncThemeToggleLabel() {
+  const isDark = document.documentElement.dataset.theme === "dark";
+  const button = qs("#theme-toggle");
+  if (button) button.textContent = isDark ? "Switch to light mode" : "Switch to dark mode";
+}
+function setThemePreference(theme) {
+  applyThemePreference(theme);
+  syncThemeToggleLabel();
+  if (currentUser) {
+    currentUser.themePreference = theme;
+    localStorage.setItem("medlane-session", JSON.stringify(currentUser));
+  }
+  MedlaneAPI.setTheme(theme).catch((error) => console.error(JSON.stringify({ message: "Failed to save theme preference", error: error.message })));
+}
+qs("#theme-toggle").addEventListener("click", () => {
+  setThemePreference(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+});
+syncThemeToggleLabel();
 qs("#logout-top-button")?.addEventListener("click", logoutCurrentUser);
 qs("#settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1097,6 +1115,8 @@ function isDashboardRoute() {
   return location.pathname.replace(/\/$/, "").endsWith("/dashboard") || new URLSearchParams(location.search).has("dashboard");
 }
 function showAuthenticatedApp() {
+  applyThemePreference(currentUser?.themePreference);
+  syncThemeToggleLabel();
   const requestedSection = new URLSearchParams(location.search).get("section");
   if (location.protocol !== "file:") history.replaceState(null, "", "/dashboard");
   document.body.classList.add("app-route");
