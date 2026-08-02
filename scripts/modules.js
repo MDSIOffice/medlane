@@ -163,6 +163,42 @@ function lineChart(entries) {
   </svg>`;
 }
 
+function multiSeriesChart(labels, series) {
+  if (!labels.length) return `<p>No trend data available for this view.</p>`;
+  const width = 760;
+  const height = 280;
+  const pad = 44;
+  const barSeries = series.filter((s) => s.type === "bar");
+  const lineSeries = series.filter((s) => s.type !== "bar");
+  const max = Math.max(...series.flatMap((s) => s.values), 1);
+  const xStep = labels.length > 1 ? (width - pad * 2) / (labels.length - 1) : 0;
+  const barWidth = Math.min(26, (labels.length > 1 ? xStep : width - pad * 2) * 0.36);
+  const xFor = (index) => (labels.length > 1 ? pad + index * xStep : width / 2);
+  const yFor = (value) => height - pad - (value / max) * (height - pad * 2);
+  const gridlines = [0.25, 0.5, 0.75, 1].map((ratio) => {
+    const y = height - pad - ratio * (height - pad * 2);
+    return `<line class="chart-gridline" x1="${pad}" y1="${y}" x2="${width - pad}" y2="${y}"></line>`;
+  }).join("");
+  const tip = (s, index) => `${escapeHtml(s.label)} — ${escapeHtml(String(labels[index]))}: ${s.format ? s.format(s.values[index] || 0) : s.values[index] || 0}`;
+  const bars = barSeries.map((s) => labels.map((_, index) => {
+    const x = xFor(index) - barWidth / 2;
+    const y = yFor(s.values[index] || 0);
+    const barHeight = Math.max(2, height - pad - y);
+    return `<rect class="chart-bar" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="5" fill="${s.color}"><title>${tip(s, index)}</title></rect>`;
+  }).join("")).join("");
+  const lines = lineSeries.map((s) => {
+    const points = labels.map((_, index) => `${xFor(index)},${yFor(s.values[index] || 0)}`).join(" ");
+    const dots = labels.map((_, index) => `<circle class="chart-multi-point" cx="${xFor(index)}" cy="${yFor(s.values[index] || 0)}" r="4.5" fill="${s.color}"><title>${tip(s, index)}</title></circle>`).join("");
+    return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" ${s.dashed ? 'stroke-dasharray="6 5"' : ""}></polyline>${dots}`;
+  }).join("");
+  const axisLabels = labels.map((label, index) => `<text class="chart-text" x="${xFor(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(String(label))}</text>`).join("");
+  const legend = series.map((s) => `<span class="chart-legend-item"><i style="background:${s.color}"></i>${escapeHtml(s.label)}</span>`).join("");
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Sales and collections trend">
+    ${gridlines}<line class="chart-axis" x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}"></line>
+    ${bars}${lines}${axisLabels}
+  </svg><div class="chart-legend-row">${legend}</div>`;
+}
+
 function verticalBars(entries) {
   if (!entries.length) return `<p>No salesperson data available for this view.</p>`;
   const max = Math.max(...entries.map(([, value]) => value), 1);
@@ -838,6 +874,25 @@ function renderDashboard() {
     [`${data.items.length} products`, "COA/FDA"],
     [`${data.sales.length} SI/TS/DR`, "Client terms"],
   ].map(([label, status]) => `<li><span>${label}</span><strong>${status}</strong></li>`).join("");
+  const trendChart = qs("#dashboard-trend-chart");
+  if (trendChart) {
+    const monthlyTrend = visibleSales.reduce((acc, sale) => {
+      const month = sale.date.slice(0, 7);
+      if (!acc[month]) acc[month] = { sales: 0, collections: 0, outstanding: 0 };
+      acc[month].sales += sale.net;
+      acc[month].collections += sale.paid;
+      acc[month].outstanding += Math.max(sale.net - sale.paid, 0);
+      return acc;
+    }, {});
+    const trendMonths = Object.keys(monthlyTrend).sort((a, b) => a.localeCompare(b));
+    trendChart.innerHTML = trendMonths.length
+      ? multiSeriesChart(trendMonths.map(monthLabel), [
+          { label: "Sales", type: "bar", color: "#7c3aed", values: trendMonths.map((m) => monthlyTrend[m].sales), format: (v) => peso.format(v) },
+          { label: "Collections", type: "line", color: "#12a67e", values: trendMonths.map((m) => monthlyTrend[m].collections), format: (v) => peso.format(v) },
+          { label: "Outstanding", type: "line", dashed: true, color: "#e11d48", values: trendMonths.map((m) => monthlyTrend[m].outstanding), format: (v) => peso.format(v) },
+        ]) + graphNote("Computed from invoice net totals, payments received, and open balances grouped by invoice month within the selected date range.")
+      : `<p>No sales trend available for this view.</p>`;
+  }
 }
 
 function renderAnalytics() {
