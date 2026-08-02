@@ -355,6 +355,19 @@ qs("#theme-toggle").addEventListener("click", () => {
   setThemePreference(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 });
 syncThemeToggleLabel();
+function syncSidebarCollapseToggle() {
+  const collapsed = document.documentElement.classList.contains("sidebar-collapsed");
+  const button = qs("#sidebar-collapse-toggle");
+  if (!button) return;
+  button.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+  button.setAttribute("title", collapsed ? "Expand sidebar" : "Collapse sidebar");
+}
+qs("#sidebar-collapse-toggle")?.addEventListener("click", () => {
+  const collapsed = document.documentElement.classList.toggle("sidebar-collapsed");
+  localStorage.setItem("medlane-sidebar-collapsed", collapsed ? "1" : "0");
+  syncSidebarCollapseToggle();
+});
+syncSidebarCollapseToggle();
 qs("#logout-top-button")?.addEventListener("click", logoutCurrentUser);
 qs("#settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
