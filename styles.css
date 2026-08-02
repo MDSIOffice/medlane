@@ -555,12 +555,12 @@ body.app-route .landing-page { display: none !important; }
   font-weight: 900;
   transition: transform 0.22s ease, background 0.22s ease, color 0.22s ease;
 }
-.nav-item:nth-child(6n+1) .nav-icon { background: linear-gradient(135deg, #2563eb, #38bdf8); }
-.nav-item:nth-child(6n+2) .nav-icon { background: linear-gradient(135deg, #4f46e5, #a78bfa); }
-.nav-item:nth-child(6n+3) .nav-icon { background: linear-gradient(135deg, #0f9f7a, #4ade80); }
-.nav-item:nth-child(6n+4) .nav-icon { background: linear-gradient(135deg, #f59e0b, #facc15); color: #10213d; }
-.nav-item:nth-child(6n+5) .nav-icon { background: linear-gradient(135deg, #d71920, #fb7185); }
-.nav-item:nth-child(6n) .nav-icon { background: linear-gradient(135deg, #64748b, #94a3b8); }
+.nav-item:nth-child(6n+1) .nav-icon { background: var(--chip-blue-bg); color: var(--text-on-blue-chip); }
+.nav-item:nth-child(6n+2) .nav-icon { background: var(--chip-purple-bg); color: var(--text-on-purple-chip); }
+.nav-item:nth-child(6n+3) .nav-icon { background: var(--chip-green-bg); color: var(--text-on-green-chip); }
+.nav-item:nth-child(6n+4) .nav-icon { background: var(--chip-amber-bg); color: var(--text-on-amber-chip); }
+.nav-item:nth-child(6n+5) .nav-icon { background: var(--chip-red-bg); color: var(--text-on-red-chip); }
+.nav-item:nth-child(6n) .nav-icon { background: var(--gray-chip); color: var(--text-on-gray-chip); }
 .nav-item.active .nav-icon { transform: scale(1.08); }
 
 .app-shell { margin-left: 268px; padding: 28px; }
