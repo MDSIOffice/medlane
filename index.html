@@ -246,7 +246,15 @@
               <strong id="user-popover-name">User</strong>
               <span id="user-popover-role">Role</span>
               <button class="ghost-button" id="open-settings" type="button">User settings</button>
-              <button class="ghost-button" id="theme-toggle" type="button">Switch to dark mode</button>
+              <div class="theme-switch-row">
+                <span>Dark mode</span>
+                <button class="theme-switch" id="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Switch to dark mode">
+                  <span class="theme-switch-thumb">
+                    <svg class="theme-switch-icon-sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="3.4"/><path d="M10 2.7v2M10 15.3v2M17.3 10h-2M4.7 10h-2M15.2 4.8l-1.4 1.4M6.2 13.8l-1.4 1.4M15.2 15.2l-1.4-1.4M6.2 6.2 4.8 4.8"/></svg>
+                    <svg class="theme-switch-icon-moon" viewBox="0 0 20 20" fill="currentColor"><path d="M15.6 12.9A6.8 6.8 0 0 1 7.1 4.4a.6.6 0 0 0-.8-.7 7.7 7.7 0 1 0 10 10 .6.6 0 0 0-.7-.8z"/></svg>
+                  </span>
+                </button>
+              </div>
               <button class="link-button dark" id="logout-top-button" type="button">Logout</button>
             </div>
           </div>

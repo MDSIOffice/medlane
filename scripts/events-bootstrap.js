@@ -340,7 +340,9 @@ qs("#open-settings").addEventListener("click", () => { qs("#user-popover").hidde
 function syncThemeToggleLabel() {
   const isDark = document.documentElement.dataset.theme === "dark";
   const button = qs("#theme-toggle");
-  if (button) button.textContent = isDark ? "Switch to light mode" : "Switch to dark mode";
+  if (!button) return;
+  button.setAttribute("aria-checked", String(isDark));
+  button.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
 }
 function setThemePreference(theme) {
   applyThemePreference(theme);
