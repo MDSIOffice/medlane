@@ -13,18 +13,18 @@
   --red: #d71920;
   --purple: #4755c7;
   --shadow: 0 22px 70px rgba(15, 23, 42, 0.1);
-  --tint: var(--tint);
-  --tint-strong: var(--tint-strong);
-  --tint-red: var(--tint-red);
-  --tint-orange: var(--tint-orange);
-  --tint-green: var(--tint-green);
-  --chip-blue-bg: var(--chip-blue-bg);
-  --chip-blue-bg-strong: var(--chip-blue-bg-strong);
-  --chip-red-bg: var(--chip-red-bg);
-  --chip-amber-bg: var(--chip-amber-bg);
-  --chip-green-bg: var(--chip-green-bg);
-  --chip-purple-bg: var(--chip-purple-bg);
-  --gray-chip: var(--gray-chip);
+  --tint: #f8fbff;
+  --tint-strong: #f1f5f9;
+  --tint-red: #fff1f2;
+  --tint-orange: #fff7ed;
+  --tint-green: #ecfdf5;
+  --chip-blue-bg: #e0f2fe;
+  --chip-blue-bg-strong: #dbeafe;
+  --chip-red-bg: #fee2e2;
+  --chip-amber-bg: #fef3c7;
+  --chip-green-bg: #dcfce7;
+  --chip-purple-bg: #ede9fe;
+  --gray-chip: #e5e7eb;
   --text-on-gray-chip: #374151;
   --text-on-red-chip: #991b1b;
   --text-on-amber-chip: #92400e;
@@ -84,7 +84,6 @@
 @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes popIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
 @keyframes shimmer { from { transform: translateX(-120%); } to { transform: translateX(120%); } }
-@keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 rgba(0, 110, 182, 0); } 50% { box-shadow: 0 0 28px rgba(0, 110, 182, 0.22); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fillBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes orbitPulse { 0%, 100% { transform: scale(0.92); opacity: 0.55; } 50% { transform: scale(1.12); opacity: 1; } }
@@ -470,7 +469,8 @@ body.app-route .landing-page { display: none !important; }
   min-height: 74px;
   border-radius: 18px;
   background: transparent;
-  color: var(--gray-chip);
+  color: #e5e7eb;
+  text-decoration: none;
   padding: 10px 8px;
   text-align: center;
   transition: 0.18s ease;
@@ -493,7 +493,6 @@ body.app-route .landing-page { display: none !important; }
 .nav-item:hover, .nav-item.active { background: rgba(255, 255, 255, 0.1); color: #fff; }
 .nav-item.active::before { background: #38bdf8; transform: translateX(-1px); }
 .nav-item:hover { transform: translateX(3px); }
-.nav-item.active { animation: pulseGlow 2.4s ease infinite; }
 .nav-item[hidden] { display: none; }
 .nav-item > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; font-size: 12px; font-weight: 800; }
 .nav-icon, .feature-icon, .card-icon {
@@ -514,7 +513,7 @@ body.app-route .landing-page { display: none !important; }
 .nav-item:nth-child(6n+4) .nav-icon { background: linear-gradient(135deg, #f59e0b, #facc15); color: #10213d; }
 .nav-item:nth-child(6n+5) .nav-icon { background: linear-gradient(135deg, #d71920, #fb7185); }
 .nav-item:nth-child(6n) .nav-icon { background: linear-gradient(135deg, #64748b, #94a3b8); }
-.nav-item:hover .nav-icon, .nav-item.active .nav-icon { transform: scale(1.12) rotate(-4deg); filter: saturate(1.2); }
+.nav-item.active .nav-icon { transform: scale(1.08); }
 
 .app-shell { margin-left: 268px; padding: 28px; }
 .topbar, .topbar-actions, .section-header, .panel-header, .toolbar, .tabs, .modal-header, .modal-actions {
