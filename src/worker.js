@@ -144,6 +144,49 @@ async function sendResendEmail(env, { to, subject, html }) {
   return { sent: true, provider: "resend", id: payload?.id || null };
 }
 
+async function sendDiscordWebhook(env, { content = "", embeds = [] } = {}) {
+  if (!env.DISCORD_WEBHOOK_URL) return { sent: false, provider: "discord", reason: "DISCORD_WEBHOOK_URL is not configured" };
+  const response = await fetch(env.DISCORD_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content, embeds, username: "Medlane OS" }),
+  });
+  if (!response.ok && response.status !== 204) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Discord webhook failed: ${response.status} ${text}`);
+  }
+  return { sent: true, provider: "discord" };
+}
+
+function discordFieldValue(lines, limit = 900) {
+  if (!lines.length) return "None";
+  let value = "";
+  let shown = 0;
+  for (const line of lines) {
+    const candidate = value ? `${value}\n${line}` : line;
+    if (candidate.length > limit) break;
+    value = candidate;
+    shown += 1;
+  }
+  if (shown < lines.length) value += `\n…+${lines.length - shown} more`;
+  return value || "None";
+}
+
+async function trackNewOccurrences(env, moduleName, currentIds) {
+  const stateKey = appStateKey(env);
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=eq.state&select=data`);
+  const known = new Set(rows[0]?.data?.ids || []);
+  const ids = [...new Set(currentIds.filter(Boolean))];
+  const fresh = ids.filter((id) => !known.has(id));
+  const merged = [...new Set([...known, ...ids])];
+  await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+    method: "POST",
+    headers: { prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify([{ state_key: stateKey, module_name: moduleName, record_key: "state", data: { ids: merged } }]),
+  });
+  return fresh;
+}
+
 async function findAuthUserByEmail(env, email) {
   const target = cleanEmail(email);
   for (let page = 1; page <= 25; page += 1) {
@@ -718,10 +761,12 @@ async function createBackup(env, backupType = "manual", actor = null) {
       headers: { prefer: "return=representation" },
       body: JSON.stringify({ state_key: stateKey, backup_type: backupType, mode: payload.mode, object_key: objectKey, records_count: records.length, size_bytes: bytes.byteLength, since_at: null, created_by: actor }),
     });
+    await sendDiscordWebhook(env, { embeds: [{ title: "Backup Completed", color: 0x22c55e, fields: [{ name: "Type", value: backupType, inline: true }, { name: "Records", value: String(records.length), inline: true }, { name: "Size", value: `${(bytes.byteLength / 1024 / 1024).toFixed(2)} MB`, inline: true }], timestamp: new Date().toISOString() }] }).catch((error) => console.error(JSON.stringify({ message: "Discord backup notice failed", error: error.message })));
     return inserted[0];
   } catch (error) {
     await releaseStorage(env, bytes.byteLength).catch(() => null);
     await env.DOCUMENTS_BUCKET.delete(objectKey).catch(() => null);
+    await sendDiscordWebhook(env, { embeds: [{ title: "Backup Failed", color: 0xef4b4f, description: String(error.message || error).slice(0, 500), fields: [{ name: "Type", value: backupType, inline: true }], timestamp: new Date().toISOString() }] }).catch(() => null);
     throw error;
   }
 }
@@ -772,9 +817,16 @@ function digestClientBalance(clientName, sales) {
   return sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
 }
 
+const LARGE_TRANSACTION_THRESHOLD = 100000;
+
+function poFullyPaidServer(po, sales) {
+  const linkedSales = sales.filter((sale) => sale.po === po.id && sale.status !== "Cancelled");
+  return linkedSales.length > 0 && linkedSales.every((sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
+}
+
 async function loadDigestState(env) {
   const stateKey = appStateKey(env);
-  const modules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues"];
+  const modules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "purchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues", "payments", "imports", "reconHistory"];
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(modules))}&select=module_name,record_key,data`);
   return stateFromRecords(rows);
 }
@@ -891,6 +943,53 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
     }
   }
   await Promise.all(sends);
+  await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, auditRows, auditLimitLabel, auditSinceIso }).catch((error) => console.error(JSON.stringify({ message: "Discord digest failed", error: error.message })));
+}
+
+async function sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, auditRows, auditLimitLabel, auditSinceIso }) {
+  if (!env.DISCORD_WEBHOOK_URL) return;
+  const sales = state.sales || [];
+  const clients = state.clients || [];
+  const purchaseOrders = state.purchaseOrders || [];
+  const payments = state.payments || [];
+  const imports = state.imports || [];
+  const reconHistory = state.reconHistory || [];
+
+  const bouncedCheques = payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
+  const largeSales = sales.filter((sale) => sale.status !== "Cancelled" && Number(sale.net || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(sale.date) >= new Date(auditSinceIso));
+  const largePayments = payments.filter((payment) => Number(payment.amount || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(payment.dateRecorded || payment.dateCollected || 0) >= new Date(auditSinceIso));
+  const blockedImports = imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status || ""));
+  const latestRecon = reconHistory[0];
+
+  const newlyPaidPoIds = await trackNewOccurrences(env, "discordKnownPaidPOs", purchaseOrders.filter((po) => poFullyPaidServer(po, sales)).map((po) => po.id));
+  const newlyPaidPos = purchaseOrders.filter((po) => newlyPaidPoIds.includes(po.id));
+  const newClientNames = await trackNewOccurrences(env, "discordKnownClients", clients.map((client) => client.name));
+
+  const fields = [];
+  Object.entries(sections).forEach(([role, roleSections]) => {
+    roleSections.forEach((section) => fields.push({ name: `${section.title} (${role})`, value: discordFieldValue(section.lines, 300) }));
+  });
+  if (businessSummary.length) fields.push({ name: `${periodLabel} Business Summary`, value: discordFieldValue(businessSummary, 300) });
+  if (bouncedCheques.length) fields.push({ name: "Bounced Cheques", value: discordFieldValue(bouncedCheques.map((p) => `${p.receiptNo} — ${p.client}, ${money(p.amount)}`), 300) });
+  if (largeSales.length || largePayments.length) fields.push({ name: `Large Transactions (≥ ${money(LARGE_TRANSACTION_THRESHOLD)})`, value: discordFieldValue([...largeSales.map((s) => `Invoice ${s.documentNo || s.id} — ${s.client}, ${money(s.net)}`), ...largePayments.map((p) => `Payment ${p.receiptNo} — ${p.client}, ${money(p.amount)}`)], 300) });
+  if (newlyPaidPos.length) fields.push({ name: "Purchase Orders Fully Paid", value: discordFieldValue(newlyPaidPos.map((po) => `${po.id} — ${po.client}`), 300) });
+  if (newClientNames.length) fields.push({ name: "New Clients Onboarded", value: discordFieldValue(newClientNames, 300) });
+  if (blockedImports.length) fields.push({ name: "Import Issues", value: discordFieldValue(blockedImports.map((item) => `${item.date} ${item.module} ${item.file} — ${item.status}`), 300) });
+  if (latestRecon?.high > 0) fields.push({ name: "Reconciliation Risk", value: `${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"} (${latestRecon.date || "latest run"})` });
+  fields.push({ name: `Audit Log (${auditLimitLabel})`, value: `${auditRows.length} recorded action${auditRows.length === 1 ? "" : "s"} — see the Audit Logs page for details.` });
+
+  if (!fields.length) return;
+  const color = latestRecon?.high > 0 || bouncedCheques.length ? 0xef4b4f : Object.keys(sections).length ? 0xf59e0b : 0x22c55e;
+  // Discord caps a single embed at 6000 total characters and 25 fields; stay well under both.
+  const budgetedFields = [];
+  let charBudget = 5300;
+  for (const field of fields) {
+    const cost = field.name.length + field.value.length;
+    if (budgetedFields.length >= 24 || charBudget - cost < 0) { budgetedFields.push({ name: "More", value: `${fields.length - budgetedFields.length} additional item(s) omitted — see the app for full details.` }); break; }
+    budgetedFields.push(field);
+    charBudget -= cost;
+  }
+  await sendDiscordWebhook(env, { embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
 }
 
 async function runDailyDigest(env) {
@@ -1370,6 +1469,7 @@ export default {
           });
         }
         const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: inviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message })) : { sent: false, reason: linkError ? `Invitation link could not be generated: ${linkError}` : "Invitation link could not be generated" };
+        await sendDiscordWebhook(env, { embeds: [{ title: "User Invited", color: 0x0077bd, fields: [{ name: "Name", value: fullName, inline: true }, { name: "Role", value: role, inline: true }, { name: "Email", value: email, inline: false }], timestamp: new Date().toISOString() }] }).catch((error) => console.error(JSON.stringify({ message: "Discord invite notice failed", error: error.message })));
         return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: emailDelivery.sent ? "Invited" : "Email Not Sent" }, emailDelivery }, { status: 201 });
       }
 
@@ -1430,6 +1530,7 @@ export default {
           method: "PUT",
           body: JSON.stringify({ ban_duration: disabled ? "876000h" : "none", user_metadata: { ...(target.user_metadata || {}), disabled_reason: disabled ? String(reason).trim() : "", disabled_at: disabled ? new Date().toISOString() : "" } }),
         });
+        await sendDiscordWebhook(env, { embeds: [{ title: disabled ? "User Disabled" : "User Enabled", color: disabled ? 0xef4b4f : 0x22c55e, fields: [{ name: "Email", value: email, inline: true }, { name: "By", value: profile.name || profile.email || "System User", inline: true }, ...(disabled ? [{ name: "Reason", value: String(reason).trim(), inline: false }] : [])], timestamp: new Date().toISOString() }] }).catch((error) => console.error(JSON.stringify({ message: "Discord user-status notice failed", error: error.message })));
         return json({ ok: true, disabled: Boolean(disabled), reason: disabled ? String(reason).trim() : "" });
       }
 
