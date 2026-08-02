@@ -1469,7 +1469,6 @@ export default {
           });
         }
         const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: inviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message })) : { sent: false, reason: linkError ? `Invitation link could not be generated: ${linkError}` : "Invitation link could not be generated" };
-        await sendDiscordWebhook(env, { embeds: [{ title: "User Invited", color: 0x0077bd, fields: [{ name: "Name", value: fullName, inline: true }, { name: "Role", value: role, inline: true }, { name: "Email", value: email, inline: false }], timestamp: new Date().toISOString() }] }).catch((error) => console.error(JSON.stringify({ message: "Discord invite notice failed", error: error.message })));
         return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: emailDelivery.sent ? "Invited" : "Email Not Sent" }, emailDelivery }, { status: 201 });
       }
 
@@ -1530,7 +1529,6 @@ export default {
           method: "PUT",
           body: JSON.stringify({ ban_duration: disabled ? "876000h" : "none", user_metadata: { ...(target.user_metadata || {}), disabled_reason: disabled ? String(reason).trim() : "", disabled_at: disabled ? new Date().toISOString() : "" } }),
         });
-        await sendDiscordWebhook(env, { embeds: [{ title: disabled ? "User Disabled" : "User Enabled", color: disabled ? 0xef4b4f : 0x22c55e, fields: [{ name: "Email", value: email, inline: true }, { name: "By", value: profile.name || profile.email || "System User", inline: true }, ...(disabled ? [{ name: "Reason", value: String(reason).trim(), inline: false }] : [])], timestamp: new Date().toISOString() }] }).catch((error) => console.error(JSON.stringify({ message: "Discord user-status notice failed", error: error.message })));
         return json({ ok: true, disabled: Boolean(disabled), reason: disabled ? String(reason).trim() : "" });
       }
 
