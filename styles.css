@@ -417,7 +417,7 @@ body.app-route .landing-page { display: none !important; }
 .login-brand { margin-bottom: 26px; color: var(--ink); }
 .login-card h1 { margin: 0; max-width: 420px; font-size: clamp(34px, 6vw, 52px); line-height: .96; letter-spacing: -0.06em; }
 .login-form { display: grid; gap: 12px; margin-top: 28px; }
-.login-form label { font-weight: 900; color: #334155; }
+.login-form label { font-weight: 900; color: var(--ink); }
 .login-form input { width: 100%; border: 1px solid #c8dced; border-radius: 16px; background: var(--panel-solid); padding: 14px 15px; box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.03); }
 .login-form input:focus { outline: 3px solid rgba(14, 165, 233, 0.18); border-color: var(--blue); }
 .login-form small { color: var(--muted); }
@@ -1441,7 +1441,7 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .payment-request-editor-actions { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-top: 6px; }
 .payment-request-total-field { width: min(260px, 100%); }
 .payment-request-fixed-instructions { margin-top: 14px; border: 1px dashed #bfdbfe; border-radius: 16px; background: var(--panel-solid); padding: 12px 14px; }
-.payment-request-fixed-instructions strong { color: #334155; }
+.payment-request-fixed-instructions strong { color: var(--ink); }
 .payment-request-fixed-instructions p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .template-overlay { position: relative; margin: 0 auto; background: var(--panel-solid); color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.12; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12); }
 .template-overlay::before { content: "Data-only print overlay. Use with pre-printed form."; position: absolute; inset: 12px auto auto 12px; color: #94a3b8; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -1541,7 +1541,7 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .modal-header { align-items: flex-start; margin-bottom: 18px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .field { display: grid; gap: 7px; }
-.field label { font-weight: 800; color: #334155; }
+.field label { font-weight: 800; color: var(--ink); }
 .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-solid); padding: 12px 13px; color: var(--ink); }
 .field input[readonly] { cursor: not-allowed; background: var(--tint-strong); color: var(--muted); }
 .field input[readonly]:focus { outline-color: rgba(100, 116, 139, 0.28); }
