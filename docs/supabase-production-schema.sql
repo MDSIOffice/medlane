@@ -1,9 +1,16 @@
 create extension if not exists pgcrypto;
 
 do $$ begin
-  create type app_role as enum ('Superadmin', 'Admin', 'Accounting', 'Sales', 'Logistics', 'HR', 'CEO');
+  create type app_role as enum ('Superadmin', 'Admin', 'Accounting', 'Sales', 'Logistics', 'HR', 'CEO', 'Product Specialist', 'Engineering');
 exception when duplicate_object then null;
 end $$;
+
+-- Run this against an existing database whose app_role enum was created before
+-- Product Specialist / Engineering existed as roles in the app (added later than
+-- Superadmin/Admin/Accounting/Sales/Logistics/HR/CEO) — otherwise inviting or
+-- saving a user with either role fails with "invalid input value for enum app_role".
+-- alter type app_role add value if not exists 'Product Specialist';
+-- alter type app_role add value if not exists 'Engineering';
 
 create table if not exists branches (
   id uuid primary key default gen_random_uuid(),
