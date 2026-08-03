@@ -1564,6 +1564,15 @@ export default {
         const userId = profiles[0]?.id || target?.id;
         const blockers = await userDeleteBlockers(env, { id: userId, email, name: fullName });
         if (blockers.length) return json({ error: `Cannot delete user with active or linked records: ${blockers.join(", ")}` }, { status: 409 });
+        // app_state/app_records/file_objects keep a nullable "who last touched this"
+        // reference to profiles.id. Deleting the profile (directly, or via cascade from
+        // the Auth admin delete below) fails on that foreign key unless those references
+        // are cleared first — the audit rows themselves are preserved, just detached.
+        if (userId) {
+          await supabaseFetch(env, `/rest/v1/app_state?updated_by=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ updated_by: null }) }).catch(() => null);
+          await supabaseFetch(env, `/rest/v1/app_records?updated_by=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ updated_by: null }) }).catch(() => null);
+          await supabaseFetch(env, `/rest/v1/file_objects?uploaded_by=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ uploaded_by: null }) }).catch(() => null);
+        }
         // Delete the Supabase Auth account first so failures here are not silently
         // hidden. If this throws, the profile/permissions rows are left intact so
         // the delete can be retried, and the frontend surfaces a real error instead

@@ -33,6 +33,18 @@ create table if not exists profiles (
 -- alter table profiles add column if not exists password_confirmed_at timestamptz not null default now();
 -- alter table profiles add column if not exists theme_preference text not null default 'light';
 
+-- Run this against an existing database so deleting a user doesn't fail with
+-- "violates foreign key constraint ... app_records_updated_by_fkey" (or the
+-- app_state/file_objects equivalents) once other rows reference their profile id.
+-- The Worker also nulls these out itself before deleting, but fixing the
+-- constraint here means that safety step is no longer strictly required.
+-- alter table app_state drop constraint if exists app_state_updated_by_fkey;
+-- alter table app_state add constraint app_state_updated_by_fkey foreign key (updated_by) references profiles(id) on delete set null;
+-- alter table app_records drop constraint if exists app_records_updated_by_fkey;
+-- alter table app_records add constraint app_records_updated_by_fkey foreign key (updated_by) references profiles(id) on delete set null;
+-- alter table file_objects drop constraint if exists file_objects_uploaded_by_fkey;
+-- alter table file_objects add constraint file_objects_uploaded_by_fkey foreign key (uploaded_by) references profiles(id) on delete set null;
+
 create table if not exists module_permissions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
@@ -45,7 +57,7 @@ create table if not exists module_permissions (
 create table if not exists app_state (
   key text primary key default 'production',
   data jsonb not null default '{}'::jsonb,
-  updated_by uuid references profiles(id),
+  updated_by uuid references profiles(id) on delete set null,
   revision bigint not null default 1,
   updated_at timestamptz not null default now()
 );
@@ -61,7 +73,7 @@ create table if not exists file_objects (
   size_bytes bigint not null check (size_bytes >= 0),
   record_type text not null default 'general',
   record_id text,
-  uploaded_by uuid references profiles(id),
+  uploaded_by uuid references profiles(id) on delete set null,
   uploaded_at timestamptz not null default now(),
   deleted_at timestamptz
 );
@@ -76,7 +88,7 @@ create table if not exists app_records (
   module_name text not null,
   record_key text not null,
   data jsonb not null default '{}'::jsonb,
-  updated_by uuid references profiles(id),
+  updated_by uuid references profiles(id) on delete set null,
   updated_at timestamptz not null default now(),
   unique (state_key, module_name, record_key)
 );
