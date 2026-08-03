@@ -308,6 +308,20 @@ document.body.addEventListener("click", (event) => {
   }
   const invoiceFlow = event.target.closest("[data-invoice-flow]");
   if (invoiceFlow) return renderInvoiceFlowDetail(invoiceFlow.dataset.invoiceFlow);
+  const calendarNav = event.target.closest("[data-calendar-nav]");
+  if (calendarNav) {
+    const widget = calendarNav.closest(".calendar-widget");
+    const prefix = widget?.dataset.calendarPrefix;
+    if (prefix) navigateCalendarWidget(prefix, Number(calendarNav.dataset.calendarNav));
+    return;
+  }
+  const calendarDay = event.target.closest("[data-calendar-day]");
+  if (calendarDay) {
+    const widget = calendarDay.closest(".calendar-widget");
+    const prefix = widget?.dataset.calendarPrefix;
+    if (prefix) showCalendarDayDetail(prefix, calendarDay.dataset.calendarDay);
+    return;
+  }
   const target = event.target.closest("[data-go-section]");
   if (!target) return;
   const notice = event.target.closest("[data-notice-index]");
@@ -343,6 +357,8 @@ function syncThemeToggleLabel() {
   if (!button) return;
   button.setAttribute("aria-checked", String(isDark));
   button.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+  const label = qs("#theme-switch-label");
+  if (label) label.textContent = isDark ? "Dark mode" : "Light mode";
 }
 function setThemePreference(theme) {
   applyThemePreference(theme);
@@ -488,10 +504,9 @@ qs("#users-table").addEventListener("click", async (event) => {
   const index = Number(button.dataset.deleteUser);
   const user = data.users[index];
   if (!user) return;
-  const hasRealName = String(user.name || "").toLowerCase() !== String(user.email || "").toLowerCase();
-  const confirmation = prompt(`Type the user's ${hasRealName ? "full name" : "email"} to delete this user permanently:\n\n${user.name}`);
+  const confirmation = prompt(`Type the user's email to delete this user permanently:\n\n${user.email}`);
   if (confirmation === null) return;
-  if (confirmation.trim().toLowerCase() !== String(user.name || "").toLowerCase()) return toast("Full name did not match. User was not deleted.");
+  if (confirmation.trim().toLowerCase() !== String(user.email || "").toLowerCase()) return toast("Email did not match. User was not deleted.");
   const result = await MedlaneAPI.deleteUser(user.email || user.username, confirmation).catch((error) => ({ error }));
   if (result.error) return toast(result.error.message || "Unable to delete user.");
   data.users.splice(index, 1);
@@ -789,6 +804,12 @@ qs("#logs-role-filter").addEventListener("change", renderLogs);
 qs("#logs-module-filter").addEventListener("change", renderLogs);
 qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
 qs("#load-more-logs").addEventListener("click", loadMoreLogs);
+qs("#logs-user-search-button").addEventListener("click", () => openUserAuditLog(qs("#logs-user-search").value));
+qs("#logs-user-search").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") { event.preventDefault(); openUserAuditLog(qs("#logs-user-search").value); }
+});
+qs("#back-to-logs").addEventListener("click", () => showSection("logs"));
+qs("#load-more-user-logs").addEventListener("click", loadMoreUserAuditLog);
 qs("#clear-notifications").addEventListener("click", () => {
   const dismissed = new Set(data.notificationsDismissed || []);
   data.notifications.filter((notice) => notice.generated && notice.status !== "Unread").forEach((notice) => dismissed.add(`${notice.key}::${notice.record || ""}`));

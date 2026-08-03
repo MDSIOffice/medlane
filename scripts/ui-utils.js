@@ -379,3 +379,74 @@ function workflowFacts() {
   return { activeSales, openSales, overdue, nearDue, lowStock, nearExpiry, missingDocs, pendingContacts, pendingTransfers, pendingExpenses, duePayables, chequeReviews, duplicateClients, openIssues, escalatedIssues };
 }
 
+function calendarEventsForMonth(year, month) {
+  const events = {};
+  const add = (dateValue, entry) => {
+    const key = String(dateValue || "").slice(0, 10);
+    if (!key) return;
+    const parsed = new Date(`${key}T00:00:00`);
+    if (Number.isNaN(parsed.getTime()) || parsed.getFullYear() !== year || parsed.getMonth() + 1 !== month) return;
+    (events[key] ||= []).push(entry);
+  };
+  (data.sales || []).forEach((sale) => {
+    if (sale.status === "Cancelled") return;
+    add(sale.date, { type: "Invoice issued", label: `${sale.id} — ${sale.client}`, tone: "blue", section: "receivables-tracker", record: sale.id });
+    const balance = sale.net - sale.paid;
+    if (balance > 0) {
+      const status = statusForSale(sale);
+      add(fmtDate(addDays(sale.date, sale.terms)), { type: "Invoice due", label: `${sale.id} — ${sale.client} (${peso.format(balance)})`, tone: status === "Overdue" ? "red" : status === "Near Due" ? "orange" : "gray", section: "receivables-tracker", record: sale.id });
+    }
+  });
+  (data.purchaseOrders || []).forEach((po) => add(po.date, { type: "Purchase order", label: `${po.id} — ${po.client}`, tone: "purple", section: "purchase-orders", record: po.id }));
+  (data.inventoryPurchaseOrders || []).forEach((po) => add(po.date, { type: "Inventory PO", label: `${po.id} — ${po.supplier}`, tone: "purple", section: "purchase-orders", record: po.id }));
+  (data.warranties || []).forEach((warranty) => {
+    if (!warranty.warrantyEnd) return;
+    const days = daysUntil(warranty.warrantyEnd);
+    add(warranty.warrantyEnd, { type: "Warranty ends", label: `${warranty.equipment} — ${warranty.client}`, tone: days < 0 ? "red" : days <= 30 ? "orange" : "green", section: "warranty", record: warranty.serial });
+  });
+  (data.paymentRequests || []).forEach((request) => add(request.date, { type: "Payment request", label: `${request.cvNo || request.id || "CV"} — ${request.employee || ""}`.trim(), tone: "teal", section: "collections", record: request.cvNo || request.id || "" }));
+  (data.productIssues || []).forEach((issue) => {
+    add(issue.startDate, { type: "Support report opened", label: `${issue.id} — ${issue.client || issue.equipment || ""}`.trim(), tone: "orange", section: "product-issues", record: issue.id });
+    if (issue.resolvedAt) add(issue.resolvedAt, { type: "Support report resolved", label: `${issue.id} resolved`, tone: "green", section: "product-issues", record: issue.id });
+  });
+  (data.replenishments || []).forEach((expense) => add(expense.date, { type: "Expense", label: `${expense.id} — ${expense.type || "Expense"} (${peso.format(Number(expense.amount || 0))})`, tone: "gray", section: "replenishments", record: expense.id }));
+  (data.payables || []).forEach((payable) => add(payable.date, { type: "Payable", label: `${payable.id} — ${payable.supplier || ""} (${peso.format(Number(payable.amount || 0))})`, tone: "gray", section: "payables", record: payable.id }));
+  return events;
+}
+
+const calendarToneOrder = ["red", "orange", "purple", "teal", "blue", "green", "gray"];
+function calendarWidgetHtml(year, month, events, opts = {}) {
+  const { compact = false, idPrefix = "calendar" } = opts;
+  const firstOfMonth = new Date(year, month - 1, 1);
+  const startOffset = firstOfMonth.getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayKey = fmtDate(today);
+  const monthName = firstOfMonth.toLocaleDateString("en-PH", { month: "long", year: "numeric" });
+  const cells = [];
+  for (let i = 0; i < startOffset; i += 1) cells.push(`<div class="calendar-cell outside" aria-hidden="true"></div>`);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayEvents = (events[key] || []).slice().sort((a, b) => calendarToneOrder.indexOf(a.tone) - calendarToneOrder.indexOf(b.tone));
+    const dots = dayEvents.slice(0, 3).map((entry) => `<span class="calendar-dot ${entry.tone}"></span>`).join("");
+    const overflow = dayEvents.length > 3 ? `<span class="calendar-more">+${dayEvents.length - 3}</span>` : "";
+    cells.push(`<button type="button" class="calendar-cell${key === todayKey ? " is-today" : ""}${dayEvents.length ? " has-events" : ""}" data-calendar-day="${key}"><strong>${day}</strong><span class="calendar-dots">${dots}${overflow}</span></button>`);
+  }
+  return `<div class="calendar-widget${compact ? " compact" : ""}" data-calendar-year="${year}" data-calendar-month="${month}" data-calendar-prefix="${idPrefix}">
+    <div class="calendar-widget-header">
+      <button type="button" class="icon-button" data-calendar-nav="-1" aria-label="Previous month">‹</button>
+      <strong>${escapeHtml(monthName)}</strong>
+      <button type="button" class="icon-button" data-calendar-nav="1" aria-label="Next month">›</button>
+    </div>
+    <div class="calendar-weekday-row">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
+    <div class="calendar-grid">${cells.join("")}</div>
+    <div class="calendar-day-detail" id="${idPrefix}-day-detail" hidden></div>
+  </div>`;
+}
+function calendarDayDetailHtml(dateKey, entries) {
+  const label = new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const rows = entries.length
+    ? entries.map((entry) => `<div class="alert-item clickable" data-go-section="${escapeHtml(entry.section)}" data-focus-record="${escapeHtml(entry.record || "")}"><span class="alert-dot ${entry.tone}"></span><div><strong>${escapeHtml(entry.type)}</strong><span>${escapeHtml(entry.label)}</span></div></div>`).join("")
+    : `<div class="alert-item"><span class="alert-dot green"></span><div><strong>Nothing on this date</strong><span>No invoices, orders, expenses, or expirations recorded.</span></div></div>`;
+  return `<div class="calendar-day-detail-header"><strong>${escapeHtml(label)}</strong></div>${rows}`;
+}
+

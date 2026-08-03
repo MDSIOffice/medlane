@@ -160,6 +160,7 @@ const MedlaneAPI = (() => {
     if (params.dateTo) query.set("dateTo", params.dateTo);
     if (params.role) query.set("role", params.role);
     if (params.module) query.set("module", params.module);
+    if (params.user) query.set("user", params.user);
     if (params.limit) query.set("limit", params.limit);
     if (params.before) query.set("before", params.before);
     return request(`/api/logs${query.toString() ? `?${query}` : ""}`);

@@ -874,6 +874,8 @@ function renderDashboard() {
     [`${data.items.length} products`, "COA/FDA"],
     [`${data.sales.length} SI/TS/DR`, "Client terms"],
   ].map(([label, status]) => `<li><span>${label}</span><strong>${status}</strong></li>`).join("");
+  registerCalendarWidget("dash-cal", "#dashboard-calendar-widget", true);
+  renderCalendarWidget("dash-cal");
   const trendChart = qs("#dashboard-trend-chart");
   if (trendChart) {
     const monthlyTrend = visibleSales.reduce((acc, sale) => {
@@ -893,6 +895,38 @@ function renderDashboard() {
         ]) + graphNote("Computed from invoice net totals, payments received, and open balances grouped by invoice month within the selected date range.")
       : `<p>No sales trend available for this view.</p>`;
   }
+}
+
+const calendarWidgetRegistry = {};
+const calendarViewState = {};
+function registerCalendarWidget(prefix, containerId, compact) { calendarWidgetRegistry[prefix] = { containerId, compact }; }
+function calendarState(prefix) { return calendarViewState[prefix] || (calendarViewState[prefix] = { year: today.getFullYear(), month: today.getMonth() + 1 }); }
+function renderCalendarWidget(prefix) {
+  const config = calendarWidgetRegistry[prefix];
+  const container = config && qs(config.containerId);
+  if (!container) return;
+  const state = calendarState(prefix);
+  const events = calendarEventsForMonth(state.year, state.month);
+  container.innerHTML = calendarWidgetHtml(state.year, state.month, events, { idPrefix: prefix, compact: config.compact });
+}
+function navigateCalendarWidget(prefix, delta) {
+  const state = calendarState(prefix);
+  state.month += delta;
+  if (state.month > 12) { state.month = 1; state.year += 1; }
+  if (state.month < 1) { state.month = 12; state.year -= 1; }
+  renderCalendarWidget(prefix);
+}
+function showCalendarDayDetail(prefix, dateKey) {
+  const state = calendarState(prefix);
+  const events = calendarEventsForMonth(state.year, state.month);
+  const detail = qs(`#${prefix}-day-detail`);
+  if (!detail) return;
+  detail.innerHTML = calendarDayDetailHtml(dateKey, events[dateKey] || []);
+  detail.hidden = false;
+}
+function renderCalendarSection() {
+  registerCalendarWidget("calendar-page", "#calendar-page-widget", false);
+  renderCalendarWidget("calendar-page");
 }
 
 function renderAnalytics() {
@@ -3246,6 +3280,8 @@ function renderLogFilters() {
   qs("#logs-module-filter").innerHTML = [`<option value="all">All Modules</option>`, ...auditLogModules.map((module) => `<option value="${escapeHtml(module)}">${escapeHtml(module)}</option>`)].join("");
   qs("#logs-role-filter").value = roles.includes(selectedRole) ? selectedRole : "all";
   qs("#logs-module-filter").value = auditLogModules.includes(selectedModule) ? selectedModule : "all";
+  const userOptions = qs("#logs-user-options");
+  if (userOptions) userOptions.innerHTML = dedupedUsers().map((u) => `<option value="${escapeHtml(u.name)}"></option>`).join("");
 }
 let logsState = { entries: [], nextCursor: null, loading: false };
 function logFilterParams() {
@@ -3290,7 +3326,59 @@ async function loadMoreLogs() {
   logsState.loading = false;
   renderLogTable();
 }
-function renderAll() { renderBranchFilter(); renderDashboard(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); if (document.body.dataset.activeSection === "logs") renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
+let userAuditLogState = { user: "", entries: [], nextCursor: null, loading: false };
+const userAuditLogWideDateFrom = "2020-01-01T00:00:00.000Z";
+function userAuditLogEventTone(action) {
+  const value = String(action || "").toLowerCase();
+  if (value.includes("delete") || value.includes("cancel") || value.includes("reject") || value.includes("disable") || value.includes("revert")) return "blocked";
+  if (value.includes("approve") || value.includes("resolve") || value.includes("complete") || value.includes("add") || value.includes("create") || value.includes("invite")) return "done";
+  return "pending";
+}
+function renderUserAuditLogTimeline() {
+  const timeline = qs("#user-audit-log-timeline");
+  if (!timeline) return;
+  timeline.innerHTML = userAuditLogState.entries.length
+    ? userAuditLogState.entries.map((entry) => {
+        const tone = userAuditLogEventTone(entry.action);
+        const details = [entry.device, entry.browser, entry.ipAddress].filter(Boolean).join(" · ");
+        return `<div class="event-item ${tone}"><span>${escapeHtml((entry.module || entry.action || "?")[0])}</span><time>${escapeHtml(entry.date || "-")}</time><div><strong>${escapeHtml(entry.action || "-")}</strong><p>${escapeHtml(entry.module || "-")}${entry.record ? ` — ${escapeHtml(String(entry.record).slice(0, 160))}` : ""}</p>${details ? `<small>${escapeHtml(details)}</small>` : ""}</div></div>`;
+      }).join("")
+    : `<p>No recorded actions found for this user.</p>`;
+  const loadMoreButton = qs("#load-more-user-logs");
+  if (loadMoreButton) loadMoreButton.hidden = !userAuditLogState.nextCursor;
+  const summary = qs("#user-audit-log-summary");
+  if (summary) summary.textContent = userAuditLogState.entries.length ? `${userAuditLogState.entries.length} action${userAuditLogState.entries.length === 1 ? "" : "s"} found for ${userAuditLogState.user}, newest first.` : `No actions found for ${userAuditLogState.user}.`;
+}
+async function openUserAuditLog(userName) {
+  const name = String(userName || "").trim();
+  if (!name) return toast("Type a user's name to search.");
+  qs("#user-audit-log-title").textContent = `${name}'s Activity Log`;
+  userAuditLogState = { user: name, entries: [], nextCursor: null, loading: true };
+  showSection("user-audit-log");
+  renderUserAuditLogTimeline();
+  try {
+    const result = await MedlaneAPI.listLogs({ user: name, dateFrom: userAuditLogWideDateFrom, limit: 50 });
+    userAuditLogState = { user: name, entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
+  } catch (error) {
+    userAuditLogState.loading = false;
+    toast(error.message || "Could not load this user's activity log.");
+  }
+  renderUserAuditLogTimeline();
+}
+async function loadMoreUserAuditLog() {
+  if (!userAuditLogState.nextCursor || userAuditLogState.loading) return;
+  userAuditLogState.loading = true;
+  try {
+    const result = await MedlaneAPI.listLogs({ user: userAuditLogState.user, dateFrom: userAuditLogWideDateFrom, limit: 50, before: userAuditLogState.nextCursor });
+    userAuditLogState.entries = [...userAuditLogState.entries, ...(result.entries || [])];
+    userAuditLogState.nextCursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more activity.");
+  }
+  userAuditLogState.loading = false;
+  renderUserAuditLogTimeline();
+}
+function renderAll() { renderBranchFilter(); renderDashboard(); renderCalendarSection(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); if (document.body.dataset.activeSection === "logs") renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
 
 function runReconciliationWorkflow() {
   const scope = getReconScope();
@@ -3392,12 +3480,12 @@ const modalConfigs = {
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Payment Request", fields: [["employee", "Employee / Vendor", "datalist", () => [...new Set([...data.clients.map((client) => client.name), ...data.employees.map((employee) => employee.name), currentUser?.name || "System User"].filter(Boolean))]], ["invoice", "Invoice Being Paid (optional, for collections)", "datalist-optional", () => openInvoicesForPaymentRequest().map((sale) => sale.documentNo || sale.id)], ["department", "Department"], ["cvNo", "CV Number"], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["requestType", "Mode of Request", "select", ["Reimbursement or Liquidation", "Fees, Supplier or Utilities", "Priority"]]] },
-  payable: { title: "Payable Request", fields: [["supplier", "Supplier", "select", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["requestNote", "Request Notes", "textarea"]] },
-  replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["file", "Receipt/File Name"]] },
+  payable: { title: "Payable Request", fields: [["supplier", "Supplier", "select", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea"]] },
+  replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
-  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model"], ["serialNo", "Serial No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "In Progress", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
+  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model", "datalist", () => data.items.map((item) => item.name)], ["serialNo", "Serial No./ Lot No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "In Progress", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
 };
 
 function openModal(type, edit = null) {
@@ -3470,6 +3558,7 @@ function openModal(type, edit = null) {
   if (["payable", "replenishment"].includes(type)) {
     qs("#modal-fields").insertAdjacentHTML("beforeend", renderFinancialRequestEditor());
     syncFinancialRequestTotal();
+    if (!edit) qs("#date").value = fmtDate(today);
   }
   if (type === "paymentRequest") qs("#modal-fields").insertAdjacentHTML("beforeend", renderPaymentRequestEditor(edit?.record?.items || [{}]));
   if (type === "payable") togglePayableFields();

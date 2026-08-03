@@ -1200,6 +1200,7 @@ export default {
         const dateTo = url.searchParams.get("dateTo") || now.toISOString();
         const roleFilter = url.searchParams.get("role") || "";
         const moduleFilter = url.searchParams.get("module") || "";
+        const userFilter = (url.searchParams.get("user") || "").trim().toLowerCase();
         const before = url.searchParams.get("before") || "";
         const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
         let query = `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(dateFrom)}&updated_at=lte.${encodeURIComponent(dateTo)}`;
@@ -1209,6 +1210,7 @@ export default {
         let entries = rows.map((row) => ({ ...row.data, updatedAt: row.updated_at }));
         if (roleFilter) entries = entries.filter((entry) => entry.role === roleFilter);
         if (moduleFilter) entries = entries.filter((entry) => entry.module === moduleFilter);
+        if (userFilter) entries = entries.filter((entry) => String(entry.user || "").trim().toLowerCase() === userFilter);
         const hasMoreRawRows = rows.length === limit * 4;
         entries = entries.slice(0, limit);
         const nextCursor = entries.length === limit || hasMoreRawRows ? rows[rows.length - 1]?.updated_at || null : null;
@@ -1557,10 +1559,8 @@ export default {
         const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
         const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
         const target = (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
-        const hasRealName = Boolean(profiles[0]?.full_name || target?.user_metadata?.full_name);
         const fullName = profiles[0]?.full_name || target?.user_metadata?.full_name || email;
-        const confirmLabel = hasRealName ? "full name" : "email";
-        if (String(confirmation || "").trim().toLowerCase() !== fullName.toLowerCase()) return json({ error: `Type the ${confirmLabel} exactly: ${fullName}` }, { status: 400 });
+        if (cleanEmail(confirmation) !== email) return json({ error: `Type the email exactly: ${email}` }, { status: 400 });
         const userId = profiles[0]?.id || target?.id;
         const blockers = await userDeleteBlockers(env, { id: userId, email, name: fullName });
         if (blockers.length) return json({ error: `Cannot delete user with active or linked records: ${blockers.join(", ")}` }, { status: 409 });
