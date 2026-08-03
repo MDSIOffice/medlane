@@ -39,6 +39,8 @@ create table if not exists profiles (
 -- Run this against an existing database that already has a profiles table:
 -- alter table profiles add column if not exists password_confirmed_at timestamptz not null default now();
 -- alter table profiles add column if not exists theme_preference text not null default 'light';
+-- alter table profiles add column if not exists base_role app_role;
+-- alter table profiles add column if not exists is_superadmin boolean not null default false;
 
 -- Run this against an existing database so deleting a user doesn't fail with
 -- "violates foreign key constraint ... app_records_updated_by_fkey" (or the

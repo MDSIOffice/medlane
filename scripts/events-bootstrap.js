@@ -548,28 +548,30 @@ async function resendUserInvite(index) {
   if (result.error) return toast(result.error.message || "Unable to resend invite.");
   toast(result.emailDelivery?.sent ? `Invitation resent to ${user.email}.` : result.emailDelivery?.reason || "Invite link generated, but email was not sent.");
 }
-qs("#users-table").addEventListener("change", (event) => {
+qs("#users-table").addEventListener("change", async (event) => {
   const checkbox = event.target.closest("[data-user-superadmin]");
   if (!checkbox) return;
   if (!canManageUsers()) { checkbox.checked = !checkbox.checked; return toast("Only Superadmin/CEO can grant Superadmin permissions."); }
   const index = Number(checkbox.dataset.userSuperadmin);
   const user = data.users[index];
   if (!user) return;
-  if (!checkbox.checked && user.name === "Superadmin") { checkbox.checked = true; return toast("The main Superadmin account cannot be demoted."); }
-  if (checkbox.checked) {
-    user.baseRole ||= user.role === "Superadmin" ? "Admin" : user.role;
-    user.role = "Superadmin";
-    user.superadminPermissions = true;
-    user.access = "Everything, users/passwords, salaries, masterlist approvals, notifications";
-  } else {
-    user.role = user.baseRole || "Admin";
-    user.superadminPermissions = false;
-    user.access = user.access?.includes("Everything") ? `${user.role} permissions restored` : user.access;
+  const granted = checkbox.checked;
+  if (String(user.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase()) {
+    checkbox.checked = !granted;
+    return toast("You cannot change your own Superadmin permission.");
   }
-  log("Changed user Superadmin permission", "Users", `${user.email || user.name}: ${checkbox.checked ? "granted" : "removed"}`);
-  saveData();
+  checkbox.disabled = true;
+  const result = await MedlaneAPI.setUserSuperadmin(user.email, granted).catch((error) => ({ error }));
+  checkbox.disabled = false;
+  if (result.error) {
+    checkbox.checked = !granted;
+    return toast(result.error.message || "Unable to update Superadmin permission.");
+  }
+  user.role = result.role || user.role;
+  user.superadminPermissions = granted;
+  log("Changed user Superadmin permission", "Users", `${user.email || user.name}: ${granted ? "granted" : "removed"}`);
   renderUsers();
-  toast(`${user.name} Superadmin permissions ${checkbox.checked ? "granted" : "removed"}.`);
+  toast(`${user.name} Superadmin permissions ${granted ? "granted" : "removed"}.`);
 });
 document.addEventListener("input", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target);

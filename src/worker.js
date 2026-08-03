@@ -1578,6 +1578,41 @@ export default {
         return json({ ok: true, disabled: Boolean(disabled), reason: disabled ? String(reason).trim() : "" });
       }
 
+      if (url.pathname === "/api/users/superadmin") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { email: rawEmail, granted } = await request.json();
+        const email = cleanEmail(rawEmail);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        if (email === cleanEmail(authUser.email)) return json({ error: "You cannot change your own Superadmin permission" }, { status: 400 });
+        const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id,role,base_role`);
+        const target = profiles[0];
+        if (!target) return json({ error: "User profile not found" }, { status: 404 });
+        // Every permission gate in this app checks profiles.role directly, so granting
+        // "Superadmin permissions" has to actually set role = 'Superadmin' (not just a
+        // cosmetic flag) to have any real effect. base_role remembers what to restore
+        // on revoke — it's part of the schema for exactly this, previously unused.
+        if (granted) {
+          if (target.role === "Superadmin") return json({ ok: true, granted: true, role: target.role });
+          await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(target.id)}`, {
+            method: "PATCH",
+            headers: { prefer: "return=minimal" },
+            body: JSON.stringify({ role: "Superadmin", base_role: target.base_role || target.role, is_superadmin: true }),
+          });
+          return json({ ok: true, granted: true, role: "Superadmin" });
+        }
+        const superadmins = await supabaseFetch(env, `/rest/v1/profiles?role=eq.Superadmin&select=id`);
+        if (target.role === "Superadmin" && superadmins.length <= 1) return json({ error: "At least one Superadmin must remain" }, { status: 400 });
+        const restoredRole = target.base_role || "Admin";
+        await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(target.id)}`, {
+          method: "PATCH",
+          headers: { prefer: "return=minimal" },
+          body: JSON.stringify({ role: restoredRole, base_role: null, is_superadmin: false }),
+        });
+        return json({ ok: true, granted: false, role: restoredRole });
+      }
+
       if (url.pathname === "/api/users/delete") {
         const { authUser, profile } = await authenticatedProfile(request, env);
         if (request.method !== "POST") return methodNotAllowed();
