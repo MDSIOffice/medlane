@@ -132,20 +132,48 @@ function inviteEmailHtml({ fullName, email, role, actionLink, origin }) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to Medlane OS</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:12px 0 6px;font-size:34px;line-height:1.05;">Welcome to Medlane OS</h1><p style="margin:0;font-size:16px;line-height:1.6;opacity:.96;">Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.</p></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#fff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f4f9ff;border:1px solid #d8ebfb;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#005a9c;">Security reminder</strong><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Create a password with at least 8 characters, one letter, one number, and one special character. Never share your password or invitation link.</p></div><p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#4c6280;">If the button does not work, copy and paste this link into your browser:</p><p style="word-break:break-all;margin:0 0 18px;font-size:13px;line-height:1.6;color:#0077bd;">${escapeHtml(actionLink)}</p><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Account email: <strong>${escapeHtml(email)}</strong><br>Login site: <a href="${escapeHtml(origin)}" style="color:#0077bd;">${escapeHtml(origin)}</a></p></td></tr><tr><td style="padding:22px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. This message was sent for account access setup. If you did not expect this invitation, ignore this email or contact your administrator.</td></tr></table></td></tr></table></body></html>`;
 }
 
+async function recordSystemLog(env, { action, module, record }) {
+  const stateKey = appStateKey(env);
+  const entry = {
+    date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    user: "System",
+    role: "System",
+    action,
+    module,
+    record: record || "",
+  };
+  await supabaseFetch(env, "/rest/v1/app_records", {
+    method: "POST",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify([{ state_key: stateKey, module_name: "logs", record_key: `logs-${crypto.randomUUID()}`, data: entry, updated_by: null }]),
+  }).catch(() => null);
+}
+
 async function sendResendEmail(env, { to, subject, html }) {
-  if (!env.RESEND_API_KEY) return { sent: false, provider: "resend", reason: "RESEND_API_KEY is not configured" };
+  if (!env.RESEND_API_KEY) {
+    await recordSystemLog(env, { action: "Email skipped", module: "Email", record: `${to} — ${subject} (RESEND_API_KEY not configured)` });
+    return { sent: false, provider: "resend", reason: "RESEND_API_KEY is not configured" };
+  }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({ from: resendFrom(env), to: [to], subject, html }),
   });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.message || payload?.error || `Resend failed: ${response.status}`);
+  if (!response.ok) {
+    await recordSystemLog(env, { action: "Email failed", module: "Email", record: `${to} — ${subject}: ${payload?.message || payload?.error || response.status}` });
+    throw new Error(payload?.message || payload?.error || `Resend failed: ${response.status}`);
+  }
+  await recordSystemLog(env, { action: "Email sent", module: "Email", record: `${to} — ${subject}` });
   return { sent: true, provider: "resend", id: payload?.id || null };
 }
 
 async function sendDiscordWebhook(env, { content = "", embeds = [] } = {}) {
-  if (!env.DISCORD_WEBHOOK_URL) return { sent: false, provider: "discord", reason: "DISCORD_WEBHOOK_URL is not configured" };
+  const label = embeds[0]?.title || content.slice(0, 80) || "Discord message";
+  if (!env.DISCORD_WEBHOOK_URL) {
+    await recordSystemLog(env, { action: "Discord post skipped", module: "Discord", record: `${label} (DISCORD_WEBHOOK_URL not configured)` });
+    return { sent: false, provider: "discord", reason: "DISCORD_WEBHOOK_URL is not configured" };
+  }
   const response = await fetch(env.DISCORD_WEBHOOK_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -153,8 +181,10 @@ async function sendDiscordWebhook(env, { content = "", embeds = [] } = {}) {
   });
   if (!response.ok && response.status !== 204) {
     const text = await response.text().catch(() => "");
+    await recordSystemLog(env, { action: "Discord post failed", module: "Discord", record: `${label}: ${response.status} ${text}` });
     throw new Error(`Discord webhook failed: ${response.status} ${text}`);
   }
+  await recordSystemLog(env, { action: "Discord post sent", module: "Discord", record: label });
   return { sent: true, provider: "discord" };
 }
 
