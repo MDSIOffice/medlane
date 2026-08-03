@@ -1601,6 +1601,11 @@ export default {
             headers: { prefer: "return=minimal" },
             body: JSON.stringify({ role: "Superadmin", base_role: target.base_role || target.role, is_superadmin: true }),
           });
+          // profileForUser() prefers any existing module_permissions rows over role
+          // defaults, so a leftover custom permission set (from before this grant)
+          // would keep the user capped at their old module list despite role =
+          // Superadmin. Clear it so they fall back to the full Superadmin module set.
+          await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(target.id)}`, { method: "DELETE" }).catch(() => null);
           return json({ ok: true, granted: true, role: "Superadmin" });
         }
         const superadmins = await supabaseFetch(env, `/rest/v1/profiles?role=eq.Superadmin&select=id`);

@@ -560,6 +560,7 @@ qs("#users-table").addEventListener("change", async (event) => {
   }
   user.role = result.role || user.role;
   user.superadminPermissions = granted;
+  user.customPermissions = { enabled: false, view: [], edit: [] };
   log("Changed user Superadmin permission", "Users", `${user.email || user.name}: ${granted ? "granted" : "removed"}`);
   renderUsers();
   toast(`${user.name} Superadmin permissions ${granted ? "granted" : "removed"}.`);

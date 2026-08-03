@@ -1519,46 +1519,6 @@ function formDocumentNo(sale) {
   return raw.match(/\d{3,}$/)?.[0] || raw;
 }
 
-function formMoney(value) { return Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function formDate(value = today) { return new Date(value).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }); }
-function clientForSale(sale) { return data.clients.find((client) => client.name === sale.client) || {}; }
-function lineAmount(line) { return Number(line.qty || 0) * Number(line.price || 0); }
-function preparedByName() { return currentUser?.name || "System User"; }
-function approvedByName(type = "SI") { return escapeHtml(invoiceApprovals()[documentType(type)] || "ECTOSOC"); }
-
-function invoiceTemplateOverlay(sale) {
-  const type = documentType(sale.type);
-  if (type === "TS") return transmittalSlipOverlay(sale);
-  if (type === "DR") return deliveryReceiptOverlay(sale);
-  return salesInvoiceOverlay(sale);
-}
-
-function overlayRows(sale, variant) {
-  const lines = sale.lines?.length ? sale.lines : [{ item: sale.item, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: sale.amount / Math.max(Number(sale.qty || 1), 1), lot: "", expiry: "" }];
-  return lines.slice(0, variant === "si" ? 10 : 8).map((line, index) => {
-    const lotExpiry = `<small>Lot ${escapeHtml(line.lot || "-")} · Exp ${escapeHtml(line.expiry || "N/A")}</small>`;
-    if (variant === "si") return `<div class="si-row" style="--row:${index}"><span class="si-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="si-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="si-price">${formMoney(line.price)}</span><span class="si-amount">${formMoney(lineAmount(line))}</span></div>`;
-    if (variant === "ts") return `<div class="ts-row" style="--row:${index}"><span class="ts-code">${escapeHtml(line.code || "")}</span><span class="ts-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="ts-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="ts-amount">${formMoney(lineAmount(line))}</span></div>`;
-    return `<div class="dr-row" style="--row:${index}"><span class="dr-lot">${escapeHtml(line.lot || "")}</span><span class="dr-expiry">${escapeHtml(line.expiry || "")}</span><span class="dr-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item">${escapeHtml(line.item)}</span><span class="dr-price"></span><span class="dr-amount"></span></div>`;
-  }).join("");
-}
-
-function salesInvoiceOverlay(sale) {
-  const client = clientForSale(sale);
-  const breakdown = saleTaxBreakdown(sale);
-  return `<section class="template-overlay template-si">${currentPrintNoDate ? "" : `<span class="field si-date">${formDate(sale.date)}</span>`}<span class="field si-po">${escapeHtml(sale.po || "")}</span><span class="field si-terms">Terms of Payment ${Number(sale.terms || 30)} Days</span><span class="field si-sold">${escapeHtml(sale.client)}</span><span class="field si-registered">${escapeHtml(sale.client)}</span><span class="field si-tin">${escapeHtml(client.tin || "")}</span><span class="field si-address">${escapeHtml(client.address || sale.area || "")}</span>${overlayRows(sale, "si")}<span class="field si-total-sales">${formMoney(breakdown.totalSalesVatInclusive)}</span><span class="field si-net-vat">${formMoney(breakdown.amountNetVat)}</span><span class="field si-discount">${formMoney(sale.discount || 0)}</span><span class="field si-vat">${formMoney(breakdown.addVat)}</span><span class="field si-amount-due">${formMoney(breakdown.totalAmountDue)}</span><span class="field si-prepared">${escapeHtml(preparedByName())}</span><span class="field si-approved">${approvedByName(sale.type)}</span></section>`;
-}
-
-function transmittalSlipOverlay(sale) {
-  const client = clientForSale(sale);
-  return `<section class="template-overlay template-ts">${currentPrintNoDate ? "" : `<span class="field ts-date">${formDate(today)}</span>`}<span class="field ts-po">${escapeHtml(sale.po || "")}</span><span class="field ts-client">${escapeHtml(sale.client)}</span><span class="field ts-address">${escapeHtml(client.address || sale.area || "")}</span>${overlayRows(sale, "ts")}<span class="field ts-tax-label">NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total">${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared">${escapeHtml(preparedByName())}</span><span class="field ts-approved">${approvedByName(sale.type)}</span><span class="field ts-received"></span></section>`;
-}
-
-function deliveryReceiptOverlay(sale) {
-  const client = clientForSale(sale);
-  return `<section class="template-overlay template-dr">${currentPrintNoDate ? "" : `<span class="field dr-date">${formDate(today)}</span>`}<span class="field dr-po">${escapeHtml(sale.po || "")}</span><span class="field dr-terms">${Number(sale.terms || 30)} Days</span><span class="field dr-client">${escapeHtml(sale.client)}</span><span class="field dr-address">${escapeHtml(client.address || sale.area || "")}</span>${overlayRows(sale, "dr")}<span class="field dr-prepared">${escapeHtml(preparedByName())}</span><span class="field dr-recorded"></span><span class="field dr-approved">${approvedByName(sale.type)}</span><span class="field dr-received"></span></section>`;
-}
-
 function saleLinkedPaymentRequests(sale) {
   return data.paymentRequests.filter((request) => request.invoice === sale.documentNo || request.invoice === sale.id);
 }

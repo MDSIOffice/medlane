@@ -478,11 +478,13 @@ body.app-route .landing-page { display: none !important; }
 .nav {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: space-between;
   gap: 7px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 2px 4px 2px 6px;
   min-height: 0;
+  flex: 1 1 auto;
 }
 .nav::-webkit-scrollbar { width: 7px; }
 .nav::-webkit-scrollbar-track { background: var(--sidebar-scroll-track); border-radius: 999px; }
@@ -1240,11 +1242,11 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .invoice-title-row { justify-content: space-between; flex-wrap: wrap; }
 .invoice-subrow { flex-wrap: wrap; }
 .invoice-balance-line { color: var(--blue-dark) !important; font-weight: 900; }
-.invoice-number { margin: 0 !important; font-size: clamp(18px, 2vw, 23px) !important; line-height: 1.05; white-space: nowrap; letter-spacing: -0.035em; }
+.invoice-number { margin: 0 !important; max-width: 100%; font-size: clamp(18px, 2vw, 23px) !important; line-height: 1.05; letter-spacing: -0.035em; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .invoice-headline small { display: block; max-width: 100%; overflow: hidden; color: var(--muted); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .invoice-due-line { flex: 0 0 auto; overflow: visible !important; color: var(--blue-dark) !important; text-overflow: clip !important; white-space: nowrap !important; }
 .invoice-client-line { min-width: 0; }
-.invoice-amount { margin: 0 !important; margin-left: auto !important; text-align: right; font-size: 18px !important; white-space: nowrap; }
+.invoice-amount { margin: 0 !important; margin-left: auto !important; text-align: right; font-size: 18px !important; flex: 0 0 auto; white-space: nowrap; }
 .invoice-type-icon, .invoice-type-badge span { display: inline-grid; place-items: center; border-radius: 12px; background: linear-gradient(135deg, var(--blue), #38bdf8); color: #fff; font-weight: 900; }
 .invoice-type-icon { width: 42px; height: 42px; font-size: 17px; box-shadow: 0 12px 28px rgba(0, 110, 182, 0.22); }
 .invoice-type-badge { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-weight: 900; white-space: nowrap; }
