@@ -618,19 +618,35 @@
 
       <section class="section" id="logs">
         <div class="section-header"><div><p class="eyebrow">Traceability</p><h2>Audit Trail For Data Accuracy</h2></div><button class="ghost-button" id="clear-logs">Clear Logs</button></div>
-        <div class="toolbar log-filter-toolbar">
-          <div class="field"><label for="logs-date-from">From</label><input id="logs-date-from" type="date" /></div>
-          <div class="field"><label for="logs-date-to">To</label><input id="logs-date-to" type="date" /></div>
-          <div class="field"><label for="logs-role-filter">Role</label><select id="logs-role-filter"><option value="all">All Roles</option></select></div>
-          <div class="field"><label for="logs-module-filter">Module</label><select id="logs-module-filter"><option value="all">All Modules</option></select></div>
-          <button class="ghost-button" id="clear-log-filters" type="button">Clear Filters</button>
+        <div class="tabs" id="logs-tabs">
+          <button class="tab active" data-logs-tab="activity" type="button">User Activity</button>
+          <button class="tab" data-logs-tab="notifications" type="button">Discord &amp; Email</button>
         </div>
-        <div class="toolbar log-user-search-toolbar">
-          <div class="field"><label for="logs-user-search">Search User</label><input id="logs-user-search" list="logs-user-options" placeholder="Type a user's name..." /><datalist id="logs-user-options"></datalist></div>
-          <button class="primary-button" id="logs-user-search-button" type="button">View User's Activity Log</button>
+        <div class="logs-panel active" data-logs-panel="activity">
+          <div class="toolbar log-filter-toolbar">
+            <div class="field"><label for="logs-date-from">From</label><input id="logs-date-from" type="date" /></div>
+            <div class="field"><label for="logs-date-to">To</label><input id="logs-date-to" type="date" /></div>
+            <div class="field"><label for="logs-role-filter">Role</label><select id="logs-role-filter"><option value="all">All Roles</option></select></div>
+            <div class="field"><label for="logs-module-filter">Module</label><select id="logs-module-filter"><option value="all">All Modules</option></select></div>
+            <button class="ghost-button" id="clear-log-filters" type="button">Clear Filters</button>
+          </div>
+          <div class="toolbar log-user-search-toolbar">
+            <div class="field"><label for="logs-user-search">Search User</label><input id="logs-user-search" list="logs-user-options" placeholder="Type a user's name..." /><datalist id="logs-user-options"></datalist></div>
+            <button class="primary-button" id="logs-user-search-button" type="button">View User's Activity Log</button>
+          </div>
+          <div class="table-card"><table id="logs-table"></table></div>
+          <div class="server-load-more-row"><button class="ghost-button" id="load-more-logs" type="button" hidden>Load More From Server</button></div>
         </div>
-        <div class="table-card"><table id="logs-table"></table></div>
-        <div class="server-load-more-row"><button class="ghost-button" id="load-more-logs" type="button" hidden>Load More From Server</button></div>
+        <div class="logs-panel" data-logs-panel="notifications">
+          <div class="toolbar log-filter-toolbar">
+            <div class="field"><label for="notification-logs-date-from">From</label><input id="notification-logs-date-from" type="date" /></div>
+            <div class="field"><label for="notification-logs-date-to">To</label><input id="notification-logs-date-to" type="date" /></div>
+            <div class="field"><label for="notification-logs-channel-filter">Channel</label><select id="notification-logs-channel-filter"><option value="all">Discord &amp; Email</option><option value="Discord">Discord only</option><option value="Email">Email only</option></select></div>
+            <button class="ghost-button" id="clear-notification-log-filters" type="button">Clear Filters</button>
+          </div>
+          <div class="table-card"><table id="notification-logs-table"></table></div>
+          <div class="server-load-more-row"><button class="ghost-button" id="load-more-notification-logs" type="button" hidden>Load More From Server</button></div>
+        </div>
       </section>
 
       <section class="section" id="user-audit-log">

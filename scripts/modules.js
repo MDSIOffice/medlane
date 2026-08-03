@@ -3276,7 +3276,7 @@ function formatLogRecord(record) {
   const short = compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
   return `<span class="log-record" title="${escapeHtml(compact)}">${escapeHtml(short)}</span>`;
 }
-const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Discord", "Email", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Request", "Product Issues", "Reconciliation", "Reports", "Settings", "User Settings", "Users"];
+const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Request", "Product Issues", "Reconciliation", "Reports", "Settings", "User Settings", "Users"];
 function renderLogFilters() {
   const selectedRole = qs("#logs-role-filter")?.value || "all";
   const selectedModule = qs("#logs-module-filter")?.value || "all";
@@ -3330,6 +3330,52 @@ async function loadMoreLogs() {
   }
   logsState.loading = false;
   renderLogTable();
+}
+let notificationLogsState = { entries: [], nextCursor: null, loading: false };
+function notificationLogFilterParams() {
+  const from = qs("#notification-logs-date-from")?.value || "";
+  const to = qs("#notification-logs-date-to")?.value || "";
+  const channel = qs("#notification-logs-channel-filter")?.value || "all";
+  return {
+    dateFrom: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
+    dateTo: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
+    module: channel === "all" ? "Discord,Email" : channel,
+  };
+}
+function notificationLogToneClass(action) {
+  const value = String(action || "").toLowerCase();
+  if (value.includes("failed")) return "red";
+  if (value.includes("skipped")) return "orange";
+  return "green";
+}
+function renderNotificationLogTable() {
+  table("#notification-logs-table", ["Date", "Channel", "Action", "Details"], notificationLogsState.entries.map((l) => ({ focus: [l.record, l.action].filter(Boolean).join("|"), cells: [formatLogCell(l.date), `<span class="pill ${notificationLogToneClass(l.action)}">${formatLogCell(l.module)}</span>`, formatLogCell(l.action), formatLogRecord(l.record)] })));
+  const loadMoreButton = qs("#load-more-notification-logs");
+  if (loadMoreButton) loadMoreButton.hidden = !notificationLogsState.nextCursor;
+}
+async function renderNotificationLogs() {
+  notificationLogsState = { entries: [], nextCursor: null, loading: true };
+  try {
+    const result = await MedlaneAPI.listLogs({ ...notificationLogFilterParams(), limit: 50 });
+    notificationLogsState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
+  } catch (error) {
+    notificationLogsState = { entries: [], nextCursor: null, loading: false };
+    toast(error.message || "Could not load Discord/email logs.");
+  }
+  renderNotificationLogTable();
+}
+async function loadMoreNotificationLogs() {
+  if (!notificationLogsState.nextCursor || notificationLogsState.loading) return;
+  notificationLogsState.loading = true;
+  try {
+    const result = await MedlaneAPI.listLogs({ ...notificationLogFilterParams(), limit: 50, before: notificationLogsState.nextCursor });
+    notificationLogsState.entries = [...notificationLogsState.entries, ...(result.entries || [])];
+    notificationLogsState.nextCursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more Discord/email logs.");
+  }
+  notificationLogsState.loading = false;
+  renderNotificationLogTable();
 }
 let userAuditLogState = { user: "", entries: [], nextCursor: null, loading: false };
 const userAuditLogWideDateFrom = "2020-01-01T00:00:00.000Z";

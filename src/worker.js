@@ -1239,7 +1239,7 @@ export default {
         const rows = await supabaseFetch(env, query);
         let entries = rows.map((row) => ({ ...row.data, updatedAt: row.updated_at }));
         if (roleFilter) entries = entries.filter((entry) => entry.role === roleFilter);
-        if (moduleFilter) entries = entries.filter((entry) => entry.module === moduleFilter);
+        if (moduleFilter) { const modules = moduleFilter.split(",").map((m) => m.trim()).filter(Boolean); entries = entries.filter((entry) => modules.includes(entry.module)); }
         if (userFilter) entries = entries.filter((entry) => String(entry.user || "").trim().toLowerCase() === userFilter);
         const hasMoreRawRows = rows.length === limit * 4;
         entries = entries.slice(0, limit);

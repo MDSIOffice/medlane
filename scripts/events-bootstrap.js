@@ -801,6 +801,14 @@ qs("#logs-user-search").addEventListener("keydown", (event) => {
 });
 qs("#back-to-logs").addEventListener("click", () => showSection("logs"));
 qs("#load-more-user-logs").addEventListener("click", loadMoreUserAuditLog);
+qsa("#logs-tabs .tab").forEach((button) => button.addEventListener("click", () => {
+  qsa("#logs-tabs .tab").forEach((tab) => tab.classList.toggle("active", tab === button));
+  qsa(".logs-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.logsPanel === button.dataset.logsTab));
+  if (button.dataset.logsTab === "notifications") renderNotificationLogs();
+}));
+qs("#clear-notification-log-filters").addEventListener("click", () => { qs("#notification-logs-date-from").value = ""; qs("#notification-logs-date-to").value = ""; qs("#notification-logs-channel-filter").value = "all"; renderNotificationLogs(); toast("Filters cleared."); });
+qs("#load-more-notification-logs").addEventListener("click", loadMoreNotificationLogs);
+qs("#notification-logs-channel-filter").addEventListener("change", renderNotificationLogs);
 qs("#clear-notifications").addEventListener("click", () => {
   const dismissed = new Set(data.notificationsDismissed || []);
   data.notifications.filter((notice) => notice.generated && notice.status !== "Unread").forEach((notice) => dismissed.add(`${notice.key}::${notice.record || ""}`));
