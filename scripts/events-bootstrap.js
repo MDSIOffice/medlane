@@ -80,7 +80,6 @@ async function submitModal(event) {
     const previous = editContext.list[editContext.index];
     const next = { ...values };
     if (modalType === "item" && next.classification) next.category = importedCategory(next.classification);
-    if (modalType === "item" && next.expiry && daysUntil(next.expiry) < 0) return toast("Expiry date cannot be in the past.");
     if (modalType === "employee" && !canManageEmployeeSalary()) next.salary = editContext.list[editContext.index].salary;
     try { validateMasterRecord(modalType, next, editContext.index); }
     catch (error) { return toast(error.message); }
@@ -98,19 +97,11 @@ async function submitModal(event) {
   }
   if (["client", "item", "bank"].includes(modalType)) {
     if (modalType === "item" && values.classification) values.category = importedCategory(values.classification);
-    if (modalType === "item" && values.expiry && daysUntil(values.expiry) < 0) return toast("Expiry date cannot be in the past.");
     try { validateMasterRecord(modalType, values); }
     catch (error) { return toast(error.message); }
   }
   if (modalType === "client") data.clients.push({ ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" });
-  if (modalType === "item") {
-    data.items.push(values);
-    if (values.classification === "Equipment") {
-      const serial = values.lot || values.code;
-      data.warranties.push({ client: values.supplier || "Unassigned", equipment: values.name, serial, installDate: fmtDate(today), warrantyEnd: values.expiry || "", status: "Active", service: "Auto-added when equipment was created in the Items masterlist." });
-      notify("Warranty", `${values.name} added to warranty tracking.`, "warranty", serial);
-    }
-  }
+  if (modalType === "item") data.items.push(values);
   if (modalType === "bank") data.banks.push(values);
   if (modalType === "supplier") data.suppliers.push(values);
   if (modalType === "employee") data.employees.push({ ...values, salary: canManageEmployeeSalary() ? Number(values.salary || 0) : 0 });

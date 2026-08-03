@@ -1512,15 +1512,15 @@ button.calendar-cell:hover { background: var(--tint); }
 .si-date { left: 6.15in; top: 1.58in; width: 1.35in; text-align: center; }
 .si-po { left: 6.1in; top: 1.9in; width: 1.8in; text-align: center; }
 .si-terms { left: 5.55in; top: 2.22in; width: 2.2in; text-align: center; }
-.si-sold { left: 1.32in; top: 2.55in; width: 3.2in; }
-.si-registered { left: 1.65in; top: 2.91in; width: 3.45in; }
-.si-tin { left: 0.75in; top: 3.22in; width: 2.0in; }
-.si-address { left: 1.55in; top: 3.52in; width: 5.7in; }
-.si-row { position: absolute; left: 0.55in; right: 0.45in; top: calc(4.22in + (var(--row) * 0.31in)); height: 0.3in; }
-.si-item { position: absolute; left: 0.1in; width: 4.72in; }
-.si-qty { position: absolute; left: 5.05in; width: 0.8in; text-align: center; }
-.si-price { position: absolute; left: 5.88in; width: 0.75in; text-align: right; }
-.si-amount { position: absolute; left: 6.9in; width: 0.95in; text-align: right; }
+.si-sold { left: 1.32in; top: 2.05in; width: 3.2in; }
+.si-registered { left: 1.65in; top: 2.41in; width: 3.45in; }
+.si-tin { left: 0.75in; top: 2.72in; width: 2.0in; }
+.si-address { left: 1.55in; top: 3.02in; width: 5.7in; }
+.si-row { position: absolute; left: 0.55in; right: 0.45in; top: calc(3.72in + (var(--row) * 0.31in)); height: 0.3in; }
+.si-item { position: absolute; left: 0.1in; width: 4.4in; }
+.si-qty { position: absolute; left: 4.7in; width: 0.8in; text-align: center; }
+.si-price { position: absolute; left: 5.55in; width: 0.75in; text-align: right; }
+.si-amount { position: absolute; left: 6.5in; width: 0.85in; text-align: right; }
 .si-total-sales { left: 7.0in; top: 8.22in; width: 0.95in; text-align: right; }
 .si-net-vat { left: 7.0in; top: 8.85in; width: 0.95in; text-align: right; }
 .si-discount { left: 7.0in; top: 9.18in; width: 0.95in; text-align: right; }
@@ -1529,15 +1529,15 @@ button.calendar-cell:hover { background: var(--tint); }
 .si-prepared { left: 4.05in; top: 10.38in; width: 1.4in; text-align: center; }
 .si-approved { left: 4.05in; top: 10.68in; width: 1.4in; text-align: center; }
 .template-ts .doc-no { left: 7.95in; top: 0.72in; width: 0.72in; text-align: center; font-size: 18px; color: var(--text-on-red-chip); letter-spacing: 0.08em; }
-.ts-date { left: 7.35in; top: 1.74in; width: 1.2in; text-align: center; }
-.ts-po { left: 7.28in; top: 2.36in; width: 1.25in; text-align: center; }
-.ts-client { left: 1.43in; top: 1.58in; width: 4.35in; }
-.ts-address { left: 0.72in; top: 1.96in; width: 5.1in; }
-.ts-row { position: absolute; left: 0.18in; right: 0.25in; top: calc(3.0in + (var(--row) * 0.34in)); height: 0.32in; }
+.ts-date { left: 6.9in; top: 1.74in; width: 1.1in; text-align: center; }
+.ts-po { left: 6.85in; top: 2.36in; width: 1.15in; text-align: center; }
+.ts-client { left: 1.43in; top: 1.4in; width: 4.35in; }
+.ts-address { left: 0.72in; top: 1.75in; width: 5.1in; }
+.ts-row { position: absolute; left: 0.18in; right: 0.6in; top: calc(2.65in + (var(--row) * 0.34in)); height: 0.32in; }
 .ts-code { position: absolute; left: 0.15in; width: 1.25in; text-align: center; }
-.ts-item { position: absolute; left: 1.78in; width: 4.7in; }
-.ts-qty { position: absolute; left: 6.9in; width: 0.9in; text-align: center; }
-.ts-amount { position: absolute; left: 7.98in; width: 0.75in; text-align: right; }
+.ts-item { position: absolute; left: 1.78in; width: 4.4in; }
+.ts-qty { position: absolute; left: 6.5in; width: 0.8in; text-align: center; }
+.ts-amount { position: absolute; left: 7.3in; width: 0.75in; text-align: right; }
 .ts-tax-label { left: 1.28in; top: 7.1in; width: 3.4in; font-size: 15px; }
 .ts-total { left: 7.98in; top: 7.08in; width: 0.75in; text-align: right; }
 .ts-prepared { left: 0.62in; top: 7.72in; width: 2.2in; text-align: center; }
