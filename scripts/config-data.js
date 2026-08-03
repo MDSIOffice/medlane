@@ -1,5 +1,5 @@
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 });
-const today = new Date("2026-07-15T09:00:00");
+const today = new Date();
 const uomOptions = ["box", "kit", "piece", "vial", "gallon", "bottle", "set", "unit"];
 const supplierClassificationOptions = ["ACCOMMODATION", "BIDDING", "FREIGHT FEE", "FUEL", "GOVERNMENT BENEFITS", "IMPORTATION", "INSURANCE", "LEGAL AND PROFESSIONAL FEES", "LICENSES AND PERMIT", "LOCAL PURCHASES", "OFFICE EXPENSE", "OFFICE SUPPLIES", "OTHERS - INSURANCE", "PARKING FEE", "PER DIEM", "PETTY CASH", "REPAIR AND MAINTENANCE", "REPRESENTATION", "SPONSORSHIP", "TOLL FEE", "TRANSPORTATION", "UTILITIES", "WAREHOUSE EXPENSE"];
 const productClassificationOptions = ["Accessories", "Consumables", "Equipment", "Reagents and Diagnostic kit", "Spare parts", "Supplies", "Tools"];

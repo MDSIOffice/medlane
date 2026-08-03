@@ -256,6 +256,8 @@ document.body.addEventListener("click", (event) => {
   if (paymentRequestCancel) return cancelPaymentRequest(paymentRequestCancel.dataset.paymentRequestCancel);
   const paymentRequestTimeline = event.target.closest("[data-payment-request-timeline]");
   if (paymentRequestTimeline) return renderPaymentRequestDetail(paymentRequestTimeline.dataset.paymentRequestTimeline);
+  const openPaymentRequest = event.target.closest("[data-open-payment-request]");
+  if (openPaymentRequest) { closeReportPreview(); return renderPaymentRequestDetail(openPaymentRequest.dataset.openPaymentRequest); }
   const requestPreview = event.target.closest("[data-request-preview]");
   if (requestPreview) { const [type, index] = requestPreview.dataset.requestPreview.split(":"); return previewFinancialRequest(type, Number(index)); }
   const requestApprove = event.target.closest("[data-request-approve]");
@@ -616,12 +618,6 @@ qs("#transfer-table").addEventListener("click", (event) => {
   if (complete) return completeIncompleteTransfer(Number(complete.dataset.completeTransfer));
 });
 qs("#collections").addEventListener("click", (event) => {
-  const zoomButton = event.target.closest("[data-map-zoom]");
-  if (zoomButton) {
-    collectionMapZoom = zoomButton.dataset.mapZoom === "reset" ? 1 : Math.max(0.75, Math.min(2.2, collectionMapZoom + (zoomButton.dataset.mapZoom === "in" ? 0.18 : -0.18)));
-    renderCollectionMapVisual();
-    return;
-  }
   const statusButton = event.target.closest("[data-contact-status]");
   if (statusButton) return updateCollectionContact(statusButton.dataset.contactClient, statusButton.dataset.contactStatus);
   const channelButton = event.target.closest("[data-contact-channel]");
@@ -629,11 +625,6 @@ qs("#collections").addEventListener("click", (event) => {
   const mapTarget = event.target.closest("[data-map-region]");
   if (mapTarget) return openContactRegion(mapTarget.dataset.mapRegion, mapTarget.dataset.mapClient || "", false);
 });
-qs("#collection-map").addEventListener("wheel", (event) => {
-  event.preventDefault();
-  collectionMapZoom = Math.max(0.75, Math.min(2.2, collectionMapZoom + (event.deltaY < 0 ? 0.12 : -0.12)));
-  renderCollectionMapVisual();
-}, { passive: false });
 qs("#ar-tracker-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-ar-tab]");
   if (!button) return;

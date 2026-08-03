@@ -1076,11 +1076,15 @@ select, .search-input {
 .alert-list, .branch-bars { display: grid; gap: 12px; margin-top: 18px; }
 .alert-item {
   display: flex;
+  width: 100%;
   gap: 12px;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: linear-gradient(135deg, var(--panel-solid), var(--tint));
   padding: 14px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
 }
 .notification-popover .alert-item { border-color: rgba(0, 110, 182, 0.18); background: linear-gradient(135deg, var(--chip-blue-bg), var(--panel-solid)); }
 .alert-item.clickable { cursor: pointer; transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease; }

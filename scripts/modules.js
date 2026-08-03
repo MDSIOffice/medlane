@@ -1559,12 +1559,16 @@ function deliveryReceiptOverlay(sale) {
   return `<section class="template-overlay template-dr">${currentPrintNoDate ? "" : `<span class="field dr-date">${formDate(today)}</span>`}<span class="field dr-po">${escapeHtml(sale.po || "")}</span><span class="field dr-terms">${Number(sale.terms || 30)} Days</span><span class="field dr-client">${escapeHtml(sale.client)}</span><span class="field dr-address">${escapeHtml(client.address || sale.area || "")}</span>${overlayRows(sale, "dr")}<span class="field dr-prepared">${escapeHtml(preparedByName())}</span><span class="field dr-recorded"></span><span class="field dr-approved">${approvedByName(sale.type)}</span><span class="field dr-received"></span></section>`;
 }
 
+function saleLinkedPaymentRequests(sale) {
+  return data.paymentRequests.filter((request) => request.invoice === sale.documentNo || request.invoice === sale.id);
+}
 function showSaleDetail(invoiceId) {
   const sale = data.sales.find((item) => item.id === invoiceId);
   if (!sale) return toast("Sale not found.");
   clearPrintTarget();
   currentReportSaleId = sale.id;
   const breakdown = saleTaxBreakdown(sale);
+  const linkedRequests = saleLinkedPaymentRequests(sale);
   qs("#report-preview-title").textContent = `${sale.type} ${sale.documentNo || sale.id}`;
   qs("#report-preview-description").textContent = `${sale.client} · ${sale.area} · ${statusForSale(sale)}`;
   qs("#report-preview-content").innerHTML = `
@@ -1583,6 +1587,7 @@ function showSaleDetail(invoiceId) {
     </div>
     <p><strong>Manual discount:</strong> ${peso.format(sale.discount || 0)} ${sale.discountReason ? `· ${escapeHtml(sale.discountReason)}` : ""}</p>
     <div class="table-card"><table><thead><tr><th>Item</th><th>Brand</th><th>Lot No.</th><th>Expiry</th><th>Qty</th><th>UOM</th><th>Price</th><th>Gross Subtotal</th></tr></thead><tbody>${(sale.lines || []).map((line) => `<tr><td>${escapeHtml(line.item)}</td><td>${escapeHtml(line.brand)}</td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "-")}</td><td>${line.qty}</td><td>${escapeHtml(line.uom)}</td><td>${peso.format(line.price)}</td><td>${peso.format(lineSubtotal(line))}</td></tr>`).join("")}</tbody></table></div>
+    ${linkedRequests.length ? `<p class="graph-note">Payment request${linkedRequests.length === 1 ? "" : "s"} created for this invoice</p><div class="alert-list">${linkedRequests.map((request) => `<button type="button" class="alert-item clickable" data-open-payment-request="${escapeHtml(request.cvNo)}"><span class="alert-dot ${statusClass(request.requestStatus || request.status)}"></span><div><strong>${escapeHtml(request.cvNo)}</strong><span>${escapeHtml(request.employee || "-")} · ${peso.format(request.total || 0)} · ${escapeHtml(request.requestStatus || request.status || "-")}</span></div></button>`).join("")}</div>` : ""}
   `;
   qs("#report-preview-modal").showModal();
 }
@@ -2007,7 +2012,7 @@ async function renderCollectionMapVisual() {
   } catch {
     overlays = "";
   }
-  qs("#collection-map").innerHTML = `<div class="map-topbar"><div class="map-legend static"><span class="answered">Answered</span><span class="tracked">Tracked</span><span class="unreached">Unreached</span><span class="no-response">No Reply</span><span class="pending">Pending</span></div><div class="map-zoom-controls"><button class="mini-button" data-map-zoom="out" type="button">−</button><strong>${Math.round(collectionMapZoom * 100)}%</strong><button class="mini-button" data-map-zoom="in" type="button">+</button><button class="mini-button" data-map-zoom="reset" type="button">Reset</button></div></div><div class="map-pan-viewport"><svg class="static-ph-map" width="${Math.round(1000 * collectionMapZoom)}" height="${Math.round(891 * collectionMapZoom)}" viewBox="0 0 2524 2248" role="img" aria-label="Philippines client follow-up map"><rect width="2524" height="2248" rx="72"></rect><image class="ph-reference-map" href="ph-07.png" x="0" y="0" width="2524" height="2248" preserveAspectRatio="xMidYMid meet"></image><g class="map-overlay-layer">${overlays}</g><g class="map-label-layer">${labels}</g></svg></div>`;
+  qs("#collection-map").innerHTML = `<div class="map-topbar"><div class="map-legend static"><span class="answered">Answered</span><span class="tracked">Tracked</span><span class="unreached">Unreached</span><span class="no-response">No Reply</span><span class="pending">Pending</span></div></div><div class="map-pan-viewport"><svg class="static-ph-map" width="${Math.round(1000 * collectionMapZoom)}" height="${Math.round(891 * collectionMapZoom)}" viewBox="0 0 2524 2248" role="img" aria-label="Philippines client follow-up map"><rect width="2524" height="2248" rx="72"></rect><image class="ph-reference-map" href="ph-07.png" x="0" y="0" width="2524" height="2248" preserveAspectRatio="xMidYMid meet"></image><g class="map-overlay-layer">${overlays}</g><g class="map-label-layer">${labels}</g></svg></div>`;
   requestAnimationFrame(() => {
     const viewport = qs("#collection-map .map-pan-viewport");
     if (viewport) viewport.scrollLeft = Math.max(0, (viewport.scrollWidth - viewport.clientWidth) * 0.42);
