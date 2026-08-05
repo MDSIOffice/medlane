@@ -580,24 +580,27 @@ qs("#users-table").addEventListener("click", async (event) => {
   if (resetButton) return setUserPasswordPrompt(Number(resetButton.dataset.resetUserPassword));
   const copyLinkButton = event.target.closest("[data-copy-invite-link]");
   if (copyLinkButton) return copyInviteLink(Number(copyLinkButton.dataset.copyInviteLink));
-  const button = event.target.closest("[data-delete-user]");
+  const button = event.target.closest("[data-archive-user]");
   if (!button) return;
-  if (!canManageUsers()) return toast("Only Superadmin/CEO can delete users.");
-  const index = Number(button.dataset.deleteUser);
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can archive users.");
+  const index = Number(button.dataset.archiveUser);
   const user = data.users[index];
   if (!user) return;
-  const fullName = user.name || user.full_name || user.email;
-  const confirmation = prompt(`Type the user's full name to delete this user permanently:\n\n${fullName}`);
-  if (confirmation === null) return;
-  if (confirmation.trim() !== String(fullName || "")) return toast("Full name did not match. User was not deleted.");
-  const result = await MedlaneAPI.deleteUser(user.email || user.username, confirmation).catch((error) => ({ error }));
-  if (result.error) return toast(result.error.message || "Unable to delete user.");
-  data.users.splice(index, 1);
+  if (String(user.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase()) return toast("You cannot archive your own account.");
+  const reason = prompt(`Reason for archiving ${user.name || user.email}:`, "Archived by admin");
+  if (!String(reason || "").trim()) return toast("Archive reason is required.");
+  const result = await MedlaneAPI.setUserDisabled(user.email || user.username, true, String(reason).trim()).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to archive user.");
   await syncBackendUsers();
-  log("Deleted user", "Users", `${user.email || user.name} · ${user.role}`);
+  const archivedUser = data.users.find((entry) => String(entry.email || entry.username || "").trim().toLowerCase() === String(user.email || user.username || "").trim().toLowerCase()) || user;
+  archivedUser.inviteStatus = "Archived";
+  archivedUser.disabledReason = String(reason).trim();
+  archivedUser.archivedAt = new Date().toISOString();
+  archivedUser.archivedBy = currentUser?.email || currentUser?.name || "System User";
+  log("Archived user", "Users", `${user.email || user.name} · ${user.role}`);
   saveData();
   renderUsers();
-  toast(`${user.name} deleted.`);
+  toast(`${user.name || user.email} archived.`);
 });
 
 async function toggleUserDisabled(index) {
@@ -605,7 +608,7 @@ async function toggleUserDisabled(index) {
   const user = data.users[index];
   if (!user?.email) return toast("User email is required.");
   if (user.email === currentUser?.email) return toast("You cannot disable your own account.");
-  const disabled = !String(user.inviteStatus || "Active").toLowerCase().includes("disabled");
+  const disabled = !/disabled|archived/i.test(user.inviteStatus || "Active");
   const verb = disabled ? "disable" : "enable";
   if (!confirm(`${disabled ? "Disable" : "Enable"} ${user.name || user.email}?`)) return;
   const reason = disabled ? prompt(`Reason for disabling ${user.name || user.email}:`) : "";

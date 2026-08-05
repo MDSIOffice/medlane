@@ -2173,10 +2173,6 @@ async function renderCollectionMapVisual() {
     overlays = "";
   }
   qs("#collection-map").innerHTML = `<div class="map-topbar"><div class="map-legend static"><span class="answered">Answered</span><span class="tracked">Tracked</span><span class="unreached">Unreached</span><span class="no-response">No Reply</span><span class="pending">Pending</span></div></div><div class="map-pan-viewport"><svg class="static-ph-map" width="${Math.round(1000 * collectionMapZoom)}" height="${Math.round(891 * collectionMapZoom)}" viewBox="0 0 2524 2248" role="img" aria-label="Philippines client follow-up map"><rect width="2524" height="2248" rx="72"></rect><image class="ph-reference-map" href="ph-07.png" x="0" y="0" width="2524" height="2248" preserveAspectRatio="xMidYMid meet"></image><g class="map-overlay-layer">${overlays}</g><g class="map-label-layer">${labels}</g></svg></div>`;
-  requestAnimationFrame(() => {
-    const viewport = qs("#collection-map .map-pan-viewport");
-    if (viewport) viewport.scrollLeft = Math.max(0, (viewport.scrollWidth - viewport.clientWidth) * 0.42);
-  });
 }
 
 function regionTrackingStatus(area) {
@@ -3502,7 +3498,7 @@ function userStatusClass(status = "Active") {
   const value = String(status).toLowerCase();
   if (value.includes("active")) return "green";
   if (value.includes("pending") || value.includes("invite")) return "orange";
-  if (value.includes("not sent") || value.includes("disabled")) return "red";
+  if (value.includes("not sent") || value.includes("disabled") || value.includes("archived")) return "red";
   return "gray";
 }
 function renderRoleTester() {
@@ -3537,12 +3533,12 @@ function renderUsers() {
     const accessSummary = u.customPermissions?.enabled ? `${u.customPermissions.view?.length || 0} view / ${u.customPermissions.edit?.length || 0} edit modules` : u.access || `${u.role} default permissions`;
     const inviteStatus = u.inviteStatus || "Active";
     const resend = String(inviteStatus).toLowerCase().includes("active") ? "" : `<button class="mini-button" data-resend-invite="${index}">Resend Invite</button>`;
-    const disabled = String(inviteStatus).toLowerCase().includes("disabled");
+    const disabled = /disabled|archived/i.test(inviteStatus);
     const isSelf = String(u.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase() || (u.id && u.id === currentUser?.id);
     const statusAction = isSelf ? "" : `<button class="mini-button ${disabled ? "" : "danger-button"}" data-toggle-user-disabled="${index}">${disabled ? "Enable" : "Disable"}</button>`;
     const statusCell = `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>${u.disabledReason ? `<small>${escapeHtml(u.disabledReason)}</small>` : ""}`;
-    const deleteAction = isSelf ? "" : `<button class="mini-button danger-button" data-delete-user="${index}">Delete Permanently</button>`;
-    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-copy-invite-link="${index}">Copy Invite Link</button><button class="mini-button" data-reset-user-password="${index}">Set Password</button>${resend}${statusAction}${deleteAction}</div></details>`;
+    const archiveAction = isSelf ? "" : `<button class="mini-button danger-button" data-archive-user="${index}">Archive User</button>`;
+    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-copy-invite-link="${index}">Copy Invite Link</button><button class="mini-button" data-reset-user-password="${index}">Set Password</button>${resend}${statusAction}${archiveAction}</div></details>`;
     return { focus: email || name, cells: [escapeHtml(name), email || "-", `<span class="pill ${statusClass(u.role)}">${escapeHtml(u.role)}</span>`, statusCell, grantControl, escapeHtml(accessSummary), canManageUsers() ? actions : "Superadmin/CEO only"] };
   }));
 }

@@ -18,7 +18,7 @@ function inventoryStatus(item) {
 function statusClass(status) {
   const value = String(status).toLowerCase();
   if (value.includes("paid") && !value.includes("unpaid") && !value.includes("partial")) return "green";
-  if (value.includes("partial") || value.includes("near") || value.includes("approval") || value.includes("delivered") || value.includes("incomplete")) return "orange";
+  if (value.includes("partial") || value.includes("near") || value.includes("approval") || value.includes("pending") || value.includes("delivered") || value.includes("incomplete")) return "orange";
   if (value.includes("overdue") || value.includes("critical") || value.includes("low") || value.includes("unpaid") || value.includes("cancelled") || value.includes("disposal")) return "red";
   if (value.includes("si") || value.includes("admin")) return "purple";
   return "gray";
