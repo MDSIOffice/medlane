@@ -1,3 +1,7 @@
+-- Baseline schema for first-time database setup.
+-- For an existing production database, do not rerun this whole file for small fixes.
+-- Use files in docs/migrations/ instead so only the intended objects are changed.
+
 create extension if not exists pgcrypto;
 
 do $$ begin
@@ -141,6 +145,23 @@ create index if not exists app_records_module_idx on app_records(state_key, modu
 create index if not exists app_sessions_user_idx on app_sessions(user_id, revoked_at, last_seen_at desc);
 create index if not exists backup_runs_type_idx on backup_runs(state_key, backup_type, created_at desc);
 
+create or replace function prevent_app_records_delete()
+returns trigger
+language plpgsql
+as $$
+begin
+  if current_setting('medlane.allow_app_records_delete', true) = 'on' then
+    return old;
+  end if;
+  raise exception 'APP_RECORDS_DELETE_BLOCKED: app_records deletes are disabled to prevent data wipes. Use a reviewed maintenance transaction with set local medlane.allow_app_records_delete = ''on'' only for intentional restores.';
+end;
+$$;
+
+drop trigger if exists app_records_delete_guard on app_records;
+create trigger app_records_delete_guard
+before delete on app_records
+for each row execute function prevent_app_records_delete();
+
 alter table profiles enable row level security;
 alter table module_permissions enable row level security;
 alter table app_state enable row level security;
@@ -264,7 +285,8 @@ grant select, insert, update, delete on table branches to service_role;
 grant select, insert, update, delete on table profiles to service_role;
 grant select, insert, update, delete on table module_permissions to service_role;
 grant select, insert, update, delete on table app_state to service_role;
-grant select, insert, update, delete on table app_records to service_role;
+grant select, insert, update on table app_records to service_role;
+revoke delete, truncate on table app_records from service_role;
 grant select, insert, update, delete on table file_objects to service_role;
 grant select, insert, update, delete on table storage_usage to service_role;
 grant select, insert, update, delete on table app_sessions to service_role;
@@ -281,6 +303,7 @@ grant select on table backup_runs to authenticated;
 grant execute on function update_app_state(bigint, jsonb, uuid, text) to service_role;
 grant execute on function reserve_file_storage(text, bigint, bigint) to service_role;
 grant execute on function release_file_storage(text, bigint) to service_role;
+grant execute on function prevent_app_records_delete() to service_role;
 
 insert into branches (name, address) values
   ('Las Pinas', '13 Gumamela St, Pilar Village, Las Pinas, Metro Manila 1740, PH'),

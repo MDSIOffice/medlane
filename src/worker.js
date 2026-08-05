@@ -1322,15 +1322,25 @@ export default {
             // real data (the exact bug that previously erased the database), not
             // an intentional bulk delete — refuse it and log full context instead
             // of silently applying it.
-            const beforeRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name`);
+            const beforeRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name,record_key`);
             const beforeCounts = {};
-            for (const row of beforeRows) beforeCounts[row.module_name] = (beforeCounts[row.module_name] || 0) + 1;
+            const beforeKeysByModule = {};
+            for (const row of beforeRows) {
+              beforeCounts[row.module_name] = (beforeCounts[row.module_name] || 0) + 1;
+              beforeKeysByModule[row.module_name] ||= new Set();
+              beforeKeysByModule[row.module_name].add(row.record_key);
+            }
             const afterCounts = {};
-            for (const row of rows) afterCounts[row.module_name] = (afterCounts[row.module_name] || 0) + 1;
+            const incomingKeysByModule = {};
+            for (const row of rows) {
+              afterCounts[row.module_name] = (afterCounts[row.module_name] || 0) + 1;
+              incomingKeysByModule[row.module_name] ||= new Set();
+              incomingKeysByModule[row.module_name].add(row.record_key);
+            }
             const totalBefore = beforeRows.length;
             const totalAfter = rows.length;
-            const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) >= 5 && (afterCounts[key] || 0) === 0);
-            const bulkLoss = totalBefore >= 20 && totalAfter < totalBefore * 0.5;
+            const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
+            const bulkLoss = totalBefore >= 5 && totalAfter < totalBefore * 0.5;
 
             if (wipedModules.length || bulkLoss) {
               const deltaSummary = presentKeys.map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
@@ -1343,13 +1353,26 @@ export default {
               throw new Error(`Save blocked: this would delete most or all records in ${wipedModules.length ? wipedModules.join(", ") : "several modules"} (${totalBefore} -> ${totalAfter} total records). If this is intentional, delete records individually instead of via a bulk save, or contact an administrator. This attempt has been recorded in Audit Logs.`);
             }
 
-            await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}`, { method: "DELETE" });
             if (rows.length) {
-              await supabaseFetch(env, "/rest/v1/app_records", {
+              await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
                 method: "POST",
-                headers: { prefer: "return=minimal" },
+                headers: { prefer: "resolution=merge-duplicates,return=minimal" },
                 body: JSON.stringify(rows),
               });
+            }
+            const missingSummary = presentKeys.map((key) => {
+              const beforeKeys = beforeKeysByModule[key] || new Set();
+              const incomingKeys = incomingKeysByModule[key] || new Set();
+              const missing = [...beforeKeys].filter((recordKey) => !incomingKeys.has(recordKey));
+              return missing.length ? `${key}: preserved ${missing.length} existing record(s) absent from save` : "";
+            }).filter(Boolean).join(", ");
+            if (missingSummary) {
+              await writeAuditTrace(env, stateKey, {
+                actor, role: profile.role,
+                action: "Ignored destructive save cleanup",
+                module: "System",
+                record: missingSummary,
+              }, authUser.id, auditContext);
             }
 
             // Trace every save so a future incident can be pinpointed to the exact
@@ -1435,8 +1458,7 @@ export default {
           if (fullyReceived) { po.receivedBy = by; po.receivedAt = shortDate(); }
           po.history.push({ date: timestamp, status: po.status, note: `Received ${totalReceived} unit(s) across ${submittedLines.length} line(s).`, by });
           const invRecords = recordsFromState({ inventory }, authUser.id, stateKey, ["inventory"]);
-          await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory`, { method: "DELETE" });
-          if (invRecords.length) await supabaseFetch(env, "/rest/v1/app_records", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify(invRecords) });
+          if (invRecords.length) await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(invRecords) });
         }
 
         await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}`, {
@@ -1800,6 +1822,30 @@ export default {
           return json({ backup }, { status: 201 });
         }
         return methodNotAllowed();
+      }
+
+      if (url.pathname === "/api/backups/objects" && request.method === "GET") {
+        if (env.ENVIRONMENT !== "production") return json({ error: "Backups are disabled outside production" }, { status: 403 });
+        const { profile } = await authenticatedProfile(request, env);
+        requireBackupAdmin(profile);
+        if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
+        const prefix = `backups/${appStateKey(env)}/`;
+        const cursor = url.searchParams.get("cursor") || undefined;
+        const listed = await env.DOCUMENTS_BUCKET.list({ prefix, cursor, limit: 100 });
+        return json({ objects: listed.objects.map((object) => ({ key: object.key, size: object.size, uploaded: object.uploaded, customMetadata: object.customMetadata || {} })), cursor: listed.truncated ? listed.cursor : null, truncated: listed.truncated });
+      }
+
+      if (url.pathname === "/api/backups/object" && request.method === "GET") {
+        if (env.ENVIRONMENT !== "production") return json({ error: "Backups are disabled outside production" }, { status: 403 });
+        const { profile } = await authenticatedProfile(request, env);
+        requireBackupAdmin(profile);
+        if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
+        const key = String(url.searchParams.get("key") || "");
+        const prefix = `backups/${appStateKey(env)}/`;
+        if (!key.startsWith(prefix) || !key.endsWith(".json.gz")) return json({ error: "Invalid backup object key" }, { status: 400 });
+        const object = await env.DOCUMENTS_BUCKET.get(key);
+        if (!object) return json({ error: "Backup object not found" }, { status: 404 });
+        return new Response(object.body, { headers: { "content-type": "application/gzip", "content-disposition": `attachment; filename="${safeFileName(key.split("/").pop() || "medlane-backup.json.gz")}"`, "cache-control": "private, max-age=60" } });
       }
 
       if (url.pathname.startsWith("/api/backups/") && request.method === "GET") {
