@@ -420,7 +420,8 @@
         <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Collections, due dates, partial payments</h2></div><div class="topbar-actions"><button class="primary-button" data-action="open-modal" data-type="paymentRequest">Add Collection</button></div></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="collections-summary-grid"></div></article>
         <div class="visual-grid" id="collections-visuals"></div>
-        <article class="panel collection-map-panel">
+        <div class="tabs workflow-tabs" id="collections-workflow-tabs"><button class="tab active" data-collections-workflow="ledger">AR Ledger</button><button class="tab" data-collections-workflow="requests">Payment Requests</button><button class="tab" data-collections-workflow="followups">Follow-ups Map</button></div>
+        <div class="workflow-panel" data-collections-panel="followups"><article class="panel collection-map-panel">
           <div class="panel-header"><div><p class="eyebrow">Weekly Contact Map</p><h2>Client Follow-up Status Across the Philippines</h2><p>Manually mark each client and the channels used this week.</p></div><span class="badge">Call / email / telephone</span></div>
           <div class="collection-map-layout">
             <div class="ph-map" id="collection-map"></div>
@@ -429,9 +430,9 @@
               <button class="ghost-button" id="open-followup-history" type="button">Follow-up History</button>
             </div>
           </div>
-        </article>
-        <div class="table-card"><table id="collections-table"></table></div>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Requests</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div></article>
+        </article></div>
+        <div class="workflow-panel active" data-collections-panel="ledger"><div class="table-card"><table id="collections-table"></table></div></div>
+        <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Requests</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div></article></div>
       </section>
 
       <section class="section" id="receivables-tracker">
@@ -508,17 +509,19 @@
       <section class="section" id="payables">
         <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Supplier Payables And Payment Vouchers</h2></div><button class="primary-button" data-action="open-modal" data-type="payable">Payable Request</button></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="payables-summary-grid"></div></article>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payable Requests</p><h2>For approval</h2></div></div><div class="table-card compact-table"><table id="payable-requests-table"></table></div></article>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Final Payables</p><h2>Approved and ready for payment confirmation</h2></div></div><div class="table-card compact-table"><table id="final-payables-table"></table></div></article>
-        <div class="table-card"><table id="payables-table"></table></div>
+        <div class="tabs workflow-tabs" id="payables-workflow-tabs"><button class="tab active" data-payables-workflow="requests">Requests</button><button class="tab" data-payables-workflow="payment">For Payment</button><button class="tab" data-payables-workflow="all">All Payables</button></div>
+        <div class="workflow-panel active" data-payables-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payable Requests</p><h2>For approval</h2></div></div><div class="table-card compact-table"><table id="payable-requests-table"></table></div></article></div>
+        <div class="workflow-panel" data-payables-panel="payment"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Final Payables</p><h2>Approved and ready for payment confirmation</h2></div></div><div class="table-card compact-table"><table id="final-payables-table"></table></div></article></div>
+        <div class="workflow-panel" data-payables-panel="all"><div class="table-card"><table id="payables-table"></table></div></div>
       </section>
 
       <section class="section" id="replenishments">
         <div class="section-header"><div><p class="eyebrow">Expenses</p><h2>Petty Cash, Per Diem, And Operating Expenses</h2></div><button class="primary-button" data-action="open-modal" data-type="replenishment">Expense Request</button></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="expenses-summary-grid"></div></article>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Expense Requests</p><h2>For approval</h2></div></div><div class="table-card compact-table"><table id="expense-requests-table"></table></div></article>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Confirmed Expenses</p><h2>Approved and ready for payment confirmation</h2></div></div><div class="table-card compact-table"><table id="confirmed-expenses-table"></table></div></article>
-        <div class="table-card"><table id="replenishments-table"></table></div>
+        <div class="tabs workflow-tabs" id="replenishments-workflow-tabs"><button class="tab active" data-replenishments-workflow="requests">Requests</button><button class="tab" data-replenishments-workflow="payment">For Payment</button><button class="tab" data-replenishments-workflow="all">All Expenses</button></div>
+        <div class="workflow-panel active" data-replenishments-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Expense Requests</p><h2>For approval</h2></div></div><div class="table-card compact-table"><table id="expense-requests-table"></table></div></article></div>
+        <div class="workflow-panel" data-replenishments-panel="payment"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Confirmed Expenses</p><h2>Approved and ready for payment confirmation</h2></div></div><div class="table-card compact-table"><table id="confirmed-expenses-table"></table></div></article></div>
+        <div class="workflow-panel" data-replenishments-panel="all"><div class="table-card"><table id="replenishments-table"></table></div></div>
       </section>
 
       <section class="section" id="reconciliation">

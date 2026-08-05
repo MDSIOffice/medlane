@@ -680,6 +680,24 @@ qs("#inventory-workflow-tabs").addEventListener("click", (event) => {
   inventoryWorkflowTab = button.dataset.inventoryWorkflow;
   renderInventory();
 });
+qs("#collections-workflow-tabs").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-collections-workflow]");
+  if (!button) return;
+  collectionsWorkflowTab = button.dataset.collectionsWorkflow;
+  renderCollections();
+});
+qs("#payables-workflow-tabs").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-payables-workflow]");
+  if (!button) return;
+  payablesWorkflowTab = button.dataset.payablesWorkflow;
+  renderPayables();
+});
+qs("#replenishments-workflow-tabs").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-replenishments-workflow]");
+  if (!button) return;
+  replenishmentsWorkflowTab = button.dataset.replenishmentsWorkflow;
+  renderReplenishments();
+});
 qs("#inventory-compact-toggle").addEventListener("click", () => { inventoryCompactView = !inventoryCompactView; renderInventory(); });
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });

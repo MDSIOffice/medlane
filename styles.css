@@ -711,8 +711,8 @@ select, .search-input {
 .workflow-tabs .tab { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
 .tab-count { display: inline-grid; min-width: 24px; height: 24px; padding: 0 7px; place-items: center; border-radius: 999px; background: rgba(100, 116, 139, 0.14); color: inherit; font-size: 12px; font-weight: 900; }
 .tab.active .tab-count { background: rgba(255, 255, 255, 0.22); }
-.inventory-workflow-panel { display: none; }
-.inventory-workflow-panel.active { display: block; }
+.inventory-workflow-panel, .workflow-panel { display: none; }
+.inventory-workflow-panel.active, .workflow-panel.active { display: block; }
 .ghost-button.active { border-color: transparent; background: var(--blue); color: #fff; box-shadow: 0 10px 20px rgba(37, 99, 235, 0.16); }
 .icon-button { width: 42px; height: 42px; border: 0; border-radius: 50%; background: var(--tint-strong); color: var(--muted); }
 .mini-button { border: 1px solid #bfdbfe; border-radius: 999px; background: var(--chip-blue-bg); color: var(--blue-dark); padding: 7px 11px; font-size: 12px; font-weight: 900; }

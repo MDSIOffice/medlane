@@ -1733,6 +1733,7 @@ function renderSaleDetail(invoiceId) {
 function renderCollections() {
   syncCollectionContactsForBalances();
   syncPostedCollectionReminders();
+  renderCollectionsWorkflowTabs();
   const visibleSales = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s)));
   const visibleDocs = new Set(visibleSales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
   const visiblePayments = data.payments.filter((payment) => visibleDocs.has(payment.invoice));
@@ -1771,6 +1772,21 @@ function renderCollections() {
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Amount Paid", "WTax/EWT", "Collection Status", "Actions", "Balance", "AR Status"], rows);
   table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Department", "Payment", "Total", "Status", "Actions"], data.paymentRequests.map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.department, r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
+}
+
+function renderCollectionsWorkflowTabs() {
+  const counts = {
+    ledger: byBranch(data.sales, "area").filter((sale) => Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).length,
+    requests: data.paymentRequests.filter((request) => !["Completed", "Cancelled"].includes(request.requestStatus || request.status)).length,
+    followups: data.collectionContacts.filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status)).length,
+  };
+  const labels = { ledger: "AR Ledger", requests: "Payment Requests", followups: "Follow-ups Map" };
+  qs("#collections-workflow-tabs")?.querySelectorAll("[data-collections-workflow]").forEach((button) => {
+    const tab = button.dataset.collectionsWorkflow;
+    button.classList.toggle("active", tab === collectionsWorkflowTab);
+    button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
+  });
+  qsa("[data-collections-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.collectionsPanel === collectionsWorkflowTab));
 }
 
 function collectionStatusActions(payment, sale) {
@@ -2968,6 +2984,7 @@ async function revertImportBatch(index) {
 }
 
 function renderPayables() {
+  renderPayablesWorkflowTabs();
   const requests = data.payables.filter((p) => p.requestStatus !== "Approved" && p.requestStatus !== "Cancelled");
   const approved = data.payables.filter((p) => p.requestStatus === "Approved" && !p.paymentConfirmed);
   const rows = data.payables.filter((p) => includesSearch(Object.values(p)));
@@ -2994,7 +3011,23 @@ function renderPayables() {
   table("#payables-table", ["ID", "Supplier", "Contact", "Items/Service", "Method", "Total", "Paid", "Balance", "Cheque Details", "Tag"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.contact, itemizedSummary(p.items), p.method || "-", peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`] })));
 }
 
+function renderPayablesWorkflowTabs() {
+  const counts = {
+    requests: data.payables.filter((p) => p.requestStatus !== "Approved" && p.requestStatus !== "Cancelled").length,
+    payment: data.payables.filter((p) => p.requestStatus === "Approved" && !p.paymentConfirmed).length,
+    all: data.payables.length,
+  };
+  const labels = { requests: "Requests", payment: "For Payment", all: "All Payables" };
+  qs("#payables-workflow-tabs")?.querySelectorAll("[data-payables-workflow]").forEach((button) => {
+    const tab = button.dataset.payablesWorkflow;
+    button.classList.toggle("active", tab === payablesWorkflowTab);
+    button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
+  });
+  qsa("[data-payables-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.payablesPanel === payablesWorkflowTab));
+}
+
 function renderReplenishments() {
+  renderReplenishmentsWorkflowTabs();
   const rows = byBranch(data.replenishments, "office").filter((r) => includesSearch(Object.values(r)));
   const requests = rows.filter((r) => r.requestStatus !== "Approved" && r.requestStatus !== "Cancelled");
   const approved = rows.filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed);
@@ -3017,6 +3050,22 @@ function renderReplenishments() {
   table("#expense-requests-table", ["ID", "Type", "Requester", "Items", "Amount", "Status", "Actions"], requests.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.requester, itemizedSummary(r.items), peso.format(r.amount), `<span class="pill ${statusClass(r.requestStatus)}">${r.requestStatus}</span>`, requestActions("expense", data.replenishments.indexOf(r), r)] })));
   table("#confirmed-expenses-table", ["ID", "Type", "Requester", "Amount", "Status", "Payment"], approved.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.requester, peso.format(r.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("expense", data.replenishments.indexOf(r))] })));
   table("#replenishments-table", ["ID", "Expense Type", "Requester", "Office", "Amount", "Receipt/File", "Status", "Payment"], rows.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.requester, r.office, peso.format(r.amount), r.file, `<span class="pill ${statusClass(r.requestStatus || r.status)}">${r.requestStatus || r.status}</span>`, r.paymentConfirmed ? `${escapeHtml(r.method)}<small>${escapeHtml(r.bank || r.cheque || "")}</small>` : "-"] })));
+}
+
+function renderReplenishmentsWorkflowTabs() {
+  const scoped = byBranch(data.replenishments, "office");
+  const counts = {
+    requests: scoped.filter((r) => r.requestStatus !== "Approved" && r.requestStatus !== "Cancelled").length,
+    payment: scoped.filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed).length,
+    all: scoped.length,
+  };
+  const labels = { requests: "Requests", payment: "For Payment", all: "All Expenses" };
+  qs("#replenishments-workflow-tabs")?.querySelectorAll("[data-replenishments-workflow]").forEach((button) => {
+    const tab = button.dataset.replenishmentsWorkflow;
+    button.classList.toggle("active", tab === replenishmentsWorkflowTab);
+    button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
+  });
+  qsa("[data-replenishments-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.replenishmentsPanel === replenishmentsWorkflowTab));
 }
 
 function itemizedSummary(items = []) { return items.map((item) => `${escapeHtml(item.particulars || item.item || "Item")}<small>${peso.format(item.amount || 0)}</small>`).join("") || "-"; }
