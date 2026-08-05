@@ -759,7 +759,10 @@ function financialRequestPrintableHtml(record, type) {
     ? `<span>Contact: <strong>${escapeHtml(record.contact || "-")}</strong></span>`
     : `<span>Office: <strong>${escapeHtml(record.office || "-")}</strong></span><span>Type: <strong>${escapeHtml(record.type || "-")}</strong></span>`;
   const hasVendorColumn = type === "payable" && items.some((item) => item.vendor);
-  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(record.id)}</span></header><div class="pr-meta"><span>${partyLabel}: <strong>${escapeHtml(partyValue || "-")}</strong></span>${extraMeta}<span>Status: <strong>${escapeHtml(record.requestStatus || record.status || "-")}</strong></span></div><table><thead><tr>${hasVendorColumn ? "<th>Vendor</th>" : ""}<th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item) => `<tr>${hasVendorColumn ? `<td>${escapeHtml(item.vendor || "-")}</td>` : ""}<td>${escapeHtml(item.particulars || "")}</td><td>${money(item.amount || 0)}</td></tr>`).join("")}<tr><td${hasVendorColumn ? ' colspan="2"' : ""}><strong>Total</strong></td><td><strong>${money(record.amount || 0)}</strong></td></tr></tbody></table>${record.requestNote ? `<p class="pr-instructions"><strong>Notes:</strong> ${escapeHtml(record.requestNote)}</p>` : ""}<footer><div>Payment Method:<br><strong>${escapeHtml(record.method || "Not set")}</strong></div><div>Approved by:<br><strong>${escapeHtml(record.approvedBy || "Pending")}</strong></div></footer></section>`;
+  const gross = Number(record.grossAmount || record.amount || 0);
+  const withholdingRows = type === "payable" ? `${Number(record.withholdingTax1 || 0) ? `<tr><td${hasVendorColumn ? ' colspan="2"' : ""}>Less: Withholding 1%</td><td>${money(record.withholdingTax1)}</td></tr>` : ""}${Number(record.withholdingTax2 || 0) ? `<tr><td${hasVendorColumn ? ' colspan="2"' : ""}>Less: Withholding 2%</td><td>${money(record.withholdingTax2)}</td></tr>` : ""}` : "";
+  const totalLabel = type === "payable" ? "Net Total" : "Total";
+  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(record.id)}</span></header><div class="pr-meta"><span>${partyLabel}: <strong>${escapeHtml(partyValue || "-")}</strong></span>${extraMeta}<span>Status: <strong>${escapeHtml(record.requestStatus || record.status || "-")}</strong></span></div><table><thead><tr>${hasVendorColumn ? "<th>Vendor</th>" : ""}<th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item) => `<tr>${hasVendorColumn ? `<td>${escapeHtml(item.vendor || "-")}</td>` : ""}<td>${escapeHtml(item.particulars || "")}</td><td>${money(item.amount || 0)}</td></tr>`).join("")}${type === "payable" ? `<tr><td${hasVendorColumn ? ' colspan="2"' : ""}>Gross Total</td><td>${money(gross)}</td></tr>` : ""}${withholdingRows}<tr><td${hasVendorColumn ? ' colspan="2"' : ""}><strong>${totalLabel}</strong></td><td><strong>${money(record.amount || 0)}</strong></td></tr></tbody></table>${record.requestNote ? `<p class="pr-instructions"><strong>Notes:</strong> ${escapeHtml(record.requestNote)}</p>` : ""}<footer><div>Payment Method:<br><strong>${escapeHtml(record.method || "Not set")}</strong></div><div>Approved by:<br><strong>${escapeHtml(record.approvedBy || "Pending")}</strong></div></footer></section>`;
 }
 
 function inventoryPoPrintableHtml(po) {
@@ -1558,7 +1561,7 @@ export default {
           const inventory = invRows.map((row) => row.data);
           let totalReceived = 0;
           for (const submitted of submittedLines) {
-            const line = (po.lines || []).find((entry) => entry.code === submitted.code && entry.lot === submitted.lot);
+            const line = (po.lines || []).find((entry) => entry.code === submitted.code && (!entry.lot || entry.lot === submitted.lot) && Number(entry.qty || 0) > Number(entry.receivedQty || 0));
             if (!line) throw new Error(`Line not found on this purchase order: ${submitted.code} / ${submitted.lot}`);
             const remaining = Number(line.qty || 0) - Number(line.receivedQty || 0);
             const qty = Number(submitted.qty || 0);
@@ -1566,11 +1569,16 @@ export default {
             if (qty > remaining) throw new Error(`Cannot receive ${qty} of ${submitted.code} — only ${remaining} remain on this order`);
             const branch = String(submitted.branch || po.branch || "").trim();
             if (!branch) throw new Error(`Branch is required for ${submitted.code}`);
+            const lot = String(submitted.lot || "").trim();
+            const expiry = String(submitted.expiry || line.expiry || "").trim();
+            if (!lot || !expiry) throw new Error(`Lot and expiry are required for ${submitted.code}`);
+            line.lot = line.lot || lot;
+            line.expiry = line.expiry || expiry;
             line.receivedQty = Number(line.receivedQty || 0) + qty;
             totalReceived += qty;
-            const existing = inventory.find((entry) => entry.code === submitted.code && entry.branch === branch && entry.lot === submitted.lot);
+            const existing = inventory.find((entry) => entry.code === submitted.code && entry.branch === branch && entry.lot === lot);
             if (existing) existing.qty = Number(existing.qty || 0) + qty;
-            else inventory.push({ code: submitted.code, item: line.item, brand: line.brand || "Medlane", branch, lot: submitted.lot, serial: submitted.lot, expiry: line.expiry || "N/A", qty, min: 10 });
+            else inventory.push({ code: submitted.code, item: line.item, brand: line.brand || "Medlane", branch, lot, serial: lot, expiry, qty, min: 10 });
           }
           const fullyReceived = (po.lines || []).every((line) => Number(line.receivedQty || 0) >= Number(line.qty || 0));
           po.status = fullyReceived ? "Fully Received" : "Partially Received";

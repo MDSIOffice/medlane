@@ -1139,7 +1139,7 @@ function renderMasterlists() {
     const locked = data.inventory.some((item) => item.branch === branch) || data.pendingTransfers.some((transfer) => transfer.from === branch || transfer.to === branch);
     return { focus: branch, cells: [branch, branchAddresses()[branch] || "No address set", locked ? "Used by records" : "Unused", canEditModule("masterlists") ? `<button class="mini-button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${locked ? "" : `<button class="mini-button danger-button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}` : "Approval required"] };
   }));
-  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Govt. Benefits", "Actions"], data.employees.filter((e) => includesSearch(Object.values(e))).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", e.benefits, masterEditAction("employee", data.employees.indexOf(e))] })));
+  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Govt. Benefits", "Actions"], data.employees.filter((e) => includesSearch(Object.values(e))).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", employeeBenefitsSummary(e), masterEditAction("employee", data.employees.indexOf(e))] })));
   if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Actions"], data.banks.filter((b) => includesSearch(Object.values(b))).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, masterEditAction("bank", data.banks.indexOf(b))] })));
 }
 
@@ -1350,7 +1350,7 @@ async function saveStockSheet() {
   if (rows.some((row) => !row.item || !row.branch || !row.lot || !row.expiry || row.qty <= 0)) return toast("Complete all stock sheet fields before saving.");
   if (rows.some((row) => daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
   if (po) {
-    const lines = rows.map(({ item, branch, lot, qty }) => ({ code: item.code, branch, lot, qty }));
+    const lines = rows.map(({ item, branch, lot, expiry, qty }) => ({ code: item.code, branch, lot, expiry, qty }));
     const result = await MedlaneAPI.receivePurchaseOrderStock(po.id, lines).catch((error) => ({ error }));
     if (result.error) return toast(result.error.message || "Unable to receive stock for this purchase order.");
     replacePoRecord(result.po);
@@ -1919,7 +1919,7 @@ function financialLineTemplate(line = {}, options = {}) {
 function renderFinancialRequestEditor(lines = [{}]) {
   const vendorOptions = [...new Set(data.suppliers.map((s) => s.name))].map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
   const lineOptions = { vendor: modalType !== "payable" };
-  return `<div class="field full payment-request-editor"><label>Itemized Particulars</label><datalist id="financial-vendor-options">${vendorOptions}</datalist><div id="payment-request-line-list">${lines.map((line) => financialLineTemplate(line, lineOptions)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="amount">Total</label><input id="amount" name="amount" readonly value="0.00" /></div></div></div>`;
+  return `<div class="field full payment-request-editor"><label>Itemized Particulars</label><datalist id="financial-vendor-options">${vendorOptions}</datalist><div id="payment-request-line-list">${lines.map((line) => financialLineTemplate(line, lineOptions)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="amount">Net Total</label><input id="amount" name="amount" readonly value="0.00" /></div></div><div id="financial-request-tax-preview" class="invoice-compute-preview payment-deduction-preview"></div></div>`;
 }
 
 function collectFinancialLines() {
@@ -1932,8 +1932,19 @@ function collectFinancialLines() {
 
 function syncFinancialRequestTotal() {
   if (!["payable", "replenishment"].includes(modalType)) return;
-  const total = collectFinancialLines().reduce((sum, line) => sum + Number(line.amount || 0), 0);
+  const gross = collectFinancialLines().reduce((sum, line) => sum + Number(line.amount || 0), 0);
+  const withholdingTax1 = modalType === "payable" && qs("#withholdingTax1")?.checked ? Math.round(gross * 0.01) : 0;
+  const withholdingTax2 = modalType === "payable" && qs("#withholdingTax2")?.checked ? Math.round(gross * 0.02) : 0;
+  const total = Math.max(gross - withholdingTax1 - withholdingTax2, 0);
   if (qs("#amount")) qs("#amount").value = total.toFixed(2);
+  const preview = qs("#financial-request-tax-preview");
+  if (preview) preview.innerHTML = modalType === "payable" ? `<div class="preview-tax-label">Optional withholding deductions</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Payable</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>Withholding 1%</span><strong>${peso.format(withholdingTax1)}</strong></div><div class="invoice-meta"><span>Withholding 2%</span><strong>${peso.format(withholdingTax2)}</strong></div><div class="invoice-meta total-line"><span>Net Payable</span><strong>${peso.format(total)}</strong></div></div>` : "";
+}
+
+function financialRequestDeductions(gross) {
+  const withholdingTax1 = modalType === "payable" && qs("#withholdingTax1")?.checked ? Math.round(gross * 0.01) : 0;
+  const withholdingTax2 = modalType === "payable" && qs("#withholdingTax2")?.checked ? Math.round(gross * 0.02) : 0;
+  return { grossAmount: gross, withholdingTax1, withholdingTax2, total: Math.max(gross - withholdingTax1 - withholdingTax2, 0) };
 }
 function paymentRequestDeductions(gross) {
   const withholdingTax = qs("#withholdingTax")?.checked ? Math.round(gross * 0.05) : 0;
@@ -3024,9 +3035,16 @@ function renderPayables() {
     { title: "Payable Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averagePayable) }, { label: "Largest", value: peso.format(largestPayable) }] },
     { title: "Payment Risk", kind: "pairs", items: [{ label: "Balance", value: peso.format(balance) }, { label: "Cheques", value: chequeCount }] },
   ]);
-  table("#payable-requests-table", ["ID", "Supplier", "Items", "Total", "Status", "Actions"], requests.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, itemizedSummary(p.items), peso.format(p.amount), `<span class="pill ${statusClass(p.requestStatus)}">${p.requestStatus}</span>`, requestActions("payable", data.payables.indexOf(p), p)] })));
-  table("#final-payables-table", ["ID", "Supplier", "Total", "Status", "Set payment type"], approved.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, peso.format(p.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("payable", data.payables.indexOf(p))] })));
-  table("#payables-table", ["ID", "Supplier", "Contact", "Items/Service", "Method", "Total", "Paid", "Balance", "Cheque Details", "Tag"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.contact, itemizedSummary(p.items), p.method || "-", peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`] })));
+  table("#payable-requests-table", ["ID", "Supplier", "Items", "Gross", "Withholding", "Net Total", "Status", "Actions"], requests.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, itemizedSummary(p.items), peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill ${statusClass(p.requestStatus)}">${p.requestStatus}</span>`, requestActions("payable", data.payables.indexOf(p), p)] })));
+  table("#final-payables-table", ["ID", "Supplier", "Gross", "Withholding", "Net Total", "Status", "Set payment type"], approved.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("payable", data.payables.indexOf(p))] })));
+  table("#payables-table", ["ID", "Supplier", "Contact", "Items/Service", "Method", "Gross", "Withholding", "Net Total", "Paid", "Balance", "Cheque Details", "Tag"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.contact, itemizedSummary(p.items), p.method || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`] })));
+}
+
+function payableWithholdingSummary(payable) {
+  const items = [];
+  if (Number(payable.withholdingTax1 || 0)) items.push(`1% ${peso.format(payable.withholdingTax1)}`);
+  if (Number(payable.withholdingTax2 || 0)) items.push(`2% ${peso.format(payable.withholdingTax2)}`);
+  return items.length ? items.map((item) => `<small>${escapeHtml(item)}</small>`).join("") : "-";
 }
 
 function renderPayablesWorkflowTabs() {
@@ -3088,6 +3106,11 @@ function renderReplenishmentsWorkflowTabs() {
 
 function itemizedSummary(items = []) { return items.map((item) => `${escapeHtml(item.particulars || item.item || "Item")}<small>${peso.format(item.amount || 0)}</small>`).join("") || "-"; }
 
+function employeeBenefitsSummary(employee) {
+  const benefitIds = { SSS: employee.sssNo, PhilHealth: employee.philHealthNo, "Pag-IBIG": employee.pagIbigNo };
+  return String(employee.benefits || "").split(",").map((benefit) => benefit.trim()).filter(Boolean).map((benefit) => `${escapeHtml(benefit)}${benefitIds[benefit] ? `<small>${escapeHtml(benefitIds[benefit])}</small>` : ""}`).join("") || "-";
+}
+
 function requestActions(type, index) { return `<div class="inline-actions"><button class="mini-button" data-request-preview="${type}:${index}">Print</button><button class="mini-button" data-request-approve="${type}:${index}">Approve</button><button class="mini-button danger-button" data-request-cancel="${type}:${index}">Cancel</button></div>`; }
 
 function paymentConfirmActions(type, index) { return `<div class="inline-actions"><button class="mini-button" data-confirm-payment="${type}:${index}:Cash">Cash</button><button class="mini-button" data-confirm-payment="${type}:${index}:Bank Transfer">Bank</button><button class="mini-button" data-confirm-payment="${type}:${index}:Cheque">Cheque</button></div>`; }
@@ -3122,13 +3145,15 @@ function confirmDetailsModal({ eyebrow = "Confirm Action", title, fields = [], n
 }
 
 function financialRequestDetailFields(record, type) {
-  return [
+  const fields = [
     ["ID", record.id],
     [type === "payable" ? "Supplier" : "Requester", type === "payable" ? record.supplier : record.requester],
     ["Items", itemizedSummary(record.items).replace(/<[^>]*>/g, " ").trim() || "-"],
-    ["Amount", peso.format(record.amount || 0)],
-    ["Status", record.requestStatus || record.status || "-"],
   ];
+  if (type === "payable") fields.push(["Gross", peso.format(record.grossAmount || record.amount || 0)], ["Withholding 1%", peso.format(record.withholdingTax1 || 0)], ["Withholding 2%", peso.format(record.withholdingTax2 || 0)], ["Net Amount", peso.format(record.amount || 0)]);
+  else fields.push(["Amount", peso.format(record.amount || 0)]);
+  fields.push(["Status", record.requestStatus || record.status || "-"]);
+  return fields;
 }
 
 async function approveFinancialRequest(type, index) {
@@ -3858,14 +3883,14 @@ function handleWorkflowAction(action) {
 const modalConfigs = {
   client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
   item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...data.items.map((item) => item.brand), ...data.suppliers.map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => data.suppliers.map((supplier) => supplier.name)]] },
-  bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea"]] },
+  bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea-optional"]] },
   supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"]] },
-  employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["benefits", "Govt. Benefits", "benefit-checkboxes"]] },
-  purchaseOrder: { title: "Create PO", fields: [["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
+  employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
+  purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => data.clients.map((client) => client.name)], ["invoice", "Invoice(s) Being Paid (optional)", "multi-invoice"], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => data.banks.map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"]] },
-  payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea"]] },
+  payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => data.employees.map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
@@ -3898,6 +3923,7 @@ function openModal(type, edit = null) {
       return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" list="${name}-options" ${kind === "datalist" ? "required" : ""} /><datalist id="${name}-options">${values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist></div>`;
     }
     if (kind === "readonly") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" readonly required /></div>`;
+    if (kind === "optional") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" /></div>`;
     if (kind === "textarea" || kind === "textarea-optional") return `<div class="field full"><label for="${name}">${label}</label><textarea id="${name}" name="${name}" ${kind === "textarea" ? "required" : ""}></textarea></div>`;
     if (kind === "hidden") return `<input id="${name}" name="${name}" type="hidden" />`;
     if (kind === "checkbox") return `<label class="ios-check-row"><input id="${name}" name="${name}" type="checkbox" value="true" /><span></span><strong>${label}</strong></label>`;
@@ -3914,7 +3940,7 @@ function openModal(type, edit = null) {
   }).join("");
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false }));
   if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
-  if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: true, allowDiscount: true }));
+  if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false, allowDiscount: true }));
   if (type === "productIssue") qs("#modal-fields").insertAdjacentHTML("beforeend", renderProductIssueParameterTable(edit?.record?.qcParameters?.length ? edit.record.qcParameters : [{}], edit?.record || {}));
   if (type === "purchaseOrder") qs("#date").value = fmtDate(today);
   if (type === "inventoryPurchaseOrder") qs("#date").value = fmtDate(today);
@@ -4222,7 +4248,7 @@ function buildInventoryPurchaseOrder(values) {
   if (!supplier) throw new Error("Supplier is required.");
   const branch = values.branch;
   if (!branch || !platformBranches().includes(branch)) throw new Error("Receiving branch is required.");
-  const lines = parseInvoiceLines(values.itemsText || "", { requireLot: true }).map((line) => ({ ...line, receivedQty: 0 }));
+  const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false }).map((line) => ({ ...line, receivedQty: 0 }));
   if (!lines.length) throw new Error("At least one inventory PO line is required.");
   const by = currentUser?.name || "System User";
   return { id: nextInventoryPurchaseOrderId(), supplier: supplier.name, branch, date: values.date || fmtDate(today), terms: 30, status: "Pending Approval", approvedBy: "", approvedAt: "", cancelledBy: "", cancelledAt: "", history: [{ date: poHistoryTimestamp(), status: "Pending Approval", note: `Purchase order created for ${branch}.`, by }], lines };
@@ -4253,7 +4279,9 @@ function buildPurchaseOrder(values) {
   if (!client) throw new Error("Client is required.");
   const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false });
   if (!lines.length) throw new Error("At least one purchase order line is required.");
-  return { id: nextPurchaseOrderId(), client: client.name, area: client.area, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
+  const id = values.id?.trim() || nextPurchaseOrderId();
+  if (data.purchaseOrders.some((po) => po.id === id)) throw new Error("Duplicate PO number detected.");
+  return { id, client: client.name, area: client.area, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
 }
 
 function inventoryTouchedBySale(sale) {

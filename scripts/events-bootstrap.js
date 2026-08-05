@@ -224,9 +224,10 @@ async function submitModal(event) {
   }
   if (modalType === "payable") {
     const items = collectFinancialLines();
-    const amount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    if (!items.length || amount <= 0) return toast("Add at least one payable item with amount.");
-    const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, amount, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false };
+    const gross = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const deductions = financialRequestDeductions(gross);
+    if (!items.length || deductions.total <= 0) return toast("Add at least one payable item with amount.");
+    const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, grossAmount: deductions.grossAmount, withholdingTax1: deductions.withholdingTax1, withholdingTax2: deductions.withholdingTax2, amount: deductions.total, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false };
     data.payables.push(payable);
     await persistRecords({ payables: [payable] });
     log("Created payable", "Payables", `${payable.id} · ${payable.supplier || "Supplier"}`, { save: false });
@@ -490,8 +491,8 @@ qs("#settings-form").addEventListener("submit", (event) => {
 qs("#invoice-approval-form").addEventListener("submit", (event) => {
   event.preventDefault();
   data.invoiceApprovals = formObject(event.currentTarget);
-  log("Updated invoice approval settings", "Settings", "Invoice approvals");
-  notify("Settings", "Invoice approved-by names were updated.", "settings", "Invoice approvals");
+  log("Updated invoice approval settings", "Invoicing", "Invoice approvals");
+  notify("Invoicing", "Invoice approved-by names were updated.", "invoicing", "Invoice approvals");
   saveData();
   toast("Invoice approved-by names saved.");
 });
@@ -847,6 +848,7 @@ qs("#modal-fields").addEventListener("input", (event) => {
   }
   if (modalType === "paymentRequest" && event.target.closest(".payment-request-line-row")) syncPaymentRequestTotal();
   if (["payable", "replenishment"].includes(modalType) && event.target.closest(".payment-request-line-row")) syncFinancialRequestTotal();
+  if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
   if (modalType === "paymentRequest" && event.target.id === "employee") { syncPaymentRequestTotal(); syncPaymentRequestInvoiceOptions(); syncPaymentRequestDeductionDefaults(); }
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders();
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
@@ -882,6 +884,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (event.target.id === "method" && modalType === "payable") togglePayableFields();
   if (event.target.id === "paymentType" && modalType === "paymentRequest") togglePaymentRequestChequeFields();
+  if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
   if (event.target.id === "bank" && modalType === "paymentRequest") syncPaymentRequestBankAccount();
   if (["withholdingTax", "expandedWithholdingTax"].includes(event.target.id) && modalType === "paymentRequest") syncPaymentRequestTotal();
   if (event.target.classList.contains("payment-request-invoice-check")) syncPaymentRequestInvoiceHidden();

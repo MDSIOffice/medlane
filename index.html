@@ -413,6 +413,15 @@
 
       <section class="section" id="invoicing">
         <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>SI, TS, and DR from purchase orders</h2></div><button class="primary-button" data-action="open-modal" data-type="invoice">Create Sales Invoice</button></div>
+        <article class="panel settings-panel invoice-approval-panel">
+          <div class="panel-header"><div><p class="eyebrow">Invoice Template Names</p><h2>Approved By</h2></div></div>
+          <form id="invoice-approval-form" class="form-grid">
+            <div class="field"><label for="approved-si">SI Approved By</label><input id="approved-si" name="SI" /></div>
+            <div class="field"><label for="approved-ts">TS Approved By</label><input id="approved-ts" name="TS" /></div>
+            <div class="field"><label for="approved-dr">DR Approved By</label><input id="approved-dr" name="DR" /></div>
+            <div class="modal-actions full"><button class="primary-button" type="submit">Save Invoice Names</button></div>
+          </form>
+        </article>
         <div class="invoice-grid" id="invoice-grid"></div>
       </section>
 
@@ -593,15 +602,6 @@
 
       <section class="section" id="settings">
         <div class="section-header"><div><p class="eyebrow">Platform Settings</p><h2>Branches, Templates, Tutorial</h2><p class="page-description">Configure branches, invoice signatories, and tutorial guidance.</p></div></div>
-        <article class="panel settings-panel">
-          <div class="panel-header"><div><p class="eyebrow">Invoice Template Names</p><h2>Approved By</h2></div></div>
-          <form id="invoice-approval-form" class="form-grid">
-            <div class="field"><label for="approved-si">SI Approved By</label><input id="approved-si" name="SI" /></div>
-            <div class="field"><label for="approved-ts">TS Approved By</label><input id="approved-ts" name="TS" /></div>
-            <div class="field"><label for="approved-dr">DR Approved By</label><input id="approved-dr" name="DR" /></div>
-            <div class="modal-actions full"><button class="primary-button" type="submit">Save Invoice Names</button></div>
-          </form>
-        </article>
         <article class="panel settings-panel" id="dev-settings-panel" hidden>
           <div class="panel-header"><div><p class="eyebrow">System</p><h2>Production Controls</h2></div></div>
           <p class="page-description">Production records are stored in Supabase and protected by role-based access.</p>
