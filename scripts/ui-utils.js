@@ -66,8 +66,10 @@ function clientTaxBadge(client) {
 function saleTaxBreakdown(sale) {
   const subtotal = Number(sale.amount || 0) - Number(sale.discount || 0);
   const totalAmountDue = Number(sale.net || subtotal);
-  const totalSalesVatInclusive = documentType(sale.type) === "SI" ? totalAmountDue : subtotal;
-  const addVat = documentType(sale.type) === "SI" ? Math.max(totalSalesVatInclusive - totalSalesVatInclusive / 1.12, 0) : 0;
+  const isSi = documentType(sale.type) === "SI";
+  const totalSalesVatInclusive = isSi ? totalAmountDue : subtotal;
+  const isVatable = isSi && sale.vatCode !== "NO VAT";
+  const addVat = isVatable ? Math.max(totalSalesVatInclusive - totalSalesVatInclusive / 1.12, 0) : 0;
   const amountNetVat = totalSalesVatInclusive - addVat;
   return { totalSalesVatInclusive, withholdingTax: 0, expandedWithholdingTax: 0, amountNetVat, addVat, totalAmountDue };
 }
@@ -88,7 +90,6 @@ function arTrackerTabs(sales) {
     ["open-ar", "Open AR", sales.filter((sale) => arTrackerStage(sale) === "open-ar").length],
     ["due-soon", "Due Soon", sales.filter((sale) => arTrackerStage(sale) === "due-soon").length],
     ["overdue", "Overdue", sales.filter((sale) => arTrackerStage(sale) === "overdue").length],
-    ["completed", "Paid", sales.filter((sale) => arTrackerStage(sale) === "completed").length],
     ["cancelled", "Cancelled", sales.filter((sale) => arTrackerStage(sale) === "cancelled").length],
   ];
 }
@@ -375,7 +376,7 @@ function workflowFacts() {
   const chequeReviews = data.payments.filter((payment) => payment.method === "Cheque" && (!payment.bank || !payment.chequeDate));
   const duplicateClients = data.clients.filter((client, index) => data.clients.findIndex((item) => item.name.toLowerCase() === client.name.toLowerCase() || item.tin === client.tin) !== index);
   const openIssues = data.productIssues.filter((report) => report.status === "Open");
-  const escalatedIssues = data.productIssues.filter((report) => report.status === "Pass to Engineering");
+  const escalatedIssues = data.productIssues.filter((report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status));
   return { activeSales, openSales, overdue, nearDue, lowStock, nearExpiry, missingDocs, pendingContacts, pendingTransfers, pendingExpenses, duePayables, chequeReviews, duplicateClients, openIssues, escalatedIssues };
 }
 

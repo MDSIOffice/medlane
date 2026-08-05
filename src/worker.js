@@ -644,8 +644,10 @@ function lineAmount(line) {
 function saleTaxBreakdown(sale) {
   const subtotal = Number(sale.amount || 0) - Number(sale.discount || 0);
   const totalAmountDue = Number(sale.net || subtotal);
-  const totalSalesVatInclusive = documentType(sale.type) === "SI" ? totalAmountDue : subtotal;
-  const addVat = documentType(sale.type) === "SI" ? Math.max(totalSalesVatInclusive - totalSalesVatInclusive / 1.12, 0) : 0;
+  const isSi = documentType(sale.type) === "SI";
+  const totalSalesVatInclusive = isSi ? totalAmountDue : subtotal;
+  const isVatable = isSi && sale.vatCode !== "NO VAT";
+  const addVat = isVatable ? Math.max(totalSalesVatInclusive - totalSalesVatInclusive / 1.12, 0) : 0;
   return { totalSalesVatInclusive, amountNetVat: totalSalesVatInclusive - addVat, addVat, totalAmountDue };
 }
 
@@ -675,7 +677,7 @@ function printableInvoiceHtml({ sale, client, approvals, preparedBy, noDate }) {
 
 function paymentRequestPrintableHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
-  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(request.cvNo)}</span></header><div class="pr-meta"><span>Employee/Vendor: <strong>${escapeHtml(request.employee)}</strong></span><span>Department: <strong>${escapeHtml(request.department)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><div class="pr-checks"><strong>Type of Request:</strong><span>${request.requestType === "Reimbursement or Liquidation" ? "[x]" : "[ ]"} Reimbursement or Liquidation</span><span>${request.requestType === "Fees, Supplier or Utilities" ? "[x]" : "[ ]"} Fees, Supplier or Utilities</span><span>${request.requestType === "Priority" ? "[x]" : "[ ]"} Priority</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${money(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${money(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${money(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${money(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>Attach supporting official receipts, invoices, or billing statements before approval and release.</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div></footer></section>`;
+  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(request.cvNo)}</span></header><div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Department: <strong>${escapeHtml(request.department)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${money(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${money(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${money(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${money(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>Attach supporting official receipts, invoices, or billing statements before approval and release.</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div>${request.paymentType === "Check" ? `<div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml(request.chequeDate || "-")}</div>` : ""}</footer></section>`;
 }
 
 function financialRequestPrintableHtml(record, type) {
@@ -908,8 +910,8 @@ function detectThresholdsAndApprovals(state) {
   if (financialPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPayable, "Payables / Expenses Awaiting Approval", financialPending);
 
   const productIssues = state.productIssues || [];
-  const passedToEngineering = productIssues.filter((report) => report.status === "Pass to Engineering");
-  if (passedToEngineering.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalProductIssue, "Product Issues Passed to Engineering", passedToEngineering.map((report) => `${report.id} — ${report.companyName}`));
+  const passedIssues = productIssues.filter((report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status));
+  if (passedIssues.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalProductIssue, "Support Reports Awaiting Handoff", passedIssues.map((report) => `${report.id} — ${report.companyName} (${report.status})`));
 
   return sections;
 }

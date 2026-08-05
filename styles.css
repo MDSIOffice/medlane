@@ -686,6 +686,7 @@ select, .search-input {
 .primary-button, .ghost-button, .tab, .mini-button { transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; }
 .primary-button:hover, .ghost-button:hover, .tab:hover, .mini-button:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(16, 33, 61, 0.12); }
 .tab.active { border-color: transparent; background: var(--blue); color: #fff; box-shadow: 0 10px 20px rgba(37, 99, 235, 0.16); }
+.ghost-button.active { border-color: transparent; background: var(--blue); color: #fff; box-shadow: 0 10px 20px rgba(37, 99, 235, 0.16); }
 .icon-button { width: 42px; height: 42px; border: 0; border-radius: 50%; background: var(--tint-strong); color: var(--muted); }
 .mini-button { border: 1px solid #bfdbfe; border-radius: 999px; background: var(--chip-blue-bg); color: var(--blue-dark); padding: 7px 11px; font-size: 12px; font-weight: 900; }
 .inline-actions { display: inline-flex; flex-wrap: wrap; gap: 7px; min-width: 220px; }
@@ -842,6 +843,11 @@ select, .search-input {
 .ios-check-row input:checked + span::after { transform: translateX(18px); }
 .ios-check-row input:focus-visible + span { outline: 3px solid rgba(56, 189, 248, 0.36); outline-offset: 2px; }
 .doc-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.department-contacts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.department-contact-block { margin: 0; border: 1px solid var(--line); border-radius: 16px; padding: 14px; background: var(--tint); }
+.department-contact-block legend { padding: 0 6px; color: var(--ink); font-weight: 900; font-size: 13px; }
+.department-contact-block .field { margin-bottom: 8px; }
+.department-contact-block .field:last-child { margin-bottom: 0; }
 .field-help { margin: 4px 0 12px; color: var(--muted); font-size: 13px; font-weight: 800; }
 .invite-permission-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .invite-permission-grid section { display: grid; align-content: start; gap: 8px; max-height: none; overflow: visible; border: 1px solid var(--line); border-radius: 18px; background: var(--tint); padding: 12px; }
@@ -1339,8 +1345,8 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .credit-warning { color: var(--red); font-weight: 900; }
 
 .chart-bars { display: grid; gap: 10px; margin-top: 14px; }
-.chart-row { display: grid; grid-template-columns: 150px 1fr 120px; align-items: center; gap: 12px; }
-.chart-label { font-weight: 800; }
+.chart-row { display: grid; grid-template-columns: 190px 1fr 120px; align-items: center; gap: 12px; }
+.chart-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 800; }
 .chart-track { overflow: hidden; height: 18px; border-radius: 999px; background: var(--chip-blue-bg-strong); }
 .chart-fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), #38bdf8); }
 .chart-fill { transform-origin: left; animation: fillBar 0.75s cubic-bezier(.2,.8,.2,1) both; }

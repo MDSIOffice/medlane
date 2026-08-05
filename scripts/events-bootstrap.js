@@ -71,6 +71,7 @@ async function submitModal(event) {
   event.preventDefault();
   const form = qs("#modal-form");
   if (!form) return toast("Form not found. Close and reopen the modal.");
+  if (modalType === "client") syncClientDepartmentContactsHidden();
   const values = formObject(form);
   if (["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder"].includes(modalType)) {
     try { values.itemsText = collectInvoiceEditorLines(); }
@@ -145,9 +146,14 @@ async function submitModal(event) {
     if (data.paymentRequests.some((request) => request.cvNo.toLowerCase() === values.cvNo.toLowerCase() && cvYear(request.date || request.createdAt) === cvYear(values.date))) return toast("Duplicate CV number detected for this year.");
     if (!items.length || items.some((item) => !item.particulars || item.amount <= 0)) return toast("Each payment request item needs particulars and an amount greater than zero.");
     if (total <= 0) return toast("Payment request total must be greater than zero.");
-    const linkedSale = values.invoice?.trim() ? findSaleByDocumentInput(values.invoice) : null;
-    if (values.invoice?.trim() && !linkedSale) return toast("Invoice not found. Select a valid invoice from the list.");
-    const isCollection = Boolean(linkedSale);
+    const invoiceIds = collectPaymentRequestInvoices();
+    const linkedSales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    if (invoiceIds.length && linkedSales.length !== invoiceIds.length) return toast("One or more selected invoices could not be found.");
+    if (linkedSales.length) {
+      const combinedBalance = linkedSales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+      if (total > combinedBalance) return toast(`Total (${peso.format(total)}) exceeds the combined balance of the selected invoice(s) (${peso.format(combinedBalance)}).`);
+    }
+    const isCollection = linkedSales.length > 0;
     const nowStamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
     data.paymentRequests.unshift({
       ...values,
@@ -158,13 +164,14 @@ async function submitModal(event) {
       instructions: paymentRequestInstructions,
       preparedBy: currentUser?.name || "System User",
       preparedRole: currentUser?.role || "Accounting",
-      invoice: linkedSale ? (linkedSale.documentNo || linkedSale.id) : "",
-      invoiceClient: linkedSale ? linkedSale.client : "",
+      invoice: linkedSales.map((sale) => sale.documentNo || sale.id).join(", "),
+      invoices: linkedSales.map((sale) => sale.documentNo || sale.id),
+      invoiceClient: linkedSales[0]?.client || "",
       requestStatus: isCollection ? "Pending" : "Approved",
       approvedBy: isCollection ? "" : "Maria Emma F. Llorin",
       approvedRole: isCollection ? "" : "CEO",
       status: isCollection ? "Pending" : "Prepared",
-      history: [{ date: nowStamp, status: isCollection ? "Pending" : "Prepared", note: isCollection ? `Payment request created for ${linkedSale.documentNo || linkedSale.id}.` : "CV voucher created.", by: currentUser?.name || "System User" }],
+      history: [{ date: nowStamp, status: isCollection ? "Pending" : "Prepared", note: isCollection ? `Collection created for ${linkedSales.map((sale) => sale.documentNo || sale.id).join(", ")}.` : "CV voucher created.", by: currentUser?.name || "System User" }],
       createdAt: fmtDate(today),
     });
     log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`);
@@ -185,16 +192,17 @@ async function submitModal(event) {
   if (modalType === "warranty") data.warranties.push(values);
   if (modalType === "productIssue") {
     if (!values.companyName?.trim()) return toast("Company name is required.");
-    if (!values.actionsTaken?.trim()) return toast("Update / actions taken is required.");
     if (values.status === "Resolved" && !values.resolvedBy) return toast("Select who resolved this report.");
     values.id = values.id?.trim() || nextProductIssueId();
     if (data.productIssues.some((report) => report.id === values.id)) return toast("Duplicate document number detected.");
     values.performedBy = currentUser?.name || "System User";
     values.qcParameters = collectProductIssueParameters();
     values.resolvedAt = values.status === "Resolved" ? fmtDate(today) : "";
-    values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: "Report started", by: values.performedBy || currentUser?.name || "System User" }];
+    values.originRole = productIssueOriginRole(currentUser?.role);
+    values.currentActor = values.originRole;
+    values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: values.actionsTaken?.trim() ? `Report started: ${values.actionsTaken.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
     data.productIssues.push(values);
-    log("Created support report", "Product Issues", `${values.id} · ${values.companyName}`);
+    log("Created support report", "Support Tracker", `${values.id} · ${values.companyName}`);
     notify("Support Report", `${values.id} started for ${values.companyName}.`, "product-issues", values.id);
   }
   if (modalType === "user") {
@@ -299,6 +307,8 @@ document.body.addEventListener("click", (event) => {
     renderClientInvoices();
     return showSection("client-invoices");
   }
+  const createSoa = event.target.closest("[data-create-soa]");
+  if (createSoa) return previewSoa(createSoa.dataset.createSoa);
   const invoiceFlow = event.target.closest("[data-invoice-flow]");
   if (invoiceFlow) return renderInvoiceFlowDetail(invoiceFlow.dataset.invoiceFlow);
   const calendarNav = event.target.closest("[data-calendar-nav]");
@@ -584,6 +594,7 @@ qs("#inventory-branch-tabs").addEventListener("click", (event) => {
   inventoryBranchTab = button.dataset.inventoryBranch;
   renderInventory();
 });
+qs("#inventory-compact-toggle").addEventListener("click", () => { inventoryCompactView = !inventoryCompactView; renderInventory(); });
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });
 qs("#open-transfer-history").addEventListener("click", () => { renderInventory(); qs("#transfer-history-modal").showModal(); });
@@ -632,6 +643,17 @@ qs("#invoice-grid").addEventListener("click", (event) => {
   if (printButton) printInvoice(printButton.dataset.printInvoice);
   if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
   if (cancelButton) openCancelReplaceModal(cancelButton.dataset.cancelReplace);
+});
+qs("#invoice-grid").addEventListener("change", (event) => {
+  const select = event.target.closest(".delivery-status-select");
+  if (!select) return;
+  if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
+  const sale = data.sales.find((entry) => entry.id === select.dataset.saleId);
+  if (!sale) return;
+  sale.deliveryStatus = select.value;
+  log("Updated invoice delivery status", "Invoicing", `${sale.documentNo || sale.id}: ${select.value}`);
+  saveData();
+  toast(`${sale.documentNo || sale.id} marked ${select.value}.`);
 });
 qs("#sales-table").addEventListener("click", (event) => {
   const timelineButton = event.target.closest("[data-sale-timeline]");
@@ -705,10 +727,9 @@ qs("#modal-fields").addEventListener("input", (event) => {
     const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
     event.target.value = digits.replace(/(\d{3})(?=\d)/g, "$1-");
   }
-  if (event.target.id === "invoice" && modalType === "paymentRequest") syncPaymentRequestInvoice();
   if (modalType === "paymentRequest" && event.target.closest(".payment-request-line-row")) syncPaymentRequestTotal();
   if (["payable", "replenishment"].includes(modalType) && event.target.closest(".payment-request-line-row")) syncFinancialRequestTotal();
-  if (modalType === "paymentRequest" && event.target.id === "employee") syncPaymentRequestTotal();
+  if (modalType === "paymentRequest" && event.target.id === "employee") { syncPaymentRequestTotal(); syncPaymentRequestInvoiceOptions(); syncPaymentRequestDeductionDefaults(); }
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders();
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
@@ -731,6 +752,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
     syncClientDocsHidden();
   }
   if (event.target.name === "benefitsSelected") syncEmployeeBenefitsHidden();
+  if (event.target.classList.contains("dept-contact-input")) syncClientDepartmentContactsHidden();
   if (event.target.name?.endsWith("Selected") && !["docsSelected", "benefitsSelected"].includes(event.target.name)) syncCheckboxGroupHidden(event.target.name.replace(/Selected$/, ""));
   if (event.target.id === "status" && modalType === "productIssue") toggleProductIssueResolvedByField();
   if (event.target.id === "type") updateDocumentLabel();
@@ -739,6 +761,9 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
   if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (event.target.id === "method" && modalType === "payable") togglePayableFields();
+  if (event.target.id === "paymentType" && modalType === "paymentRequest") togglePaymentRequestChequeFields();
+  if (["withholdingTax", "expandedWithholdingTax"].includes(event.target.id) && modalType === "paymentRequest") syncPaymentRequestTotal();
+  if (event.target.classList.contains("payment-request-invoice-check")) syncPaymentRequestInvoiceHidden();
   if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value);
   if (event.target.id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(event.target.value));
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);

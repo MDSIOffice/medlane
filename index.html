@@ -195,7 +195,7 @@
         <a href="/dashboard?section=collections" class="nav-item" data-section="collections" data-title="Collections" title="Collections" data-description="Record client payments, monitor partial payments, and identify near-due or overdue accounts."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="15" height="10.5" rx="1.5"/><path d="M2.5 8.5h15"/><path d="M5 12.5h3"/></svg></span><span>Collections</span></a>
         <a href="/dashboard?section=receivables-tracker" class="nav-item" data-section="receivables-tracker" data-title="Receivables" title="Receivables" data-description="Track each invoice from purchase order to sale, delivery, payment, and collection status."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.3"/><path d="M12.6 7.4 11 11l-3.6 1.6L9 9z"/></svg></span><span>Receivables</span></a>
         <a href="/dashboard?section=warranty" class="nav-item" data-section="warranty" data-title="Warranty" title="Warranty" data-description="Monitor diagnostic equipment warranty, serial numbers, installation dates, and service follow-up notes."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8 16 5v5c0 4.2-2.6 6.8-6 7.2-3.4-.4-6-3-6-7.2V5z"/><path d="M7.3 9.6l1.8 1.8 3.4-3.6"/></svg></span><span>Warranty</span></a>
-        <a href="/dashboard?section=product-issues" class="nav-item" data-section="product-issues" data-title="Product Issues Tracker" title="Product Issues Tracker" data-description="Log technical support and service reports, track resolution status, and print the official support report form."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.3 3.3a3.5 3.5 0 0 0-4.6 4.2L3 12.2l2.3 2.3 4.7-4.7a3.5 3.5 0 0 0 4.2-4.6l-2.3 2.3-1.9-.5-.5-1.9z"/></svg></span><span>Product Issues</span></a>
+        <a href="/dashboard?section=product-issues" class="nav-item" data-section="product-issues" data-title="Support Tracker" title="Support Tracker" data-description="Log technical support and service reports, track resolution status, and print the official support report form."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.3 3.3a3.5 3.5 0 0 0-4.6 4.2L3 12.2l2.3 2.3 4.7-4.7a3.5 3.5 0 0 0 4.2-4.6l-2.3 2.3-1.9-.5-.5-1.9z"/></svg></span><span>Support Tracker</span></a>
         <a href="/dashboard?section=purchase-history" class="nav-item" data-section="purchase-history" data-title="Client History" title="Client History" data-description="See each client’s purchase count, purchased items, lifetime value, AR balance, and last purchase date."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10.5" r="7"/><path d="M10 6.5v4l3 2"/><path d="M6.5 2.3 4 4.3"/></svg></span><span>History</span></a>
         <a href="/dashboard?section=payables" class="nav-item" data-section="payables" data-title="Payables" title="Payables" data-description="Track supplier bills, cheque details, partial payments, balances, and payment voucher information."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h14"/><path d="M4 8v7M8 8v7M12 8v7M16 8v7"/><path d="M2.5 17h15"/><path d="M10 2.5 17 8H3z"/></svg></span><span>Payables</span></a>
         <a href="/dashboard?section=replenishments" class="nav-item" data-section="replenishments" data-title="Expenses" title="Expenses" data-description="Submit and monitor petty cash, per diem, and expense requests for HR and Accounting approval."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2.5" width="12" height="15" rx="1.5"/><path d="M6.5 6h7"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M6.5 13h.01M10 13h.01M13.5 13h.01M6.5 16h.01M10 16h.01M13.5 16h.01"/></svg></span><span>Expenses</span></a>
@@ -328,7 +328,7 @@
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Products</p><h2>Top Items Sold</h2></div></div><div class="chart-bars compact-chart" id="analytics-top-items"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Collections</p><h2>Collection Efficiency</h2></div></div><div class="big-number" id="analytics-collection-rate">0%</div><p id="analytics-collection-note"></p></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Inventory Risk</p><h2>Stock Health</h2></div></div><div class="chart-bars compact-chart" id="analytics-stock-health"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Support</p><h2>Product Issues Tracker</h2></div></div><div class="chart-bars compact-chart" id="analytics-product-issues"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Support</p><h2>Support Tracker</h2></div></div><div class="chart-bars compact-chart" id="analytics-product-issues"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Expenses</p><h2>Expense per Classification</h2></div></div><div class="chart-bars compact-chart" id="analytics-expense-classification"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Profitability</p><h2>Revenue vs Expenses</h2></div></div><div class="chart-bars compact-chart" id="analytics-revenue-expenses"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Management Notes</p><h2>Recommended Actions</h2></div></div><ul class="compact-list" id="analytics-insights"></ul></article>
@@ -368,7 +368,7 @@
 
       <section class="section" id="inventory">
         <div class="section-header"><div><p class="eyebrow">Inventory</p><h2>Stocks by branch, lot, expiry, serial</h2></div></div>
-        <div class="toolbar"><select id="inventory-status"><option value="all">All Status</option><option>Available</option><option>Low Stock</option><option>Near Expiry</option><option>Critical</option><option>For Disposal</option></select></div>
+        <div class="toolbar"><select id="inventory-status"><option value="all">All Status</option><option>Available</option><option>Low Stock</option><option>Near Expiry</option><option>Critical</option><option>For Disposal</option></select><button class="ghost-button" id="inventory-compact-toggle" type="button">Compact View</button></div>
         <div class="visual-grid" id="inventory-visuals"></div>
         <div class="inventory-action-row">
           <button class="ghost-button" data-action="open-modal" data-type="inventoryPurchaseOrder">Inventory PO</button>
@@ -408,7 +408,7 @@
       </section>
 
       <section class="section" id="collections">
-        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Collections, due dates, partial payments</h2></div><div class="topbar-actions"><button class="primary-button" data-action="open-modal" data-type="paymentRequest">Payment Request</button></div></div>
+        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Collections, due dates, partial payments</h2></div><div class="topbar-actions"><button class="primary-button" data-action="open-modal" data-type="paymentRequest">Add Collection</button></div></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="collections-summary-grid"></div></article>
         <div class="visual-grid" id="collections-visuals"></div>
         <article class="panel collection-map-panel">
@@ -429,6 +429,7 @@
         <div class="section-header"><div><p class="eyebrow">Receivables</p><h2>PO to invoice to collection flow</h2></div></div>
         <div class="order-status-tabs" id="ar-tracker-tabs"></div>
         <div class="visual-grid" id="ar-tracker-visuals"></div>
+        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Client Receivables</p><h2>Open balance by client</h2></div></div><div class="table-card compact-table"><table id="client-receivables-table"></table></div></article>
         <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Regional Receivables</p><h2>Open client invoices grouped by region</h2></div></div><div class="table-card compact-table"><table id="regional-receivables-table"></table></div></article>
         <div class="tracker-grid" id="receivables-tracker-grid"></div>
       </section>
@@ -450,14 +451,14 @@
       </section>
 
       <section class="section" id="product-issues">
-        <div class="section-header"><div><p class="eyebrow">Product Issues Tracker</p><h2>Technical support / service reports</h2></div><button class="primary-button" data-action="open-modal" data-type="productIssue">New Support Report</button></div>
-        <div class="toolbar"><select id="product-issue-status"><option value="all">All Status</option><option>Open</option><option>Pass to Engineering</option><option>Resolved</option></select></div>
+        <div class="section-header"><div><p class="eyebrow">Support Tracker</p><h2>Technical support / service reports</h2></div><button class="primary-button" data-action="open-modal" data-type="productIssue">New Support Report</button></div>
+        <div class="toolbar"><select id="product-issue-status"><option value="all">All Status</option><option>Open</option><option>In Progress</option><option>Pass to Product Specialist</option><option>Pass to Engineering</option><option>Resolved</option></select></div>
         <div class="visual-grid" id="product-issue-visuals"></div>
         <div class="table-card"><table id="product-issues-table"></table></div>
       </section>
 
       <section class="section" id="product-issue-detail">
-        <div class="section-header"><div><p class="eyebrow">Support Report Detail</p><h2 id="product-issue-detail-title">Report timeline</h2></div><button class="ghost-button" data-go-section="product-issues">Back to Product Issues</button></div>
+        <div class="section-header"><div><p class="eyebrow">Support Report Detail</p><h2 id="product-issue-detail-title">Report timeline</h2></div><button class="ghost-button" data-go-section="product-issues">Back to Support Tracker</button></div>
         <article class="panel" id="product-issue-detail-panel"></article>
       </section>
 

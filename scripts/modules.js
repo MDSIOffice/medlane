@@ -284,31 +284,40 @@ async function approvePaymentRequest(cvNo) {
   if (!canApprovePaymentRequests()) return toast("Only Superadmin or CEO can approve payment requests.");
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
   if (!request) return toast("Payment request not found.");
-  if (!request.invoice) return toast("This payment request is not linked to an invoice.");
+  const invoiceIds = request.invoices?.length ? request.invoices : (request.invoice ? request.invoice.split(",").map((id) => id.trim()).filter(Boolean) : []);
+  if (!invoiceIds.length) return toast("This payment request is not linked to an invoice.");
   if (request.requestStatus !== "Pending") return toast("This payment request has already been processed.");
-  const sale = findSaleByDocumentInput(request.invoice);
-  if (!sale) return toast("Linked invoice not found.");
-  const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+  const sales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  if (!sales.length) return toast("Linked invoice(s) not found.");
+  const combinedBalance = sales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
   const requestedAmount = Number(request.total || request.amount || 0);
-  if (requestedAmount > balance) return toast(`Cannot approve: requested ${peso.format(requestedAmount)} exceeds the invoice's remaining balance of ${peso.format(balance)}.`);
-  const isFull = requestedAmount >= balance;
+  if (requestedAmount > combinedBalance) return toast(`Cannot approve: requested ${peso.format(requestedAmount)} exceeds the combined remaining balance of ${peso.format(combinedBalance)}.`);
+  const isFull = requestedAmount >= combinedBalance;
   const ok = await confirmDetailsModal({
     eyebrow: "Confirm Approval",
     title: `Approve ${request.cvNo}`,
-    fields: [["Invoice", request.invoice], ["Client", sale.client], ["Requested Amount", peso.format(requestedAmount)], ["Current Balance", peso.format(balance)]],
+    fields: [["Invoice(s)", sales.map((sale) => sale.documentNo || sale.id).join(", ")], ["Client", sales[0].client], ["Requested Amount", peso.format(requestedAmount)], ["Combined Balance", peso.format(combinedBalance)]],
     confirmLabel: "Approve & Record Payment",
-    note: isFull ? "This will fully settle the invoice." : "This will be recorded as a partial payment.",
+    note: isFull ? "This will fully settle the selected invoice(s)." : "This will be recorded as a partial payment, applied to the oldest invoice first.",
   });
   if (!ok) return;
   const by = currentUser?.name || "System User";
-  sale.paid = Number(sale.paid || 0) + requestedAmount;
-  data.payments.push({ invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: "", reference: "", chequeDate: "", dateCollected: fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: requestedAmount, collectionStatus: "For Deposition", statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo });
+  let remaining = requestedAmount;
+  sales.forEach((sale) => {
+    if (remaining <= 0) return;
+    const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+    if (balance <= 0) return;
+    const applied = Math.min(balance, remaining);
+    sale.paid = Number(sale.paid || 0) + applied;
+    remaining -= applied;
+    data.payments.push({ invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", reference: "", chequeDate: request.chequeDate || "", dateCollected: fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo });
+  });
   request.requestStatus = "Approved";
   request.status = "Approved";
   request.approvedBy = by;
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
-  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} recorded.`, by });
+  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} recorded across ${sales.length} invoice(s), oldest first.`, by });
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} (${isFull ? "Full" : "Partial"})`);
   notify("Payment Request", `${request.cvNo} approved — ${isFull ? "fully" : "partially"} paid.`, "collections", request.cvNo);
   saveData();
@@ -327,7 +336,7 @@ async function cancelPaymentRequest(cvNo) {
   const { ok, reason } = await confirmDetailsModal({
     eyebrow: "Confirm Cancellation",
     title: `Cancel ${request.cvNo}`,
-    fields: [["Invoice", request.invoice || "-"], ["Employee / Vendor", request.employee], ["Total", peso.format(request.total || 0)], ["Status", request.requestStatus || request.status || "-"]],
+    fields: [["Invoice", request.invoice || "-"], ["Client", request.employee], ["Total", peso.format(request.total || 0)], ["Status", request.requestStatus || request.status || "-"]],
     confirmLabel: "Cancel Request",
     danger: true,
     collectReason: true,
@@ -374,8 +383,35 @@ function renderPaymentRequestDetail(cvNo) {
   showSection("payment-request-detail");
 }
 
-function openInvoicesForPaymentRequest() {
-  return data.sales.filter((sale) => sale.status !== "Cancelled" && Number(sale.net || 0) - Number(sale.paid || 0) > 0);
+function openInvoicesForPaymentRequest(clientName = "") {
+  return data.sales.filter((sale) => sale.status !== "Cancelled" && Number(sale.net || 0) - Number(sale.paid || 0) > 0 && (!clientName || sale.client === clientName))
+    .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+}
+
+function syncPaymentRequestInvoiceOptions(preselect = []) {
+  const list = qs("#payment-request-invoice-list");
+  if (!list) return;
+  const clientName = qs("#employee")?.value.trim() || "";
+  const invoices = openInvoicesForPaymentRequest(clientName);
+  const preselectSet = new Set(preselect);
+  list.innerHTML = invoices.length
+    ? invoices.map((sale) => {
+        const doc = sale.documentNo || sale.id;
+        const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+        return `<label class="ios-check-row compact-doc-check"><input class="payment-request-invoice-check" type="checkbox" value="${escapeHtml(doc)}" ${preselectSet.has(doc) ? "checked" : ""} /><span></span><strong>${escapeHtml(doc)}</strong><small>${peso.format(balance)} balance · Due ${escapeHtml(fmtDate(addDays(sale.date, sale.terms)))}</small></label>`;
+      }).join("")
+    : `<p class="field-help">${clientName ? "No unpaid or partially paid invoices for this client." : "Select a client to see their unpaid/partially paid invoices."}</p>`;
+  syncPaymentRequestInvoiceHidden();
+}
+
+function syncPaymentRequestInvoiceHidden() {
+  const hidden = qs("#invoice");
+  if (!hidden) return;
+  hidden.value = qsa(".payment-request-invoice-check:checked").map((input) => input.value).join(", ");
+}
+
+function collectPaymentRequestInvoices() {
+  return qsa(".payment-request-invoice-check:checked").map((input) => input.value);
 }
 
 function findSaleByDocumentInput(value) {
@@ -452,8 +488,8 @@ function openPurchaseOrdersForClient(clientName) {
 function renderInvoiceEditor(lines = [{}], options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
-  const help = requireLot ? "Search item name/code. Enter lot and expiry before creating SI, TS, or DR." : "Search item name/code. Lot and expiry will be entered during invoicing.";
-  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option><option value="${escapeHtml(item.code)}">${escapeHtml(item.name)}</option>`).join("")}</datalist><datalist id="invoice-lot-options">${data.inventory.map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.item)} · ${escapeHtml(entry.branch)} · Qty ${entry.qty}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
+  const help = requireLot ? "Search item name. Enter lot and expiry before creating SI, TS, or DR." : "Search item name. Lot and expiry will be entered during invoicing.";
+  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("")}</datalist><datalist id="invoice-lot-options">${data.inventory.map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.item)} · ${escapeHtml(entry.branch)} · Qty ${entry.qty}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
 }
 
 function collectInvoiceEditorLines() {
@@ -976,10 +1012,10 @@ function renderAnalytics() {
   const totalExpenses = visibleExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   qs("#analytics-revenue-expenses").innerHTML = barRows([["Revenue", totalSales], ["Expenses", totalExpenses], ["Net", totalSales - totalExpenses]], (value) => peso.format(value), ["green", "red", ""]) + graphNote("Computed as invoice revenue compared with expense request totals in the selected view.");
 
-  const issueCounts = ["Open", "In Progress", "Pass to Engineering", "Resolved"].map((status) => [status, data.productIssues.filter((report) => report.status === status).length]);
+  const issueCounts = ["Open", "In Progress", "Pass to Product Specialist", "Pass to Engineering", "Resolved"].map((status) => [status, data.productIssues.filter((report) => report.status === status).length]);
   const resolvedIssues = data.productIssues.filter((report) => report.status === "Resolved");
   const avgIssueTurnaround = resolvedIssues.length ? Math.round(resolvedIssues.reduce((sum, report) => sum + (productIssueTurnaroundDays(report) || 0), 0) / resolvedIssues.length) : null;
-  qs("#analytics-product-issues").innerHTML = barRows(issueCounts, (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "purple", "orange", "green"]) + graphNote(`Computed from support report status across all logged cases.${avgIssueTurnaround === null ? "" : ` Average turnaround: ${avgIssueTurnaround} day${avgIssueTurnaround === 1 ? "" : "s"}.`}`);
+  qs("#analytics-product-issues").innerHTML = barRows(issueCounts, (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "purple", "orange", "orange", "green"]) + graphNote(`Computed from support report status across all logged cases.${avgIssueTurnaround === null ? "" : ` Average turnaround: ${avgIssueTurnaround} day${avgIssueTurnaround === 1 ? "" : "s"}.`}`);
 
   const overdue = visibleSales.filter((sale) => statusForSale(sale) === "Overdue");
   const lowStock = visibleInventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
@@ -1048,7 +1084,7 @@ function renderMasterlists() {
     const creditClass = used > c.creditLimit ? "credit-warning" : "";
     return { focus: c.name, cells: [c.code || "-", c.name, c.area, c.dealer, c.salesperson || "Unassigned", `${c.terms || 30} days`, c.contact, c.tin, c.status || "Active", peso.format(c.creditLimit), `<span class="${creditClass}">${peso.format(used)}</span>`, docUploadButtons(c), masterEditAction("client", data.clients.indexOf(c))] };
   }));
-  if (data.masterTab === "items") table("#master-table", ["Code", "Item", "Brand", "UOM", "From", "Supplier/Client", "Classification", "Actions"], data.items.filter((i) => includesSearch(Object.values(i))).map((i) => ({ focus: i.code, cells: [i.code, i.name, i.brand, i.uom, i.source, i.supplier, i.classification || i.category, masterEditAction("item", data.items.indexOf(i))] })));
+  if (data.masterTab === "items") table("#master-table", ["Code", "Item", "Brand", "UOM", "Supplier", "Classification", "Actions"], data.items.filter((i) => includesSearch(Object.values(i))).map((i) => ({ focus: i.code, cells: [i.code, i.name, i.brand, i.uom, i.supplier, i.classification || i.category, masterEditAction("item", data.items.indexOf(i))] })));
   if (data.masterTab === "suppliers") table("#master-table", ["Code", "Supplier", "Classification", "TIN", "Address", "Contact", "Status", "Actions"], data.suppliers.filter((s) => includesSearch(Object.values(s))).map((s) => ({ focus: s.name, cells: [s.code || "-", s.name, s.classification || s.brand || "Multiple", s.tin || "-", s.address, s.contact, s.status || "Active", masterEditAction("supplier", data.suppliers.indexOf(s))] })));
   if (data.masterTab === "branches") table("#master-table", ["Branch", "Address", "Status", "Actions"], platformBranches().map((branch) => {
     const locked = data.inventory.some((item) => item.branch === branch) || data.pendingTransfers.some((transfer) => transfer.from === branch || transfer.to === branch);
@@ -1090,6 +1126,10 @@ function uploadClientDoc(index, doc, fileName = "") {
   toast(`${doc} uploaded for ${client.name}.`);
 }
 
+function inventoryItemLabel(item) {
+  return `${item.item} · Lot ${item.lot || "-"} · Exp ${item.expiry || "N/A"}`;
+}
+
 function renderInventory() {
   const status = qs("#inventory-status").value;
   renderInventoryBranchTabs();
@@ -1101,12 +1141,17 @@ function renderInventory() {
   const forDisposal = visibleInventory.filter((item) => inventoryStatus(item) === "For Disposal");
   const expiringSoon = visibleInventory.filter((item) => item.expiry !== "N/A").sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, 4);
   qs("#inventory-visuals").innerHTML = [
-    visualCard("!", "Low Stock", `${low.length} records`, barRows(low.map((item) => [item.lot, Math.max(item.min - item.qty, 0)]), (value) => `${value} short`, ["red", "orange"]), "risk", "Computed as minimum stock minus current quantity for records below minimum."),
-    visualCard("⌁", "Near Expiry", `${nearExpiry.length} lots`, barRows(expiringSoon.map((item) => [item.lot, daysUntil(item.expiry)]), (value) => value < 0 ? "expired" : `${value} days`, ["red", "orange", "green"]), "warning", "Computed from lot expiry dates and days remaining from today."),
-    visualCard("×", "For Disposal", `${forDisposal.length} expired`, barRows(forDisposal.map((item) => [item.lot, Math.abs(daysUntil(item.expiry))]), (value) => `${value} days expired`, ["red", "orange"]), "risk", "Expired inventory is marked for disposal and blocked from SI/TS/DR invoicing."),
+    visualCard("!", "Low Stock", `${low.length} records`, barRows(low.map((item) => [inventoryItemLabel(item), Math.max(item.min - item.qty, 0)]), (value) => `${value} short`, ["red", "orange"]), "risk", "Computed as minimum stock minus current quantity for records below minimum."),
+    visualCard("⌁", "Near Expiry", `${nearExpiry.length} lots`, barRows(expiringSoon.map((item) => [inventoryItemLabel(item), daysUntil(item.expiry)]), (value) => value < 0 ? "expired" : `${value} days`, ["red", "orange", "green"]), "warning", "Computed from lot expiry dates and days remaining from today."),
+    visualCard("×", "For Disposal", `${forDisposal.length} expired`, barRows(forDisposal.map((item) => [inventoryItemLabel(item), Math.abs(daysUntil(item.expiry))]), (value) => `${value} days expired`, ["red", "orange"]), "risk", "Expired inventory is marked for disposal and blocked from SI/TS/DR invoicing."),
     visualCard("▤", "Stock Health", `${visibleInventory.length} total`, barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((itemStatus) => [itemStatus, visibleInventory.filter((item) => inventoryStatus(item) === itemStatus).length]), (value) => `${value} records`, ["green", "orange", "red", "red", "red"]), "info", "Computed by classifying each inventory record by quantity and expiry rules."),
   ].join("");
-  table("#inventory-table", ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Min", "Status"], rows.map((i) => ({ focus: i.lot, cells: [i.branch, i.brand, i.code, i.item, `${i.serial || "N/A"}<small>${i.lot}</small>`, i.expiry, i.qty, i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`] })));
+  qs("#inventory-compact-toggle")?.classList.toggle("active", inventoryCompactView);
+  const inventoryHeaders = inventoryCompactView ? ["Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Min", "Status"] : ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Min", "Status"];
+  table("#inventory-table", inventoryHeaders, rows.map((i) => {
+    const fullCells = [i.branch, i.brand, i.code, i.item, i.serial ? `${i.serial}<small>${i.lot}</small>` : i.lot, i.expiry, i.qty, i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`];
+    return { focus: i.lot, cells: inventoryCompactView ? fullCells.slice(3) : fullCells };
+  }));
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
   table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
@@ -1120,11 +1165,10 @@ function recordTransferHistory(transfer, action, notes) {
 }
 
 function ensureInventoryDatalists() {
-  if (!qs("#inventory-code-options")) qs("#inventory").insertAdjacentHTML("beforeend", `<datalist id="inventory-code-options"></datalist><datalist id="inventory-item-options"></datalist><datalist id="inventory-brand-options"></datalist><datalist id="inventory-lot-options"></datalist>`);
+  if (!qs("#inventory-code-options")) qs("#inventory").insertAdjacentHTML("beforeend", `<datalist id="inventory-code-options"></datalist><datalist id="inventory-item-options"></datalist><datalist id="inventory-brand-options"></datalist>`);
   qs("#inventory-code-options").innerHTML = data.items.map((item) => `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name)} · ${escapeHtml(item.brand)}</option>`).join("");
   qs("#inventory-item-options").innerHTML = data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("");
   qs("#inventory-brand-options").innerHTML = [...new Set(data.items.map((item) => item.brand).filter(Boolean))].map((brand) => `<option value="${escapeHtml(brand)}"></option>`).join("");
-  qs("#inventory-lot-options").innerHTML = data.inventory.map((item) => `<option value="${escapeHtml(item.lot)}">${escapeHtml(item.item)} · ${escapeHtml(item.branch)} · Qty ${item.qty}</option>`).join("");
 }
 
 function stockSheetRow(index) {
@@ -1156,20 +1200,21 @@ function addStockSheetRow() {
   body.insertAdjacentHTML("beforeend", stockSheetRow(body.children.length));
 }
 
-function transferSheetRow(index) {
-  return `<tr><td><input class="transfer-code" list="inventory-code-options" /></td><td><input class="transfer-item" list="inventory-item-options" /></td><td><input class="transfer-lot" list="inventory-lot-options" /></td><td><select class="transfer-from">${branchOptions(platformBranches()[0])}</select></td><td><select class="transfer-to">${branchOptions(platformBranches()[1] || platformBranches()[0])}</select></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+function transferSheetRow() {
+  const uid = ++transferRowUid;
+  return `<tr><td><input class="transfer-code" list="inventory-code-options" /></td><td><input class="transfer-item" list="inventory-item-options" /></td><td><input class="transfer-lot" list="transfer-lot-options-${uid}" /><datalist id="transfer-lot-options-${uid}"></datalist></td><td><select class="transfer-from">${branchOptions(platformBranches()[0])}</select></td><td><select class="transfer-to">${branchOptions(platformBranches()[1] || platformBranches()[0])}</select></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
 function addTransferSheetRow() {
   const body = qs("#transfer-sheet-table tbody");
   if (!body) return;
-  body.insertAdjacentHTML("beforeend", transferSheetRow(body.children.length));
+  body.insertAdjacentHTML("beforeend", transferSheetRow());
 }
 
 function renderTransferSheet() {
   const tableEl = qs("#transfer-sheet-table");
   if (!tableEl) return;
-  tableEl.innerHTML = `<thead><tr><th>Item Code</th><th>Item Name</th><th>Lot Number</th><th>From Branch</th><th>To Branch</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${transferSheetRow(0)}</tbody>`;
+  tableEl.innerHTML = `<thead><tr><th>Item Code</th><th>Item Name</th><th>Lot Number</th><th>From Branch</th><th>To Branch</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${transferSheetRow()}</tbody>`;
 }
 
 function removeInventorySheetRow(button) {
@@ -1195,9 +1240,11 @@ function syncStockSheetRow(input, allowPartial = false) {
   if (itemInput) itemInput.value = match.name;
   if (brandInput) brandInput.value = match.brand;
   const lotInput = row.querySelector(".transfer-lot");
+  const lotDatalist = row.querySelector("datalist[id^='transfer-lot-options-']");
   const from = row.querySelector(".transfer-from")?.value;
-  const stock = data.inventory.find((entry) => entry.code === match.code && (!from || entry.branch === from) && entry.qty > 0);
-  if (lotInput && stock && !lotInput.value.trim()) lotInput.value = stock.lot;
+  const matchingStock = data.inventory.filter((entry) => entry.code === match.code && (!from || entry.branch === from) && entry.qty > 0);
+  if (lotDatalist) lotDatalist.innerHTML = matchingStock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
+  if (lotInput && matchingStock[0] && !lotInput.value.trim()) lotInput.value = matchingStock[0].lot;
 }
 
 async function saveStockSheet() {
@@ -1451,7 +1498,7 @@ function renderInvoicing() {
     const paid = Number(s.paid || 0);
     const pending = Math.max(Number(s.net || 0) - paid, 0);
     const balanceLine = paid > 0 ? `<small class="invoice-balance-line">Paid ${peso.format(paid)} · Pending ${peso.format(pending)}</small>` : "";
-    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p><small>${escapeHtml(saleTaxSummary(s))}</small>${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="modal-actions"><button class="ghost-button" data-sale-detail="${s.id}">View</button><button class="ghost-button" data-print-invoice="${s.id}">Print</button>${s.status === "Cancelled" ? "" : `<button class="ghost-button" data-cancel-replace="${s.id}">Cancel & Replace</button>`}</div></div></details>`;
+    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p><small>${escapeHtml(saleTaxSummary(s))}</small>${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`}</div><div class="modal-actions"><button class="ghost-button" data-sale-detail="${s.id}">View</button><button class="ghost-button" data-print-invoice="${s.id}">Print</button>${s.status === "Cancelled" ? "" : `<button class="ghost-button" data-cancel-replace="${s.id}">Cancel & Replace</button>`}</div></div></details>`;
   }).join("");
 }
 
@@ -1465,6 +1512,8 @@ function showReportPreviewLoading() {
   qs("#report-preview-title").textContent = "Loading print preview…";
   qs("#report-preview-description").textContent = "";
   qs("#report-preview-content").innerHTML = `<div class="print-loading"><span class="print-loading-spinner"></span><p>Preparing document…</p></div>`;
+  if (qs("#report-preview-print")) qs("#report-preview-print").disabled = true;
+  if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = true;
   const dialog = qs("#report-preview-modal");
   if (!dialog.open) dialog.showModal();
 }
@@ -1498,6 +1547,8 @@ async function printInvoice(invoiceId, noDate = false) {
   qs("#report-preview-description").textContent = printable.description;
   qs("#report-preview-content").innerHTML = printable.html;
   document.body.classList.add("print-template-overlay", `print-template-${type}`);
+  if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
+  if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
 }
 
 function printReportPreview() {
@@ -1527,6 +1578,8 @@ function showSaleDetail(invoiceId) {
   if (!sale) return toast("Sale not found.");
   clearPrintTarget();
   currentReportSaleId = sale.id;
+  if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
+  if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
   const breakdown = saleTaxBreakdown(sale);
   const linkedRequests = saleLinkedPaymentRequests(sale);
   qs("#report-preview-title").textContent = `${sale.type} ${sale.documentNo || sale.id}`;
@@ -1622,7 +1675,7 @@ function renderCollections() {
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, peso.format(s.paid), taxDeductions ? `${peso.format(taxDeductions)}<small>WTax ${peso.format(latest.withholdingTax || 0)} · EWT ${peso.format(latest.expandedWithholdingTax || 0)}</small>` : "-", `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Amount Paid", "WTax/EWT", "Collection Status", "Actions", "Balance", "AR Status"], rows);
-  table("#payment-request-table", ["CV No.", "Date", "Employee", "Invoice", "Department", "Payment", "Request", "Total", "Status", "Actions"], data.paymentRequests.map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.department, r.paymentType, r.requestType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
+  table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Department", "Payment", "Total", "Status", "Actions"], data.paymentRequests.map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.department, r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
 }
 
 function collectionStatusActions(payment, sale) {
@@ -1633,10 +1686,12 @@ function collectionStatusActions(payment, sale) {
 
 function openPaymentRequestForInvoice(documentNo) {
   openModal("paymentRequest");
-  const invoiceField = qs("#invoice");
-  if (!invoiceField) return;
-  invoiceField.value = documentNo;
-  syncPaymentRequestInvoice();
+  const sale = data.sales.find((entry) => (entry.documentNo || entry.id) === documentNo);
+  if (!sale) return;
+  if (qs("#employee")) qs("#employee").value = sale.client;
+  syncPaymentRequestInvoiceOptions([documentNo]);
+  syncPaymentRequestDeductionDefaults();
+  syncPaymentRequestTotal();
 }
 
 function updateCollectionPaymentStatus(receiptNo, status) {
@@ -1746,32 +1801,36 @@ function syncFinancialRequestTotal() {
   if (qs("#amount")) qs("#amount").value = total.toFixed(2);
 }
 function paymentRequestDeductions(gross) {
-  const payee = findClientByName(qs("#employee")?.value || "");
-  const withholdingTax = payee?.withholdingTax ? Math.round(gross * 0.05) : 0;
-  const expandedWithholdingTax = payee?.expandedWithholdingTax ? Math.round(gross * 0.01) : 0;
+  const withholdingTax = qs("#withholdingTax")?.checked ? Math.round(gross * 0.05) : 0;
+  const expandedWithholdingTax = qs("#expandedWithholdingTax")?.checked ? Math.round(gross * 0.01) : 0;
   return { withholdingTax, expandedWithholdingTax, total: Math.max(gross - withholdingTax - expandedWithholdingTax, 0) };
 }
-function syncPaymentRequestInvoice() {
-  const query = String(qs("#invoice")?.value || "").trim().toLowerCase();
-  const sale = data.sales.find((entry) => (entry.documentNo || entry.id || "").toLowerCase() === query);
-  if (!sale) return;
-  const employeeInput = qs("#employee");
-  if (employeeInput && !employeeInput.value.trim()) employeeInput.value = sale.client;
-  const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
-  toast(`${sale.documentNo || sale.id}: outstanding balance ${peso.format(balance)}.`);
+
+function togglePaymentRequestChequeFields() {
+  const type = qs("#paymentType")?.value;
+  ["bank", "cheque", "chequeDate"].forEach((id) => {
+    const field = qs(`#${id}`)?.closest(".field");
+    if (!field) return;
+    field.hidden = type !== "Check";
+    qs(`#${id}`).required = type === "Check" && id !== "chequeDate";
+  });
 }
 
+function syncPaymentRequestDeductionDefaults() {
+  const payee = findClientByName(qs("#employee")?.value || "");
+  if (qs("#withholdingTax")) qs("#withholdingTax").checked = Boolean(payee?.withholdingTax);
+  if (qs("#expandedWithholdingTax")) qs("#expandedWithholdingTax").checked = Boolean(payee?.expandedWithholdingTax);
+}
 function syncPaymentRequestTotal() {
   const gross = collectPaymentRequestLines().reduce((sum, line) => sum + Number(line.amount || 0), 0);
   const deductions = paymentRequestDeductions(gross);
   if (qs("#total")) qs("#total").value = deductions.total.toFixed(2);
-  const payee = findClientByName(qs("#employee")?.value || "");
   const preview = qs("#payment-request-tax-preview");
-  if (preview) preview.innerHTML = `<div class="preview-tax-label">WTax/EWT from ${payee ? `${escapeHtml(payee.name)} masterlist` : "selected payee masterlist"}</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Request</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${peso.format(deductions.withholdingTax)}</strong></div><div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${peso.format(deductions.expandedWithholdingTax)}</strong></div><div class="invoice-meta total-line"><span>Total Payment Request</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
+  if (preview) preview.innerHTML = `<div class="preview-tax-label">WTax/EWT applied per the checkboxes above</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Request</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${peso.format(deductions.withholdingTax)}</strong></div><div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${peso.format(deductions.expandedWithholdingTax)}</strong></div><div class="invoice-meta total-line"><span>Total Payment Request</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
 }
 function paymentRequestHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
-  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(request.cvNo)}</span></header><div class="pr-meta"><span>Employee/Vendor: <strong>${escapeHtml(request.employee)}</strong></span><span>Department: <strong>${escapeHtml(request.department)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><div class="pr-checks"><strong>Type of Request:</strong><span>${request.requestType === "Reimbursement or Liquidation" ? "[x]" : "[ ]"} Reimbursement or Liquidation</span><span>${request.requestType === "Fees, Supplier or Utilities" ? "[x]" : "[ ]"} Fees, Supplier or Utilities</span><span>${request.requestType === "Priority" ? "[x]" : "[ ]"} Priority</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${peso.format(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${peso.format(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${peso.format(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${peso.format(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>${escapeHtml(paymentRequestInstructions)}</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div><div><strong>PAYMENT DETAILS:</strong><br>Bank Name:<br>Check no:<br>Date:<br>Name and Signature of approver:</div></footer></section>`;
+  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(request.cvNo)}</span></header><div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Department: <strong>${escapeHtml(request.department)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${peso.format(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${peso.format(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${peso.format(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${peso.format(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>${escapeHtml(paymentRequestInstructions)}</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div><div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml(request.chequeDate || "-")}<br>Name and Signature of approver:</div></footer></section>`;
 }
 async function previewPaymentRequest(identifier) {
   const request = typeof identifier === "number" ? data.paymentRequests[identifier] : data.paymentRequests.find((item) => item.cvNo === identifier || item.id === identifier);
@@ -2172,6 +2231,10 @@ function renderReceivablesTracker() {
     visualCard("₱", "Open AR", peso.format(openBalance), `<div class="big-number compact-big">${peso.format(openBalance)}</div><p>${rows.length} invoice${rows.length === 1 ? "" : "s"} in this view.</p>`, openBalance ? "warning" : "success", "Computed as invoice net amount minus paid amount for the filtered records."),
     visualCard("✓", "Collected", peso.format(collected), `<div class="big-number compact-big">${peso.format(collected)}</div><p>Paid amount from filtered invoices.</p>`, "success", "Computed as the sum of paid amounts from invoices in the current tracker tab."),
   ].join("");
+  const byClientReceivables = Object.entries(allRows.reduce((acc, sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
+    .map(([client, invoices]) => [client, invoices, invoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
+    .sort((a, b) => b[2] - a[2]);
+  table("#client-receivables-table", ["Client", "Open Invoices", "Total Receivables", "Actions"], byClientReceivables.map(([client, invoices, total]) => [escapeHtml(client), invoices.length, peso.format(total), `<button class="mini-button" data-client-invoices="${escapeHtml(client)}">View</button>`]));
   const regional = Object.entries(allRows.filter((sale) => Math.max(sale.net - sale.paid, 0) > 0).reduce((acc, sale) => { acc[sale.area] ||= []; acc[sale.area].push(sale); return acc; }, {}));
   table("#regional-receivables-table", ["Region", "Clients", "Pending Invoices", "Open AR", "Invoices"], regional.map(([area, invoices]) => {
     const clients = [...new Set(invoices.map((sale) => sale.client))];
@@ -2229,7 +2292,22 @@ function renderClientInvoices() {
   const paid = invoices.reduce((sum, sale) => sum + sale.paid, 0);
   const balance = Math.max(total - paid, 0);
   qs("#client-invoices-title").textContent = `${client || "Client"} invoices`;
-  qs("#client-invoices-grid").innerHTML = invoices.length ? `<article class="panel full-client-timeline"><div class="panel-header"><div><p class="eyebrow">Complete Client Timeline</p><h2>${escapeHtml(client)}</h2><p>${escapeHtml(clientRecord.address || "No address recorded")} · ${escapeHtml(clientRecord.contact || "No contact recorded")}</p></div><span class="pill ${statusClass(balance ? "Near Due" : "Paid")}">${balance ? "Open AR" : "Cleared"}</span></div><div class="report-preview-grid"><div class="report-preview-card"><small>Total invoices</small><strong>${invoices.length}</strong></div><div class="report-preview-card"><small>Total sales</small><strong>${peso.format(total)}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(paid)}</strong></div><div class="report-preview-card"><small>Balance</small><strong>${peso.format(balance)}</strong></div></div></article>${invoices.map((sale) => trackerCard(sale, false)).join("")}` : `<article class="panel"><p>No invoices found for this client.</p></article>`;
+  qs("#client-invoices-grid").innerHTML = invoices.length ? `<article class="panel full-client-timeline"><div class="panel-header"><div><p class="eyebrow">Complete Client Timeline</p><h2>${escapeHtml(client)}</h2><p>${escapeHtml(clientRecord.address || "No address recorded")} · ${escapeHtml(clientRecord.contact || "No contact recorded")}</p></div><span class="pill ${statusClass(balance ? "Near Due" : "Paid")}">${balance ? "Open AR" : "Cleared"}</span></div><div class="report-preview-grid"><div class="report-preview-card"><small>Total invoices</small><strong>${invoices.length}</strong></div><div class="report-preview-card"><small>Total sales</small><strong>${peso.format(total)}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(paid)}</strong></div><div class="report-preview-card"><small>Balance</small><strong>${peso.format(balance)}</strong></div></div><div class="modal-actions"><button class="primary-button" data-create-soa="${escapeHtml(client)}">Create SOA</button></div></article>${invoices.map((sale) => trackerCard(sale, false)).join("")}` : `<article class="panel"><p>No invoices found for this client.</p></article>`;
+}
+
+function soaHtml(client) {
+  const clientRecord = data.clients.find((item) => item.name === client) || {};
+  const invoices = data.sales.filter((sale) => sale.client === client && Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const totalBalance = invoices.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  const rows = invoices.map((sale) => `<tr><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(sale.date || "-")}</td><td>${escapeHtml(fmtDate(addDays(sale.date, sale.terms)))}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td></tr>`).join("");
+  return `<section class="payment-request-print soa-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>Statement of Account</span></header><div class="pr-meta"><span>Client: <strong>${escapeHtml(client)}</strong></span><span>TIN: <strong>${escapeHtml(clientRecord.tin || "-")}</strong></span><span>As of: <strong>${escapeHtml(fmtDate(today))}</strong></span></div><p class="pr-instructions">${escapeHtml(clientRecord.address || "No address recorded")}</p><table><thead><tr><th>Document No.</th><th>Invoice Date</th><th>Due Date</th><th>Amount</th><th>Paid</th><th>Balance</th></tr></thead><tbody>${rows || `<tr><td colspan="6">No open invoices.</td></tr>`}</tbody><tfoot><tr><td colspan="5"><strong>Total Balance Due</strong></td><td><strong>${peso.format(totalBalance)}</strong></td></tr></tfoot></table><footer><div>Prepared by:<br><strong>${escapeHtml(currentUser?.name || "System User")}</strong></div><div>This statement reflects open invoices as of the date above.</div></footer></section>`;
+}
+
+function previewSoa(client) {
+  const dialog = qs("#payment-request-preview-modal");
+  qs("#payment-request-preview-title").textContent = `Statement of Account — ${client}`;
+  qs("#payment-request-preview-content").innerHTML = soaHtml(client);
+  if (!dialog.open) dialog.showModal();
 }
 
 function renderWarranty() {
@@ -2246,7 +2324,7 @@ function renderWarranty() {
 
 function productIssueStatusClass(status) {
   if (status === "Resolved") return "green";
-  if (status === "Pass to Engineering") return "orange";
+  if (status === "Pass to Engineering" || status === "Pass to Product Specialist") return "orange";
   if (status === "In Progress") return "purple";
   return "gray";
 }
@@ -2269,17 +2347,28 @@ function productIssueHistory(report) {
   return report.history?.length ? report.history : [{ date: report.startDate, status: "Open", note: "Report started", by: report.performedBy }];
 }
 
-function canEditPassedProductIssue() { return ["Engineering", "Superadmin", "CEO"].includes(currentUser?.role); }
+const productIssueWorkflowRoles = ["Sales", "Product Specialist", "Engineering"];
+function productIssueOriginRole(role) { return productIssueWorkflowRoles.includes(role) ? role : "Sales"; }
+function canActOnProductIssue(report) {
+  if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
+  return currentUser?.role === (report.currentActor || report.originRole || "Sales");
+}
 
 function productIssueActionsMenu(report) {
-  const lockedToEngineering = report.status === "Pass to Engineering" && !canEditPassedProductIssue();
-  const canEdit = canEditModule("product-issues") && report.status !== "Resolved" && !lockedToEngineering;
+  const actor = report.currentActor || report.originRole || "Sales";
+  const locked = report.status !== "Resolved" && !canActOnProductIssue(report);
+  const canEdit = canEditModule("product-issues") && report.status !== "Resolved" && !locked;
+  const passButtons = actor === "Sales"
+    ? [`<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Product Specialist">Pass to Product Specialist</button>`, `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineer</button>`]
+    : actor === "Product Specialist"
+      ? [`<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineer</button>`]
+      : [`<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Product Specialist">Pass to Product Specialist</button>`];
   const statusButtons = canEdit ? [
     report.status !== "In Progress" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:In Progress">In Progress</button>` : "",
     report.status !== "Resolved" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Resolved">Mark Resolved</button>` : "",
-    report.status !== "Pass to Engineering" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineering</button>` : "",
+    passButtons.join(""),
     report.status !== "Open" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Open">Reopen</button>` : "",
-  ].join("") : (report.status === "Resolved" ? `<small>Resolved &amp; locked</small>` : lockedToEngineering ? `<small>Locked to Engineering</small>` : "");
+  ].join("") : (report.status === "Resolved" ? `<small>Resolved &amp; locked</small>` : locked ? `<small>Locked to ${escapeHtml(actor)}</small>` : "");
   return `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-product-issue-print="${escapeHtml(report.id)}">Print</button>${statusButtons}</div></details>`;
 }
 
@@ -2288,7 +2377,7 @@ function renderProductIssues() {
   const statusFilter = qs("#product-issue-status")?.value || "all";
   const reports = data.productIssues.filter((report) => statusFilter === "all" || report.status === statusFilter);
   const open = data.productIssues.filter((report) => report.status === "Open").length;
-  const passed = data.productIssues.filter((report) => report.status === "Pass to Engineering").length;
+  const passed = data.productIssues.filter((report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status)).length;
   const resolved = data.productIssues.filter((report) => report.status === "Resolved");
   const avgTurnaround = resolved.length ? Math.round(resolved.reduce((sum, report) => sum + (productIssueTurnaroundDays(report) || 0), 0) / resolved.length) : null;
   qs("#product-issue-visuals").innerHTML = [
@@ -2310,7 +2399,7 @@ function renderProductIssueDetail(id) {
   if (!report) return toast("Support report not found.");
   const events = productIssueHistory(report);
   qs("#product-issue-detail-title").textContent = `${report.id} · ${report.companyName}`;
-  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Performed By</small><strong>${escapeHtml(report.performedBy || "-")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Concerns / Inquiries:</strong> ${escapeHtml(report.concerns || "-")}</p><p><strong>Update / Actions Taken:</strong> ${escapeHtml(report.actionsTaken || "-")}</p>${productIssueParameterSummaryHtml(report)}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Resolved" ? "done" : ["Pass to Engineering", "In Progress"].includes(event.status) ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Currently With</small><strong>${escapeHtml(report.currentActor || report.originRole || "Sales")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Concerns / Inquiries:</strong> ${escapeHtml(report.concerns || "-")}</p><p><strong>Update / Actions Taken:</strong><br>${escapeHtml(report.actionsTaken || "-").replace(/\n/g, "<br>")}</p>${productIssueParameterSummaryHtml(report)}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Resolved" ? "done" : ["Pass to Engineering", "Pass to Product Specialist", "In Progress"].includes(event.status) ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
   showSection("product-issue-detail");
 }
 
@@ -2350,7 +2439,8 @@ async function updateProductIssueStatus(id, status) {
   const report = data.productIssues.find((item) => item.id === id);
   if (!report) return toast("Support report not found.");
   if (report.status === "Resolved") return toast("This report is resolved and locked from further changes.");
-  if (report.status === "Pass to Engineering" && !canEditPassedProductIssue()) return toast("This report is with Engineering. Only Engineering, Superadmin, or CEO can update it now.");
+  if (!canActOnProductIssue(report)) { const actor = report.currentActor || report.originRole || "Sales"; return toast(`This report is with ${actor}. Only ${actor}, Superadmin, or CEO can update it now.`); }
+  const actingRole = report.currentActor || report.originRole || "Sales";
   let resolvedBy = report.resolvedBy || "";
   let note = "";
   if (status === "Resolved") {
@@ -2359,14 +2449,21 @@ async function updateProductIssueStatus(id, status) {
     resolvedBy = result.resolvedBy;
     note = result.note;
   } else {
-    note = (prompt(`Add a note for marking ${id} as ${status}:`, "") || "").trim();
+    note = (prompt(`Action taken for marking ${id} as ${status}:`, "") || "").trim();
   }
   report.status = status;
+  if (status === "Pass to Engineering") report.currentActor = "Engineering";
+  else if (status === "Pass to Product Specialist") report.currentActor = "Product Specialist";
+  else if (status === "Open") report.currentActor = report.originRole || "Sales";
   report.resolvedBy = status === "Resolved" ? resolvedBy : status === "Open" ? "" : report.resolvedBy;
   report.resolvedAt = status === "Resolved" ? fmtDate(today) : "";
   report.history = productIssueHistory(report);
   report.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, note: note || `Marked ${status}`, by: currentUser?.name || "System User" });
-  log("Updated support report status", "Product Issues", `${id}: ${status}`);
+  if (note) {
+    const tag = `Action: ${actingRole} — ${note}`;
+    report.actionsTaken = report.actionsTaken ? `${report.actionsTaken}\n${tag}` : tag;
+  }
+  log("Updated support report status", "Support Tracker", `${id}: ${status}`);
   notify("Support Report", `${id} marked ${status}.`, "product-issues", id);
   saveData();
   renderProductIssues();
@@ -3109,6 +3206,7 @@ function openReportPreview(index) {
 }
 
 function canManageUsers() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
+function canUpdateDeliveryStatus() { return ["Accounting", "Superadmin", "CEO"].includes(currentUser?.role); }
 function formatSessionDate(value) {
   if (!value) return "-";
   const date = new Date(value);
@@ -3243,7 +3341,7 @@ function formatLogRecord(record) {
   const short = compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
   return `<span class="log-record" title="${escapeHtml(compact)}">${escapeHtml(short)}</span>`;
 }
-const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Request", "Product Issues", "Reconciliation", "Reports", "Settings", "User Settings", "Users"];
+const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Request", "Support Tracker", "Reconciliation", "Reports", "Settings", "User Settings", "Users"];
 function renderLogFilters() {
   const selectedRole = qs("#logs-role-filter")?.value || "all";
   const selectedModule = qs("#logs-module-filter")?.value || "all";
@@ -3489,21 +3587,21 @@ function handleWorkflowAction(action) {
 }
 
 const modalConfigs = {
-  client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
-  item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...data.items.map((item) => item.brand), ...data.suppliers.map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["source", "From", "select", ["Supplier", "Client"]], ["supplier", "Supplier/Client", "datalist", () => [...new Set([...data.suppliers.map((supplier) => supplier.name), ...data.clients.map((client) => client.name)])]]] },
+  client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
+  item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...data.items.map((item) => item.brand), ...data.suppliers.map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => data.suppliers.map((supplier) => supplier.name)]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea"]] },
   supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["benefits", "Govt. Benefits", "benefit-checkboxes"]] },
   purchaseOrder: { title: "Create PO", fields: [["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
-  invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
-  cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
-  paymentRequest: { title: "Payment Request", fields: [["employee", "Employee / Vendor", "datalist", () => [...new Set([...data.clients.map((client) => client.name), ...data.employees.map((employee) => employee.name), currentUser?.name || "System User"].filter(Boolean))]], ["invoice", "Invoice Being Paid (optional, for collections)", "datalist-optional", () => openInvoicesForPaymentRequest().map((sale) => sale.documentNo || sale.id)], ["department", "Department"], ["cvNo", "CV Number"], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["requestType", "Mode of Request", "select", ["Reimbursement or Liquidation", "Fees, Supplier or Utilities", "Priority"]]] },
+  invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
+  cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
+  paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => data.clients.map((client) => client.name)], ["invoice", "Invoice(s) Being Paid (optional)", "multi-invoice"], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["bank", "Bank", "select", () => data.banks.map((bank) => bank.name)], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
-  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model", "datalist", () => data.items.map((item) => item.name)], ["serialNo", "Serial No./ Lot No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea"], ["status", "Resolution Status", "select", ["Open", "In Progress", "Resolved", "Pass to Engineering"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
+  productIssue: { title: "New Support Report", fields: [["id", "Document Number"], ["startDate", "Start Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model", "datalist", () => data.items.map((item) => item.name)], ["serialNo", "Serial No./ Lot No."], ["concerns", "Concerns / Inquiries", "textarea"], ["actionsTaken", "Update / Actions Taken", "textarea-optional"], ["status", "Resolution Status", "select", ["Open", "In Progress", "Resolved", "Pass to Engineering", "Pass to Product Specialist"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"]] },
 };
 
 function openModal(type, edit = null) {
@@ -3525,13 +3623,13 @@ function openModal(type, edit = null) {
       const optionsHtml = hasValues ? values.map((value) => `<option>${escapeHtml(value)}</option>`).join("") : `<option value="">No ${label.toLowerCase()} available yet</option>`;
       return `<div class="field${full}"><label for="${name}">${label}</label><select id="${name}" name="${name}" ${hasValues ? "required" : ""}>${optionsHtml}</select></div>`;
     }
-    if (kind === "tin") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="text" inputmode="numeric" placeholder="000-000-000-000" maxlength="15" pattern="\\d{3}-\\d{3}-\\d{3}-\\d{3}" title="Enter a 12-digit TIN as 000-000-000-000" data-tin-input required /></div>`;
+    if (kind === "tin") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="text" inputmode="numeric" placeholder="000-000-000-000" maxlength="15" pattern="\\d{3}-\\d{3}-\\d{3}-\\d{3}" title="Enter a 12-digit TIN as 000-000-000-000" data-tin-input /></div>`;
     if (kind === "datalist" || kind === "datalist-optional") {
       const values = typeof options === "function" ? options() : options;
       return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" list="${name}-options" ${kind === "datalist" ? "required" : ""} /><datalist id="${name}-options">${values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist></div>`;
     }
     if (kind === "readonly") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" readonly required /></div>`;
-    if (kind === "textarea") return `<div class="field full"><label for="${name}">${label}</label><textarea id="${name}" name="${name}" required></textarea></div>`;
+    if (kind === "textarea" || kind === "textarea-optional") return `<div class="field full"><label for="${name}">${label}</label><textarea id="${name}" name="${name}" ${kind === "textarea" ? "required" : ""}></textarea></div>`;
     if (kind === "hidden") return `<input id="${name}" name="${name}" type="hidden" />`;
     if (kind === "checkbox") return `<label class="ios-check-row"><input id="${name}" name="${name}" type="checkbox" value="true" /><span></span><strong>${label}</strong></label>`;
     if (kind === "doc-files") return `<div class="field full"><label>${label}</label><div class="doc-upload-grid modal-doc-upload-grid">${requiredClientDocs.map((doc) => `<label class="doc-upload-button missing"><span>${escapeHtml(doc)}</span><strong>Upload File</strong><em>Choose document</em><input class="doc-file-input" name="docsSelected" type="file" data-doc-name="${escapeHtml(doc)}" /></label>`).join("")}</div><input id="docs" name="docs" type="hidden" /></div>`;
@@ -3541,7 +3639,9 @@ function openModal(type, edit = null) {
       const values = typeof options === "function" ? options() : options;
       return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${values.map((value) => `<label class="ios-check-row compact-doc-check"><input name="${name}Selected" type="checkbox" value="${escapeHtml(value)}" /><span></span><strong>${escapeHtml(value)}</strong></label>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /></div>`;
     }
-    return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${kind}" ${kind === "date" && name.toLowerCase().includes("expiry") ? `min="${fmtDate(today)}"` : ""} ${kind !== "date" ? "required" : ""} /></div>`;
+    if (kind === "multi-invoice") return `<div class="field full"><label>${label}</label><div id="payment-request-invoice-list" class="doc-checkbox-grid"><p class="field-help">Select a client to see their unpaid/partially paid invoices.</p></div><p class="field-help">Payment is applied to the oldest selected invoice first.</p><input id="${name}" name="${name}" type="hidden" /></div>`;
+    if (kind === "department-contacts") return `<div class="field full department-contacts-field"><label>${label}</label><p class="field-help">Format shown below is a guide, not required — leave any line blank if not applicable.</p><div class="department-contacts-grid">${clientContactDepartments.map(([key, deptLabel]) => `<fieldset class="department-contact-block"><legend>${escapeHtml(deptLabel)}</legend><div class="field"><label>Contact Person</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="person" /></div><div class="field"><label>Contact No.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="phone" /></div><div class="field"><label>E-mail Add.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="email" type="email" /></div></fieldset>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /><input id="contactDepartments" name="contactDepartments" type="hidden" /></div>`;
+    return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${kind}" ${kind === "date" && name.toLowerCase().includes("expiry") ? `min="${fmtDate(today)}"` : ""} ${kind !== "date" && name !== "creditLimit" ? "required" : ""} /></div>`;
   }).join("");
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false }));
   if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
@@ -3553,6 +3653,7 @@ function openModal(type, edit = null) {
     const date = qs("#date");
     date.value = fmtDate(today);
     qs("#sourceBranch").value = inventoryBranchTab || platformBranches()[0] || "";
+    qs("#vatCode").value = "VAT";
     qs("#discount").value = 0;
     qs("#discountReason").required = false;
     updateDocumentLabel();
@@ -3563,6 +3664,7 @@ function openModal(type, edit = null) {
     qs("#oldInvoice").value = edit?.oldInvoice || "";
     qs("#date").value = fmtDate(today);
     qs("#sourceBranch").value = oldSale?.sourceBranch || oldSale?.lines?.[0]?.sourceBranch || inventoryBranchTab || platformBranches()[0] || "";
+    qs("#vatCode").value = oldSale?.vatCode || "VAT";
     qs("#discount").value = oldSale?.discount || 0;
     qs("#discountReason").required = false;
     updateDocumentLabel();
@@ -3600,11 +3702,12 @@ function openModal(type, edit = null) {
     syncClientDocsHidden();
   }
   if (type === "paymentRequest" && !edit) {
-    qs("#employee").value = currentUser?.name || "System User";
     qs("#department").value = currentUser?.role || "Accounting";
     qs("#date").value = fmtDate(today);
     qs("#cvNo").value = nextCvNumber(cvYear(qs("#date").value));
     qs("#total").value = "0.00";
+    togglePaymentRequestChequeFields();
+    syncPaymentRequestInvoiceOptions();
     syncPaymentRequestTotal();
   }
   if (type === "employee" && !edit) {
@@ -3636,6 +3739,9 @@ function openModal(type, edit = null) {
         const benefits = new Set(String(value || "").split(",").map((item) => item.trim()).filter(Boolean));
         qsa("input[name='benefitsSelected']").forEach((input) => { input.checked = benefits.has(input.value); });
         syncEmployeeBenefitsHidden();
+      } else if (key === "contactDepartments" && type === "client") {
+        populateClientDepartmentContacts(value);
+        if (field) field.value = value;
       } else if (field?.type === "checkbox") field.checked = Boolean(value);
       else if (field) field.value = value;
     });
@@ -3656,6 +3762,38 @@ function updateDocumentLabel() {
   const label = qs("label[for='documentNo']");
   if (label) label.textContent = `Manual ${type} No.`;
   if (qs("#documentNo")) qs("#documentNo").placeholder = `${type}-2026-___`;
+}
+
+function syncClientDepartmentContactsHidden() {
+  const contactField = qs("#contact");
+  const departmentsField = qs("#contactDepartments");
+  if (!contactField || !departmentsField) return;
+  const departments = {};
+  clientContactDepartments.forEach(([key]) => {
+    const person = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="person"]`)?.value.trim() || "";
+    const phone = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="phone"]`)?.value.trim() || "";
+    const email = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="email"]`)?.value.trim() || "";
+    if (person || phone || email) departments[key] = { person, phone, email };
+  });
+  departmentsField.value = JSON.stringify(departments);
+  contactField.value = clientContactDepartments.filter(([key]) => departments[key]).map(([key, deptLabel]) => {
+    const entry = departments[key];
+    return `${deptLabel}: ${[entry.person, entry.phone, entry.email].filter(Boolean).join(", ")}`;
+  }).join(" | ");
+}
+
+function populateClientDepartmentContacts(json) {
+  let departments = {};
+  try { departments = JSON.parse(json || "{}"); } catch { departments = {}; }
+  clientContactDepartments.forEach(([key]) => {
+    const entry = departments[key] || {};
+    const personInput = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="person"]`);
+    const phoneInput = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="phone"]`);
+    const emailInput = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="email"]`);
+    if (personInput) personInput.value = entry.person || "";
+    if (phoneInput) phoneInput.value = entry.phone || "";
+    if (emailInput) emailInput.value = entry.email || "";
+  });
 }
 
 function syncClientDocsHidden() {
@@ -3758,15 +3896,15 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
   if (type === "client") {
     const name = values.name?.trim().toLowerCase();
     const tin = values.tin?.trim();
-    if (String(tin || "").replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000).");
+    if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
     if (data.clients.some((client, index) => index !== exceptIndex && client.name.trim().toLowerCase() === name)) throw new Error("Duplicate client name detected.");
-    if (data.clients.some((client, index) => index !== exceptIndex && client.tin === tin)) throw new Error("Duplicate client TIN detected.");
-    if (Number(values.creditLimit) < 0) throw new Error("Credit limit cannot be negative.");
+    if (tin && data.clients.some((client, index) => index !== exceptIndex && client.tin === tin)) throw new Error("Duplicate client TIN detected.");
+    if (Number(values.creditLimit || 0) < 0) throw new Error("Credit limit cannot be negative.");
   }
   if (type === "supplier") {
     const tin = values.tin?.trim();
-    if (String(tin || "").replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000).");
-    if (data.suppliers.some((supplier, index) => index !== exceptIndex && supplier.tin === tin)) throw new Error("Duplicate supplier TIN detected.");
+    if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
+    if (tin && data.suppliers.some((supplier, index) => index !== exceptIndex && supplier.tin === tin)) throw new Error("Duplicate supplier TIN detected.");
   }
   if (type === "item") {
     const code = values.code?.trim().toLowerCase();
@@ -3858,9 +3996,6 @@ function buildSale(values, replacementOf = null) {
   const amount = values.type === "DR" ? 0 : saleAmount(lines);
   if (discount > amount) throw new Error("Discount cannot exceed gross amount.");
   const totalSalesVatInclusive = amount - discount;
-  const withholdingDiscount = 0;
-  const expandedWithholdingDiscount = 0;
-  const tax = 0;
   const net = totalSalesVatInclusive;
   const credit = clientCreditState(client.name, net);
   if (credit.exceeded && !canAuthorize) throw new Error("Credit limit exceeded. Needs Admin/CEO authorization.");
@@ -3876,7 +4011,7 @@ function buildSale(values, replacementOf = null) {
   else notify("Purchase Order", `${po.id} completely served by ${documentNo}.`, "purchase-orders", po.id);
   const primaryLine = lines[0];
   const terms = Number(client.terms || 30);
-  return { id: documentNo, documentNo, vatCode: values.vatCode || (values.type === "SI" ? "VATable" : "Non-VAT"), po: values.po || `PO-${documentNo}`, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "System User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", withholdingTax: Boolean(values.withholdingTax), expandedWithholdingTax: Boolean(values.expandedWithholdingTax), autoTaxRate: 0, withholdingDiscount, expandedWithholdingDiscount, taxTreatment: [values.withholdingTax ? "Withholding Tax 5%" : "", values.expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), tax, net, terms, paid: 0, status: "Active", cancelledFrom: replacementOf };
+  return { id: documentNo, documentNo, vatCode: values.vatCode || "VAT", po: values.po || `PO-${documentNo}`, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "System User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", net, terms, paid: 0, status: "Active", deliveryStatus: "Pending", cancelledFrom: replacementOf };
 }
 
 function togglePayableFields() {
