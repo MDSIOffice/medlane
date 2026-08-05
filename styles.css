@@ -1514,59 +1514,61 @@ button.calendar-cell:hover { background: var(--tint); }
 .template-overlay::before { content: "Data-only print overlay. Use with pre-printed form."; position: absolute; inset: 12px auto auto 12px; color: #94a3b8; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
 .template-overlay .field { position: absolute; display: block; white-space: nowrap; overflow: hidden; color: #111827; font-weight: 700; }
 .template-overlay small { display: block; margin-top: 4px; color: #111827; font-size: 11px; font-weight: 700; }
-.template-si { width: 8.5in; height: 11in; }
-.template-ts, .template-dr { width: 9.25in; height: 8.5in; }
+/* SI/TS/DR field coordinates are calibrated against real printed reference
+   copies (SI/TS/DR LAYOUT.pdf) supplied by the user — all three physical forms
+   are 8.5x11in portrait, not the previously-assumed 9.25x8.5in landscape for
+   TS/DR. Coordinates below are measured directly from those reference PDFs. */
+.template-si, .template-ts, .template-dr { width: 8.5in; height: 11in; }
 .template-si .doc-no { left: 7.1in; top: 0.58in; width: 0.8in; text-align: center; font-size: 19px; color: var(--text-on-red-chip); letter-spacing: 0.08em; }
-.si-date { left: 6.15in; top: 1.58in; width: 1.35in; text-align: center; }
-.si-po { left: 6.1in; top: 1.9in; width: 1.8in; text-align: center; }
-.si-terms { left: 5.55in; top: 2.22in; width: 2.2in; text-align: center; }
-.si-sold { left: 1.32in; top: 2.05in; width: 3.2in; }
-.si-registered { left: 1.65in; top: 2.41in; width: 3.45in; }
-.si-tin { left: 0.75in; top: 2.72in; width: 2.0in; }
-.si-address { left: 1.55in; top: 3.02in; width: 5.7in; }
-.si-row { position: absolute; left: 0.55in; right: 0.45in; top: calc(3.72in + (var(--row) * 0.31in)); height: 0.3in; }
-.si-item { position: absolute; left: 0.1in; width: 4.4in; }
-.si-qty { position: absolute; left: 4.7in; width: 0.8in; text-align: center; }
-.si-price { position: absolute; left: 5.55in; width: 0.75in; text-align: right; }
-.si-amount { position: absolute; left: 6.5in; width: 0.85in; text-align: right; }
-.si-total-sales { left: 7.0in; top: 8.22in; width: 0.95in; text-align: right; }
-.si-net-vat { left: 7.0in; top: 8.85in; width: 0.95in; text-align: right; }
-.si-discount { left: 7.0in; top: 9.18in; width: 0.95in; text-align: right; }
-.si-vat { left: 7.0in; top: 9.48in; width: 0.95in; text-align: right; }
-.si-amount-due { left: 7.0in; top: 9.88in; width: 0.95in; text-align: right; font-size: 16px; }
-.si-prepared { left: 4.05in; top: 10.38in; width: 1.4in; text-align: center; }
-.si-approved { left: 4.05in; top: 10.68in; width: 1.4in; text-align: center; }
+.si-date { left: 6.5in; top: 1.05in; width: 1.0in; text-align: center; }
+.si-po { left: 6.1in; top: 1.28in; width: 1.2in; text-align: center; }
+.si-terms { left: 5.9in; top: 1.48in; width: 2.2in; text-align: center; }
+.si-sold { left: 1.35in; top: 1.27in; width: 3.2in; }
+.si-registered { left: 1.6in; top: 1.49in; width: 3.45in; }
+.si-tin { left: 1.15in; top: 1.7in; width: 2.0in; }
+.si-address { left: 1.6in; top: 1.96in; width: 5.7in; }
+.si-row { position: absolute; left: 0.55in; right: 0.45in; top: calc(2.78in + (var(--row) * 0.31in)); height: 0.3in; }
+.si-item { position: absolute; left: 0.23in; width: 4.4in; }
+.si-qty { position: absolute; left: 4.64in; width: 0.7in; text-align: center; }
+.si-price { position: absolute; left: 5.37in; width: 0.75in; text-align: right; }
+.si-amount { position: absolute; left: 6.47in; width: 0.85in; text-align: right; }
+.si-total-sales { left: 6.55in; top: 6.15in; width: 1.0in; text-align: right; }
+.si-net-vat { left: 6.55in; top: 6.55in; width: 1.0in; text-align: right; }
+.si-discount { left: 6.55in; top: 6.76in; width: 1.0in; text-align: right; }
+.si-vat { left: 6.55in; top: 6.97in; width: 1.0in; text-align: right; }
+.si-amount-due { left: 6.55in; top: 7.38in; width: 1.0in; text-align: right; font-size: 16px; }
+.si-prepared { left: 3.9in; top: 7.8in; width: 1.4in; text-align: center; }
+.si-approved { left: 3.9in; top: 8.08in; width: 1.4in; text-align: center; }
 .template-ts .doc-no { left: 7.95in; top: 0.72in; width: 0.72in; text-align: center; font-size: 18px; color: var(--text-on-red-chip); letter-spacing: 0.08em; }
-.ts-date { left: 6.9in; top: 1.74in; width: 1.1in; text-align: center; }
-.ts-po { left: 6.85in; top: 2.36in; width: 1.15in; text-align: center; }
-.ts-client { left: 1.43in; top: 1.4in; width: 4.35in; }
-.ts-address { left: 0.72in; top: 1.75in; width: 5.1in; }
-.ts-row { position: absolute; left: 0.18in; right: 0.6in; top: calc(2.65in + (var(--row) * 0.34in)); height: 0.32in; }
-.ts-code { position: absolute; left: 0.15in; width: 1.25in; text-align: center; }
-.ts-item { position: absolute; left: 1.78in; width: 4.4in; }
-.ts-qty { position: absolute; left: 6.5in; width: 0.8in; text-align: center; }
-.ts-amount { position: absolute; left: 7.3in; width: 0.75in; text-align: right; }
-.ts-tax-label { left: 1.28in; top: 7.1in; width: 3.4in; font-size: 15px; }
-.ts-total { left: 7.98in; top: 7.08in; width: 0.75in; text-align: right; }
-.ts-prepared { left: 0.62in; top: 7.72in; width: 2.2in; text-align: center; }
-.ts-approved { left: 3.95in; top: 7.72in; width: 1.9in; text-align: center; }
+.ts-date { left: 6.55in; top: 1.1in; width: 1.1in; text-align: center; }
+.ts-po { left: 6.0in; top: 1.5in; width: 1.3in; text-align: center; }
+.ts-terms { left: 6.0in; top: 1.32in; width: 1.5in; text-align: center; }
+.ts-client { left: 1.7in; top: 1.1in; width: 4.35in; }
+.ts-address { left: 1.1in; top: 1.32in; width: 5.1in; }
+.ts-row { position: absolute; left: 0.18in; right: 0.25in; top: calc(2.0in + (var(--row) * 0.34in)); height: 0.32in; }
+.ts-code { position: absolute; left: 0.53in; width: 1.1in; text-align: center; }
+.ts-item { position: absolute; left: 1.65in; width: 4.1in; }
+.ts-qty { position: absolute; left: 5.82in; width: 0.8in; text-align: center; }
+.ts-amount { position: absolute; left: 6.99in; width: 0.75in; text-align: right; }
+.ts-tax-label { left: 1.28in; top: 4.85in; width: 3.4in; font-size: 15px; }
+.ts-total { left: 7.17in; top: 4.85in; width: 0.75in; text-align: right; }
+.ts-prepared { left: 0.3in; top: 5.35in; width: 1.6in; text-align: center; }
+.ts-approved { left: 3.0in; top: 5.35in; width: 1.6in; text-align: center; }
 .template-dr .doc-no { left: 8.1in; top: 0.28in; width: 0.65in; text-align: center; font-size: 18px; color: var(--text-on-red-chip); letter-spacing: 0.08em; }
-.dr-date { left: 7.35in; top: 0.68in; width: 1.25in; text-align: center; }
-.dr-terms { left: 7.35in; top: 1.08in; width: 1.25in; text-align: center; }
-.dr-po { left: 7.35in; top: 1.44in; width: 1.25in; text-align: center; }
-.dr-client { left: 1.02in; top: 1.31in; width: 4.25in; }
-.dr-address { left: 0.82in; top: 1.68in; width: 4.65in; }
-.dr-row { position: absolute; left: 0.22in; right: 0.22in; top: calc(2.6in + (var(--row) * 0.38in)); height: 0.36in; }
-.dr-lot { position: absolute; left: 0.08in; width: 1.1in; text-align: center; }
-.dr-expiry { position: absolute; left: 1.25in; width: 1.12in; text-align: center; }
-.dr-qty { position: absolute; left: 2.52in; width: 1.0in; text-align: center; }
-.dr-item { position: absolute; left: 3.85in; width: 3.9in; text-align: center; }
+.dr-date { left: 6.5in; top: 0.79in; width: 1.25in; text-align: center; }
+.dr-terms { left: 6.5in; top: 0.99in; width: 1.25in; text-align: center; }
+.dr-po { left: 6.5in; top: 1.2in; width: 1.25in; text-align: center; }
+.dr-client { left: 1.05in; top: 0.78in; width: 4.25in; }
+.dr-address { left: 1.05in; top: 1.02in; width: 4.65in; }
+.dr-row { position: absolute; left: 0.22in; right: 0.22in; top: calc(1.75in + (var(--row) * 0.38in)); height: 0.36in; }
+.dr-qty { position: absolute; left: 1.55in; width: 1.0in; text-align: center; }
+.dr-item { position: absolute; left: 2.28in; width: 3.9in; }
 .dr-price { position: absolute; left: 7.95in; width: 0.6in; text-align: right; }
 .dr-amount { position: absolute; left: 8.55in; width: 0.6in; text-align: right; }
-.dr-prepared { left: 0.48in; top: 7.62in; width: 1.7in; text-align: center; }
-.dr-recorded { left: 3.02in; top: 7.62in; width: 1.7in; text-align: center; }
-.dr-approved { left: 5.6in; top: 7.62in; width: 1.7in; text-align: center; }
-.dr-received { left: 8.35in; top: 7.62in; width: 1.7in; text-align: center; }
+.dr-prepared { left: 0in; top: 5.7in; width: 1.6in; text-align: center; }
+.dr-recorded { left: 1.76in; top: 5.7in; width: 1.6in; text-align: center; }
+.dr-approved { left: 3.66in; top: 5.7in; width: 1.6in; text-align: center; }
+.dr-received { left: 6.3in; top: 5.7in; width: 1.6in; text-align: center; }
 .template-tsr { width: 8.5in; height: 11in; font-size: 11px; }
 .tsr-company { left: 2.05in; top: 2.0in; width: 4.6in; }
 .tsr-address { left: 1.8in; top: 2.28in; width: 4.85in; white-space: normal !important; overflow: visible; line-height: 1.15; }
@@ -1661,9 +1663,9 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   body.print-template-overlay .report-preview { display: block; margin: 0 !important; padding: 0 !important; width: auto; }
   body.print-template-overlay .template-overlay { margin: 0; box-shadow: none; page-break-inside: avoid; break-inside: avoid; }
   body.print-template-si .template-overlay,
-  body.print-template-tsr .template-overlay { width: 8.5in; height: 11in; }
+  body.print-template-tsr .template-overlay,
   body.print-template-ts .template-overlay,
-  body.print-template-dr .template-overlay { width: 9.25in; height: 8.5in; }
+  body.print-template-dr .template-overlay { width: 8.5in; height: 11in; }
   body:has(#payment-request-preview-modal[open]) .app-shell > :not(#payment-request-preview-modal),
   body:has(#payment-request-preview-modal[open]) #payment-request-preview-modal .modal-header,
   body:has(#payment-request-preview-modal[open]) #payment-request-preview-modal .modal-actions { display: none !important; }

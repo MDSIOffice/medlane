@@ -570,6 +570,34 @@ function postgrestIn(values) {
   return `(${values.map((value) => `"${String(value).replace(/"/g, "\\\"")}"`).join(",")})`;
 }
 
+function manilaTimestamp() {
+  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
+}
+
+// Writes directly to the "logs" module so a save's trail survives even if the
+// save that produced it gets rejected — never routed through the same
+// delete-then-insert path used for regular module state.
+async function writeAuditTrace(env, stateKey, { actor, role, action, module, record }, userId, context) {
+  const entry = {
+    date: manilaTimestamp(),
+    user: actor || "System User",
+    role: role || "Unknown",
+    action,
+    module: module || "System",
+    record: record || "",
+    device: context?.device,
+    browser: context?.browser,
+    ipAddress: context?.ipAddress,
+    userAgent: context?.userAgent,
+    serverCapturedAt: context?.serverCapturedAt,
+  };
+  await supabaseFetch(env, "/rest/v1/app_records", {
+    method: "POST",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify([{ state_key: stateKey, module_name: "logs", record_key: `logs-${crypto.randomUUID()}`, data: entry, updated_by: userId || null }]),
+  }).catch(() => null);
+}
+
 function money(value) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(Number(value || 0));
 }
@@ -662,14 +690,14 @@ function printableRows(sale, variant) {
     const lotExpiry = `<small>Lot ${escapeHtml(line.lot || "-")} · Exp ${escapeHtml(line.expiry || "N/A")}</small>`;
     if (variant === "si") return `<div class="si-row" style="--row:${index}"><span class="si-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="si-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="si-price">${formMoney(line.price)}</span><span class="si-amount">${formMoney(lineAmount(line))}</span></div>`;
     if (variant === "ts") return `<div class="ts-row" style="--row:${index}"><span class="ts-code">${escapeHtml(line.code || "")}</span><span class="ts-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="ts-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="ts-amount">${formMoney(lineAmount(line))}</span></div>`;
-    return `<div class="dr-row" style="--row:${index}"><span class="dr-lot">${escapeHtml(line.lot || "")}</span><span class="dr-expiry">${escapeHtml(line.expiry || "")}</span><span class="dr-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item">${escapeHtml(line.item)}</span><span class="dr-price"></span><span class="dr-amount"></span></div>`;
+    return `<div class="dr-row" style="--row:${index}"><span class="dr-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="dr-price"></span><span class="dr-amount"></span></div>`;
   }).join("");
 }
 
 function printableInvoiceHtml({ sale, client, approvals, preparedBy, noDate }) {
   const type = documentType(sale.type);
   const approvedBy = escapeHtml(approvals?.[type] || "ECTOSOC");
-  if (type === "TS") return `<section class="template-overlay template-ts">${noDate ? "" : `<span class="field ts-date">${formDate(new Date().toISOString())}</span>`}<span class="field ts-po">${escapeHtml(sale.po || "")}</span><span class="field ts-client">${escapeHtml(sale.client)}</span><span class="field ts-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "ts")}<span class="field ts-tax-label">NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total">${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared">${escapeHtml(preparedBy)}</span><span class="field ts-approved">${approvedBy}</span><span class="field ts-received"></span></section>`;
+  if (type === "TS") return `<section class="template-overlay template-ts">${noDate ? "" : `<span class="field ts-date">${formDate(new Date().toISOString())}</span>`}<span class="field ts-po">${escapeHtml(sale.po || "")}</span><span class="field ts-terms">Terms: ${Number(sale.terms || 30)} Days</span><span class="field ts-client">${escapeHtml(sale.client)}</span><span class="field ts-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "ts")}<span class="field ts-tax-label">NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total">${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared">${escapeHtml(preparedBy)}</span><span class="field ts-approved">${approvedBy}</span><span class="field ts-received"></span></section>`;
   if (type === "DR") return `<section class="template-overlay template-dr">${noDate ? "" : `<span class="field dr-date">${formDate(new Date().toISOString())}</span>`}<span class="field dr-po">${escapeHtml(sale.po || "")}</span><span class="field dr-terms">${Number(sale.terms || 30)} Days</span><span class="field dr-client">${escapeHtml(sale.client)}</span><span class="field dr-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "dr")}<span class="field dr-prepared">${escapeHtml(preparedBy)}</span><span class="field dr-recorded"></span><span class="field dr-approved">${approvedBy}</span><span class="field dr-received"></span></section>`;
   const breakdown = saleTaxBreakdown(sale);
   return `<section class="template-overlay template-si">${noDate ? "" : `<span class="field si-date">${formDate(sale.date)}</span>`}<span class="field si-po">${escapeHtml(sale.po || "")}</span><span class="field si-terms">Terms of Payment ${Number(sale.terms || 30)} Days</span><span class="field si-sold">${escapeHtml(sale.client)}</span><span class="field si-registered">${escapeHtml(sale.client)}</span><span class="field si-tin">${escapeHtml(client.tin || "")}</span><span class="field si-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "si")}<span class="field si-total-sales">${formMoney(breakdown.totalSalesVatInclusive)}</span><span class="field si-net-vat">${formMoney(breakdown.amountNetVat)}</span><span class="field si-discount">${formMoney(sale.discount || 0)}</span><span class="field si-vat">${formMoney(breakdown.addVat)}</span><span class="field si-amount-due">${formMoney(breakdown.totalAmountDue)}</span><span class="field si-prepared">${escapeHtml(preparedBy)}</span><span class="field si-approved">${approvedBy}</span></section>`;
@@ -1268,9 +1296,40 @@ export default {
           // be treated as "empty this module out": that previously deleted whatever
           // module the client's local copy happened not to have loaded, even though
           // nothing about that module was ever intentionally changed.
-          const presentKeys = keys.filter((key) => data?.[key] !== undefined);
-          const rows = recordsFromState(data, authUser.id, stateKey, presentKeys, auditContextForRequest(request));
+          const presentKeys = keys.filter((key) => data?.[key] !== undefined && key !== "logs");
+          const auditContext = auditContextForRequest(request);
+          const rows = recordsFromState(data, authUser.id, stateKey, presentKeys, auditContext);
+          const actor = profile.name || profile.email || "System User";
+
           if (presentKeys.length) {
+            // Circuit breaker: compare how many records each affected module has
+            // right now against how many this save is about to leave it with.
+            // A save that would wipe out a module that had a meaningful number of
+            // records is almost always a stale/partial client snapshot clobbering
+            // real data (the exact bug that previously erased the database), not
+            // an intentional bulk delete — refuse it and log full context instead
+            // of silently applying it.
+            const beforeRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name`);
+            const beforeCounts = {};
+            for (const row of beforeRows) beforeCounts[row.module_name] = (beforeCounts[row.module_name] || 0) + 1;
+            const afterCounts = {};
+            for (const row of rows) afterCounts[row.module_name] = (afterCounts[row.module_name] || 0) + 1;
+            const totalBefore = beforeRows.length;
+            const totalAfter = rows.length;
+            const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) >= 5 && (afterCounts[key] || 0) === 0);
+            const bulkLoss = totalBefore >= 20 && totalAfter < totalBefore * 0.5;
+
+            if (wipedModules.length || bulkLoss) {
+              const deltaSummary = presentKeys.map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
+              await writeAuditTrace(env, stateKey, {
+                actor, role: profile.role,
+                action: "BLOCKED save — would delete most/all records in one or more modules",
+                module: "System",
+                record: `${deltaSummary}. Wiped modules: ${wipedModules.join(", ") || "none"}.`,
+              }, authUser.id, auditContext);
+              throw new Error(`Save blocked: this would delete most or all records in ${wipedModules.length ? wipedModules.join(", ") : "several modules"} (${totalBefore} -> ${totalAfter} total records). If this is intentional, delete records individually instead of via a bulk save, or contact an administrator. This attempt has been recorded in Audit Logs.`);
+            }
+
             await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}`, { method: "DELETE" });
             if (rows.length) {
               await supabaseFetch(env, "/rest/v1/app_records", {
@@ -1278,6 +1337,19 @@ export default {
                 headers: { prefer: "return=minimal" },
                 body: JSON.stringify(rows),
               });
+            }
+
+            // Trace every save so a future incident can be pinpointed to the exact
+            // user, time, and modules touched — only note modules whose record
+            // count actually changed, to keep routine content-only edits quiet.
+            const changedSummary = presentKeys.filter((key) => (beforeCounts[key] || 0) !== (afterCounts[key] || 0)).map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
+            if (changedSummary) {
+              await writeAuditTrace(env, stateKey, {
+                actor, role: profile.role,
+                action: "Saved app state (record count changed)",
+                module: "System",
+                record: changedSummary,
+              }, authUser.id, auditContext);
             }
           }
           return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
