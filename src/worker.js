@@ -1375,7 +1375,10 @@ async function runPendingItemsMonitor(env) {
 }
 
 async function runFiveMinuteDiscordMonitors(env) {
-  await Promise.allSettled([runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env)]);
+  const scheduled = manilaScheduleParts(Date.now());
+  const tasks = [runApiHealthMonitor(env)];
+  if (["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env));
+  await Promise.allSettled(tasks);
 }
 
 function manilaScheduleParts(value) {
@@ -1385,7 +1388,8 @@ function manilaScheduleParts(value) {
 
 async function runFiveMinuteScheduledTasks(event, env) {
   const scheduled = manilaScheduleParts(event.scheduledTime || Date.now());
-  const tasks = [runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env)];
+  const tasks = [runApiHealthMonitor(env)];
+  if (["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env));
   if (scheduled.minute === "00" && scheduled.hour === "17") {
     tasks.push(runDailyDigest(env));
     if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env));
