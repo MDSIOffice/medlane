@@ -95,8 +95,8 @@ const MedlaneAPI = (() => {
     return request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }) });
   }
 
-  async function saveRecords(records) {
-    return request("/api/modules/records", { method: "POST", body: JSON.stringify({ records }) });
+  async function saveRecords(records, recordKeys = {}) {
+    return request("/api/modules/records", { method: "POST", body: JSON.stringify({ records, recordKeys }) });
   }
 
   async function uploadFile(file, metadata = {}) {

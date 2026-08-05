@@ -558,6 +558,9 @@ function recordKeyFor(key, value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return key;
   if (key === "inventory") return [value.code || value.item || "stock", value.branch || "branch", value.lot || value.serial || "lot"].map((part) => String(part).trim() || "-").join("|");
   if (key === "transferHistory") return String(value.id || [value.transferId, value.date, value.action].filter(Boolean).join("|") || `${key}-${index}`);
+  if (key === "warranties") return String(value.serial || value.id || `${value.client || "client"}|${value.equipment || "equipment"}|${value.warrantyEnd || index}`);
+  if (key === "imports") return String(value.id || [value.date, value.module, value.file].filter(Boolean).join("|") || `${key}-${index}`);
+  if (key === "reconHistory") return String(value.id || [value.date, value.range, value.period].filter(Boolean).join("|") || `${key}-${index}`);
   return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
 }
 
@@ -1490,12 +1493,13 @@ export default {
         const stateKey = appStateKey(env);
         const body = await request.json().catch(() => ({}));
         const records = body.records && typeof body.records === "object" ? body.records : {};
+        const recordKeys = body.recordKeys && typeof body.recordKeys === "object" ? body.recordKeys : {};
         const allowedKeys = new Set(writableKeys(profile));
         const rows = [];
         for (const [key, value] of Object.entries(records)) {
           if (!allowedKeys.has(key)) throw new Error(`You do not have permission to edit ${key}`);
           if (!Array.isArray(value)) throw new Error(`Per-record saves require an array for ${key}`);
-          rows.push(...recordsFromState({ [key]: value }, authUser.id, stateKey, [key]));
+          value.forEach((record, index) => rows.push({ state_key: stateKey, module_name: key, record_key: String(recordKeys[key]?.[index] || recordKeyFor(key, record, index)), data: record, updated_by: authUser.id }));
         }
         if (rows.length) {
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {

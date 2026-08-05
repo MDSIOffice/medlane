@@ -99,10 +99,12 @@ async function submitModal(event) {
     catch (error) { return toast(error.message); }
     if (modalType === "client") { next.creditLimit = Number(next.creditLimit); next.terms = Number(next.terms || 30); }
     if (modalType === "employee" && canManageEmployeeSalary()) next.salary = Number(next.salary || 0);
+    const moduleKey = masterlistModuleKey(modalType);
+    const previousKey = masterlistRecordKey(modalType, previous);
     editContext.list[editContext.index] = next;
-    log("Edited masterlist record", "Masterlists", `Edited ${modalType}: ${recordLabel(modalType, previous)}`);
+    if (moduleKey) await persistRecords({ [moduleKey]: [next] }, { [moduleKey]: [previousKey] });
+    log("Edited masterlist record", "Masterlists", `Edited ${modalType}: ${recordLabel(modalType, previous)}`, { save: false });
     editContext = null;
-    saveData();
     qs("#demo-modal").close();
     form.reset();
     renderAll();
@@ -114,11 +116,21 @@ async function submitModal(event) {
     try { validateMasterRecord(modalType, values); }
     catch (error) { return toast(error.message); }
   }
-  if (modalType === "client") data.clients.push({ ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" });
-  if (modalType === "item") data.items.push(values);
-  if (modalType === "bank") data.banks.push(values);
-  if (modalType === "supplier") data.suppliers.push(values);
-  if (modalType === "employee") data.employees.push({ ...values, salary: canManageEmployeeSalary() ? Number(values.salary || 0) : 0 });
+  if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) {
+    const record = modalType === "client" ? { ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" }
+      : modalType === "employee" ? { ...values, salary: canManageEmployeeSalary() ? Number(values.salary || 0) : 0 }
+      : values;
+    const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
+    const moduleKey = masterlistModuleKey(modalType);
+    listByType[modalType].push(record);
+    if (moduleKey) await persistRecords({ [moduleKey]: [record] });
+    log(`Saved ${modalType}`, modalConfigs[modalType].title, Object.values(values)[0], { save: false });
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    toast(`${modalConfigs[modalType].title} saved.`);
+    return;
+  }
   if (modalType === "invoice") {
     try {
       const sale = buildSale(values);
@@ -232,7 +244,16 @@ async function submitModal(event) {
     toast(`${modalConfigs[modalType].title} saved.`);
     return;
   }
-  if (modalType === "warranty") data.warranties.push(values);
+  if (modalType === "warranty") {
+    data.warranties.push(values);
+    await persistRecords({ warranties: [values] });
+    log("Created warranty record", "Add Warranty Record", `${values.serial || values.equipment || values.client}`, { save: false });
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    toast(`${modalConfigs[modalType].title} saved.`);
+    return;
+  }
   if (modalType === "productIssue") {
     if (!values.companyName?.trim()) return toast("Company name is required.");
     if (values.status === "Resolved" && !values.resolvedBy) return toast("Select who resolved this report.");
@@ -245,8 +266,15 @@ async function submitModal(event) {
     values.currentActor = values.originRole;
     values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: values.actionsTaken?.trim() ? `Report started: ${values.actionsTaken.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
     data.productIssues.push(values);
-    log("Created support report", "Support Tracker", `${values.id} · ${values.companyName}`);
+    await persistRecords({ productIssues: [values] });
+    log("Created support report", "Support Tracker", `${values.id} · ${values.companyName}`, { save: false });
     notify("Support Report", `${values.id} started for ${values.companyName}.`, "product-issues", values.id);
+    saveData(["notifications"]);
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    toast(`${modalConfigs[modalType].title} saved.`);
+    return;
   }
   if (modalType === "user") {
     if (!canManageUsers()) return toast("Only Superadmin/CEO can add users.");
@@ -1055,9 +1083,10 @@ qs("#run-import").addEventListener("click", async () => {
   });
   if (!ok) return;
   const result = importCheckedRows(checked);
-  data.imports.unshift({ date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" });
-  log("Imported confirmed CSV/TSV rows", "Imports", `${result.records} ${result.module} records · ${result.skipped || 0} skipped`);
-  saveData();
+  const importEntry = { id: `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" };
+  data.imports.unshift(importEntry);
+  await persistRecords({ ...(result.createdRecords || {}), imports: [importEntry] });
+  log("Imported confirmed CSV/TSV rows", "Imports", `${result.records} ${result.module} records · ${result.skipped || 0} skipped`, { save: false });
   renderAll();
   toast(`${result.records} ${result.module} record/s imported; ${result.skipped || 0} skipped.`);
   lastImportFileName = null;

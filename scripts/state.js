@@ -349,13 +349,13 @@ function flushPendingSaveQueue() {
   });
 }
 
-async function persistRecords(records) {
+async function persistRecords(records, recordKeys = {}) {
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return null;
   const filtered = Object.fromEntries(Object.entries(records || {}).filter(([, value]) => Array.isArray(value) && value.length));
   if (!Object.keys(filtered).length) return null;
   setGlobalSaveStatus("saving", "Saving...");
   try {
-    const result = await MedlaneAPI.saveRecords(filtered);
+    const result = await MedlaneAPI.saveRecords(filtered, recordKeys);
     if (result?.revision) serverRevision = Number(result.revision);
     setGlobalSaveStatus("saved", "Saved");
     return result;

@@ -2556,10 +2556,12 @@ async function updateProductIssueStatus(id, status) {
     const tag = `Action: ${actingRole} — ${note}`;
     report.actionsTaken = report.actionsTaken ? `${report.actionsTaken}\n${tag}` : tag;
   }
-  log("Updated support report status", "Support Tracker", `${id}: ${status}`);
+  await persistRecords({ productIssues: [report] });
+  log("Updated support report status", "Support Tracker", `${id}: ${status}`, { save: false });
   notify("Support Report", `${id} marked ${status}.`, "product-issues", id);
-  saveData();
+  saveData(["notifications"]);
   renderProductIssues();
+  if (document.body.dataset.activeSection === "product-issue-detail") renderProductIssueDetail(id);
   toast(`${id} marked ${status}.`);
 }
 
@@ -2829,51 +2831,66 @@ function importCheckedRows(checked) {
     const headers = parsed[0].map(normalizedImportHeader);
     if (kind === "clientsMasterlist") {
       const recordKeys = [];
+      const clients = [];
       ready.forEach((item) => {
         const client = buildImportedClient(parsed[item.row - 1], headers);
         if (client.area && !platformAreas().some((area) => area.toLowerCase() === client.area.toLowerCase())) data.platformAreas.push(client.area);
         data.clients.push(client);
+        clients.push(client);
         recordKeys.push(client.name);
       });
-      return { module: "Clients", records: ready.length, skipped: checked.length - ready.length, recordType: "clients", recordKeys };
+      return { module: "Clients", records: ready.length, skipped: checked.length - ready.length, recordType: "clients", recordKeys, createdRecords: { clients } };
     }
     if (kind === "suppliersMasterlist") {
       const recordKeys = [];
-      ready.forEach((item) => { const supplier = buildImportedSupplier(parsed[item.row - 1], headers); data.suppliers.push(supplier); recordKeys.push(supplier.name); });
-      return { module: "Suppliers/Vendors", records: ready.length, skipped: checked.length - ready.length, recordType: "suppliers", recordKeys };
+      const suppliers = [];
+      ready.forEach((item) => { const supplier = buildImportedSupplier(parsed[item.row - 1], headers); data.suppliers.push(supplier); suppliers.push(supplier); recordKeys.push(supplier.name); });
+      return { module: "Suppliers/Vendors", records: ready.length, skipped: checked.length - ready.length, recordType: "suppliers", recordKeys, createdRecords: { suppliers } };
     }
     const recordKeys = [];
-    ready.forEach((item) => { const product = buildImportedProduct(parsed[item.row - 1], headers); data.items.push(product); recordKeys.push(product.code); });
-    return { module: "Products/Services", records: ready.length, skipped: checked.length - ready.length, recordType: "items", recordKeys };
+    const items = [];
+    ready.forEach((item) => { const product = buildImportedProduct(parsed[item.row - 1], headers); data.items.push(product); items.push(product); recordKeys.push(product.code); });
+    return { module: "Products/Services", records: ready.length, skipped: checked.length - ready.length, recordType: "items", recordKeys, createdRecords: { items } };
   }
   if (kind === "salesMigration") {
     const parsed = parseImportText();
     const headers = parsed[0].map(normalizedImportHeader);
-    ready.forEach((item) => data.sales.push(buildMigratedSale(parsed[item.row - 1], headers)));
-    return { module: "Sales/Collections", records: ready.length, skipped: checked.length - ready.length };
+    const clientsBefore = new Set(data.clients.map((client) => client.name));
+    const sales = [];
+    ready.forEach((item) => { const sale = buildMigratedSale(parsed[item.row - 1], headers); data.sales.push(sale); sales.push(sale); });
+    const newClients = data.clients.filter((client) => !clientsBefore.has(client.name));
+    return { module: "Sales/Collections", records: ready.length, skipped: checked.length - ready.length, createdRecords: { sales, clients: newClients } };
   }
   if (kind === "collectionsMigration") {
     const parsed = parseImportText();
     const headers = parsed[0].map(normalizedImportHeader);
     let imported = 0;
+    const payments = [];
+    const sales = [];
     ready.forEach((item) => {
       const row = parsed[item.row - 1];
       const sale = findSaleByDocumentInput(rowValue(headers, row, ["SI / TS / DR", "Document", "Invoice"]));
       const amount = importNumber(rowValue(headers, row, ["Amount Paid", "Amount"]));
       if (!sale || amount <= 0) return;
       sale.paid = Number(sale.paid || 0) + amount;
-      data.payments.push({ invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: item.receiptNo, method: rowValue(headers, row, ["Method"]) || "Migrated", bank: rowValue(headers, row, ["Bank"]), reference: rowValue(headers, row, ["Reference", "Cheque/Reference No."]), chequeDate: rowValue(headers, row, ["Cheque Date"]), dateCollected: importDate(rowValue(headers, row, ["Date of Collection", "Date"])), dateRecorded: fmtDate(today), client: sale.client, amount, collectionStatus: "Deposited", statusHistory: collectionStatusHistory("Deposited"), migrated: true });
+      const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: item.receiptNo, method: rowValue(headers, row, ["Method"]) || "Migrated", bank: rowValue(headers, row, ["Bank"]), reference: rowValue(headers, row, ["Reference", "Cheque/Reference No."]), chequeDate: rowValue(headers, row, ["Cheque Date"]), dateCollected: importDate(rowValue(headers, row, ["Date of Collection", "Date"])), dateRecorded: fmtDate(today), client: sale.client, amount, collectionStatus: "Deposited", statusHistory: collectionStatusHistory("Deposited"), migrated: true };
+      data.payments.push(payment);
+      payments.push(payment);
+      sales.push(sale);
       imported += 1;
     });
-    return { module: "Collections", records: imported, skipped: checked.length - ready.length };
+    return { module: "Collections", records: imported, skipped: checked.length - ready.length, createdRecords: { payments, sales } };
   }
   const recordKeys = [];
+  const clients = [];
   ready.forEach(({ name, area, address, contact, tin }) => {
     if (area && !platformAreas().some((item) => item.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
-    data.clients.push({ name, area, dealer: area.includes("Dealer") ? area : "Direct", address, contact, tin, creditLimit: 150000, docs: "Mayor's Permit, 2303, SEC or DTI, FDALTO, GAIA", migrated: true });
+    const client = { name, area, dealer: area.includes("Dealer") ? area : "Direct", address, contact, tin, creditLimit: 150000, docs: "Mayor's Permit, 2303, SEC or DTI, FDALTO, GAIA", migrated: true };
+    data.clients.push(client);
+    clients.push(client);
     recordKeys.push(name);
   });
-  return { module: "Clients", records: ready.length, skipped: checked.length - ready.length, recordType: "clients", recordKeys };
+  return { module: "Clients", records: ready.length, skipped: checked.length - ready.length, recordType: "clients", recordKeys, createdRecords: { clients } };
 }
 
 function importRevertBlockers(recordType, key) {
@@ -2911,8 +2928,10 @@ async function revertImportBatch(index) {
   if (entry.recordType === "suppliers") data.suppliers = data.suppliers.filter((supplier) => !keySet.has(String(supplier.name).trim().toLowerCase()));
   if (entry.recordType === "items") data.items = data.items.filter((item) => !keySet.has(String(item.code).trim().toLowerCase()));
   entry.reverted = true;
-  log("Reverted migration import", "Imports", `${entry.module}: ${entry.records} record(s)`);
-  saveData();
+  entry.revertedAt = fmtDate(today);
+  entry.revertedBy = currentUser?.name || "System User";
+  await persistRecords({ imports: [entry] });
+  log("Reverted migration import", "Imports", `${entry.module}: ${entry.records} record(s)`, { save: false });
   renderAll();
   toast(`${entry.module} import reverted.`);
 }
@@ -3227,8 +3246,10 @@ function recordReconciliationRun(findings, passRate, scope) {
   const high = findings.filter((item) => item[3] === "High").length;
   const medium = findings.filter((item) => item[3] === "Medium").length;
   const low = findings.filter((item) => item[3] === "Low").length;
-  data.reconHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), range: scope.range.label, period: qs("#recon-period")?.value || "month", findings: findings.length, high, medium, low, passRate });
+  const run = { id: `REC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), range: scope.range.label, period: qs("#recon-period")?.value || "month", findings: findings.length, high, medium, low, passRate };
+  data.reconHistory.unshift(run);
   data.reconHistory = data.reconHistory.slice(0, 30);
+  return run;
 }
 
 function renderReconciliation() {
@@ -3645,16 +3666,16 @@ async function loadMoreUserAuditLog() {
 }
 function renderAll() { renderBranchFilter(); renderDashboard(); renderCalendarSection(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); if (document.body.dataset.activeSection === "logs") renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); }
 
-function runReconciliationWorkflow() {
+async function runReconciliationWorkflow() {
   const scope = getReconScope();
   const findings = getReconciliationFindings(scope);
   const totalChecks = scope.sales.length * 5 + scope.payments.length * 3 + scope.clients.length * requiredClientDocs.length + scope.transfers.length;
   const passRate = totalChecks ? Math.round((Math.max(totalChecks - findings.length, 0) / totalChecks) * 100) : 100;
-  recordReconciliationRun(findings, passRate, scope);
+  const run = recordReconciliationRun(findings, passRate, scope);
+  await persistRecords({ reconHistory: [run] });
   renderReconciliation();
   renderWorkflowAssist("reconciliation");
-  log("Ran reconciliation", "Reconciliation", `${scope.range.label} · ${findings.length} findings`);
-  saveData();
+  log("Ran reconciliation", "Reconciliation", `${scope.range.label} · ${findings.length} findings`, { save: false });
   toast("Reconciliation completed and saved to history.");
 }
 
@@ -4023,7 +4044,7 @@ function openMasterEditModal(type, index) {
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const record = listByType[type]?.[index];
     notify("Approval", `${currentUser?.name || "System User"} requested Superadmin/CEO approval to edit ${type}: ${record?.name || record?.code || "record"}.`, "masterlists", record?.name || record?.code || "");
-    saveData();
+    saveData(["notifications"]);
     renderNotifications();
     return toast("Masterlist edits require Superadmin/CEO approval. Request sent.");
   }
@@ -4039,6 +4060,16 @@ function formObject(form) { return Object.fromEntries(new FormData(form).entries
 
 function recordLabel(type, record) {
   return record?.name || record?.code || record?.supplier || record?.id || record?.documentNo || Object.values(record || {})[0] || "record";
+}
+
+function masterlistRecordKey(type, record) {
+  if (type === "item") return String(record?.code || record?.name || "");
+  if (type === "employee") return String(record?.email || record?.name || "");
+  return String(record?.name || record?.code || record?.email || "");
+}
+
+function masterlistModuleKey(type) {
+  return ({ client: "clients", item: "items", supplier: "suppliers", employee: "employees", bank: "banks" })[type] || "";
 }
 
 function validateMasterRecord(type, values, exceptIndex = -1) {
