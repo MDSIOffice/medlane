@@ -204,6 +204,7 @@
         <a href="/dashboard?section=security" class="nav-item" data-section="security" data-title="Security" title="Security" data-description="Preview money-protection controls for compromised passwords, lost phones, approvals, and audit trails." hidden><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M6.5 9V6.3a3.5 3.5 0 0 1 7 0V9"/></svg></span><span>Security</span></a>
         <a href="/dashboard?section=users" class="nav-item" data-section="users" data-title="Users" title="Users" data-description="Manage user accounts, roles, branch access, and allowed modules."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.3" cy="6.8" r="2.6"/><path d="M2.5 17c0-2.9 2.1-5 4.8-5s4.8 2.1 4.8 5"/><circle cx="14.3" cy="7.3" r="2.1"/><path d="M13 12.2c1.9.3 3.5 2 3.5 4.8"/></svg></span><span>Users</span></a>
         <a href="/dashboard?section=settings" class="nav-item" data-section="settings" data-title="Settings" title="Settings" data-description="Configure platform branches used by branch-specific workflows."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 3v2M10 15v2M17 10h-2M5 10H3M15 5l-1.4 1.4M6.4 13.6 5 15M15 15l-1.4-1.4M6.4 6.4 5 5"/></svg></span><span>Settings</span></a>
+        <a href="/dashboard?section=print-templates" class="nav-item" data-section="print-templates" data-title="Print Templates" title="Print Templates" data-description="Create a custom field layout for SI, TS, or DR printing so future misalignment can be fixed once and reused for every print."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="12" height="14" rx="1.3"/><path d="M7 7h6M7 10h6M7 13h3"/><circle cx="14.5" cy="14.5" r="2.2"/></svg></span><span>Print Templates</span></a>
         <a href="/dashboard?section=backup" class="nav-item" data-section="backup" data-title="Backup" title="Backup" data-description="Manage optimized weekly, monthly, yearly, and manual backups."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3.5h9l3 3v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z"/><path d="M6.5 3.5v4h6v-4"/><path d="M6.5 12h7v5.5h-7z"/></svg></span><span>Backup</span></a>
         <a href="/dashboard?section=logs" class="nav-item" data-section="logs" data-title="Audit Logs" title="Audit Logs" data-description="Review traceable user activity including edits, imports, exports, stock changes, and payment postings."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5h9M7.5 10h9M7.5 15h9"/><path d="M3.5 5h.01M3.5 10h.01M3.5 15h.01"/></svg></span><span>Audit Logs</span></a>
       </nav>
@@ -615,6 +616,28 @@
         </article>
       </section>
 
+      <section class="section" id="print-templates">
+        <div class="section-header"><div><p class="eyebrow">Printing</p><h2>Custom Print Layouts</h2><p class="page-description">Adjust exactly where each field lands on the pre-printed SI, TS, or DR form. The default layout is never overwritten — save a custom layout here and choose it at print time.</p></div></div>
+        <div class="tabs" id="print-template-tabs">
+          <button class="tab active" data-pt-tab="SI" type="button">Sales Invoice (SI)</button>
+          <button class="tab" data-pt-tab="TS" type="button">Transfer Slip (TS)</button>
+          <button class="tab" data-pt-tab="DR" type="button">Delivery Receipt (DR)</button>
+        </div>
+        <div class="print-template-editor">
+          <div class="print-template-canvas-scroll">
+            <p class="page-description">Click a field to select it, then drag it, use the arrow buttons, or type exact numbers in the panel. The second faint row on the item table sets the spacing between rows — drag it up or down.</p>
+            <div class="print-template-canvas-wrap"><div id="print-template-canvas"></div></div>
+          </div>
+          <aside class="print-template-panel" id="print-template-panel">
+            <p class="page-description">Click a field on the layout to select it, then drag it or use the arrow controls to adjust its position.</p>
+          </aside>
+        </div>
+        <div class="modal-actions print-template-actions">
+          <button class="ghost-button danger-button" id="print-template-reset-all" type="button">Reset This Template To Default</button>
+          <button class="primary-button" id="print-template-save" type="button">Save Template</button>
+        </div>
+      </section>
+
       <section class="section" id="backup">
         <div class="section-header"><div><p class="eyebrow">Backup</p><h2>Automated Recovery Points</h2><p class="page-description">Weekly, monthly, yearly, and manual backups are compressed and stored in R2. Only Superadmin/CEO can access this module.</p></div><button class="primary-button" id="run-manual-backup" type="button">Run Manual Backup</button></div>
         <div class="backup-status-panel" id="backup-status-panel" hidden>
@@ -726,6 +749,7 @@
         </section>
         <div class="modal-header"><div><p class="eyebrow">Report Preview</p><h2 id="report-preview-title">Report</h2></div><button class="icon-button" id="report-preview-close" type="button" aria-label="Close">x</button></div>
         <p id="report-preview-description"></p>
+        <div class="field report-preview-template-field" id="report-preview-template-field" hidden><label for="report-preview-template">Layout</label><select id="report-preview-template"><option value="default">Default Layout</option><option value="custom">Custom Layout</option></select></div>
         <div id="report-preview-content"></div>
         <div class="modal-actions"><button class="ghost-button" id="report-preview-cancel" type="button">Close</button><button class="ghost-button" id="report-preview-print-no-date" type="button">Print Without Date</button><button class="primary-button" id="report-preview-print" type="button">Print Preview</button></div>
       </div>

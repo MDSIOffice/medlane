@@ -4,9 +4,9 @@ const jsonHeaders = {
 };
 
 const roleModules = {
-  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues"],
-  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues"],
-  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues"],
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   Accounting: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"],
   Sales: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
   Logistics: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
@@ -55,6 +55,7 @@ const moduleRecordKeys = {
   settings: ["branch", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
   system: ["branch", "notifications", "imports", "reconHistory"],
   "product-issues": ["productIssues"],
+  "print-templates": ["printTemplates"],
 };
 
 const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
@@ -789,24 +790,55 @@ function printableBranchAllowed(profile, sale) {
   return ["all", "Both", "All"].includes(branch) || sale.area === branch || sale.branch === branch;
 }
 
-function printableRows(sale, variant) {
+// A saved custom template supplies { fields: { fieldKey: {left,top,width,align,fontSize} }, row: {left,right,top,height,spacing} }.
+// Only properties actually present are emitted as inline style, so anything the user never touched keeps using the CSS default.
+function fieldOverrideStyle(o) {
+  if (!o) return "";
+  const parts = [];
+  if (o.left != null) parts.push(`left:${o.left}in`);
+  if (o.top != null) parts.push(`top:${o.top}in`);
+  if (o.width != null) parts.push(`width:${o.width}in`);
+  if (o.align) parts.push(`text-align:${o.align}`);
+  if (o.fontSize != null) parts.push(`font-size:${o.fontSize}px`);
+  return parts.length ? ` style="${parts.join(";")}"` : "";
+}
+
+function rowOverrideStyle(row, index) {
+  if (!row) return ` style="--row:${index}"`;
+  const parts = [`--row:${index}`, `top:${round3(Number(row.top || 0) + index * Number(row.spacing || 0))}in`];
+  if (row.left != null) parts.push(`left:${row.left}in`);
+  if (row.right != null) parts.push(`right:${row.right}in`);
+  if (row.height != null) parts.push(`height:${row.height}in`);
+  return ` style="${parts.join(";")}"`;
+}
+
+function round3(value) {
+  return Math.round(Number(value || 0) * 1000) / 1000;
+}
+
+function printableRows(sale, variant, templateOverrides) {
   const lines = sale.lines?.length ? sale.lines : [{ item: sale.item, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: Number(sale.amount || 0) / Math.max(Number(sale.qty || 1), 1), lot: "", expiry: "" }];
+  const fields = templateOverrides?.fields || {};
+  const row = templateOverrides?.row || null;
   return lines.slice(0, variant === "si" ? 10 : 8).map((line, index) => {
     const expiry = line.expiry && line.expiry !== "N/A" ? ` · Exp ${escapeHtml(line.expiry)}` : "";
     const lotExpiry = `<small>Lot ${escapeHtml(line.lot || "-")}${expiry}</small>`;
-    if (variant === "si") return `<div class="si-row" style="--row:${index}"><span class="si-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="si-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="si-price">${formMoney(line.price)}</span><span class="si-amount">${formMoney(lineAmount(line))}</span></div>`;
-    if (variant === "ts") return `<div class="ts-row" style="--row:${index}"><span class="ts-code">${escapeHtml(line.code || "")}</span><span class="ts-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="ts-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="ts-amount">${formMoney(lineAmount(line))}</span></div>`;
-    return `<div class="dr-row" style="--row:${index}"><span class="dr-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="dr-price"></span><span class="dr-amount"></span></div>`;
+    const rowStyle = rowOverrideStyle(row, index);
+    if (variant === "si") return `<div class="si-row"${rowStyle}><span class="si-item"${fieldOverrideStyle(fields["si-item"])}>${escapeHtml(line.item)}${lotExpiry}</span><span class="si-qty"${fieldOverrideStyle(fields["si-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="si-price"${fieldOverrideStyle(fields["si-price"])}>${formMoney(line.price)}</span><span class="si-amount"${fieldOverrideStyle(fields["si-amount"])}>${formMoney(lineAmount(line))}</span></div>`;
+    if (variant === "ts") return `<div class="ts-row"${rowStyle}><span class="ts-code"${fieldOverrideStyle(fields["ts-code"])}>${escapeHtml(line.code || "")}</span><span class="ts-item"${fieldOverrideStyle(fields["ts-item"])}>${escapeHtml(line.item)}${lotExpiry}</span><span class="ts-qty"${fieldOverrideStyle(fields["ts-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="ts-amount"${fieldOverrideStyle(fields["ts-amount"])}>${formMoney(lineAmount(line))}</span></div>`;
+    return `<div class="dr-row"${rowStyle}><span class="dr-qty"${fieldOverrideStyle(fields["dr-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item"${fieldOverrideStyle(fields["dr-item"])}>${escapeHtml(line.item)}${lotExpiry}</span><span class="dr-price"${fieldOverrideStyle(fields["dr-price"])}></span><span class="dr-amount"${fieldOverrideStyle(fields["dr-amount"])}></span></div>`;
   }).join("");
 }
 
-function printableInvoiceHtml({ sale, client, approvals, preparedBy, noDate }) {
+function printableInvoiceHtml({ sale, client, approvals, preparedBy, noDate, templateOverrides }) {
   const type = documentType(sale.type);
   const approvedBy = escapeHtml(approvals?.[type] || "ECTOSOC");
-  if (type === "TS") return `<section class="template-overlay template-ts">${noDate ? "" : `<span class="field ts-date">${formDate(new Date().toISOString())}</span>`}<span class="field ts-po">${escapeHtml(sale.po || "")}</span><span class="field ts-terms">Terms: ${Number(sale.terms || 30)} Days</span><span class="field ts-client">${escapeHtml(sale.client)}</span><span class="field ts-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "ts")}<span class="field ts-tax-label">NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total">${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared">${escapeHtml(preparedBy)}</span><span class="field ts-approved">${approvedBy}</span><span class="field ts-received"></span></section>`;
-  if (type === "DR") return `<section class="template-overlay template-dr">${noDate ? "" : `<span class="field dr-date">${formDate(new Date().toISOString())}</span>`}<span class="field dr-po">${escapeHtml(sale.po || "")}</span><span class="field dr-terms">${Number(sale.terms || 30)} Days</span><span class="field dr-client">${escapeHtml(sale.client)}</span><span class="field dr-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "dr")}<span class="field dr-prepared">${escapeHtml(preparedBy)}</span><span class="field dr-recorded"></span><span class="field dr-approved">${approvedBy}</span><span class="field dr-received"></span></section>`;
+  const f = templateOverrides?.fields || {};
+  const fs = (key) => fieldOverrideStyle(f[key]);
+  if (type === "TS") return `<section class="template-overlay template-ts">${noDate ? "" : `<span class="field ts-date"${fs("ts-date")}>${formDate(new Date().toISOString())}</span>`}<span class="field ts-po"${fs("ts-po")}>${escapeHtml(sale.po || "")}</span><span class="field ts-terms"${fs("ts-terms")}>Terms: ${Number(sale.terms || 30)} Days</span><span class="field ts-client"${fs("ts-client")}>${escapeHtml(sale.client)}</span><span class="field ts-address"${fs("ts-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "ts", templateOverrides)}<span class="field ts-tax-label"${fs("ts-tax-label")}>NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total"${fs("ts-total")}>${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared"${fs("ts-prepared")}>${escapeHtml(preparedBy)}</span><span class="field ts-approved"${fs("ts-approved")}>${approvedBy}</span><span class="field ts-received"></span></section>`;
+  if (type === "DR") return `<section class="template-overlay template-dr">${noDate ? "" : `<span class="field dr-date"${fs("dr-date")}>${formDate(new Date().toISOString())}</span>`}<span class="field dr-po"${fs("dr-po")}>${escapeHtml(sale.po || "")}</span><span class="field dr-terms"${fs("dr-terms")}>${Number(sale.terms || 30)} Days</span><span class="field dr-client"${fs("dr-client")}>${escapeHtml(sale.client)}</span><span class="field dr-address"${fs("dr-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "dr", templateOverrides)}<span class="field dr-prepared"${fs("dr-prepared")}>${escapeHtml(preparedBy)}</span><span class="field dr-recorded"${fs("dr-recorded")}></span><span class="field dr-approved"${fs("dr-approved")}>${approvedBy}</span><span class="field dr-received"${fs("dr-received")}></span></section>`;
   const breakdown = saleTaxBreakdown(sale);
-  return `<section class="template-overlay template-si">${noDate ? "" : `<span class="field si-date">${formDate(sale.date)}</span>`}<span class="field si-po">${escapeHtml(sale.po || "")}</span><span class="field si-terms">Terms of Payment ${Number(sale.terms || 30)} Days</span><span class="field si-sold">${escapeHtml(sale.client)}</span><span class="field si-registered">${escapeHtml(sale.client)}</span><span class="field si-tin">${escapeHtml(client.tin || "")}</span><span class="field si-address">${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "si")}<span class="field si-total-sales">${formMoney(breakdown.totalSalesVatInclusive)}</span><span class="field si-net-vat">${formMoney(breakdown.amountNetVat)}</span><span class="field si-discount">${formMoney(sale.discount || 0)}</span><span class="field si-vat">${formMoney(breakdown.addVat)}</span><span class="field si-amount-due">${formMoney(breakdown.totalAmountDue)}</span><span class="field si-prepared">${escapeHtml(preparedBy)}</span><span class="field si-approved">${approvedBy}</span></section>`;
+  return `<section class="template-overlay template-si">${noDate ? "" : `<span class="field si-date"${fs("si-date")}>${formDate(sale.date)}</span>`}<span class="field si-po"${fs("si-po")}>${escapeHtml(sale.po || "")}</span><span class="field si-terms"${fs("si-terms")}>Terms of Payment ${Number(sale.terms || 30)} Days</span><span class="field si-sold"${fs("si-sold")}>${escapeHtml(sale.client)}</span><span class="field si-registered"${fs("si-registered")}>${escapeHtml(sale.client)}</span><span class="field si-tin"${fs("si-tin")}>${escapeHtml(client.tin || "")}</span><span class="field si-address"${fs("si-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "si", templateOverrides)}<span class="field si-total-sales"${fs("si-total-sales")}>${formMoney(breakdown.totalSalesVatInclusive)}</span><span class="field si-net-vat"${fs("si-net-vat")}>${formMoney(breakdown.amountNetVat)}</span><span class="field si-discount"${fs("si-discount")}>${formMoney(sale.discount || 0)}</span><span class="field si-vat"${fs("si-vat")}>${formMoney(breakdown.addVat)}</span><span class="field si-amount-due"${fs("si-amount-due")}>${formMoney(breakdown.totalAmountDue)}</span><span class="field si-prepared"${fs("si-prepared")}>${escapeHtml(preparedBy)}</span><span class="field si-approved"${fs("si-approved")}>${approvedBy}</span></section>`;
 }
 
 function paymentRequestPrintableHtml(request) {
@@ -2004,18 +2036,21 @@ export default {
         if (!canAccessKey(profile, "sales", "view")) throw new Error("You do not have permission to print invoices");
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Invoice ID is required" }, { status: 400 });
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=in.${encodeURIComponent(postgrestIn(["sales", "clients", "invoiceApprovals"]))}&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=in.${encodeURIComponent(postgrestIn(["sales", "clients", "invoiceApprovals", "printTemplates"]))}&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(rows);
         const sale = (state.sales || []).find((item) => item.id === id || item.documentNo === id);
         if (!sale || !printableBranchAllowed(profile, sale)) return json({ error: "Invoice not found" }, { status: 404 });
         const type = documentType(sale.type);
+        const customTemplate = (state.printTemplates || []).find((t) => t.type === type) || null;
+        const useCustom = url.searchParams.get("template") === "custom" && customTemplate;
         return json({
           id: sale.id,
           documentNo: sale.documentNo || sale.id,
           type,
           title: `Print ${type} ${sale.documentNo || sale.id}`,
           description: url.searchParams.get("noDate") === "1" ? "Server-rendered data-only overlay without date. Load the physical template in the printer before printing." : "Server-rendered data-only overlay for the pre-printed form. Load the physical template in the printer before printing.",
-          html: printableInvoiceHtml({ sale, client: (state.clients || []).find((client) => client.name === sale.client) || {}, approvals: state.invoiceApprovals || {}, preparedBy: profile.name || "System User", noDate: url.searchParams.get("noDate") === "1" }),
+          hasCustomTemplate: Boolean(customTemplate),
+          html: printableInvoiceHtml({ sale, client: (state.clients || []).find((client) => client.name === sale.client) || {}, approvals: state.invoiceApprovals || {}, preparedBy: profile.name || "System User", noDate: url.searchParams.get("noDate") === "1", templateOverrides: useCustom ? customTemplate : null }),
         });
       }
 

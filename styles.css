@@ -1700,6 +1700,23 @@ button.calendar-cell:hover { background: var(--tint); }
 .tsr-l3-f { position: absolute; left: 7.02in; width: 0.2in; text-align: center; }
 .tsr-performed { left: 0.4in; top: 10.15in; width: 2.6in; text-align: center; }
 .tsr-conforme { left: 5.6in; top: 10.15in; width: 2.6in; text-align: center; }
+.print-template-editor { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; align-items: start; margin-top: 14px; }
+.print-template-canvas-scroll { min-width: 0; }
+.print-template-canvas-wrap { width: 470.8px; height: 609.5px; overflow: hidden; border-radius: 14px; box-shadow: 0 0 0 1px var(--line); }
+.print-template-canvas-wrap .pt-canvas-inner { transform: scale(0.554); transform-origin: top left; }
+.pt-editable { cursor: move; outline: 1px dashed rgba(0, 119, 189, 0.45); outline-offset: 1px; touch-action: none; }
+.pt-editable:hover { outline-color: rgba(0, 119, 189, 0.85); }
+.pt-editable.pt-selected { outline: 2px solid var(--brand-blue, #0077bd); background: rgba(0, 119, 189, 0.14); z-index: 5; }
+.pt-row-spacing-handle { cursor: ns-resize; background: rgba(239, 75, 79, 0.08); outline-color: rgba(239, 75, 79, 0.5); }
+.pt-row-spacing-handle.pt-selected { outline-color: #ef4b4f; background: rgba(239, 75, 79, 0.16); }
+.pt-row-spacing-label { position: absolute; left: 2px; top: 2px; font-size: 10px; color: #ef4b4f; font-weight: 700; white-space: nowrap; }
+.print-template-panel { position: sticky; top: 12px; border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--panel-solid); }
+.print-template-panel h3 { margin: 0 0 10px; font-size: 15px; }
+.pt-nudge-group { display: flex; align-items: end; gap: 12px; margin: 10px 0; }
+.pt-arrow-pad { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pt-arrow-row { display: flex; gap: 4px; }
+.print-template-actions { justify-content: flex-end; margin-top: 14px; }
+.report-preview-template-field { max-width: 260px; margin: 10px 0; }
 .modal-header { align-items: flex-start; margin-bottom: 18px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .field { display: grid; gap: 7px; }

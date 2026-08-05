@@ -692,6 +692,55 @@ qs("#inventory-workflow-tabs").addEventListener("click", (event) => {
   inventoryWorkflowTab = button.dataset.inventoryWorkflow;
   renderInventory();
 });
+qs("#print-template-tabs")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-pt-tab]");
+  if (!button) return;
+  ptActiveType = button.dataset.ptTab;
+  renderPrintTemplates();
+});
+qs("#print-template-canvas")?.addEventListener("pointerdown", startPtDrag);
+qs("#print-template-canvas")?.addEventListener("click", (event) => {
+  const el = event.target.closest(".pt-editable");
+  if (el) selectPtFieldFromEl(el);
+});
+qs("#print-template-canvas")?.addEventListener("keydown", handlePtCanvasKeydown);
+qs("#print-template-reset-all")?.addEventListener("click", resetPtAll);
+qs("#print-template-save")?.addEventListener("click", () => savePrintTemplate());
+qs("#print-template-panel")?.addEventListener("click", (event) => {
+  const nudge = event.target.closest("[data-pt-nudge]");
+  if (nudge) {
+    const step = ptStepIn;
+    const map = { up: [0, -step], down: [0, step], left: [-step, 0], right: [step, 0] };
+    nudgePtSelected(...map[nudge.dataset.ptNudge]);
+    return;
+  }
+  const resetField = event.target.closest("[data-pt-reset-field]");
+  if (resetField) { resetPtField(resetField.dataset.ptResetField); return; }
+  const resetRow = event.target.closest("[data-pt-reset-row]");
+  if (resetRow) resetPtRow();
+});
+qs("#print-template-panel")?.addEventListener("input", (event) => {
+  if (!ptSelectedField) return;
+  const id = event.target.id;
+  const num = (v) => Number(v || 0);
+  if (ptSelectedKind === "row-spacing") { if (id === "pt-input-spacing") applyPtRowOverride({ spacing: num(event.target.value) }); return; }
+  if (ptSelectedKind === "row") {
+    if (id === "pt-input-left") applyPtRowOverride({ left: num(event.target.value) });
+    if (id === "pt-input-right") applyPtRowOverride({ right: num(event.target.value) });
+    if (id === "pt-input-top") applyPtRowOverride({ top: num(event.target.value) });
+    if (id === "pt-input-height") applyPtRowOverride({ height: num(event.target.value) });
+    return;
+  }
+  if (id === "pt-input-left") applyPtFieldOverride(ptSelectedField, { left: num(event.target.value) });
+  if (id === "pt-input-top") applyPtFieldOverride(ptSelectedField, { top: num(event.target.value) });
+  if (id === "pt-input-width") applyPtFieldOverride(ptSelectedField, { width: num(event.target.value) });
+  if (id === "pt-input-fontsize") applyPtFieldOverride(ptSelectedField, { fontSize: event.target.value === "" ? undefined : num(event.target.value) });
+});
+qs("#print-template-panel")?.addEventListener("change", (event) => {
+  const id = event.target.id;
+  if (id === "pt-input-align" && ptSelectedField && ptSelectedKind !== "row" && ptSelectedKind !== "row-spacing") applyPtFieldOverride(ptSelectedField, { align: event.target.value });
+  if (id === "pt-step-select") ptStepIn = Number(event.target.value);
+});
 qs("#collections-workflow-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-collections-workflow]");
   if (!button) return;
@@ -902,6 +951,7 @@ qs("#report-preview-close").addEventListener("click", closeReportPreview);
 qs("#report-preview-cancel").addEventListener("click", closeReportPreview);
 qs("#report-preview-print").addEventListener("click", printReportPreview);
 qs("#report-preview-print-no-date").addEventListener("click", printReportPreviewNoDate);
+qs("#report-preview-template")?.addEventListener("change", (e) => changeReportPreviewTemplate(e.target.value));
 qs("#payment-request-preview-close").addEventListener("click", () => qs("#payment-request-preview-modal").close());
 qs("#payment-request-preview-cancel").addEventListener("click", () => qs("#payment-request-preview-modal").close());
 qs("#payment-request-preview-print").addEventListener("click", () => window.print());
