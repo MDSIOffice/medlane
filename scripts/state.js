@@ -23,6 +23,33 @@ let transferRowUid = 0;
 let pendingServerSave = null;
 let serverRevision = 0;
 
+const frontendModuleRecordKeys = {
+  dashboard: [],
+  analytics: [],
+  masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
+  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders"],
+  "purchase-orders": ["purchaseOrders"],
+  sales: ["sales"],
+  invoicing: ["sales"],
+  collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
+  "payment-request-detail": ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
+  "receivables-tracker": ["sales", "payments", "collectionContacts", "collectionContactHistory"],
+  "client-invoices": ["sales", "payments", "paymentRequests"],
+  "sale-detail": ["sales", "payments", "paymentRequests"],
+  warranty: ["warranties"],
+  "purchase-history": ["sales", "purchaseOrders", "payments"],
+  payables: ["payables"],
+  replenishments: ["replenishments"],
+  imports: ["imports", "clients", "items", "suppliers", "sales", "payments"],
+  reports: ["reports"],
+  reconciliation: ["reconHistory"],
+  notifications: ["notifications"],
+  settings: ["platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
+  "product-issues": ["productIssues"],
+  "product-issue-detail": ["productIssues"],
+  "inventory-po-detail": ["inventoryPurchaseOrders", "inventory"],
+};
+
 const philippinesRegionsGeoJsonUrl = "https://raw.githubusercontent.com/wmgeolab/geoBoundaries/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
 
 const clientCoordinates = {
@@ -216,12 +243,29 @@ function normalizeData(next) {
   return next;
 }
 
-function saveData() {
+function savePayloadForKeys(keys) {
+  const payload = {};
+  [...new Set(keys)].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(data || {}, key)) payload[key] = data[key];
+  });
+  return payload;
+}
+
+function inferredSaveKeys() {
+  const activeSection = document.body.dataset.activeSection || qs(".section.active")?.id || "dashboard";
+  const keys = [...(frontendModuleRecordKeys[activeSection] || [])];
+  if (data?.notifications) keys.push("notifications");
+  return keys;
+}
+
+function saveData(keys = null) {
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return;
   if (typeof syncGeneratedNotifications === "function") syncGeneratedNotifications();
+  const payload = savePayloadForKeys(keys || inferredSaveKeys());
+  if (!Object.keys(payload).length) return;
   clearTimeout(pendingServerSave);
   pendingServerSave = setTimeout(() => {
-    MedlaneAPI.saveAppState(data, serverRevision).then((result) => {
+    MedlaneAPI.saveAppState(payload, serverRevision).then((result) => {
       if (result?.revision) {
         serverRevision = Number(result.revision);
       }

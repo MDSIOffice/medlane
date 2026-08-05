@@ -39,7 +39,7 @@ const moduleRecordKeys = {
 
 const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
 const genericStateBlockedKeys = new Set(["users", "branch", "masterTab"]);
-const defaultSeedKeys = new Set(["clients", "items", "suppliers", "employees", "banks"]);
+const defaultSeedSignature = { clients: 2, items: 4, suppliers: 3, employees: 1, banks: 2 };
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -1373,8 +1373,8 @@ export default {
             const totalBefore = beforeRows.length;
             const totalAfter = rows.length;
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
-            const seededModules = env.ENVIRONMENT === "production" ? presentKeys.filter((key) => defaultSeedKeys.has(key) && (beforeCounts[key] || 0) === 0 && (afterCounts[key] || 0) > 0) : [];
-            const defaultSeedBurst = seededModules.length >= 2;
+            const seededModules = env.ENVIRONMENT === "production" ? Object.entries(defaultSeedSignature).filter(([key, count]) => presentKeys.includes(key) && (beforeCounts[key] || 0) === 0 && (afterCounts[key] || 0) === count).map(([key]) => key) : [];
+            const defaultSeedBurst = seededModules.length >= 3;
 
             if (defaultSeedBurst) {
               const deltaSummary = presentKeys.map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
