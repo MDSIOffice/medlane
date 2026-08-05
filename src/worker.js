@@ -210,6 +210,36 @@ async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMenti
   return { sent: true, provider: "discord" };
 }
 
+async function sendDiscordWebhookUrl(env, webhookUrl, { content = "", embeds = [], allowedMentions = null, wait = false } = {}) {
+  const label = embeds[0]?.title || content.slice(0, 80) || "Discord message";
+  if (!webhookUrl) return { sent: false, provider: "discord", reason: "Webhook URL is not configured" };
+  const response = await fetch(`${webhookUrl}${wait ? `${webhookUrl.includes("?") ? "&" : "?"}wait=true` : ""}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content, embeds, username: "Medlane OS", ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) }),
+  });
+  const payload = wait ? await response.json().catch(() => null) : null;
+  if (!response.ok && response.status !== 204) {
+    const text = payload ? JSON.stringify(payload).slice(0, 500) : await response.text().catch(() => "");
+    throw new Error(`Discord webhook failed: ${label}: ${response.status} ${text}`);
+  }
+  return { sent: true, provider: "discord", messageId: payload?.id || null };
+}
+
+async function editDiscordWebhookMessage(webhookUrl, messageId, { content = "", embeds = [], allowedMentions = null } = {}) {
+  if (!webhookUrl || !messageId) return { edited: false, reason: "Webhook URL or message ID is missing" };
+  const response = await fetch(`${webhookUrl}/messages/${encodeURIComponent(messageId)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content, embeds, ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) }),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Discord webhook edit failed: ${response.status} ${text}`);
+  }
+  return { edited: true };
+}
+
 function discordFieldValue(lines, limit = 900) {
   if (!lines.length) return "None";
   let value = "";
@@ -863,10 +893,10 @@ function objectKeyFor(fileName, recordType) {
 }
 
 function backupTypeForCron(cron) {
-  if (cron === "0 18 1 1 *") return "yearly";
-  if (cron === "0 18 1 * *") return "monthly";
-  if (cron === "0 18 * * sun") return "weekly";
-  return "manual";
+  if (cron === "0 10 1 1 *") return "yearly";
+  if (cron === "0 10 1 * *") return "monthly";
+  if (cron === "0 10 * * sun") return "weekly";
+  return null;
 }
 
 async function gzipBytes(text) {
@@ -948,6 +978,7 @@ const DIGEST_ROLE_RECIPIENTS = {
 
 const DAILY_DIGEST_CRON = "0 10 * * *";
 const WEEKLY_DIGEST_CRON = "0 10 * * fri";
+const FIVE_MINUTE_MONITOR_CRON = "*/5 * * * *";
 
 function digestDaysUntil(dateStr) {
   if (!dateStr || dateStr === "N/A") return NaN;
@@ -1063,6 +1094,92 @@ function buildBusinessSummaryLines(state) {
     `Bounced payments: ${bounced}`,
     `Low / critical inventory: ${lowStock}`,
   ];
+}
+
+function dashboardAnalyticsFields(state) {
+  const sales = (state.sales || []).filter((sale) => sale.status !== "Cancelled");
+  const payments = state.payments || [];
+  const inventory = state.inventory || [];
+  const payables = state.payables || [];
+  const replenishments = state.replenishments || [];
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const openReceivables = Math.max(totalSales - totalCollected, 0);
+  const overdue = sales.filter((sale) => digestSaleStatus(sale) === "Overdue");
+  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item)));
+  const pendingPayables = payables.filter((payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
+  const pendingExpenses = replenishments.filter((expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
+  return [
+    { name: "Dashboard", value: [`Active invoices: ${sales.length}`, `Open receivables: ${money(openReceivables)}`, `Overdue invoices: ${overdue.length}`, `Pending deposit: ${payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`].join("\n"), inline: true },
+    { name: "Analytics", value: [`Total invoiced: ${money(totalSales)}`, `Total collected: ${money(totalCollected)}`, `Low/critical stock: ${lowStock.length}`, `Payables/expenses pending: ${pendingPayables.length + pendingExpenses.length}`].join("\n"), inline: true },
+  ];
+}
+
+async function monitoringState(env) {
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.system-monitoring&record_key=eq.discord-dashboard&select=data`);
+  return rows[0]?.data || {};
+}
+
+async function saveMonitoringState(env, state) {
+  await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+    method: "POST",
+    headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify([{ state_key: appStateKey(env), module_name: "system-monitoring", record_key: "discord-dashboard", data: state, updated_by: null }]),
+  });
+}
+
+async function runApiHealthMonitor(env) {
+  const checks = [];
+  const started = Date.now();
+  try {
+    requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+    await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name&limit=1`);
+    checks.push({ name: "Supabase app_records", ok: true });
+  } catch (error) {
+    checks.push({ name: "Supabase app_records", ok: false, error: error.message });
+  }
+  checks.push({ name: "R2 binding", ok: Boolean(env.DOCUMENTS_BUCKET), error: env.DOCUMENTS_BUCKET ? "" : "DOCUMENTS_BUCKET binding missing" });
+  checks.push({ name: "Supabase URL", ok: Boolean(env.SUPABASE_URL), error: env.SUPABASE_URL ? "" : "SUPABASE_URL missing" });
+  checks.push({ name: "Supabase anon key", ok: Boolean(env.SUPABASE_ANON_KEY), error: env.SUPABASE_ANON_KEY ? "" : "SUPABASE_ANON_KEY missing" });
+  checks.push({ name: "Supabase service role", ok: Boolean(env.SUPABASE_SERVICE_ROLE_KEY), error: env.SUPABASE_SERVICE_ROLE_KEY ? "" : "SUPABASE_SERVICE_ROLE_KEY missing" });
+  const failed = checks.filter((check) => !check.ok);
+  const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const embed = { title: failed.length ? "Medlane API Health — Failed" : "Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, fields: [{ name: "Latest update", value: `${updatedAt} PHT`, inline: false }, { name: "Latency", value: `${Date.now() - started} ms`, inline: true }, { name: "Checks", value: checks.map((check) => `${check.ok ? "OK" : "FAIL"} ${check.name}${check.error ? ` — ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
+  await sendDiscordWebhookUrl(env, env.DISCORD_HEALTH_WEBHOOK_URL, { embeds: [embed] }).catch((error) => recordSystemLog(env, { action: "Discord health monitor skipped/failed", module: "Discord", record: error.message }));
+  if (failed.length) await sendDiscordWebhook(env, { content: "@everyone Medlane API health check failed.", allowedMentions: { parse: ["everyone"] }, embeds: [embed] });
+}
+
+async function runDashboardAnalyticsMonitor(env) {
+  if (!env.DISCORD_DASHBOARD_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord dashboard monitor skipped", module: "Discord", record: "DISCORD_DASHBOARD_WEBHOOK_URL not configured" });
+  const state = await loadDigestState(env);
+  const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const embed = { title: "Medlane Dashboard & Analytics", color: 0x0077bd, description: `Latest update: ${updatedAt} PHT`, fields: dashboardAnalyticsFields(state), timestamp: new Date().toISOString() };
+  const stored = await monitoringState(env).catch(() => ({}));
+  if (stored.messageId) {
+    const edited = await editDiscordWebhookMessage(env.DISCORD_DASHBOARD_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch(() => null);
+    if (edited?.edited) return saveMonitoringState(env, { ...stored, updatedAt: new Date().toISOString() });
+  }
+  const sent = await sendDiscordWebhookUrl(env, env.DISCORD_DASHBOARD_WEBHOOK_URL, { embeds: [embed], wait: true });
+  if (sent.messageId) await saveMonitoringState(env, { messageId: sent.messageId, updatedAt: new Date().toISOString() });
+}
+
+async function runFiveMinuteDiscordMonitors(env) {
+  await Promise.allSettled([runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env)]);
+}
+
+function manilaScheduleParts(value) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(value));
+  return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+}
+
+async function runFiveMinuteScheduledTasks(event, env) {
+  const scheduled = manilaScheduleParts(event.scheduledTime || Date.now());
+  const tasks = [runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env)];
+  if (scheduled.minute === "00" && scheduled.hour === "18") {
+    tasks.push(runDailyDigest(env));
+    if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env));
+  }
+  await Promise.allSettled(tasks);
 }
 
 function backupDigestLines(auditRows) {
@@ -1188,6 +1305,10 @@ async function runWeeklyDigest(env) {
 export default {
   async scheduled(event, env, ctx) {
     if (env.ENVIRONMENT !== "production") return;
+    if (event.cron === FIVE_MINUTE_MONITOR_CRON) {
+      ctx.waitUntil(runFiveMinuteScheduledTasks(event, env).catch((error) => console.error(JSON.stringify({ message: "Five-minute scheduled tasks failed", error: error.message }))));
+      return;
+    }
     if (event.cron === DAILY_DIGEST_CRON) {
       ctx.waitUntil(runDailyDigest(env).catch((error) => console.error(JSON.stringify({ message: "Daily digest failed", error: error.message }))));
       return;
@@ -1196,7 +1317,9 @@ export default {
       ctx.waitUntil(runWeeklyDigest(env).catch((error) => console.error(JSON.stringify({ message: "Weekly digest failed", error: error.message }))));
       return;
     }
-    ctx.waitUntil(createBackup(env, backupTypeForCron(event.cron), null).catch((error) => console.error(JSON.stringify({ message: "Scheduled backup failed", cron: event.cron, error: error.message }))));
+    const backupType = backupTypeForCron(event.cron);
+    if (!backupType) return;
+    ctx.waitUntil(createBackup(env, backupType, null).catch((error) => console.error(JSON.stringify({ message: "Scheduled backup failed", cron: event.cron, error: error.message }))));
   },
   async fetch(request, env) {
     const url = new URL(request.url);
