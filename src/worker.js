@@ -213,7 +213,9 @@ async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMenti
 async function sendDiscordWebhookUrl(env, webhookUrl, { content = "", embeds = [], allowedMentions = null, wait = false } = {}) {
   const label = embeds[0]?.title || content.slice(0, 80) || "Discord message";
   if (!webhookUrl) return { sent: false, provider: "discord", reason: "Webhook URL is not configured" };
-  const response = await fetch(`${webhookUrl}${wait ? `${webhookUrl.includes("?") ? "&" : "?"}wait=true` : ""}`, {
+  const url = new URL(webhookUrl);
+  if (wait) url.searchParams.set("wait", "true");
+  const response = await fetch(url.toString(), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ content, embeds, username: "Medlane OS", ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) }),
@@ -228,7 +230,10 @@ async function sendDiscordWebhookUrl(env, webhookUrl, { content = "", embeds = [
 
 async function editDiscordWebhookMessage(webhookUrl, messageId, { content = "", embeds = [], allowedMentions = null } = {}) {
   if (!webhookUrl || !messageId) return { edited: false, reason: "Webhook URL or message ID is missing" };
-  const response = await fetch(`${webhookUrl}/messages/${encodeURIComponent(messageId)}`, {
+  const url = new URL(webhookUrl);
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/messages/${encodeURIComponent(messageId)}`;
+  url.searchParams.delete("wait");
+  const response = await fetch(url.toString(), {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ content, embeds, ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) }),
@@ -1172,14 +1177,18 @@ async function runApiHealthMonitor(env) {
   if (env.DISCORD_HEALTH_WEBHOOK_URL) {
     const stored = await monitoringState(env, "discord-health").catch(() => ({}));
     if (stored.messageId) {
-      const edited = await editDiscordWebhookMessage(env.DISCORD_HEALTH_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch(() => null);
-      if (edited?.edited) await saveMonitoringState(env, "discord-health", { ...stored, updatedAt: new Date().toISOString() });
-      else stored.messageId = "";
+      const edited = await editDiscordWebhookMessage(env.DISCORD_HEALTH_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
+      if (edited?.edited) await saveMonitoringState(env, "discord-health", { ...stored, updatedAt: new Date().toISOString() }).catch((error) => recordSystemLog(env, { action: "Discord health state save failed", module: "Discord", record: error.message }));
+      else {
+        await recordSystemLog(env, { action: "Discord health edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
+        stored.messageId = "";
+      }
     }
     if (!stored.messageId) {
       const sent = await sendDiscordWebhookUrl(env, env.DISCORD_HEALTH_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
       if (sent.error) await recordSystemLog(env, { action: "Discord health monitor skipped/failed", module: "Discord", record: sent.error.message });
-      else if (sent.messageId) await saveMonitoringState(env, "discord-health", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
+      else if (sent.messageId) await saveMonitoringState(env, "discord-health", { messageId: sent.messageId, updatedAt: new Date().toISOString() }).catch((error) => recordSystemLog(env, { action: "Discord health state save failed", module: "Discord", record: error.message }));
+      else await recordSystemLog(env, { action: "Discord health message id missing", module: "Discord", record: "Discord post succeeded but did not return a message ID" });
     }
   } else await recordSystemLog(env, { action: "Discord health monitor skipped", module: "Discord", record: "DISCORD_HEALTH_WEBHOOK_URL not configured" });
   if (failed.length) await sendDiscordWebhook(env, { content: "@everyone 🚨 **Medlane API health check failed.**", allowedMentions: { parse: ["everyone"] }, embeds: [embed] });
@@ -1205,7 +1214,7 @@ async function runFiveMinuteDiscordMonitors(env) {
 }
 
 function manilaScheduleParts(value) {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(value));
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", weekday: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(value));
   return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
 }
 
@@ -1215,6 +1224,9 @@ async function runFiveMinuteScheduledTasks(event, env) {
   if (scheduled.minute === "00" && scheduled.hour === "18") {
     tasks.push(runDailyDigest(env));
     if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env));
+    if (scheduled.weekday === "Sun") tasks.push(createBackup(env, "weekly", null));
+    if (scheduled.day === "01") tasks.push(createBackup(env, "monthly", null));
+    if (scheduled.month === "01" && scheduled.day === "01") tasks.push(createBackup(env, "yearly", null));
   }
   await Promise.allSettled(tasks);
 }
