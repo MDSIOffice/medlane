@@ -1096,22 +1096,42 @@ function buildBusinessSummaryLines(state) {
   ];
 }
 
-function dashboardAnalyticsFields(state) {
+function manilaMonthParts(value = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit" }).formatToParts(new Date(value));
+  const map = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return { key: `${map.year}-${map.month}`, label: new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "long", year: "numeric" }).format(new Date(value)) };
+}
+
+function recordMonthKey(value) {
+  if (!value) return "";
+  const text = String(value);
+  if (/^\d{4}-\d{2}/.test(text)) return text.slice(0, 7);
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? "" : manilaMonthParts(date).key;
+}
+
+function dashboardAnalyticsFields(state, monthKey) {
   const sales = (state.sales || []).filter((sale) => sale.status !== "Cancelled");
   const payments = state.payments || [];
   const inventory = state.inventory || [];
   const payables = state.payables || [];
   const replenishments = state.replenishments || [];
-  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
-  const openReceivables = Math.max(totalSales - totalCollected, 0);
+  const monthSales = sales.filter((sale) => recordMonthKey(sale.date) === monthKey);
+  const monthPayments = payments.filter((payment) => recordMonthKey(payment.dateRecorded || payment.date || payment.postedDate) === monthKey);
+  const monthPayables = payables.filter((payable) => recordMonthKey(payable.date) === monthKey);
+  const monthExpenses = replenishments.filter((expense) => recordMonthKey(expense.date) === monthKey);
+  const totalSales = monthSales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const totalCollected = monthPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const openReceivables = Math.max(sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0) - sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0), 0);
   const overdue = sales.filter((sale) => digestSaleStatus(sale) === "Overdue");
   const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item)));
-  const pendingPayables = payables.filter((payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
-  const pendingExpenses = replenishments.filter((expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
+  const pendingPayables = monthPayables.filter((payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
+  const pendingExpenses = monthExpenses.filter((expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
   return [
-    { name: "Dashboard", value: [`Active invoices: ${sales.length}`, `Open receivables: ${money(openReceivables)}`, `Overdue invoices: ${overdue.length}`, `Pending deposit: ${payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`].join("\n"), inline: true },
-    { name: "Analytics", value: [`Total invoiced: ${money(totalSales)}`, `Total collected: ${money(totalCollected)}`, `Low/critical stock: ${lowStock.length}`, `Payables/expenses pending: ${pendingPayables.length + pendingExpenses.length}`].join("\n"), inline: true },
+    { name: "💰 Sales", value: [`**Invoices this month:** ${monthSales.length}`, `**Month invoiced:** ${money(totalSales)}`, `**Open AR total:** ${money(openReceivables)}`].join("\n"), inline: true },
+    { name: "🏦 Collections", value: [`**Collected this month:** ${money(totalCollected)}`, `**Deposits pending:** ${payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`, `**Overdue invoices:** ${overdue.length}`].join("\n"), inline: true },
+    { name: "📦 Operations", value: [`**Low / critical stock:** ${lowStock.length}`, `**Payables this month:** ${monthPayables.length}`, `**Expenses this month:** ${monthExpenses.length}`].join("\n"), inline: true },
+    { name: "⚠️ Attention", value: [`**Payables/expenses pending:** ${pendingPayables.length + pendingExpenses.length}`, `**Bounced payments:** ${payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length}`, `**Inventory records:** ${inventory.length}`].join("\n"), inline: true },
   ];
 }
 
@@ -1144,16 +1164,17 @@ async function runApiHealthMonitor(env) {
   checks.push({ name: "Supabase service role", ok: Boolean(env.SUPABASE_SERVICE_ROLE_KEY), error: env.SUPABASE_SERVICE_ROLE_KEY ? "" : "SUPABASE_SERVICE_ROLE_KEY missing" });
   const failed = checks.filter((check) => !check.ok);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const embed = { title: failed.length ? "Medlane API Health — Failed" : "Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, fields: [{ name: "Latest update", value: `${updatedAt} PHT`, inline: false }, { name: "Latency", value: `${Date.now() - started} ms`, inline: true }, { name: "Checks", value: checks.map((check) => `${check.ok ? "OK" : "FAIL"} ${check.name}${check.error ? ` — ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
+  const embed = { title: failed.length ? "🔴 Medlane API Health — Failed" : "🟢 Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, description: failed.length ? "🚨 **Immediate review needed.** One or more API checks failed." : "✅ **All monitored API checks are healthy.**", fields: [{ name: "🕒 Latest Update", value: `**${updatedAt} PHT**`, inline: false }, { name: "⚡ Response Time", value: `**${Date.now() - started} ms**`, inline: true }, { name: "🧪 Checks", value: checks.map((check) => `${check.ok ? "✅" : "❌"} **${check.name}**${check.error ? `\n↳ ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
   await sendDiscordWebhookUrl(env, env.DISCORD_HEALTH_WEBHOOK_URL, { embeds: [embed] }).catch((error) => recordSystemLog(env, { action: "Discord health monitor skipped/failed", module: "Discord", record: error.message }));
-  if (failed.length) await sendDiscordWebhook(env, { content: "@everyone Medlane API health check failed.", allowedMentions: { parse: ["everyone"] }, embeds: [embed] });
+  if (failed.length) await sendDiscordWebhook(env, { content: "@everyone 🚨 **Medlane API health check failed.**", allowedMentions: { parse: ["everyone"] }, embeds: [embed] });
 }
 
 async function runDashboardAnalyticsMonitor(env) {
   if (!env.DISCORD_DASHBOARD_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord dashboard monitor skipped", module: "Discord", record: "DISCORD_DASHBOARD_WEBHOOK_URL not configured" });
   const state = await loadDigestState(env);
+  const month = manilaMonthParts();
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const embed = { title: "Medlane Dashboard & Analytics", color: 0x0077bd, description: `Latest update: ${updatedAt} PHT`, fields: dashboardAnalyticsFields(state), timestamp: new Date().toISOString() };
+  const embed = { title: "📊 Medlane Dashboard & Analytics", color: 0x0077bd, description: `📅 **Current month:** ${month.label}\n🕒 **Latest update:** ${updatedAt} PHT`, fields: dashboardAnalyticsFields(state, month.key), timestamp: new Date().toISOString() };
   const stored = await monitoringState(env).catch(() => ({}));
   if (stored.messageId) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_DASHBOARD_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch(() => null);
