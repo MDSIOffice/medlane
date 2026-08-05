@@ -970,8 +970,9 @@ qs("#login-form").addEventListener("submit", async (event) => {
   currentUser = payload.user;
   try {
     const serverState = await MedlaneAPI.loadAppState();
+    if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state.");
     serverRevision = Number(serverState.revision || 0);
-      data = serverState.data ? normalizeData({ ...structuredClone(initialData), ...serverState.data }) : normalizeData(emptyProductionData());
+    data = normalizeData({ ...structuredClone(initialData), ...serverState.data });
     await syncBackendUsers();
   } catch (error) {
     toast(`Logged in, but server data sync failed: ${error.message}`);
@@ -1187,8 +1188,9 @@ async function hydrateAuthenticatedSession() {
   currentUser = me.user;
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   const serverState = await MedlaneAPI.loadAppState();
+  if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state. Refusing to load blank data over it.");
   serverRevision = Number(serverState.revision || 0);
-  data = serverState.data ? normalizeData({ ...structuredClone(initialData), ...serverState.data }) : normalizeData(emptyProductionData());
+  data = normalizeData({ ...structuredClone(initialData), ...serverState.data });
   await syncBackendUsers();
 }
 async function initializeRoute() {

@@ -135,7 +135,7 @@ function inviteEmailHtml({ fullName, email, role, actionLink, origin }) {
 async function recordSystemLog(env, { action, module, record }) {
   const stateKey = appStateKey(env);
   const entry = {
-    date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }),
     user: "System",
     role: "System",
     action,
@@ -1204,7 +1204,7 @@ export default {
         if (!action) return json({ error: "Action is required" }, { status: 400 });
         const context = auditContextForRequest(request);
         const entry = {
-          date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+          date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }),
           user: profile.name || profile.email || "System User",
           role: profile.role || "Unknown",
           action,
@@ -1262,14 +1262,23 @@ export default {
           const { data } = await request.json();
           const keys = writableKeys(profile);
           if (!keys.length) throw new Error("You do not have permission to edit production data");
-          const rows = recordsFromState(data, authUser.id, stateKey, keys, auditContextForRequest(request));
-          await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(keys))}`, { method: "DELETE" });
-          if (rows.length) {
-            await supabaseFetch(env, "/rest/v1/app_records", {
-              method: "POST",
-              headers: { prefer: "return=minimal" },
-              body: JSON.stringify(rows),
-            });
+          // Only replace modules the client actually included in this save. A key
+          // that's simply absent from `data` (a stale or partial client snapshot —
+          // e.g. an old tab, or a client-side bug that dropped a field) must never
+          // be treated as "empty this module out": that previously deleted whatever
+          // module the client's local copy happened not to have loaded, even though
+          // nothing about that module was ever intentionally changed.
+          const presentKeys = keys.filter((key) => data?.[key] !== undefined);
+          const rows = recordsFromState(data, authUser.id, stateKey, presentKeys, auditContextForRequest(request));
+          if (presentKeys.length) {
+            await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}`, { method: "DELETE" });
+            if (rows.length) {
+              await supabaseFetch(env, "/rest/v1/app_records", {
+                method: "POST",
+                headers: { prefer: "return=minimal" },
+                body: JSON.stringify(rows),
+              });
+            }
           }
           return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
         }
