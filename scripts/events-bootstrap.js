@@ -674,6 +674,12 @@ qs("#inventory-branch-tabs").addEventListener("click", (event) => {
   inventoryBranchTab = button.dataset.inventoryBranch;
   renderInventory();
 });
+qs("#inventory-workflow-tabs").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-inventory-workflow]");
+  if (!button) return;
+  inventoryWorkflowTab = button.dataset.inventoryWorkflow;
+  renderInventory();
+});
 qs("#inventory-compact-toggle").addEventListener("click", () => { inventoryCompactView = !inventoryCompactView; renderInventory(); });
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });
@@ -701,6 +707,8 @@ qs("#transfer-table").addEventListener("click", (event) => {
   if (incomplete) return incompleteTransfer(Number(incomplete.dataset.incompleteTransfer));
   const complete = event.target.closest("[data-complete-transfer]");
   if (complete) return completeIncompleteTransfer(Number(complete.dataset.completeTransfer));
+  const transferTimeline = event.target.closest("[data-transfer-timeline]");
+  if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
 });
 qs("#collections").addEventListener("click", (event) => {
   const statusButton = event.target.closest("[data-contact-status]");

@@ -18,6 +18,7 @@ let philippinesRegionGeoJson = null;
 let arTrackerTab = "all";
 let collectionMapZoom = 1;
 let inventoryBranchTab = "Las Pinas";
+let inventoryWorkflowTab = "receiving";
 let inventoryCompactView = false;
 let transferRowUid = 0;
 let pendingServerSave = null;

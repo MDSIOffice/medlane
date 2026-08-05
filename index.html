@@ -380,11 +380,16 @@
           <button class="primary-button" id="open-transfer-sheet" type="button">Stock Transfer</button>
           <button class="ghost-button" id="open-transfer-history" type="button">Transfer History</button>
         </div>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div></article>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div></article>
-        <div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div>
-        <div class="table-card"><table id="inventory-table"></table></div>
+        <div class="tabs workflow-tabs" id="inventory-workflow-tabs">
+          <button class="tab active" data-inventory-workflow="receiving">Receiving POs</button>
+          <button class="tab" data-inventory-workflow="completed">Completed POs</button>
+          <button class="tab" data-inventory-workflow="transfers">Transfers</button>
+          <button class="tab" data-inventory-workflow="stocks">Stocks</button>
+        </div>
+        <div class="inventory-workflow-panel active" data-inventory-panel="receiving"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div></article></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="completed"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="transfers"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div></article></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="stocks"><div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div><div class="table-card"><table id="inventory-table"></table></div></div>
       </section>
 
       <section class="section" id="sales">

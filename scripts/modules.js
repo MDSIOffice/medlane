@@ -1181,6 +1181,7 @@ function inventoryItemLabel(item) {
 
 function renderInventory() {
   const status = qs("#inventory-status").value;
+  renderInventoryWorkflowTabs();
   renderInventoryBranchTabs();
   ensureInventoryDatalists();
   const rows = data.inventory.filter((item) => item.branch === inventoryBranchTab).filter((item) => status === "all" || inventoryStatus(item) === status).filter((item) => includesSearch(Object.values(item)));
@@ -1204,8 +1205,26 @@ function renderInventory() {
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
   table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
-  table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, transfer.qty, (transfer.lines?.length ? transfer.lines : [transfer]).map((line) => `${line.lot || "-"}<small>${line.expiry || "N/A"}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, transferAuthorizationCell(transfer, index)] })));
+  table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, transfer.qty, (transfer.lines?.length ? transfer.lines : [transfer]).map((line) => `${line.lot || "-"}<small>${line.expiry || "N/A"}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">Timeline</button>`] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Item", "From", "To", "Qty", "Lot", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, entry.transferId, entry.action, entry.item, entry.from, entry.to, entry.qty, entry.lot, entry.user, entry.notes]));
+}
+
+function renderInventoryWorkflowTabs() {
+  const tabs = qs("#inventory-workflow-tabs");
+  if (!tabs) return;
+  const counts = {
+    receiving: (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).length,
+    completed: (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).length,
+    transfers: (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status)).length,
+    stocks: (data.inventory || []).filter((item) => item.branch === inventoryBranchTab).length,
+  };
+  const labels = { receiving: "Receiving POs", completed: "Completed POs", transfers: "Transfers", stocks: "Stocks" };
+  tabs.querySelectorAll("[data-inventory-workflow]").forEach((button) => {
+    const tab = button.dataset.inventoryWorkflow;
+    button.classList.toggle("active", tab === inventoryWorkflowTab);
+    button.innerHTML = `${escapeHtml(labels[tab] || tab)} <span class="tab-count">${counts[tab] || 0}</span>`;
+  });
+  qsa(".inventory-workflow-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.inventoryPanel === inventoryWorkflowTab));
 }
 
 function recordTransferHistory(transfer, action, notes) {
@@ -1213,6 +1232,18 @@ function recordTransferHistory(transfer, action, notes) {
   data.transferHistory.unshift(entry);
   data.transferHistory = data.transferHistory.slice(0, 80);
   return entry;
+}
+
+function showTransferTimeline(id) {
+  const transfer = data.pendingTransfers.find((item) => item.id === id) || {};
+  const events = data.transferHistory.filter((entry) => entry.transferId === id);
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal audit-detail-modal";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Transfer Timeline</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-transfer-timeline aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Item</small><strong>${escapeHtml(transfer.item || events[0]?.item || "-")}</strong></div><div class="report-preview-card"><small>Route</small><strong>${escapeHtml([transfer.from || events[0]?.from, transfer.to || events[0]?.to].filter(Boolean).join(" -> ") || "-")}</strong></div><div class="report-preview-card"><small>Qty</small><strong>${escapeHtml(String(transfer.qty || events[0]?.qty || "-"))}</strong></div><div class="report-preview-card"><small>Status</small><strong>${escapeHtml(transfer.status || events.at(-1)?.action || "-")}</strong></div></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${/receive|complete/i.test(event.action) ? "done" : /incomplete|cancel/i.test(event.action) ? "blocked" : "pending"}"><span>${escapeHtml((event.action || "T")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.action || "")}</strong><p>${escapeHtml(event.notes || "-")}</p><small>${escapeHtml(event.user || "-")}</small></div></div>`).join("") || `<p>No transfer history recorded yet.</p>`}</div></details>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-close-transfer-timeline]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
 }
 
 function ensureInventoryDatalists() {
