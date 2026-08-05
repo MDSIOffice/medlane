@@ -273,6 +273,12 @@ document.body.addEventListener("click", (event) => {
   if (revokeSession) return forceLogoutSession(revokeSession.dataset.revokeSession);
   const downloadBackup = event.target.closest("[data-download-backup]");
   if (downloadBackup) return downloadBackupFile(downloadBackup.dataset.downloadBackup);
+  const downloadBackupKey = event.target.closest("[data-download-backup-key]");
+  if (downloadBackupKey) return downloadBackupObjectFile(downloadBackupKey.dataset.downloadBackupKey);
+  const restoreBackupId = event.target.closest("[data-restore-backup-id]");
+  if (restoreBackupId) return restoreBackupFromRef({ id: restoreBackupId.dataset.restoreBackupId });
+  const restoreBackupKey = event.target.closest("[data-restore-backup-key]");
+  if (restoreBackupKey) return restoreBackupFromRef({ key: restoreBackupKey.dataset.restoreBackupKey });
   const confirmPayment = event.target.closest("[data-confirm-payment]");
   if (confirmPayment) { const [type, index, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, Number(index), method); }
   const makePaymentRequest = event.target.closest("[data-make-payment-request]");
@@ -880,6 +886,34 @@ async function downloadBackupFile(id) {
     toast("Backup download started.");
   } catch (error) {
     toast(error.message || "Backup download failed.");
+  }
+}
+
+async function downloadBackupObjectFile(key) {
+  try {
+    await MedlaneAPI.downloadBackupObject(key);
+    log("Downloaded R2 backup object", "Backup", key);
+    toast("Backup download started.");
+  } catch (error) {
+    toast(error.message || "Backup download failed.");
+  }
+}
+
+async function restoreBackupFromRef(ref) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can restore backups.");
+  const label = ref.key || ref.id || "backup";
+  const typed = prompt(`Restore this backup?\n\n${label}\n\nThis will upsert records from the backup. It will not delete current records. Type RESTORE to continue.`);
+  if (typed !== "RESTORE") return toast("Restore cancelled.");
+  try {
+    const result = await MedlaneAPI.restoreBackup(ref);
+    log("Restored backup", "Backup", `${label} · ${result.restore?.restoredRecords || 0} records`);
+    await syncBackendUsers().catch(() => null);
+    const fresh = await MedlaneAPI.loadAppState().catch(() => null);
+    if (fresh?.data) data = normalizeData({ ...emptyProductionData(), ...fresh.data });
+    renderAll();
+    toast(`Restore completed: ${result.restore?.restoredRecords || 0} records upserted.`);
+  } catch (error) {
+    toast(error.message || "Restore failed.");
   }
 }
 

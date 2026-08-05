@@ -197,6 +197,12 @@ const MedlaneAPI = (() => {
     return request("/api/backups");
   }
 
+  async function listBackupObjects(cursor = "") {
+    const query = new URLSearchParams();
+    if (cursor) query.set("cursor", cursor);
+    return request(`/api/backups/objects${query.toString() ? `?${query}` : ""}`);
+  }
+
   async function listReports(branch = "all") {
     const query = new URLSearchParams({ branch });
     return request(`/api/reports?${query}`);
@@ -251,5 +257,32 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, runBackup, downloadBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
+  async function downloadBackupObject(key) {
+    const active = session();
+    const headers = {};
+    if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
+    if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+    const response = await fetch(`/api/backups/object?${new URLSearchParams({ key })}`, { headers });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error || `Request failed: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] || key.split("/").pop() || "medlane-backup.json.gz";
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function restoreBackup(ref) {
+    return request("/api/backups/restore", { method: "POST", body: JSON.stringify(ref) });
+  }
+
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, uploadFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, listBackupObjects, runBackup, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
 })();

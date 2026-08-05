@@ -3223,21 +3223,31 @@ let backupsLoaded = false;
 async function renderBackup() {
   if (!qs("#backup-table") || !canManageUsers()) return;
   backupsLoaded = true;
-  table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Since", "Download"], [["Loading backups...", "-", "-", "-", "-", "-", "-"]]);
+  table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Source", "Actions"], [["Loading backups...", "-", "-", "-", "-", "-", "-"]]);
   try {
-    const payload = await MedlaneAPI.listBackups();
-    const backups = payload.backups || [];
-    const totalBytes = backups.reduce((sum, backup) => sum + Number(backup.size_bytes || 0), 0);
+    const [trackedResult, objectResult] = await Promise.allSettled([MedlaneAPI.listBackups(), MedlaneAPI.listBackupObjects()]);
+    const backups = trackedResult.status === "fulfilled" ? trackedResult.value.backups || [] : [];
+    const objects = objectResult.status === "fulfilled" ? objectResult.value.objects || [] : [];
+    const objectKeys = new Set(backups.map((backup) => backup.object_key).filter(Boolean));
+    const r2Only = objects.filter((object) => !objectKeys.has(object.key));
+    const totalBytes = [...backups.map((backup) => Number(backup.size_bytes || 0)), ...r2Only.map((object) => Number(object.size || 0))].reduce((sum, size) => sum + size, 0);
+    const latestObject = objects.sort((a, b) => new Date(b.uploaded || 0) - new Date(a.uploaded || 0))[0];
     qs("#backup-summary-grid").innerHTML = [
-      ["Backup Files", backups.length, "Stored in R2"],
+      ["Backup Files", backups.length + r2Only.length, r2Only.length ? `${r2Only.length} recovered from R2 listing` : "Stored in R2"],
       ["Backup Storage", formatBytes(totalBytes), "Compressed JSON"],
-      ["Latest Backup", backups[0] ? formatSessionDate(backups[0].created_at) : "None", "Most recent recovery point"],
+      ["Latest Backup", backups[0] ? formatSessionDate(backups[0].created_at) : latestObject ? formatSessionDate(latestObject.uploaded) : "None", "Most recent recovery point"],
       ["Schedule", "3 cadences", "Weekly, monthly, yearly"],
     ].map(([title, value, note]) => `<article class="stat-card"><span>${escapeHtml(title)}</span><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(note)}</small></article>`).join("");
-    table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Since", "Download"], backups.map((backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), backup.since_at ? formatSessionDate(backup.since_at) : "Full baseline", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button>`] })));
+    const trackedRows = backups.map((backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), "Metadata", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button><button class="mini-button danger-button" data-restore-backup-id="${escapeHtml(backup.id)}">Restore</button>`] }));
+    const objectRows = r2Only.map((object) => {
+      const parts = String(object.key || "").split("/");
+      const type = parts[2] || object.customMetadata?.backupType || "backup";
+      return { focus: object.key, cells: [formatSessionDate(object.uploaded), `<span class="pill purple">${escapeHtml(type)}</span>`, "compressed-full", object.customMetadata?.records || "-", formatBytes(object.size), "R2 object", `<button class="mini-button" data-download-backup-key="${escapeHtml(object.key)}">Download</button><button class="mini-button danger-button" data-restore-backup-key="${escapeHtml(object.key)}">Restore</button>`] };
+    });
+    table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Source", "Actions"], [...trackedRows, ...objectRows]);
   } catch (error) {
     qs("#backup-summary-grid").innerHTML = `<article class="stat-card accent-red"><span>Setup Required</span><strong>Backups unavailable</strong><small>${escapeHtml(error.message)}</small></article>`;
-    table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Since", "Download"], [["Backup tracking unavailable", "Run updated Supabase schema", "-", "-", "-", "-", escapeHtml(error.message)]]);
+    table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Source", "Actions"], [["Backup tracking unavailable", "Run updated Supabase schema", "-", "-", "-", "-", escapeHtml(error.message)]]);
   }
 }
 async function renderUserSessions(target = selectedUserSessionsTarget) {

@@ -38,6 +38,7 @@ const moduleRecordKeys = {
 };
 
 const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
+const genericStateBlockedKeys = new Set(["users", "branch", "masterTab"]);
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -525,7 +526,7 @@ function canAccessKey(profile, key, mode = "view") {
 }
 
 function writableKeys(profile) {
-  return persistedKeys.filter((key) => canAccessKey(profile, key, "edit"));
+  return persistedKeys.filter((key) => !genericStateBlockedKeys.has(key) && canAccessKey(profile, key, "edit"));
 }
 
 function filterRecordsForProfile(records, profile, mode = "view") {
@@ -819,6 +820,11 @@ async function gzipBytes(text) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
+async function gunzipText(object) {
+  const stream = object.body.pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
+}
+
 async function createBackup(env, backupType = "manual", actor = null) {
   if (env.ENVIRONMENT !== "production") throw new Error("Backups are disabled outside production");
   if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
@@ -844,6 +850,32 @@ async function createBackup(env, backupType = "manual", actor = null) {
     await sendDiscordWebhook(env, { embeds: [{ title: "Backup Failed", color: 0xef4b4f, description: String(error.message || error).slice(0, 500), fields: [{ name: "Type", value: backupType, inline: true }], timestamp: new Date().toISOString() }] }).catch(() => null);
     throw error;
   }
+}
+
+async function restoreBackupObject(env, key, actorId, auditContext) {
+  if (env.ENVIRONMENT !== "production") throw new Error("Restore is disabled outside production");
+  if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
+  const stateKey = appStateKey(env);
+  const prefix = `backups/${stateKey}/`;
+  if (!key.startsWith(prefix) || !key.endsWith(".json.gz")) throw new Error("Invalid backup object key");
+  const object = await env.DOCUMENTS_BUCKET.get(key);
+  if (!object) throw new Error("Backup object not found");
+  const payload = JSON.parse(await gunzipText(object));
+  if (!payload || payload.app !== "medlane" || payload.stateKey !== stateKey || !Array.isArray(payload.records)) throw new Error("Invalid Medlane backup payload");
+  const records = payload.records
+    .filter((row) => row?.state_key === stateKey && persistedKeys.includes(row.module_name) && row.module_name !== "logs")
+    .map((row) => ({ state_key: row.state_key, module_name: row.module_name, record_key: String(row.record_key || recordKeyFor(row.module_name, row.data, 0)), data: row.data || {}, updated_by: actorId || null }));
+  if (!records.length) throw new Error("Backup has no restorable app records");
+  const chunkSize = 300;
+  for (let index = 0; index < records.length; index += chunkSize) {
+    await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+      method: "POST",
+      headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(records.slice(index, index + chunkSize)),
+    });
+  }
+  await writeAuditTrace(env, stateKey, { actor: actorId || "System User", role: "Superadmin", action: "Restored backup object", module: "Backup", record: `${key} · ${records.length} records upserted` }, actorId, auditContext);
+  return { restoredRecords: records.length, objectKey: key, backupCreatedAt: payload.createdAt || null };
 }
 
 // ---- Automated alert / digest emails (threshold, approval-needed, daily/weekly digest) ----
@@ -1341,16 +1373,17 @@ export default {
             const totalAfter = rows.length;
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
             const bulkLoss = totalBefore >= 5 && totalAfter < totalBefore * 0.5;
+            const seededModules = env.ENVIRONMENT === "production" ? presentKeys.filter((key) => (beforeCounts[key] || 0) === 0 && (afterCounts[key] || 0) >= 5) : [];
 
-            if (wipedModules.length || bulkLoss) {
+            if (wipedModules.length || bulkLoss || seededModules.length) {
               const deltaSummary = presentKeys.map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
               await writeAuditTrace(env, stateKey, {
                 actor, role: profile.role,
-                action: "BLOCKED save — would delete most/all records in one or more modules",
+                action: "BLOCKED save — destructive or reformat-like state change",
                 module: "System",
-                record: `${deltaSummary}. Wiped modules: ${wipedModules.join(", ") || "none"}.`,
+                record: `${deltaSummary}. Wiped modules: ${wipedModules.join(", ") || "none"}. Seeded modules: ${seededModules.join(", ") || "none"}.`,
               }, authUser.id, auditContext);
-              throw new Error(`Save blocked: this would delete most or all records in ${wipedModules.length ? wipedModules.join(", ") : "several modules"} (${totalBefore} -> ${totalAfter} total records). If this is intentional, delete records individually instead of via a bulk save, or contact an administrator. This attempt has been recorded in Audit Logs.`);
+              throw new Error(`Save blocked: this looks like a destructive reset or reformat (${totalBefore} -> ${totalAfter} total records). Use the Backup restore tool for recovery. This attempt has been recorded in Audit Logs.`);
             }
 
             if (rows.length) {
@@ -1846,6 +1879,21 @@ export default {
         const object = await env.DOCUMENTS_BUCKET.get(key);
         if (!object) return json({ error: "Backup object not found" }, { status: 404 });
         return new Response(object.body, { headers: { "content-type": "application/gzip", "content-disposition": `attachment; filename="${safeFileName(key.split("/").pop() || "medlane-backup.json.gz")}"`, "cache-control": "private, max-age=60" } });
+      }
+
+      if (url.pathname === "/api/backups/restore" && request.method === "POST") {
+        if (env.ENVIRONMENT !== "production") return json({ error: "Restore is disabled outside production" }, { status: 403 });
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        requireBackupAdmin(profile);
+        const body = await request.json().catch(() => ({}));
+        let key = String(body.key || "");
+        if (!key && body.id) {
+          const rows = await supabaseFetch(env, `/rest/v1/backup_runs?id=eq.${encodeURIComponent(String(body.id))}&state_key=eq.${encodeURIComponent(appStateKey(env))}&select=object_key`);
+          key = rows[0]?.object_key || "";
+        }
+        if (!key) return json({ error: "Backup object key is required" }, { status: 400 });
+        const result = await restoreBackupObject(env, key, authUser.id, auditContextForRequest(request));
+        return json({ ok: true, restore: result });
       }
 
       if (url.pathname.startsWith("/api/backups/") && request.method === "GET") {
