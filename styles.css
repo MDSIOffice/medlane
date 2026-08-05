@@ -682,6 +682,14 @@ select, .search-input {
 .primary-button:disabled { cursor: wait; opacity: .78; transform: none; }
 .primary-button.is-loading { display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
 .primary-button.is-loading::before { content: ""; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.38); border-top-color: #fff; border-radius: 999px; animation: spin .8s linear infinite; }
+.save-status-indicator { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-solid); color: var(--muted); box-shadow: var(--shadow-soft); font-size: 12px; font-weight: 800; }
+.save-status-logo { position: relative; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; }
+.save-status-logo::before { content: ""; position: absolute; inset: -4px; border-radius: inherit; border: 2px solid rgba(0,116,188,.18); border-top-color: transparent; opacity: 0; }
+.save-status-logo img { width: 24px; height: 24px; border-radius: 999px; object-fit: cover; position: relative; z-index: 1; }
+.save-status-indicator.saving { color: var(--blue-dark); }
+.save-status-indicator.saving .save-status-logo::before { opacity: 1; animation: spin .75s linear infinite; }
+.save-status-indicator.saved { color: var(--green); }
+.save-status-indicator.error { color: var(--red); border-color: rgba(239,75,79,.32); }
 .backup-status-panel { display: grid; gap: 12px; margin: -8px 0 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(135deg, rgba(0,116,188,.1), rgba(34,197,94,.08)); box-shadow: var(--shadow-soft); }
 .backup-status-panel[hidden] { display: none; }
 .backup-status-panel > div:first-child { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

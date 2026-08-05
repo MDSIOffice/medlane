@@ -992,15 +992,31 @@ function detectThresholdsAndApprovals(state) {
 
 function buildBusinessSummaryLines(state) {
   const sales = (state.sales || []).filter((sale) => sale.status !== "Cancelled");
+  const payments = state.payments || [];
+  const inventory = state.inventory || [];
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
   const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
   const overdueCount = sales.filter((sale) => digestSaleStatus(sale) === "Overdue").length;
+  const pendingDeposit = payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
+  const bounced = payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
+  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).length;
   return [
+    `New/active invoices tracked: ${sales.length}`,
     `Total invoiced: ${money(totalSales)}`,
     `Total collected: ${money(totalCollected)}`,
     `Open receivables: ${money(Math.max(totalSales - totalCollected, 0))}`,
     `Overdue invoices: ${overdueCount}`,
+    `Collections pending deposit: ${pendingDeposit}`,
+    `Bounced payments: ${bounced}`,
+    `Low / critical inventory: ${lowStock}`,
   ];
+}
+
+function backupDigestLines(auditRows) {
+  const backupRows = auditRows.filter((entry) => String(entry.module || "").toLowerCase() === "backup" || /backup/i.test(`${entry.action || ""} ${entry.record || ""}`));
+  const completed = backupRows.filter((entry) => /created|completed|success/i.test(`${entry.action || ""} ${entry.record || ""}`)).length;
+  const failed = backupRows.filter((entry) => /failed|error/i.test(`${entry.action || ""} ${entry.record || ""}`)).length;
+  return [`Backups completed/logged: ${completed}`, `Backups failed/logged: ${failed}`];
 }
 
 async function auditLogDigestRows(env, sinceIso) {
@@ -1041,7 +1057,7 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   for (const role of allRoles) {
     const parts = [];
     if (sections[role]?.length) parts.push(digestSectionHtml(sections[role]));
-    if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) parts.push(digestSectionHtml([{ title: `${periodLabel} Business Summary`, lines: businessSummary }]));
+    if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) parts.push(digestSectionHtml([{ title: `${periodLabel} Business Summary`, lines: [...businessSummary, ...backupDigestLines(auditRows)] }]));
     if (DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role)) parts.push(`<h3 style="margin:18px 0 8px;color:#005a9c;">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
     if (!parts.length) continue;
     const emails = await emailsForRoles(env, [role]);
@@ -1064,6 +1080,7 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   const reconHistory = state.reconHistory || [];
 
   const bouncedCheques = payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
+  const pendingDeposits = payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
   const largeSales = sales.filter((sale) => sale.status !== "Cancelled" && Number(sale.net || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(sale.date) >= new Date(auditSinceIso));
   const largePayments = payments.filter((payment) => Number(payment.amount || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(payment.dateRecorded || payment.dateCollected || 0) >= new Date(auditSinceIso));
   const blockedImports = imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status || ""));
@@ -1078,7 +1095,9 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
     roleSections.forEach((section) => fields.push({ name: `${section.title} (${role})`, value: discordFieldValue(section.lines, 300) }));
   });
   if (businessSummary.length) fields.push({ name: `${periodLabel} Business Summary`, value: discordFieldValue(businessSummary, 300) });
+  if (pendingDeposits.length) fields.push({ name: "Collections Pending Deposit", value: discordFieldValue(pendingDeposits.map((p) => `${p.receiptNo} — ${p.client}, ${money(p.amount)} (${p.collectionStatus})`), 300) });
   if (bouncedCheques.length) fields.push({ name: "Bounced Cheques", value: discordFieldValue(bouncedCheques.map((p) => `${p.receiptNo} — ${p.client}, ${money(p.amount)}`), 300) });
+  fields.push({ name: "Backup Status", value: discordFieldValue(backupDigestLines(auditRows), 300) });
   if (largeSales.length || largePayments.length) fields.push({ name: `Large Transactions (≥ ${money(LARGE_TRANSACTION_THRESHOLD)})`, value: discordFieldValue([...largeSales.map((s) => `Invoice ${s.documentNo || s.id} — ${s.client}, ${money(s.net)}`), ...largePayments.map((p) => `Payment ${p.receiptNo} — ${p.client}, ${money(p.amount)}`)], 300) });
   if (newlyPaidPos.length) fields.push({ name: "Purchase Orders Fully Paid", value: discordFieldValue(newlyPaidPos.map((po) => `${po.id} — ${po.client}`), 300) });
   if (newClientNames.length) fields.push({ name: "New Clients Onboarded", value: discordFieldValue(newClientNames, 300) });
@@ -1856,7 +1875,7 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         requireBackupAdmin(profile);
         if (request.method === "GET") {
-          const rows = await supabaseFetch(env, `/rest/v1/backup_runs?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=id,backup_type,mode,records_count,size_bytes,since_at,created_at&order=created_at.desc&limit=100`);
+          const rows = await supabaseFetch(env, `/rest/v1/backup_runs?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=id,backup_type,mode,object_key,records_count,size_bytes,since_at,created_at&order=created_at.desc&limit=100`);
           return json({ backups: rows });
         }
         if (request.method === "POST") {

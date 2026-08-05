@@ -251,6 +251,15 @@ function savePayloadForKeys(keys) {
   return payload;
 }
 
+function setGlobalSaveStatus(status, text) {
+  const indicator = typeof qs === "function" ? qs("#save-status-indicator") : null;
+  const label = typeof qs === "function" ? qs("#save-status-text") : null;
+  if (!indicator || !label) return;
+  indicator.classList.remove("saving", "saved", "error");
+  indicator.classList.add(status);
+  label.textContent = text;
+}
+
 function inferredSaveKeys() {
   const activeSection = document.body.dataset.activeSection || qs(".section.active")?.id || "dashboard";
   const keys = [...(frontendModuleRecordKeys[activeSection] || [])];
@@ -264,11 +273,13 @@ function saveData(keys = null) {
   const payload = savePayloadForKeys(keys || inferredSaveKeys());
   if (!Object.keys(payload).length) return;
   clearTimeout(pendingServerSave);
+  setGlobalSaveStatus("saving", "Saving...");
   pendingServerSave = setTimeout(() => {
     MedlaneAPI.saveAppState(payload, serverRevision).then((result) => {
       if (result?.revision) {
         serverRevision = Number(result.revision);
       }
+      setGlobalSaveStatus("saved", "Saved");
     }).catch(async (error) => {
       if (error.message.includes("APP_STATE_CONFLICT")) {
         const latest = await MedlaneAPI.loadAppState().catch(() => null);
@@ -277,9 +288,11 @@ function saveData(keys = null) {
           data = normalizeData({ ...emptyProductionData(), ...latest.data });
           if (typeof renderAll === "function") renderAll();
           if (typeof toast === "function") toast("Another user saved first. Reloaded latest server data.");
+          setGlobalSaveStatus("saved", "Reloaded");
           return;
         }
       }
+      setGlobalSaveStatus("error", "Save failed");
       if (typeof toast === "function") toast(`Server save failed: ${error.message}`);
     });
   }, 450);

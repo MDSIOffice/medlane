@@ -938,11 +938,19 @@ function renderDashboard() {
   const branches = platformAreas().map((branch) => ({ branch, amount: visibleSales.filter((s) => s.area === branch).reduce((sum, s) => sum + s.net, 0) }));
   const max = Math.max(...branches.map((b) => b.amount), 1);
   qs("#branch-bars").innerHTML = branches.map((b) => `<div class="branch-item"><header><span>${b.branch}</span><strong>${peso.format(b.amount)}</strong></header><div class="meter ${b.branch.includes("Dealer") ? "green" : ""}"><span style="width:${Math.max(4, Math.round((b.amount / max) * 100))}%"></span></div></div>`).join("") + graphNote("Computed from invoice net totals grouped by client sales area within the selected date range.");
+  const duplicateClientNames = data.clients.length - new Set(data.clients.map((client) => String(client.name || "").trim().toLowerCase()).filter(Boolean)).size;
+  const duplicateItemCodes = data.items.length - new Set(data.items.map((item) => String(item.code || "").trim().toLowerCase()).filter(Boolean)).size;
+  const duplicateReceipts = data.payments.length - new Set(data.payments.map((payment) => String(payment.receiptNo || "").trim().toLowerCase()).filter(Boolean)).size;
+  const pendingDeposit = data.payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
+  const bounced = data.payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
   qs("#health-list").innerHTML = [
-    [`${data.clients.length} client records`, "TIN/docs"],
-    [`${data.items.length} products`, "COA/FDA"],
-    [`${data.sales.length} SI/TS/DR`, "Client terms"],
-  ].map(([label, status]) => `<li><span>${label}</span><strong>${status}</strong></li>`).join("");
+    [`${data.clients.length} client records`, duplicateClientNames ? `${duplicateClientNames} duplicate name risk` : "Names OK"],
+    [`${data.items.length} products`, duplicateItemCodes ? `${duplicateItemCodes} duplicate code risk` : "Codes OK"],
+    [`${data.sales.length} SI/TS/DR`, `${salesAlerts.length} AR alerts`],
+    [`${pendingDeposit} pending deposit`, bounced ? `${bounced} bounced payment${bounced === 1 ? "" : "s"}` : "No bounced payments"],
+    [`${invAlerts.length} stock alerts`, `${duplicateReceipts} duplicate receipt risk`],
+    ["Backup safety", "R2 restore + delete guard ready"],
+  ].map(([label, status]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(status)}</strong></li>`).join("");
   registerCalendarWidget("dash-cal", "#dashboard-calendar-widget", true);
   renderCalendarWidget("dash-cal");
   const trendChart = qs("#dashboard-trend-chart");
@@ -3301,11 +3309,11 @@ async function renderBackup() {
       ["Latest Backup", backups[0] ? formatSessionDate(backups[0].created_at) : latestObject ? formatSessionDate(latestObject.uploaded) : "None", "Most recent recovery point"],
       ["Schedule", "3 cadences", "Weekly, monthly, yearly"],
     ].map(([title, value, note]) => `<article class="stat-card"><span>${escapeHtml(title)}</span><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(note)}</small></article>`).join("");
-    const trackedRows = backups.map((backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), backupRunLabel(backup.backup_type), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), "Metadata", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button><button class="mini-button danger-button" data-restore-backup-id="${escapeHtml(backup.id)}">Restore</button>`] }));
+    const trackedRows = backups.map((backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), backupRunLabel(backup.backup_type), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), "Metadata + R2 verified", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button><button class="mini-button danger-button" data-restore-backup-id="${escapeHtml(backup.id)}" data-restore-backup-created="${escapeHtml(formatSessionDate(backup.created_at))}" data-restore-backup-records="${escapeHtml(backup.records_count)}" data-restore-backup-size="${escapeHtml(formatBytes(backup.size_bytes))}" data-restore-backup-source="Metadata">Restore</button>`] }));
     const objectRows = r2Only.map((object) => {
       const parts = String(object.key || "").split("/");
       const type = parts[2] || object.customMetadata?.backupType || "backup";
-      return { focus: object.key, cells: [formatSessionDate(object.uploaded), backupRunLabel(type), `<span class="pill ${type === "manual" ? "purple" : "green"}">${escapeHtml(type)}</span>`, "compressed-full", object.customMetadata?.records || "-", formatBytes(object.size), "R2 object", `<button class="mini-button" data-download-backup-key="${escapeHtml(object.key)}">Download</button><button class="mini-button danger-button" data-restore-backup-key="${escapeHtml(object.key)}">Restore</button>`] };
+      return { focus: object.key, cells: [formatSessionDate(object.uploaded), backupRunLabel(type), `<span class="pill ${type === "manual" ? "purple" : "green"}">${escapeHtml(type)}</span>`, "compressed-full", object.customMetadata?.records || "-", formatBytes(object.size), "R2 object", `<button class="mini-button" data-download-backup-key="${escapeHtml(object.key)}">Download</button><button class="mini-button danger-button" data-restore-backup-key="${escapeHtml(object.key)}" data-restore-backup-created="${escapeHtml(formatSessionDate(object.uploaded))}" data-restore-backup-records="${escapeHtml(object.customMetadata?.records || "-")}" data-restore-backup-size="${escapeHtml(formatBytes(object.size))}" data-restore-backup-source="R2 object">Restore</button>`] };
     });
     table("#backup-table", ["Created", "Run", "Type", "Mode", "Records", "Size", "Source", "Actions"], [...trackedRows, ...objectRows]);
   } catch (error) {
@@ -3443,9 +3451,22 @@ function logFilterParams() {
   };
 }
 function renderLogTable() {
-  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address"], logsState.entries.map((l) => ({ focus: [l.record, l.action, l.user, l.ipAddress].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(l.role), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record), formatLogCell(l.device || "-"), formatLogCell(l.browser || "-"), formatLogCell(l.ipAddress || "-")] })));
+  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address", "Details"], logsState.entries.map((l, index) => ({ focus: [l.record, l.action, l.user, l.ipAddress].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(l.role), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record), formatLogCell(l.device || "-"), formatLogCell(l.browser || "-"), formatLogCell(l.ipAddress || "-"), `<button class="mini-button" data-log-detail="${index}">Details</button>`] })));
   const loadMoreButton = qs("#load-more-logs");
   if (loadMoreButton) loadMoreButton.hidden = !logsState.nextCursor;
+}
+
+function showAuditLogDetail(index) {
+  const entry = logsState.entries[index];
+  if (!entry) return toast("Audit log entry not found.");
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal audit-detail-modal";
+  const rows = [["Date", entry.date], ["Server captured", entry.serverCapturedAt || "-"], ["User", entry.user], ["Role", entry.role], ["Action", entry.action], ["Module", entry.module], ["Record", entry.record], ["Device", entry.device], ["Browser", entry.browser], ["IP address", entry.ipAddress], ["User agent", entry.userAgent]].map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value || "-"))}</strong></div>`).join("");
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Audit Detail</p><h2>${escapeHtml(entry.action || "Recorded action")}</h2></div><button class="icon-button" type="button" data-close-audit-detail aria-label="Close">x</button></div><div class="report-preview-grid">${rows}</div>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-close-audit-detail]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
 }
 async function renderLogs() {
   renderLogFilters();

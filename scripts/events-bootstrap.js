@@ -276,9 +276,9 @@ document.body.addEventListener("click", (event) => {
   const downloadBackupKey = event.target.closest("[data-download-backup-key]");
   if (downloadBackupKey) return downloadBackupObjectFile(downloadBackupKey.dataset.downloadBackupKey);
   const restoreBackupId = event.target.closest("[data-restore-backup-id]");
-  if (restoreBackupId) return restoreBackupFromRef({ id: restoreBackupId.dataset.restoreBackupId });
+  if (restoreBackupId) return restoreBackupFromRef({ id: restoreBackupId.dataset.restoreBackupId, created: restoreBackupId.dataset.restoreBackupCreated, records: restoreBackupId.dataset.restoreBackupRecords, size: restoreBackupId.dataset.restoreBackupSize, source: restoreBackupId.dataset.restoreBackupSource });
   const restoreBackupKey = event.target.closest("[data-restore-backup-key]");
-  if (restoreBackupKey) return restoreBackupFromRef({ key: restoreBackupKey.dataset.restoreBackupKey });
+  if (restoreBackupKey) return restoreBackupFromRef({ key: restoreBackupKey.dataset.restoreBackupKey, created: restoreBackupKey.dataset.restoreBackupCreated, records: restoreBackupKey.dataset.restoreBackupRecords, size: restoreBackupKey.dataset.restoreBackupSize, source: restoreBackupKey.dataset.restoreBackupSource });
   const confirmPayment = event.target.closest("[data-confirm-payment]");
   if (confirmPayment) { const [type, index, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, Number(index), method); }
   const makePaymentRequest = event.target.closest("[data-make-payment-request]");
@@ -317,6 +317,8 @@ document.body.addEventListener("click", (event) => {
     renderClientInvoices();
     return showSection("client-invoices");
   }
+  const logDetail = event.target.closest("[data-log-detail]");
+  if (logDetail) return showAuditLogDetail(Number(logDetail.dataset.logDetail));
   const createSoa = event.target.closest("[data-create-soa]");
   if (createSoa) return previewSoa(createSoa.dataset.createSoa);
   const invoiceFlow = event.target.closest("[data-invoice-flow]");
@@ -937,7 +939,8 @@ async function downloadBackupObjectFile(key) {
 async function restoreBackupFromRef(ref) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can restore backups.");
   const label = ref.key || ref.id || "backup";
-  const typed = prompt(`Restore this backup?\n\n${label}\n\nThis will upsert records from the backup. It will not delete current records. Type RESTORE to continue.`);
+  const preview = [`Source: ${ref.source || "Backup"}`, `Created: ${ref.created || "Unknown"}`, `Records: ${ref.records || "-"}`, `Size: ${ref.size || "-"}`].join("\n");
+  const typed = prompt(`Restore this backup?\n\n${label}\n${preview}\n\nThis will upsert records from the backup. It will not delete current records. Type RESTORE to continue.`);
   if (typed !== "RESTORE") return toast("Restore cancelled.");
   try {
     setBackupStatus("Restoring backup", "Reading compressed backup and upserting app records. Existing records will not be deleted...", -1);
