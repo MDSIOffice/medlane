@@ -3373,8 +3373,27 @@ function userStatusClass(status = "Active") {
   if (value.includes("not sent") || value.includes("disabled")) return "red";
   return "gray";
 }
+function renderRoleTester() {
+  const select = qs("#role-tester-select");
+  const output = qs("#role-tester-output");
+  if (!select || !output) return;
+  const roles = Object.keys(accounts);
+  const selected = roles.includes(select.value) ? select.value : currentUser?.role || roles[0];
+  select.innerHTML = roles.map((role) => `<option value="${escapeHtml(role)}">${escapeHtml(role)}</option>`).join("");
+  select.value = selected;
+  const view = accounts[selected]?.modules || [];
+  const edit = roleEditableModules[selected] || [];
+  const restricted = permissionModules().filter((module) => !view.includes(module));
+  output.innerHTML = [
+    ["View Access", `${view.length} modules`, view.join(", ") || "None"],
+    ["Edit Access", `${edit.length} modules`, edit.join(", ") || "None"],
+    ["Hidden", `${restricted.length} modules`, restricted.join(", ") || "None"],
+    ["Risk Level", ["Superadmin", "CEO"].includes(selected) ? "Full platform control" : edit.length ? "Operational editor" : "View / task limited", "Use custom permissions for exceptions."],
+  ].map(([title, value, note]) => `<div class="report-preview-card"><small>${escapeHtml(title)}</small><strong>${escapeHtml(value)}</strong><span>${escapeHtml(note)}</span></div>`).join("");
+}
 function renderUsers() {
   qs("#users [data-action='open-modal'][data-type='user']").hidden = !canManageUsers();
+  renderRoleTester();
   const users = dedupedUsers();
   table("#users-table", ["Name", "Email", "Role", "Status", "Superadmin", "Access", "Actions"], users.filter((u) => includesSearch(Object.values(u))).map((u) => {
     const index = u._sourceIndex ?? data.users.indexOf(u);

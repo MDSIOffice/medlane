@@ -1969,6 +1969,19 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .toast { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); text-align: center; }
 }
 
+@media (max-width: 640px) {
+  .table-card { overflow: visible; border: 0; background: transparent; box-shadow: none; }
+  .table-card table:not(#parameter-qc-table) { min-width: 0; width: 100%; border-collapse: separate; border-spacing: 0 12px; }
+  .table-card table:not(#parameter-qc-table) thead { display: none; }
+  .table-card table:not(#parameter-qc-table) tbody, .table-card table:not(#parameter-qc-table) tr, .table-card table:not(#parameter-qc-table) td { display: block; width: 100%; }
+  .table-card table:not(#parameter-qc-table) tr { padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-solid); box-shadow: var(--shadow-soft); }
+  .table-card table:not(#parameter-qc-table) td { display: grid; grid-template-columns: minmax(104px, 36%) 1fr; gap: 10px; padding: 9px 0; border: 0; text-align: right; }
+  .table-card table:not(#parameter-qc-table) td::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; text-align: left; }
+  .table-card table:not(#parameter-qc-table) td > * { justify-self: end; }
+  .table-card.has-more-left, .table-card.has-more-right, .table-card.has-more-left.has-more-right { border: 0; box-shadow: none; }
+  .table-card.has-more-right::after, .table-card.has-more-left:not(.has-more-right)::before { display: none; }
+}
+
 @media (max-width: 520px) {
   .landing-nav { padding: 10px; }
   .landing-brand { gap: 10px; }

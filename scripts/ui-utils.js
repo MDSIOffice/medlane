@@ -197,9 +197,9 @@ function table(target, headers, rows) {
   requestAnimationFrame(updateTableScrollHints);
 }
 
-function rowHtml(row) {
+function rowHtml(row, headers = []) {
   const attrs = Object.entries(row.attrs || {}).map(([key, value]) => `${key}="${escapeHtml(value)}"`).join(" ");
-  return `<tr ${attrs} ${row.focus ? `data-focus-record="${escapeHtml(row.focus)}"` : ""} data-focus-text="${escapeHtml(row.focusText)}">${row.cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
+  return `<tr ${attrs} ${row.focus ? `data-focus-record="${escapeHtml(row.focus)}"` : ""} data-focus-text="${escapeHtml(row.focusText)}">${row.cells.map((cell, index) => `<td data-label="${escapeHtml(headers[index] || "")}">${cell}</td>`).join("")}</tr>`;
 }
 
 function appendTableRows(target, count = tableBatchSize) {
@@ -207,7 +207,7 @@ function appendTableRows(target, count = tableBatchSize) {
   const tableEl = qs(target);
   if (!state || !tableEl?.tBodies[0]) return;
   const nextRows = state.rows.slice(state.rendered, state.rendered + count);
-  tableEl.tBodies[0].insertAdjacentHTML("beforeend", nextRows.map(rowHtml).join(""));
+  tableEl.tBodies[0].insertAdjacentHTML("beforeend", nextRows.map((row) => rowHtml(row, state.headers)).join(""));
   state.rendered += nextRows.length;
   renderViewMoreButton(target);
 }

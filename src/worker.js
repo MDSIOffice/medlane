@@ -15,6 +15,26 @@ const roleModules = {
   HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
 };
 
+const DISCORD_ROLE_IDS = {
+  nagaTeam: "1356861232480780421",
+  lpTeam: "1356901352487391233",
+  Accounting: "1356901581030690986",
+  Engineering: "1356901760442040390",
+  Sales: "1356901905372151839",
+  Logistics: "1382979208883732500",
+  "Product Specialist": "1527546344477036544",
+};
+
+const digestRoleMentions = {
+  Accounting: [DISCORD_ROLE_IDS.Accounting],
+  Sales: [DISCORD_ROLE_IDS.Sales],
+  Logistics: [DISCORD_ROLE_IDS.Logistics],
+  "Product Specialist": [DISCORD_ROLE_IDS["Product Specialist"]],
+  Engineering: [DISCORD_ROLE_IDS.Engineering],
+  Superadmin: [DISCORD_ROLE_IDS.Accounting, DISCORD_ROLE_IDS.lpTeam, DISCORD_ROLE_IDS.nagaTeam].filter(Boolean),
+  CEO: [DISCORD_ROLE_IDS.Accounting, DISCORD_ROLE_IDS.lpTeam, DISCORD_ROLE_IDS.nagaTeam].filter(Boolean),
+};
+
 const moduleRecordKeys = {
   users: ["users"],
   masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals", "masterTab"],
@@ -170,7 +190,7 @@ async function sendResendEmail(env, { to, subject, html }) {
   return { sent: true, provider: "resend", id: payload?.id || null };
 }
 
-async function sendDiscordWebhook(env, { content = "", embeds = [] } = {}) {
+async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMentions = null } = {}) {
   const label = embeds[0]?.title || content.slice(0, 80) || "Discord message";
   if (!env.DISCORD_WEBHOOK_URL) {
     await recordSystemLog(env, { action: "Discord post skipped", module: "Discord", record: `${label} (DISCORD_WEBHOOK_URL not configured)` });
@@ -179,7 +199,7 @@ async function sendDiscordWebhook(env, { content = "", embeds = [] } = {}) {
   const response = await fetch(env.DISCORD_WEBHOOK_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ content, embeds, username: "Medlane OS" }),
+    body: JSON.stringify({ content, embeds, username: "Medlane OS", ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) }),
   });
   if (!response.ok && response.status !== 204) {
     const text = await response.text().catch(() => "");
@@ -848,7 +868,7 @@ async function createBackup(env, backupType = "manual", actor = null) {
   } catch (error) {
     await releaseStorage(env, bytes.byteLength).catch(() => null);
     await env.DOCUMENTS_BUCKET.delete(objectKey).catch(() => null);
-    await sendDiscordWebhook(env, { embeds: [{ title: "Backup Failed", color: 0xef4b4f, description: String(error.message || error).slice(0, 500), fields: [{ name: "Type", value: backupType, inline: true }], timestamp: new Date().toISOString() }] }).catch(() => null);
+    await sendDiscordWebhook(env, { content: "@everyone Backup failed. Immediate review recommended.", allowedMentions: { parse: ["everyone"] }, embeds: [{ title: "Backup Failed", color: 0xef4b4f, description: String(error.message || error).slice(0, 500), fields: [{ name: "Type", value: backupType, inline: true }], timestamp: new Date().toISOString() }] }).catch(() => null);
     throw error;
   }
 }
@@ -1091,7 +1111,9 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   const newClientNames = await trackNewOccurrences(env, "discordKnownClients", clients.map((client) => client.name));
 
   const fields = [];
+  const mentionedRoleIds = new Set();
   Object.entries(sections).forEach(([role, roleSections]) => {
+    (digestRoleMentions[role] || []).forEach((id) => mentionedRoleIds.add(id));
     roleSections.forEach((section) => fields.push({ name: `${section.title} (${role})`, value: discordFieldValue(section.lines, 300) }));
   });
   if (businessSummary.length) fields.push({ name: `${periodLabel} Business Summary`, value: discordFieldValue(businessSummary, 300) });
@@ -1116,7 +1138,8 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
     budgetedFields.push(field);
     charBudget -= cost;
   }
-  await sendDiscordWebhook(env, { embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
+  const mentionContent = [...mentionedRoleIds].map((id) => `<@&${id}>`).join(" ");
+  await sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
 }
 
 async function runDailyDigest(env) {

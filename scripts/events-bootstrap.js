@@ -863,6 +863,7 @@ qs("#user-devices-modal")?.addEventListener("click", (event) => { if (event.targ
 qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
 qs("#refresh-backups")?.addEventListener("click", () => { renderBackup(); toast("Backups refreshed."); });
 qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
+qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
 
 function setBackupStatus(title, detail = "", progress = 0, tone = "active") {
   const panel = qs("#backup-status-panel");
