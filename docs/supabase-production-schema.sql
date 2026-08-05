@@ -213,8 +213,9 @@ begin
 end;
 $$;
 
+drop function if exists reserve_file_storage(text, bigint, bigint);
 create or replace function reserve_file_storage(bucket_name text, bytes_to_add bigint, max_allowed bigint)
-returns table(bucket text, used_bytes bigint, max_bytes bigint)
+returns table(storage_bucket text, used_bytes bigint, max_bytes bigint)
 language plpgsql
 security definer
 set search_path = public
@@ -226,7 +227,7 @@ begin
 
   insert into storage_usage (bucket, used_bytes, max_bytes)
   values (bucket_name, 0, max_allowed)
-  on conflict (bucket) do update set max_bytes = excluded.max_bytes;
+  on conflict on constraint storage_usage_pkey do update set max_bytes = excluded.max_bytes;
 
   update storage_usage s
   set used_bytes = s.used_bytes + bytes_to_add,
@@ -243,6 +244,7 @@ begin
 end;
 $$;
 
+drop function if exists release_file_storage(text, bigint);
 create or replace function release_file_storage(bucket_name text, bytes_to_remove bigint)
 returns void
 language plpgsql
@@ -250,10 +252,10 @@ security definer
 set search_path = public
 as $$
 begin
-  update storage_usage
-  set used_bytes = greatest(used_bytes - greatest(bytes_to_remove, 0), 0),
+  update storage_usage s
+  set used_bytes = greatest(s.used_bytes - greatest(bytes_to_remove, 0), 0),
       updated_at = now()
-  where bucket = bucket_name;
+  where s.bucket = bucket_name;
 end;
 $$;
 
@@ -287,11 +289,11 @@ on conflict (name) do update set address = excluded.address;
 
 insert into storage_usage (bucket, used_bytes, max_bytes)
 values ('medlane-documents', 0, 536870912000)
-on conflict (bucket) do update set max_bytes = excluded.max_bytes;
+on conflict on constraint storage_usage_pkey do update set max_bytes = excluded.max_bytes;
 
 insert into storage_usage (bucket, used_bytes, max_bytes)
 values ('medlane-documents-preview', 0, 536870912000)
-on conflict (bucket) do update set max_bytes = excluded.max_bytes;
+on conflict on constraint storage_usage_pkey do update set max_bytes = excluded.max_bytes;
 
 -- After creating your first Supabase Auth user, insert its profile with that auth.users.id.
 -- Example:

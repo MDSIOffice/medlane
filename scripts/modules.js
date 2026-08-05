@@ -3297,6 +3297,9 @@ function renderUsers() {
   const users = dedupedUsers();
   table("#users-table", ["Name", "Email", "Role", "Status", "Superadmin", "Access", "Actions"], users.filter((u) => includesSearch(Object.values(u))).map((u) => {
     const index = u._sourceIndex ?? data.users.indexOf(u);
+    const email = String(u.email || u.username || "").trim();
+    const displayName = String(u.name || u.full_name || "").trim();
+    const name = displayName && displayName.toLowerCase() !== email.toLowerCase() ? displayName : email || "-";
     const isSuperadmin = u.superadminPermissions || u.role === "Superadmin";
     const grantControl = `<label class="ios-check-row compact-doc-check user-superadmin-check"><input type="checkbox" data-user-superadmin="${index}" ${isSuperadmin ? "checked" : ""} ${canManageUsers() ? "" : "disabled"} /><span></span><strong>${isSuperadmin ? "Granted" : "Not granted"}</strong></label>`;
     const accessSummary = u.customPermissions?.enabled ? `${u.customPermissions.view?.length || 0} view / ${u.customPermissions.edit?.length || 0} edit modules` : u.access || `${u.role} default permissions`;
@@ -3308,7 +3311,7 @@ function renderUsers() {
     const statusCell = `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>${u.disabledReason ? `<small>${escapeHtml(u.disabledReason)}</small>` : ""}`;
     const deleteAction = isSelf ? "" : `<button class="mini-button danger-button" data-delete-user="${index}">Delete Permanently</button>`;
     const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-copy-invite-link="${index}">Copy Invite Link</button><button class="mini-button" data-reset-user-password="${index}">Set Password</button>${resend}${statusAction}${deleteAction}</div></details>`;
-    return { focus: u.email || u.name, cells: [u.name, u.email || u.username || "-", `<span class="pill ${statusClass(u.role)}">${u.role}</span>`, statusCell, grantControl, accessSummary, canManageUsers() ? actions : "Superadmin/CEO only"] };
+    return { focus: email || name, cells: [escapeHtml(name), email || "-", `<span class="pill ${statusClass(u.role)}">${escapeHtml(u.role)}</span>`, statusCell, grantControl, escapeHtml(accessSummary), canManageUsers() ? actions : "Superadmin/CEO only"] };
   }));
 }
 function notificationItem(notice, index) {

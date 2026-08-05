@@ -228,6 +228,14 @@ async function findAuthUserByEmail(env, email) {
   return null;
 }
 
+async function findAuthUserForProfileOrEmail(env, profile, email) {
+  if (profile?.id) {
+    const user = await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(profile.id)}`).catch(() => null);
+    if (user?.id && cleanEmail(user.email || email) === cleanEmail(email)) return user;
+  }
+  return findAuthUserByEmail(env, email);
+}
+
 function extractLinkResult(payload) {
   // Supabase's raw /admin/generate_link REST response puts the user's fields at the top level
   // of the payload (not nested under a "user" key the way the supabase-js SDK abstracts it), with
@@ -440,6 +448,11 @@ function userStatusFromAuth(authUser) {
   return "Pending";
 }
 
+function userDisplayName(profile, authUser, email = "") {
+  const value = profile?.full_name || authUser?.user_metadata?.full_name || authUser?.raw_user_meta_data?.full_name || authUser?.user_metadata?.name || "";
+  return String(value || "").trim() || (profile || authUser ? email : "Unlinked Auth Account (no profile)");
+}
+
 function userFromProfileAndAuth(profile, authUser, permissions = []) {
   const role = profile?.role || authUser?.user_metadata?.role || "Sales";
   const fallback = roleModules[role] || roleModules.Sales;
@@ -448,7 +461,7 @@ function userFromProfileAndAuth(profile, authUser, permissions = []) {
   const email = cleanEmail(profile?.email || authUser?.email || "");
   return {
     id: profile?.id || authUser?.id || email,
-    name: profile?.full_name || authUser?.user_metadata?.full_name || (profile ? email : "Unlinked Auth Account (no profile)"),
+    name: userDisplayName(profile, authUser, email),
     email,
     role,
     branch: profile?.branch || authUser?.user_metadata?.branch || "all",
@@ -1555,9 +1568,9 @@ export default {
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
         if (!validRole(role)) return json({ error: "Invalid role" }, { status: 400 });
         const existingProfiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
-        const existingAuthUser = await findAuthUserByEmail(env, email);
+        const existingAuthUser = await findAuthUserForProfileOrEmail(env, existingProfiles[0], email);
 
-        if (existingProfiles.length && existingAuthUser) {
+        if (existingProfiles.length && existingAuthUser && userStatusFromAuth(existingAuthUser) === "Active") {
           // A real, fully-registered user already exists: return it as-is instead of re-inviting.
           const existingPermissions = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(existingProfiles[0].id)}&select=user_id,module_key,can_view,can_edit`);
           const existingUser = userFromProfileAndAuth(existingProfiles[0], existingAuthUser, existingPermissions);
@@ -1588,10 +1601,12 @@ export default {
         }
         if (!authUser?.id) throw new Error("Could not create or find the Supabase user account");
 
-        await supabaseFetch(env, "/rest/v1/profiles", {
+        await supabaseFetch(env, "/rest/v1/profiles?on_conflict=id", {
           method: "POST",
+          headers: { prefer: "resolution=merge-duplicates" },
           body: JSON.stringify({ id: authUser.id, email, full_name: fullName, role, branch, is_superadmin: role === "Superadmin" }),
         });
+        await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(authUser.id)}`, { method: "DELETE" }).catch(() => null);
         if (view.length) {
           await supabaseFetch(env, "/rest/v1/module_permissions", {
             method: "POST",
@@ -1652,8 +1667,9 @@ export default {
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
         if (email === cleanEmail(authUser.email)) return json({ error: "You cannot disable your own account" }, { status: 400 });
         if (disabled && !String(reason).trim()) return json({ error: "Disable reason is required" }, { status: 400 });
+        const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id`);
         const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
-        const target = (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
+        const target = await findAuthUserForProfileOrEmail(env, profiles[0], email) || (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
         if (!target?.id) return json({ error: "Supabase Auth user not found" }, { status: 404 });
         await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, {
           method: "PUT",
@@ -1712,9 +1728,9 @@ export default {
         if (email === cleanEmail(authUser.email)) return json({ error: "You cannot delete your own account" }, { status: 400 });
         const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
         const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
-        const target = (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
-        const fullName = profiles[0]?.full_name || target?.user_metadata?.full_name || email;
-        if (cleanEmail(confirmation) !== email) return json({ error: `Type the email exactly: ${email}` }, { status: 400 });
+        const target = await findAuthUserForProfileOrEmail(env, profiles[0], email) || (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
+        const fullName = userDisplayName(profiles[0], target, email);
+        if (String(confirmation || "").trim() !== fullName) return json({ error: `Type the user's full name exactly: ${fullName}` }, { status: 400 });
         const userId = profiles[0]?.id || target?.id;
         const blockers = await userDeleteBlockers(env, { id: userId, email, name: fullName });
         if (blockers.length) return json({ error: `Cannot delete user with active or linked records: ${blockers.join(", ")}` }, { status: 409 });

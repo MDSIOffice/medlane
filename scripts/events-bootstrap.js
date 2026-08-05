@@ -6,7 +6,11 @@ function mergeUsersFromBackend(users = []) {
   users.forEach((user) => {
     const email = String(user.email || "").trim().toLowerCase();
     if (!email) return;
-    byEmail.set(email, { ...(byEmail.get(email) || {}), ...user, email, branch: "all" });
+    const previous = byEmail.get(email) || {};
+    const incomingName = String(user.name || user.full_name || "").trim();
+    const previousName = String(previous.name || previous.full_name || "").trim();
+    const name = incomingName && incomingName.toLowerCase() !== email ? incomingName : previousName && previousName.toLowerCase() !== email ? previousName : incomingName || previousName || email;
+    byEmail.set(email, { ...previous, ...user, name, email, branch: "all" });
   });
   data.users = [...byEmail.values()].sort((a, b) => String(a.email || a.name).localeCompare(String(b.email || b.name)));
 }
@@ -507,9 +511,10 @@ qs("#users-table").addEventListener("click", async (event) => {
   const index = Number(button.dataset.deleteUser);
   const user = data.users[index];
   if (!user) return;
-  const confirmation = prompt(`Type the user's email to delete this user permanently:\n\n${user.email}`);
+  const fullName = user.name || user.full_name || user.email;
+  const confirmation = prompt(`Type the user's full name to delete this user permanently:\n\n${fullName}`);
   if (confirmation === null) return;
-  if (confirmation.trim().toLowerCase() !== String(user.email || "").toLowerCase()) return toast("Email did not match. User was not deleted.");
+  if (confirmation.trim() !== String(fullName || "")) return toast("Full name did not match. User was not deleted.");
   const result = await MedlaneAPI.deleteUser(user.email || user.username, confirmation).catch((error) => ({ error }));
   if (result.error) return toast(result.error.message || "Unable to delete user.");
   data.users.splice(index, 1);
