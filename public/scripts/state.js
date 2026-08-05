@@ -9,6 +9,7 @@ applyThemePreference(currentUser?.themePreference);
 let currentClientView = null;
 let currentInvoiceFlow = null;
 let currentPrintNoDate = false;
+let currentPrintTemplateId = "default";
 let selectedReconHistoryIndex = null;
 let reconciliationTab = "current";
 let collectionLeafletMap = null;
@@ -24,6 +25,36 @@ let inventoryCompactView = false;
 let payablesWorkflowTab = "requests";
 let replenishmentsWorkflowTab = "requests";
 let transferRowUid = 0;
+let ptActiveType = "SI";
+let ptOverrides = { fields: {}, row: null };
+let ptSelectedField = null;
+let ptSelectedKind = null;
+let ptStepIn = 0.05;
+const PRINT_TEMPLATE_FIELDS = {
+  SI: {
+    point: [
+      ["si-date", "Date"], ["si-po", "P.O. No."], ["si-terms", "Terms of Payment"], ["si-sold", "Sold To"],
+      ["si-registered", "Registered Name"], ["si-tin", "TIN"], ["si-address", "Address"],
+      ["si-total-sales", "Total Sales (VAT Incl.)"], ["si-net-vat", "Amount Net of VAT"], ["si-discount", "Discount"],
+      ["si-vat", "VAT"], ["si-amount-due", "Total Amount Due"], ["si-prepared", "Prepared By"], ["si-approved", "Approved By"],
+    ],
+    rowCols: [["si-item", "Item"], ["si-qty", "Qty"], ["si-price", "Price"], ["si-amount", "Amount"]],
+  },
+  TS: {
+    point: [
+      ["ts-date", "Date"], ["ts-po", "P.O. No."], ["ts-terms", "Terms"], ["ts-client", "Client"], ["ts-address", "Address"],
+      ["ts-tax-label", "Tax Label"], ["ts-total", "Total"], ["ts-prepared", "Prepared By"], ["ts-approved", "Approved By"],
+    ],
+    rowCols: [["ts-code", "Code"], ["ts-item", "Item"], ["ts-qty", "Qty"], ["ts-amount", "Amount"]],
+  },
+  DR: {
+    point: [
+      ["dr-date", "Date"], ["dr-terms", "Terms"], ["dr-po", "P.O. No."], ["dr-client", "Client"], ["dr-address", "Address"],
+      ["dr-prepared", "Prepared By"], ["dr-recorded", "Recorded By"], ["dr-approved", "Approved By"], ["dr-received", "Received By"],
+    ],
+    rowCols: [["dr-qty", "Qty"], ["dr-item", "Item"], ["dr-price", "Price"], ["dr-amount", "Amount"]],
+  },
+};
 let pendingServerSave = null;
 let serverRevision = 0;
 function pendingSaveQueueKey() {
@@ -56,6 +87,7 @@ const frontendModuleRecordKeys = {
   "product-issues": ["productIssues"],
   "product-issue-detail": ["productIssues"],
   "inventory-po-detail": ["inventoryPurchaseOrders", "inventory"],
+  "print-templates": ["printTemplates"],
 };
 
 const philippinesRegionsGeoJsonUrl = "https://raw.githubusercontent.com/wmgeolab/geoBoundaries/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
@@ -71,9 +103,9 @@ const clientCoordinates = {
 };
 
 const accounts = {
-  Superadmin: { name: "Superadmin", role: "Superadmin", branch: "all", email: "superadmin@medlane.local", phone: "+63 900 000 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues"] },
-  Admin: { name: "Admin User", role: "Admin", branch: "all", email: "admin@medlane.local", phone: "+63 917 100 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues"] },
-  CEO: { name: "CEO", role: "CEO", branch: "all", email: "ceo@medlane.local", phone: "+63 917 200 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues"] },
+  Superadmin: { name: "Superadmin", role: "Superadmin", branch: "all", email: "superadmin@medlane.local", phone: "+63 900 000 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
+  Admin: { name: "Admin User", role: "Admin", branch: "all", email: "admin@medlane.local", phone: "+63 917 100 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
+  CEO: { name: "CEO", role: "CEO", branch: "all", email: "ceo@medlane.local", phone: "+63 917 200 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
   Accounting: { name: "Joy Santos", role: "Accounting", branch: "all", email: "joy@medlane.local", phone: "+63 917 300 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"] },
   Sales: { name: "Ana Cruz", role: "Sales", branch: "Region IV-A", email: "ana@medlane.local", phone: "+63 917 400 0000", modules: ["dashboard", "calendar", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"] },
   Logistics: { name: "Ramon Dela Cruz", role: "Logistics", branch: "all", email: "ramon@medlane.local", phone: "+63 917 500 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
@@ -107,9 +139,9 @@ function invoiceApprovals() { return data?.invoiceApprovals || { SI: "ECTOSOC", 
 function isDevEnvironment() { return ["localhost", "127.0.0.1", ""].includes(location.hostname) || location.protocol === "file:"; }
 function effectiveModules() { return currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || []; }
 const roleEditableModules = {
-  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues"],
-  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues"],
-  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues"],
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   Accounting: ["purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings"],
   Sales: ["sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
   Logistics: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
@@ -169,6 +201,7 @@ function emptyProductionData() {
     collectionContacts: [],
     collectionContactHistory: [],
     banks: [],
+    printTemplates: [],
   };
 }
 
@@ -206,6 +239,7 @@ function normalizePayableWithholding(payable) {
 }
 
 function normalizeData(next) {
+  next.printTemplates ||= [];
   next.pendingTransfers ||= [];
   next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };
   next.invoiceApprovals ||= { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" };

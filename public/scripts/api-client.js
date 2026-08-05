@@ -216,9 +216,10 @@ const MedlaneAPI = (() => {
     return request(`/api/reports?${query}`);
   }
 
-  async function printableInvoice(id, noDate = false) {
+  async function printableInvoice(id, noDate = false, templateId = "default") {
     const query = new URLSearchParams({ id });
     if (noDate) query.set("noDate", "1");
+    if (templateId === "custom") query.set("template", "custom");
     return request(`/api/printables/invoice?${query}`);
   }
 

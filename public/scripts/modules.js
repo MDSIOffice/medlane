@@ -804,6 +804,292 @@ function renderSettingsTutorial() {
   qs("#settings-tutorial").innerHTML = modules.map((item, index) => `<details class="tutorial-module" ${index === 0 ? "open" : ""}><summary><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.role)}</span></summary><div class="tutorial-submodule-grid">${item.submodules.map(([name, purpose, how, scenario]) => `<article class="tutorial-submodule-card"><h3>${escapeHtml(name)}</h3><p><strong>Purpose:</strong> ${escapeHtml(purpose)}</p><p><strong>How to use:</strong> ${escapeHtml(how)}</p><p><strong>Scenario:</strong> ${escapeHtml(scenario)}</p></article>`).join("")}</div></details>`).join("");
 }
 
+// ---- Print Template Editor (SI/TS/DR custom layout) ----
+function printTemplateRecord(type) {
+  return (data.printTemplates || []).find((t) => t.type === type) || null;
+}
+
+function round3(value) {
+  return Math.round(Number(value || 0) * 1000) / 1000;
+}
+
+function ptFieldLabel(key) {
+  for (const def of Object.values(PRINT_TEMPLATE_FIELDS)) {
+    const found = [...def.point, ...def.rowCols].find(([k]) => k === key);
+    if (found) return found[1];
+  }
+  return key;
+}
+
+function ptFieldStyleAttr(o) {
+  if (!o) return "";
+  const parts = [];
+  if (o.left != null) parts.push(`left:${o.left}in`);
+  if (o.top != null) parts.push(`top:${o.top}in`);
+  if (o.width != null) parts.push(`width:${o.width}in`);
+  if (o.align) parts.push(`text-align:${o.align}`);
+  if (o.fontSize != null) parts.push(`font-size:${o.fontSize}px`);
+  return parts.length ? ` style="${parts.join(";")}"` : "";
+}
+
+function ptCanvasScale() {
+  const inner = qs("#print-template-canvas .pt-canvas-inner");
+  if (!inner) return 1;
+  return inner.getBoundingClientRect().width / (8.5 * 96);
+}
+
+// referenceEl defaults to the page canvas. Row-column fields (si-item, si-qty, ...) are positioned
+// absolute inside the row container in both this editor and the real print HTML, so their left/width
+// must always be measured and written relative to the row container, never the page.
+function ptElementBoxIn(el, referenceEl) {
+  const ref = referenceEl || qs("#print-template-canvas .pt-canvas-inner");
+  if (!ref || !el) return { left: 0, top: 0, width: 0, right: 0, height: 0 };
+  const refRect = ref.getBoundingClientRect();
+  const scale = ptCanvasScale() || 1;
+  const r = el.getBoundingClientRect();
+  const toIn = (px) => round3(px / (96 * scale));
+  return { left: toIn(r.left - refRect.left), top: toIn(r.top - refRect.top), width: toIn(r.width), right: toIn(refRect.right - r.right), height: toIn(r.height) };
+}
+
+function ptRowContainerEl() {
+  return qs('#print-template-canvas [data-pt-row-container="1"]');
+}
+
+function ptFieldReferenceEl(kind) {
+  return kind === "row-col" ? ptRowContainerEl() : null;
+}
+
+function measurePtDefaultRow(type) {
+  const row0 = qs('#print-template-canvas [data-pt-row-container="1"]');
+  const row1 = qs('#print-template-canvas [data-pt-row-spacing="1"]');
+  if (!row0 || !row1) return { left: 0, right: 0, top: 0, height: 0.3, spacing: 0.3 };
+  const b0 = ptElementBoxIn(row0);
+  const b1 = ptElementBoxIn(row1);
+  return { left: b0.left, right: b0.right, top: b0.top, height: b0.height, spacing: round3(b1.top - b0.top) };
+}
+
+function ensurePtRowOverride() {
+  if (!ptOverrides.row) ptOverrides.row = measurePtDefaultRow(ptActiveType);
+  return ptOverrides.row;
+}
+
+function renderPrintTemplates() {
+  qsa("#print-template-tabs .tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.ptTab === ptActiveType));
+  const saved = printTemplateRecord(ptActiveType);
+  ptOverrides = { fields: structuredClone(saved?.fields || {}), row: saved?.row ? structuredClone(saved.row) : null };
+  ptSelectedField = null;
+  ptSelectedKind = null;
+  buildPrintTemplateCanvas();
+  renderPrintTemplateSidePanel();
+}
+
+function buildPrintTemplateCanvas() {
+  const type = ptActiveType;
+  const def = PRINT_TEMPLATE_FIELDS[type];
+  const lower = type.toLowerCase();
+  const row = ptOverrides.row;
+  const rowStyleAttr = (index) => {
+    const parts = [`--row:${index}`];
+    if (row) {
+      const top = round3(Number(row.top || 0) + index * Number(row.spacing || 0));
+      parts.push(`top:${top}in`);
+      if (row.left != null) parts.push(`left:${row.left}in`);
+      if (row.right != null) parts.push(`right:${row.right}in`);
+      if (row.height != null) parts.push(`height:${row.height}in`);
+    }
+    return ` style="${parts.join(";")}"`;
+  };
+  const pointFieldsHtml = def.point.map(([key, label]) => `<span class="field ${key} pt-editable" data-pt-field="${key}" tabindex="0"${ptFieldStyleAttr(ptOverrides.fields[key])}>${escapeHtml(label)}</span>`).join("");
+  const rowColsHtml = def.rowCols.map(([key, label]) => `<span class="${key} pt-editable pt-row-col" data-pt-field="${key}" tabindex="0"${ptFieldStyleAttr(ptOverrides.fields[key])}>${escapeHtml(label)}</span>`).join("");
+  const row0Html = `<div class="${lower}-row pt-editable" data-pt-row-container="1" tabindex="0"${rowStyleAttr(0)}>${rowColsHtml}</div>`;
+  const row1Html = `<div class="${lower}-row pt-editable pt-row-spacing-handle" data-pt-row-spacing="1" tabindex="0"${rowStyleAttr(1)}><span class="pt-row-spacing-label">Row 2 (drag for spacing)</span></div>`;
+  qs("#print-template-canvas").innerHTML = `<section class="template-overlay template-${lower} pt-canvas-inner">${pointFieldsHtml}${row0Html}${row1Html}</section>`;
+}
+
+function ptNudgeControlsHtml(vertical) {
+  return `<div class="pt-nudge-group"><div class="field"><label>Nudge Step</label><select id="pt-step-select"><option value="0.01"${ptStepIn === 0.01 ? " selected" : ""}>Fine (0.01in)</option><option value="0.05"${ptStepIn === 0.05 ? " selected" : ""}>Normal (0.05in)</option><option value="0.1"${ptStepIn === 0.1 ? " selected" : ""}>Coarse (0.1in)</option></select></div><div class="pt-arrow-pad">${vertical ? `<button class="mini-button pt-arrow-up" type="button" data-pt-nudge="up" aria-label="Move up">↑</button>` : ""}<div class="pt-arrow-row"><button class="mini-button" type="button" data-pt-nudge="left" aria-label="Move left">←</button><button class="mini-button" type="button" data-pt-nudge="right" aria-label="Move right">→</button></div>${vertical ? `<button class="mini-button pt-arrow-down" type="button" data-pt-nudge="down" aria-label="Move down">↓</button>` : ""}</div></div>`;
+}
+
+function renderPrintTemplateSidePanel() {
+  const panel = qs("#print-template-panel");
+  if (!panel) return;
+  if (!ptSelectedField) { panel.innerHTML = `<p class="page-description">Click a field on the layout to select it, then drag it or use the arrow controls to adjust its position.</p>`; return; }
+  const kind = ptSelectedKind;
+  if (kind === "row-spacing") {
+    const row = ensurePtRowOverride();
+    panel.innerHTML = `<h3>Row Spacing</h3><p class="page-description">Distance between each item row on the printed table.</p><div class="field"><label>Spacing (in)</label><input id="pt-input-spacing" type="number" step="0.01" value="${row.spacing.toFixed(3)}" /></div>${ptNudgeControlsHtml(true)}<button class="ghost-button" type="button" data-pt-reset-row="1">Reset Row To Default</button>`;
+    return;
+  }
+  if (kind === "row") {
+    const row = ensurePtRowOverride();
+    panel.innerHTML = `<h3>Item Row Position</h3><div class="field"><label>Left (in)</label><input id="pt-input-left" type="number" step="0.01" value="${row.left.toFixed(3)}" /></div><div class="field"><label>Right margin (in)</label><input id="pt-input-right" type="number" step="0.01" value="${row.right.toFixed(3)}" /></div><div class="field"><label>Top (in)</label><input id="pt-input-top" type="number" step="0.01" value="${row.top.toFixed(3)}" /></div><div class="field"><label>Row height (in)</label><input id="pt-input-height" type="number" step="0.01" value="${row.height.toFixed(3)}" /></div>${ptNudgeControlsHtml(true)}<button class="ghost-button" type="button" data-pt-reset-row="1">Reset Row To Default</button>`;
+    return;
+  }
+  const key = ptSelectedField;
+  const el = qs(`#print-template-canvas [data-pt-field="${key}"]`);
+  const box = ptElementBoxIn(el, ptFieldReferenceEl(kind));
+  const override = ptOverrides.fields[key] || {};
+  const fontSize = override.fontSize != null ? override.fontSize : "";
+  const align = override.align || (el ? getComputedStyle(el).textAlign : "left") || "left";
+  const isRowCol = kind === "row-col";
+  panel.innerHTML = `<h3>${escapeHtml(ptFieldLabel(key))}</h3>
+    <div class="field"><label>Left (in)</label><input id="pt-input-left" type="number" step="0.01" value="${box.left.toFixed(3)}" /></div>
+    ${isRowCol ? "" : `<div class="field"><label>Top (in)</label><input id="pt-input-top" type="number" step="0.01" value="${box.top.toFixed(3)}" /></div>`}
+    <div class="field"><label>Width (in)</label><input id="pt-input-width" type="number" step="0.01" value="${box.width.toFixed(3)}" /></div>
+    <div class="field"><label>Text Align</label><select id="pt-input-align"><option value="left"${align === "left" ? " selected" : ""}>Left</option><option value="center"${align === "center" ? " selected" : ""}>Center</option><option value="right"${align === "right" ? " selected" : ""}>Right</option></select></div>
+    <div class="field"><label>Font Size (px, blank = default)</label><input id="pt-input-fontsize" type="number" step="1" value="${fontSize}" placeholder="default" /></div>
+    ${ptNudgeControlsHtml(!isRowCol)}
+    <button class="ghost-button" type="button" data-pt-reset-field="${escapeHtml(key)}">Reset Field To Default</button>`;
+}
+
+function selectPtFieldFromEl(el) {
+  if (!el) return;
+  qsa("#print-template-canvas .pt-selected").forEach((n) => n.classList.remove("pt-selected"));
+  el.classList.add("pt-selected");
+  el.focus({ preventScroll: true });
+  ptSelectedKind = el.dataset.ptRowSpacing ? "row-spacing" : el.dataset.ptRowContainer ? "row" : el.classList.contains("pt-row-col") ? "row-col" : "point";
+  ptSelectedField = ptSelectedKind === "row" || ptSelectedKind === "row-spacing" ? ptSelectedKind : el.dataset.ptField;
+  renderPrintTemplateSidePanel();
+}
+
+function applyPtFieldOverride(key, patch) {
+  ptOverrides.fields[key] = ptOverrides.fields[key] || {};
+  const target = ptOverrides.fields[key];
+  Object.entries(patch).forEach(([prop, value]) => {
+    if (value === undefined) delete target[prop]; else target[prop] = value;
+  });
+  qsa(`#print-template-canvas [data-pt-field="${key}"]`).forEach((el) => {
+    if ("left" in patch) el.style.left = patch.left != null ? `${patch.left}in` : "";
+    if ("top" in patch) el.style.top = patch.top != null ? `${patch.top}in` : "";
+    if ("width" in patch) el.style.width = patch.width != null ? `${patch.width}in` : "";
+    if ("align" in patch) el.style.textAlign = patch.align || "";
+    if ("fontSize" in patch) el.style.fontSize = patch.fontSize != null ? `${patch.fontSize}px` : "";
+  });
+}
+
+function applyPtRowOverride(patch) {
+  const row = ensurePtRowOverride();
+  Object.assign(row, patch);
+  const row0 = qs('#print-template-canvas [data-pt-row-container="1"]');
+  const row1 = qs('#print-template-canvas [data-pt-row-spacing="1"]');
+  if (row0) {
+    if (row.left != null) row0.style.left = `${row.left}in`;
+    if (row.top != null) row0.style.top = `${row.top}in`;
+    if (row.right != null) row0.style.right = `${row.right}in`;
+    if (row.height != null) row0.style.height = `${row.height}in`;
+  }
+  if (row1) {
+    const top1 = round3(Number(row.top || 0) + Number(row.spacing || 0));
+    row1.style.top = `${top1}in`;
+    if (row.left != null) row1.style.left = `${row.left}in`;
+    if (row.right != null) row1.style.right = `${row.right}in`;
+  }
+}
+
+function nudgePtSelected(dxIn, dyIn) {
+  if (!ptSelectedField) return;
+  const kind = ptSelectedKind;
+  if (kind === "point") {
+    const box = ptElementBoxIn(qs(`#print-template-canvas [data-pt-field="${ptSelectedField}"]`));
+    applyPtFieldOverride(ptSelectedField, { left: round3(box.left + dxIn), top: round3(box.top + dyIn) });
+  } else if (kind === "row-col") {
+    const box = ptElementBoxIn(qs(`#print-template-canvas [data-pt-field="${ptSelectedField}"]`), ptRowContainerEl());
+    applyPtFieldOverride(ptSelectedField, { left: round3(box.left + dxIn) });
+  } else if (kind === "row") {
+    const row = ensurePtRowOverride();
+    applyPtRowOverride({ left: round3(row.left + dxIn), top: round3(row.top + dyIn) });
+  } else if (kind === "row-spacing") {
+    const row = ensurePtRowOverride();
+    applyPtRowOverride({ spacing: round3(row.spacing + dyIn) });
+  }
+  renderPrintTemplateSidePanel();
+}
+
+function startPtDrag(e) {
+  const el = e.target.closest(".pt-editable");
+  if (!el) return;
+  e.preventDefault();
+  selectPtFieldFromEl(el);
+  const kind = ptSelectedKind;
+  const key = ptSelectedField;
+  const scale = ptCanvasScale() || 1;
+  const startX = e.clientX, startY = e.clientY;
+  let startLeft = 0, startTop = 0, startSpacing = 0;
+  if (kind === "point" || kind === "row-col") {
+    const box = ptElementBoxIn(el, ptFieldReferenceEl(kind));
+    startLeft = box.left; startTop = box.top;
+  } else if (kind === "row") {
+    const row = ensurePtRowOverride();
+    startLeft = row.left; startTop = row.top;
+  } else if (kind === "row-spacing") {
+    const row = ensurePtRowOverride();
+    startTop = row.top; startSpacing = row.spacing;
+  }
+  let moved = false;
+  try { el.setPointerCapture(e.pointerId); } catch { /* ignore unsupported pointer capture */ }
+  function onMove(ev) {
+    moved = true;
+    const dxIn = (ev.clientX - startX) / (96 * scale);
+    const dyIn = (ev.clientY - startY) / (96 * scale);
+    if (kind === "point") applyPtFieldOverride(key, { left: round3(startLeft + dxIn), top: round3(startTop + dyIn) });
+    else if (kind === "row-col") applyPtFieldOverride(key, { left: round3(startLeft + dxIn) });
+    else if (kind === "row") applyPtRowOverride({ left: round3(startLeft + dxIn), top: round3(startTop + dyIn) });
+    else if (kind === "row-spacing") applyPtRowOverride({ spacing: round3(startSpacing + dyIn) });
+    renderPrintTemplateSidePanel();
+  }
+  function onUp() {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    if (moved) toast("Position updated. Click Save Template to keep it.");
+  }
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+}
+
+function handlePtCanvasKeydown(e) {
+  if (!ptSelectedField) return;
+  const step = ptStepIn;
+  const map = { ArrowUp: [0, -step], ArrowDown: [0, step], ArrowLeft: [-step, 0], ArrowRight: [step, 0] };
+  if (!map[e.key]) return;
+  e.preventDefault();
+  nudgePtSelected(...map[e.key]);
+}
+
+function resetPtField(key) {
+  delete ptOverrides.fields[key];
+  qsa(`#print-template-canvas [data-pt-field="${key}"]`).forEach((el) => el.removeAttribute("style"));
+  if (ptSelectedField === key) renderPrintTemplateSidePanel();
+}
+
+function resetPtRow() {
+  ptOverrides.row = null;
+  ptSelectedField = null;
+  ptSelectedKind = null;
+  buildPrintTemplateCanvas();
+  renderPrintTemplateSidePanel();
+}
+
+async function resetPtAll() {
+  const ok = await confirmDetailsModal({ eyebrow: "Reset Template", title: `Reset ${ptActiveType} template to default?`, fields: [["Document Type", ptActiveType]], note: "This clears all custom position adjustments for this document type. Printing will use the original default layout again.", confirmLabel: "Reset To Default", danger: true });
+  if (!ok) return;
+  ptOverrides = { fields: {}, row: null };
+  ptSelectedField = null;
+  ptSelectedKind = null;
+  buildPrintTemplateCanvas();
+  renderPrintTemplateSidePanel();
+  await savePrintTemplate(true);
+}
+
+async function savePrintTemplate(silent = false) {
+  const record = { id: ptActiveType, type: ptActiveType, fields: ptOverrides.fields, row: ptOverrides.row || undefined, updatedBy: currentUser?.name || "System User", updatedAt: fmtDate(today) };
+  const list = data.printTemplates || (data.printTemplates = []);
+  const idx = list.findIndex((t) => t.type === ptActiveType);
+  if (idx >= 0) list[idx] = record; else list.push(record);
+  await persistRecords({ printTemplates: [record] }, { printTemplates: [record.id] });
+  log(`Saved ${ptActiveType} print template`, "Settings", `Custom print layout updated for ${ptActiveType}`, { save: false });
+  if (!silent) toast(`${ptActiveType} print template saved.`);
+}
+
 function branchOptions(selected = "") {
   return platformBranches().map((branch) => `<option ${branch === selected ? "selected" : ""}>${escapeHtml(branch)}</option>`).join("");
 }
@@ -1666,6 +1952,7 @@ function showReportPreviewLoading() {
   qs("#report-preview-content").innerHTML = `<div class="print-loading"><span class="print-loading-spinner"></span><p>Preparing document…</p></div>`;
   if (qs("#report-preview-print")) qs("#report-preview-print").disabled = true;
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = true;
+  if (qs("#report-preview-template-field")) qs("#report-preview-template-field").hidden = true;
   const dialog = qs("#report-preview-modal");
   if (!dialog.open) dialog.showModal();
 }
@@ -1680,14 +1967,16 @@ function showPaymentRequestPreviewLoading() {
 function closeReportPreview() {
   clearPrintTarget();
   currentReportSaleId = null;
+  currentPrintTemplateId = "default";
   qs("#report-preview-modal").close();
 }
 
-async function printInvoice(invoiceId, noDate = false) {
+async function printInvoice(invoiceId, noDate = false, templateId = null) {
   clearPrintTarget();
   currentPrintNoDate = noDate;
+  currentPrintTemplateId = templateId || currentPrintTemplateId || "default";
   showReportPreviewLoading();
-  const printable = await MedlaneAPI.printableInvoice(invoiceId, noDate).catch((error) => {
+  const printable = await MedlaneAPI.printableInvoice(invoiceId, noDate, currentPrintTemplateId).catch((error) => {
     toast(error.message || "Unable to load printable invoice.");
     qs("#report-preview-modal").close();
     return null;
@@ -1701,6 +1990,8 @@ async function printInvoice(invoiceId, noDate = false) {
   document.body.classList.add("print-template-overlay", `print-template-${type}`);
   if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
+  if (qs("#report-preview-template-field")) qs("#report-preview-template-field").hidden = !printable.hasCustomTemplate;
+  if (qs("#report-preview-template")) qs("#report-preview-template").value = currentPrintTemplateId;
 }
 
 function printReportPreview() {
@@ -1715,6 +2006,11 @@ async function printReportPreviewNoDate() {
   const sale = data.sales.find((item) => item.id === currentReportSaleId || title.includes(item.documentNo || item.id));
   if (sale || currentReportSaleId) await printInvoice(sale?.id || currentReportSaleId, true);
   window.print();
+}
+
+function changeReportPreviewTemplate(templateId) {
+  if (!currentReportSaleId) return;
+  printInvoice(currentReportSaleId, currentPrintNoDate, templateId);
 }
 
 function formDocumentNo(sale) {
@@ -3901,6 +4197,7 @@ const sectionRenderers = {
   notifications: renderNotifications,
   security: renderSecurity,
   settings: renderPlatformSettings,
+  "print-templates": renderPrintTemplates,
   backup: renderBackup,
   logs: renderLogs,
   "user-settings": renderUserSettings,
@@ -4233,7 +4530,7 @@ function syncInviteUserPermissions() {
   const modules = permissionModules();
   const groups = [
     ["Core", ["dashboard", "analytics", "notifications", "user-settings"]],
-    ["Master Data", ["masterlists", "users", "settings", "backup", "security", "logs"]],
+    ["Master Data", ["masterlists", "users", "settings", "backup", "security", "logs", "print-templates"]],
     ["Inventory & Orders", ["inventory", "purchase-orders", "warranty"]],
     ["Sales & Receivables", ["sales", "invoicing", "collections", "receivables-tracker", "purchase-history"]],
     ["Support", ["product-issues"]],
