@@ -493,7 +493,7 @@ qs("#invoice-approval-form").addEventListener("submit", (event) => {
   data.invoiceApprovals = formObject(event.currentTarget);
   log("Updated invoice approval settings", "Invoicing", "Invoice approvals");
   notify("Invoicing", "Invoice approved-by names were updated.", "invoicing", "Invoice approvals");
-  saveData();
+  saveData(["invoiceApprovals"]);
   toast("Invoice approved-by names saved.");
 });
 qs("#reset-demo-settings")?.addEventListener("click", () => toast("Production reset is disabled. Use Admin data tools or Supabase maintenance scripts."));

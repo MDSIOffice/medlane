@@ -215,13 +215,19 @@ function parseInvoiceLines(text, options = {}) {
     const expiryValue = hasBranch ? eighthValue : seventhValue;
     const item = data.items.find((entry) => entry.name === itemName || entry.code === itemName);
     if (!item) throw new Error(`Unknown item: ${itemName}`);
+    const equipment = isEquipmentItem(item);
     const qty = Number(qtyValue);
     const price = Number(priceValue);
     if (!qty || qty <= 0 || Number.isNaN(price) || price < 0) throw new Error(`Invalid qty or price for ${item.name}`);
     if (requireLot && !lotValue) throw new Error(`Missing lot number for ${item.name}`);
-    if (requireLot && !expiryValue) throw new Error(`Missing expiry date for ${item.name}`);
-    return { item: item.name, code: item.code, brand: brandValue || item.brand, qty, uom: uomValue || item.uom || "unit", price, sourceBranch, branch: sourceBranch, lot: lotValue || "", expiry: expiryValue || "", discount: Number(discountValue || 0), discountReason: "" };
+    if (requireLot && !equipment && !expiryValue) throw new Error(`Missing expiry date for ${item.name}`);
+    return { item: item.name, code: item.code, brand: brandValue || item.brand, qty, uom: uomValue || item.uom || "unit", price, sourceBranch, branch: sourceBranch, lot: lotValue || "", expiry: equipment ? "N/A" : expiryValue || "", discount: Number(discountValue || 0), discountReason: "" };
   });
+}
+
+function isEquipmentItem(item) {
+  const category = String(item?.category || item?.classification || "").trim().toLowerCase();
+  return category === "equipment";
 }
 
 function lineSubtotal(line) { return Math.max(0, line.qty * line.price); }
@@ -463,6 +469,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
   const item = findItemByCodeOrName(line.code || line.item || line.name);
+  const equipment = isEquipmentItem(item);
   const selectedInvoiceBranch = qs("#sourceBranch")?.value || line.sourceBranch || line.branch || inventoryBranchTab || platformBranches()[0] || "";
   const preferredBranch = selectedInvoiceBranch;
   const stock = item ? data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === preferredBranch) || {} : {};
@@ -475,7 +482,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="1" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${uomOptions.map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" value="${line.price || ""}" required /></div>
-      ${requireLot ? `<div class="field lot-field"><label>Lot No.</label><input class="invoice-lot-input" list="invoice-lot-options" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="Lot number" required /></div><div class="field expiry-field"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" required /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
+      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label><input class="invoice-lot-input" list="invoice-lot-options" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /></div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
     </div>
     <button class="icon-button remove-invoice-line" type="button" aria-label="Remove item" title="Remove item">×</button>
@@ -539,8 +546,9 @@ function collectInvoiceEditorLines() {
     const uom = row.querySelector(".invoice-uom-input").value;
     const price = row.querySelector(".invoice-price-input").value;
     const lot = row.querySelector(".invoice-lot-input").value.trim();
-    const expiry = row.querySelector(".invoice-expiry-input").value;
-    if (expiry && daysUntil(expiry) < 0) throw new Error("Expiry date cannot be in the past.");
+    const item = findItemByCodeOrName(itemValue);
+    const expiry = isEquipmentItem(item) ? "N/A" : row.querySelector(".invoice-expiry-input").value;
+    if (expiry && expiry !== "N/A" && daysUntil(expiry) < 0) throw new Error("Expiry date cannot be in the past.");
     const discount = row.querySelector(".invoice-discount-input")?.value || 0;
     return `${itemValue}|${brand}|${qty}|${uom}|${price}|${sourceBranch}|${lot}|${expiry}|${discount}`;
   }).filter((line) => line.split("|")[0]).join("\n");
@@ -567,6 +575,11 @@ function syncInvoiceRowItem(input) {
   const row = input.closest(".invoice-line-row");
   row.querySelector(".invoice-brand-input").value = item.brand || "";
   row.querySelector(".invoice-uom-input").value = item.uom || "unit";
+  const expiryField = row.querySelector(".expiry-field");
+  const expiryInput = row.querySelector(".invoice-expiry-input");
+  const equipment = isEquipmentItem(item);
+  expiryField?.classList.toggle("equipment-expiry-field", equipment);
+  if (expiryInput) { expiryInput.required = !equipment; if (equipment) expiryInput.value = ""; }
   if (!row.querySelector(".invoice-price-input").value) row.querySelector(".invoice-price-input").value = "";
   const warehouse = qs("#sourceBranch")?.value || row.querySelector(".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
   const stock = data.inventory
@@ -574,7 +587,7 @@ function syncInvoiceRowItem(input) {
     .sort((a, b) => daysUntil(a.expiry === "N/A" ? "2099-12-31" : a.expiry) - daysUntil(b.expiry === "N/A" ? "2099-12-31" : b.expiry))[0];
   if (stock) {
     row.querySelector(".invoice-lot-input").value = stock.lot || "";
-    row.querySelector(".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
+    if (!equipment) row.querySelector(".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
   }
 }
 
@@ -1274,6 +1287,7 @@ function fillStockSheetFromInventoryPo(poId) {
   const remainingLines = po.lines.filter((line) => Number(line.qty || 0) - Number(line.receivedQty || 0) > 0);
   const bodyRows = (remainingLines.length ? remainingLines : po.lines).map((line) => `<tr><td><select class="stock-branch">${branchOptions(po.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" list="inventory-code-options" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" list="inventory-item-options" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
+  qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
 }
 
 function addStockSheetRow() {
@@ -1321,6 +1335,13 @@ function syncStockSheetRow(input, allowPartial = false) {
   if (codeInput) codeInput.value = match.code;
   if (itemInput) itemInput.value = match.name;
   if (brandInput) brandInput.value = match.brand;
+  const stockExpiryInput = row.querySelector(".stock-expiry");
+  if (stockExpiryInput) {
+    stockExpiryInput.required = !isEquipmentItem(match);
+    stockExpiryInput.disabled = isEquipmentItem(match);
+    stockExpiryInput.placeholder = isEquipmentItem(match) ? "N/A for equipment" : "";
+    if (isEquipmentItem(match)) stockExpiryInput.value = "";
+  }
   const lotInput = row.querySelector(".transfer-lot");
   const lotDatalist = row.querySelector("datalist[id^='transfer-lot-options-']");
   const from = row.querySelector(".transfer-from")?.value;
@@ -1341,14 +1362,14 @@ async function saveStockSheet() {
     const item = findItemByCodeOrName(code || itemName);
     const brand = row.querySelector(".stock-brand")?.value.trim() || item?.brand || "Medlane";
     const lot = row.querySelector(".stock-lot")?.value.trim();
-    const expiry = row.querySelector(".stock-expiry")?.value;
+    const expiry = isEquipmentItem(item) ? "N/A" : row.querySelector(".stock-expiry")?.value;
     const qty = Number(row.querySelector(".stock-qty")?.value || 0);
     if (!code && !itemName && !lot && !qty) return null;
     return { branch, item, brand, lot, expiry, qty };
   }).filter(Boolean);
   if (!rows.length) return toast("No stock rows to save.");
-  if (rows.some((row) => !row.item || !row.branch || !row.lot || !row.expiry || row.qty <= 0)) return toast("Complete all stock sheet fields before saving.");
-  if (rows.some((row) => daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
+  if (rows.some((row) => !row.item || !row.branch || !row.lot || (!isEquipmentItem(row.item) && !row.expiry) || row.qty <= 0)) return toast("Complete all stock sheet fields before saving.");
+  if (rows.some((row) => row.expiry !== "N/A" && daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
   if (po) {
     const lines = rows.map(({ item, branch, lot, expiry, qty }) => ({ code: item.code, branch, lot, expiry, qty }));
     const result = await MedlaneAPI.receivePurchaseOrderStock(po.id, lines).catch((error) => ({ error }));
@@ -1933,22 +1954,28 @@ function collectFinancialLines() {
 function syncFinancialRequestTotal() {
   if (!["payable", "replenishment"].includes(modalType)) return;
   const gross = collectFinancialLines().reduce((sum, line) => sum + Number(line.amount || 0), 0);
-  const withholdingTax1 = modalType === "payable" && qs("#withholdingTax1")?.checked ? Math.round(gross * 0.01) : 0;
-  const withholdingTax2 = modalType === "payable" && qs("#withholdingTax2")?.checked ? Math.round(gross * 0.02) : 0;
+  const taxBase = withholdingTaxBase(gross);
+  const withholdingTax1 = modalType === "payable" && qs("#withholdingTax1")?.checked ? roundMoney(taxBase * 0.01) : 0;
+  const withholdingTax2 = modalType === "payable" && qs("#withholdingTax2")?.checked ? roundMoney(taxBase * 0.02) : 0;
   const total = Math.max(gross - withholdingTax1 - withholdingTax2, 0);
   if (qs("#amount")) qs("#amount").value = total.toFixed(2);
   const preview = qs("#financial-request-tax-preview");
-  if (preview) preview.innerHTML = modalType === "payable" ? `<div class="preview-tax-label">Optional withholding deductions</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Payable</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>Withholding 1%</span><strong>${peso.format(withholdingTax1)}</strong></div><div class="invoice-meta"><span>Withholding 2%</span><strong>${peso.format(withholdingTax2)}</strong></div><div class="invoice-meta total-line"><span>Net Payable</span><strong>${peso.format(total)}</strong></div></div>` : "";
+  if (preview) preview.innerHTML = modalType === "payable" ? `<div class="preview-tax-label">Optional withholding deductions computed from VAT-exclusive base</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Payable</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${peso.format(taxBase)}</strong></div><div class="invoice-meta"><span>Withholding 1%</span><strong>${peso.format(withholdingTax1)}</strong></div><div class="invoice-meta"><span>Withholding 2%</span><strong>${peso.format(withholdingTax2)}</strong></div><div class="invoice-meta total-line"><span>Net Payable</span><strong>${peso.format(total)}</strong></div></div>` : "";
 }
 
+function roundMoney(value) { return Math.round(Number(value || 0) * 100) / 100; }
+function withholdingTaxBase(gross) { return roundMoney(Number(gross || 0) / 1.12); }
+
 function financialRequestDeductions(gross) {
-  const withholdingTax1 = modalType === "payable" && qs("#withholdingTax1")?.checked ? Math.round(gross * 0.01) : 0;
-  const withholdingTax2 = modalType === "payable" && qs("#withholdingTax2")?.checked ? Math.round(gross * 0.02) : 0;
+  const taxBase = withholdingTaxBase(gross);
+  const withholdingTax1 = modalType === "payable" && qs("#withholdingTax1")?.checked ? roundMoney(taxBase * 0.01) : 0;
+  const withholdingTax2 = modalType === "payable" && qs("#withholdingTax2")?.checked ? roundMoney(taxBase * 0.02) : 0;
   return { grossAmount: gross, withholdingTax1, withholdingTax2, total: Math.max(gross - withholdingTax1 - withholdingTax2, 0) };
 }
 function paymentRequestDeductions(gross) {
-  const withholdingTax = qs("#withholdingTax")?.checked ? Math.round(gross * 0.05) : 0;
-  const expandedWithholdingTax = qs("#expandedWithholdingTax")?.checked ? Math.round(gross * 0.01) : 0;
+  const taxBase = withholdingTaxBase(gross);
+  const withholdingTax = qs("#withholdingTax")?.checked ? roundMoney(taxBase * 0.05) : 0;
+  const expandedWithholdingTax = qs("#expandedWithholdingTax")?.checked ? roundMoney(taxBase * 0.01) : 0;
   return { withholdingTax, expandedWithholdingTax, total: Math.max(gross - withholdingTax - expandedWithholdingTax, 0) };
 }
 
@@ -1980,7 +2007,7 @@ function syncPaymentRequestTotal() {
   const deductions = paymentRequestDeductions(gross);
   if (qs("#total")) qs("#total").value = deductions.total.toFixed(2);
   const preview = qs("#payment-request-tax-preview");
-  if (preview) preview.innerHTML = `<div class="preview-tax-label">WTax/EWT applied per the checkboxes above</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Request</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${peso.format(deductions.withholdingTax)}</strong></div><div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${peso.format(deductions.expandedWithholdingTax)}</strong></div><div class="invoice-meta total-line"><span>Total Payment Request</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
+  if (preview) preview.innerHTML = `<div class="preview-tax-label">WTax/EWT computed from VAT-exclusive base</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Request</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${peso.format(withholdingTaxBase(gross))}</strong></div><div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${peso.format(deductions.withholdingTax)}</strong></div><div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${peso.format(deductions.expandedWithholdingTax)}</strong></div><div class="invoice-meta total-line"><span>Total Payment Request</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
 }
 function paymentRequestHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
@@ -3619,7 +3646,11 @@ function formatLogRecord(record) {
   const short = compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
   return `<span class="log-record" title="${escapeHtml(compact)}">${escapeHtml(short)}</span>`;
 }
-const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Request", "Support Tracker", "Reconciliation", "Reports", "Settings", "User Settings", "Users"];
+const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Request", "Support Tracker", "Reconciliation", "Reports", "Settings", "System", "User Settings", "Users"];
+function visibleAuditLogEntries(entries) {
+  const selectedModule = qs("#logs-module-filter")?.value || "all";
+  return selectedModule === "all" ? entries.filter((entry) => String(entry.module || "System").toLowerCase() !== "system") : entries;
+}
 function renderLogFilters() {
   const selectedRole = qs("#logs-role-filter")?.value || "all";
   const selectedModule = qs("#logs-module-filter")?.value || "all";
@@ -3669,7 +3700,7 @@ async function renderLogs() {
   tableSkeleton("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address", "Details"], 6);
   try {
     const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50 });
-    logsState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
+    logsState = { entries: visibleAuditLogEntries(result.entries || []), nextCursor: result.nextCursor || null, loading: false };
   } catch (error) {
     logsState = { entries: [], nextCursor: null, loading: false };
     toast(error.message || "Could not load audit logs.");
@@ -3681,7 +3712,7 @@ async function loadMoreLogs() {
   logsState.loading = true;
   try {
     const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50, before: logsState.nextCursor });
-    logsState.entries = [...logsState.entries, ...(result.entries || [])];
+    logsState.entries = [...logsState.entries, ...visibleAuditLogEntries(result.entries || [])];
     logsState.nextCursor = result.nextCursor || null;
   } catch (error) {
     toast(error.message || "Could not load more audit logs.");

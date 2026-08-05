@@ -711,6 +711,11 @@ function lineAmount(line) {
   return Number(line?.qty || 0) * Number(line?.price || 0);
 }
 
+function isEquipmentItem(item) {
+  const category = String(item?.category || item?.classification || "").trim().toLowerCase();
+  return category === "equipment";
+}
+
 function saleTaxBreakdown(sale) {
   const subtotal = Number(sale.amount || 0) - Number(sale.discount || 0);
   const totalAmountDue = Number(sale.net || subtotal);
@@ -729,7 +734,8 @@ function printableBranchAllowed(profile, sale) {
 function printableRows(sale, variant) {
   const lines = sale.lines?.length ? sale.lines : [{ item: sale.item, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: Number(sale.amount || 0) / Math.max(Number(sale.qty || 1), 1), lot: "", expiry: "" }];
   return lines.slice(0, variant === "si" ? 10 : 8).map((line, index) => {
-    const lotExpiry = `<small>Lot ${escapeHtml(line.lot || "-")} · Exp ${escapeHtml(line.expiry || "N/A")}</small>`;
+    const expiry = line.expiry && line.expiry !== "N/A" ? ` · Exp ${escapeHtml(line.expiry)}` : "";
+    const lotExpiry = `<small>Lot ${escapeHtml(line.lot || "-")}${expiry}</small>`;
     if (variant === "si") return `<div class="si-row" style="--row:${index}"><span class="si-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="si-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="si-price">${formMoney(line.price)}</span><span class="si-amount">${formMoney(lineAmount(line))}</span></div>`;
     if (variant === "ts") return `<div class="ts-row" style="--row:${index}"><span class="ts-code">${escapeHtml(line.code || "")}</span><span class="ts-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="ts-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="ts-amount">${formMoney(lineAmount(line))}</span></div>`;
     return `<div class="dr-row" style="--row:${index}"><span class="dr-qty">${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item">${escapeHtml(line.item)}${lotExpiry}</span><span class="dr-price"></span><span class="dr-amount"></span></div>`;
@@ -1559,10 +1565,14 @@ export default {
           if (!submittedLines.length) throw new Error("No receiving lines provided");
           const invRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=record_key,data`);
           const inventory = invRows.map((row) => row.data);
+          const itemRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`);
+          const items = itemRows.map((row) => row.data);
           let totalReceived = 0;
           for (const submitted of submittedLines) {
             const line = (po.lines || []).find((entry) => entry.code === submitted.code && (!entry.lot || entry.lot === submitted.lot) && Number(entry.qty || 0) > Number(entry.receivedQty || 0));
             if (!line) throw new Error(`Line not found on this purchase order: ${submitted.code} / ${submitted.lot}`);
+            const item = items.find((entry) => entry.code === submitted.code || entry.name === line.item);
+            const equipment = isEquipmentItem(item || line);
             const remaining = Number(line.qty || 0) - Number(line.receivedQty || 0);
             const qty = Number(submitted.qty || 0);
             if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Invalid quantity for ${submitted.code}`);
@@ -1570,8 +1580,8 @@ export default {
             const branch = String(submitted.branch || po.branch || "").trim();
             if (!branch) throw new Error(`Branch is required for ${submitted.code}`);
             const lot = String(submitted.lot || "").trim();
-            const expiry = String(submitted.expiry || line.expiry || "").trim();
-            if (!lot || !expiry) throw new Error(`Lot and expiry are required for ${submitted.code}`);
+            const expiry = equipment ? "N/A" : String(submitted.expiry || line.expiry || "").trim();
+            if (!lot || (!equipment && !expiry)) throw new Error(`Lot and expiry are required for ${submitted.code}`);
             line.lot = line.lot || lot;
             line.expiry = line.expiry || expiry;
             line.receivedQty = Number(line.receivedQty || 0) + qty;
