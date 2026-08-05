@@ -3279,11 +3279,14 @@ function formatBytes(value) {
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;
 }
+function backupRunLabel(type = "manual") {
+  return String(type).toLowerCase() === "manual" ? `<span class="pill purple">Manual</span>` : `<span class="pill green">Automatic</span>`;
+}
 let backupsLoaded = false;
 async function renderBackup() {
   if (!qs("#backup-table") || !canManageUsers()) return;
   backupsLoaded = true;
-  table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Source", "Actions"], [["Loading backups...", "-", "-", "-", "-", "-", "-"]]);
+  table("#backup-table", ["Created", "Run", "Type", "Mode", "Records", "Size", "Source", "Actions"], [["Loading backups...", "-", "-", "-", "-", "-", "-", "-"]]);
   try {
     const [trackedResult, objectResult] = await Promise.allSettled([MedlaneAPI.listBackups(), MedlaneAPI.listBackupObjects()]);
     const backups = trackedResult.status === "fulfilled" ? trackedResult.value.backups || [] : [];
@@ -3298,16 +3301,16 @@ async function renderBackup() {
       ["Latest Backup", backups[0] ? formatSessionDate(backups[0].created_at) : latestObject ? formatSessionDate(latestObject.uploaded) : "None", "Most recent recovery point"],
       ["Schedule", "3 cadences", "Weekly, monthly, yearly"],
     ].map(([title, value, note]) => `<article class="stat-card"><span>${escapeHtml(title)}</span><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(note)}</small></article>`).join("");
-    const trackedRows = backups.map((backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), "Metadata", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button><button class="mini-button danger-button" data-restore-backup-id="${escapeHtml(backup.id)}">Restore</button>`] }));
+    const trackedRows = backups.map((backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), backupRunLabel(backup.backup_type), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), "Metadata", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button><button class="mini-button danger-button" data-restore-backup-id="${escapeHtml(backup.id)}">Restore</button>`] }));
     const objectRows = r2Only.map((object) => {
       const parts = String(object.key || "").split("/");
       const type = parts[2] || object.customMetadata?.backupType || "backup";
-      return { focus: object.key, cells: [formatSessionDate(object.uploaded), `<span class="pill purple">${escapeHtml(type)}</span>`, "compressed-full", object.customMetadata?.records || "-", formatBytes(object.size), "R2 object", `<button class="mini-button" data-download-backup-key="${escapeHtml(object.key)}">Download</button><button class="mini-button danger-button" data-restore-backup-key="${escapeHtml(object.key)}">Restore</button>`] };
+      return { focus: object.key, cells: [formatSessionDate(object.uploaded), backupRunLabel(type), `<span class="pill ${type === "manual" ? "purple" : "green"}">${escapeHtml(type)}</span>`, "compressed-full", object.customMetadata?.records || "-", formatBytes(object.size), "R2 object", `<button class="mini-button" data-download-backup-key="${escapeHtml(object.key)}">Download</button><button class="mini-button danger-button" data-restore-backup-key="${escapeHtml(object.key)}">Restore</button>`] };
     });
-    table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Source", "Actions"], [...trackedRows, ...objectRows]);
+    table("#backup-table", ["Created", "Run", "Type", "Mode", "Records", "Size", "Source", "Actions"], [...trackedRows, ...objectRows]);
   } catch (error) {
     qs("#backup-summary-grid").innerHTML = `<article class="stat-card accent-red"><span>Setup Required</span><strong>Backups unavailable</strong><small>${escapeHtml(error.message)}</small></article>`;
-    table("#backup-table", ["Created", "Type", "Mode", "Records", "Size", "Source", "Actions"], [["Backup tracking unavailable", "Run updated Supabase schema", "-", "-", "-", "-", escapeHtml(error.message)]]);
+    table("#backup-table", ["Created", "Run", "Type", "Mode", "Records", "Size", "Source", "Actions"], [["Backup tracking unavailable", "-", "Run updated Supabase schema", "-", "-", "-", "-", escapeHtml(error.message)]]);
   }
 }
 async function renderUserSessions(target = selectedUserSessionsTarget) {
