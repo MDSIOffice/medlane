@@ -275,9 +275,12 @@ function paymentRequestActionsCell(request) {
     : "";
   const linkedPayment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
   const isDepositFinal = linkedPayment?.collectionStatus === "Deposited";
-  const isCancellable = request.requestStatus !== "Cancelled" && !isDepositFinal;
+  const isCancellable = request.requestStatus === "Pending";
   const cancelBtn = isCancellable && canApprovePaymentRequests() ? `<button class="mini-button danger-button" data-payment-request-cancel="${escapeHtml(request.cvNo)}">Cancel</button>` : "";
-  return `<div class="inline-actions">${approveBtn}${cancelBtn}${timelineBtn}${printBtn}</div>`;
+  const statusActions = request.requestStatus === "Approved" && linkedPayment && !isDepositFinal
+    ? `<button class="mini-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Deposited">Deposited</button><button class="mini-button danger-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Bounced">Bounced</button><button class="mini-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Posted Date">Posted Date</button>`
+    : "";
+  return `<div class="inline-actions">${approveBtn}${cancelBtn}${statusActions}${timelineBtn}${printBtn}</div>`;
 }
 
 async function approvePaymentRequest(cvNo) {
@@ -330,6 +333,7 @@ async function cancelPaymentRequest(cvNo) {
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
   if (!request) return toast("Payment request not found.");
   if (request.requestStatus === "Cancelled") return toast("This payment request is already cancelled.");
+  if (request.requestStatus === "Approved") return toast("Approved payment requests cannot be cancelled. Update the collection status instead.");
   const payment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
   if (payment?.collectionStatus === "Deposited") return toast("This payment has already been deposited and can no longer be cancelled.");
   const sale = request.invoice ? findSaleByDocumentInput(request.invoice) : null;
@@ -376,7 +380,7 @@ function renderPaymentRequestDetail(cvNo) {
   const isDepositFinal = payment?.collectionStatus === "Deposited" || request.requestStatus === "Cancelled";
   const depositActions = isDepositFinal
     ? `<p class="page-description">${request.requestStatus === "Cancelled" ? "This payment request was cancelled." : "Deposited — this payment is final and its status can no longer be changed."}</p>`
-    : `<div class="modal-actions collection-status-actions"><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:For Deposition">For Deposition</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Deposited">Deposited</button><button class="ghost-button danger-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Bounced">Bounced</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Posted Date">Posted Date</button></div>`;
+    : `<div class="modal-actions collection-status-actions"><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Deposited">Deposited</button><button class="ghost-button danger-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Bounced">Bounced</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Posted Date">Posted Date</button></div>`;
   const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposition</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposition")}">${escapeHtml(payment.collectionStatus || "For Deposition")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
   qs("#payment-request-detail-title").textContent = `${request.cvNo} · ${request.employee}`;
   qs("#payment-request-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.employee || "-")}</p><h2>${escapeHtml(request.invoice ? `Linked to ${request.invoice}` : "CV Voucher")}</h2></div><span class="pill ${statusClass(request.requestStatus || request.status)}">${escapeHtml(request.requestStatus || request.status || "-")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(request.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(request.total || 0)}</strong></div><div class="report-preview-card"><small>Prepared By</small><strong>${escapeHtml(request.preparedBy || "-")}</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(request.approvedBy || "-")}</strong></div></div>${depositSection}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Approved" ? "done" : "pending"}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
