@@ -3021,9 +3021,10 @@ async function approveFinancialRequest(type, index) {
   const ok = await confirmDetailsModal({ eyebrow: "Confirm Approval", title: `Approve ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Approve" });
   if (!ok) return;
   record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "System User"; record.approvedAt = fmtDate(today);
-  log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id);
+  await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id, { save: false });
   notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments", record.id);
-  saveData(); renderAll(); toast(`${record.id} approved.`);
+  saveData(["notifications"]); renderAll(); toast(`${record.id} approved.`);
 }
 
 async function cancelFinancialRequest(type, index) {
@@ -3032,8 +3033,10 @@ async function cancelFinancialRequest(type, index) {
   const ok = await confirmDetailsModal({ eyebrow: "Confirm Cancellation", title: `Cancel ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Cancel Request", danger: true });
   if (!ok) return;
   record.requestStatus = "Cancelled"; record.status = "Cancelled"; record.cancelledBy = currentUser?.name || "System User"; record.cancelledAt = fmtDate(today);
-  log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id);
-  saveData(); renderAll(); toast(`${record.id} cancelled.`);
+  await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id, { save: false });
+  notify(type === "payable" ? "Payable" : "Expense", `${record.id} cancelled.`, type === "payable" ? "payables" : "replenishments", record.id);
+  saveData(["notifications"]); renderAll(); toast(`${record.id} cancelled.`);
 }
 
 function confirmPaymentDetailsModal(record, type, method) {
@@ -3070,8 +3073,10 @@ async function confirmFinancialPayment(type, index, method) {
   record.cheque = result.cheque;
   record.chequeDate = result.chequeDate;
   record.paid = record.amount; record.paymentConfirmed = true; record.status = "Paid";
-  log(`Confirmed ${type} payment`, type === "payable" ? "Payables" : "Expenses", `${record.id} · ${method} · ${peso.format(record.amount)}`);
-  saveData(); renderAll(); toast(`${record.id} marked paid by ${method}.`);
+  await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  log(`Confirmed ${type} payment`, type === "payable" ? "Payables" : "Expenses", `${record.id} · ${method} · ${peso.format(record.amount)}`, { save: false });
+  notify(type === "payable" ? "Payable" : "Expense", `${record.id} paid via ${method}.`, type === "payable" ? "payables" : "replenishments", record.id);
+  saveData(["notifications"]); renderAll(); toast(`${record.id} marked paid by ${method}.`);
 }
 
 function expenseApprovalAction(expense, index) {
@@ -3080,7 +3085,7 @@ function expenseApprovalAction(expense, index) {
   return expense.approvedBy ? `Approved by ${escapeHtml(expense.approvedBy)}` : "Completed";
 }
 
-function approveExpense(index, nextStatus) {
+async function approveExpense(index, nextStatus) {
   const expense = data.replenishments[index];
   if (!expense) return;
   const allowed = nextStatus === "Approved by HR" ? ["Superadmin", "HR", "Admin", "CEO"] : ["Superadmin", "Accounting", "Admin", "CEO"];
@@ -3088,9 +3093,10 @@ function approveExpense(index, nextStatus) {
   expense.status = nextStatus;
   expense.approvedBy = currentUser?.name || "System User";
   expense.approvedAt = fmtDate(today);
+  await persistRecords({ replenishments: [expense] });
   notify("Expense", `${expense.id} ${nextStatus} by ${expense.approvedBy}.`, "replenishments", expense.id);
-  log("Approved expense", "Expenses", `${expense.id}: ${nextStatus}`);
-  saveData();
+  log("Approved expense", "Expenses", `${expense.id}: ${nextStatus}`, { save: false });
+  saveData(["notifications"]);
   renderAll();
   toast(`${expense.id} ${nextStatus}.`);
 }

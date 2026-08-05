@@ -208,13 +208,29 @@ async function submitModal(event) {
     const items = collectFinancialLines();
     const amount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     if (!items.length || amount <= 0) return toast("Add at least one payable item with amount.");
-    data.payables.push({ id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, amount, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false });
+    const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, amount, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false };
+    data.payables.push(payable);
+    await persistRecords({ payables: [payable] });
+    log("Created payable", "Payables", `${payable.id} · ${payable.supplier || "Supplier"}`, { save: false });
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    toast(`${modalConfigs[modalType].title} saved.`);
+    return;
   }
   if (modalType === "replenishment") {
     const items = collectFinancialLines();
     const amount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     if (!items.length || amount <= 0) return toast("Add at least one expense item with amount.");
-    data.replenishments.push({ id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "" });
+    const replenishment = { id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "" };
+    data.replenishments.push(replenishment);
+    await persistRecords({ replenishments: [replenishment] });
+    log("Created replenishment", "Expenses", `${replenishment.id} · ${replenishment.requester || "Requester"}`, { save: false });
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    toast(`${modalConfigs[modalType].title} saved.`);
+    return;
   }
   if (modalType === "warranty") data.warranties.push(values);
   if (modalType === "productIssue") {
