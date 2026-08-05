@@ -39,6 +39,7 @@ const moduleRecordKeys = {
 
 const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
 const genericStateBlockedKeys = new Set(["users", "branch", "masterTab"]);
+const defaultSeedKeys = new Set(["clients", "items", "suppliers", "employees", "banks"]);
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -1372,18 +1373,28 @@ export default {
             const totalBefore = beforeRows.length;
             const totalAfter = rows.length;
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
-            const bulkLoss = totalBefore >= 5 && totalAfter < totalBefore * 0.5;
-            const seededModules = env.ENVIRONMENT === "production" ? presentKeys.filter((key) => (beforeCounts[key] || 0) === 0 && (afterCounts[key] || 0) >= 5) : [];
+            const seededModules = env.ENVIRONMENT === "production" ? presentKeys.filter((key) => defaultSeedKeys.has(key) && (beforeCounts[key] || 0) === 0 && (afterCounts[key] || 0) > 0) : [];
+            const defaultSeedBurst = seededModules.length >= 2;
 
-            if (wipedModules.length || bulkLoss || seededModules.length) {
+            if (defaultSeedBurst) {
               const deltaSummary = presentKeys.map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
               await writeAuditTrace(env, stateKey, {
                 actor, role: profile.role,
-                action: "BLOCKED save — destructive or reformat-like state change",
+                action: "BLOCKED save — default masterlist seed detected",
                 module: "System",
-                record: `${deltaSummary}. Wiped modules: ${wipedModules.join(", ") || "none"}. Seeded modules: ${seededModules.join(", ") || "none"}.`,
+                record: `${deltaSummary}. Seeded modules: ${seededModules.join(", ")}.`,
               }, authUser.id, auditContext);
-              throw new Error(`Save blocked: this looks like a destructive reset or reformat (${totalBefore} -> ${totalAfter} total records). Use the Backup restore tool for recovery. This attempt has been recorded in Audit Logs.`);
+              throw new Error(`Save blocked: this looks like bundled default masterlist data being written to production. Restore from Backup instead. This attempt has been recorded in Audit Logs.`);
+            }
+
+            if (wipedModules.length) {
+              const deltaSummary = presentKeys.map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
+              await writeAuditTrace(env, stateKey, {
+                actor, role: profile.role,
+                action: "Preserved existing records omitted from save payload",
+                module: "System",
+                record: `${deltaSummary}. Omitted modules preserved: ${wipedModules.join(", ")}.`,
+              }, authUser.id, auditContext);
             }
 
             if (rows.length) {
