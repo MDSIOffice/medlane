@@ -816,7 +816,8 @@ qsa("#analytics-tabs .tab").forEach((button) => button.addEventListener("click",
 qs("#modal-form").addEventListener("submit", submitModal);
 qs("#modal-fields").addEventListener("click", (event) => {
   if (event.target.closest("#add-payment-request-line")) {
-    qs("#payment-request-line-list").insertAdjacentHTML("beforeend", paymentRequestLineTemplate());
+    const lineHtml = ["payable", "replenishment"].includes(modalType) ? financialLineTemplate({}, { vendor: modalType !== "payable" }) : paymentRequestLineTemplate();
+    qs("#payment-request-line-list").insertAdjacentHTML("beforeend", lineHtml);
     syncPaymentRequestTotal();
     syncFinancialRequestTotal();
   }

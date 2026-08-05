@@ -1911,13 +1911,15 @@ function collectPaymentRequestLines() {
   return qsa(".payment-request-line-row").map((row) => ({ particulars: row.querySelector(".payment-request-particulars")?.value.trim() || "", amount: Number(row.querySelector(".payment-request-amount")?.value || 0) })).filter((line) => line.particulars || line.amount);
 }
 
-function financialLineTemplate(line = {}) {
-  return `<div class="payment-request-line-row financial-line-row"><div class="field"><label>Vendor</label><input class="payment-request-vendor" list="financial-vendor-options" value="${escapeHtml(line.vendor || "")}" /></div><div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div><div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
+function financialLineTemplate(line = {}, options = {}) {
+  const vendorField = options.vendor === false ? "" : `<div class="field"><label>Vendor</label><input class="payment-request-vendor" list="financial-vendor-options" value="${escapeHtml(line.vendor || "")}" /></div>`;
+  return `<div class="payment-request-line-row financial-line-row">${vendorField}<div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div><div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
 }
 
 function renderFinancialRequestEditor(lines = [{}]) {
   const vendorOptions = [...new Set(data.suppliers.map((s) => s.name))].map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
-  return `<div class="field full payment-request-editor"><label>Itemized Particulars</label><datalist id="financial-vendor-options">${vendorOptions}</datalist><div id="payment-request-line-list">${lines.map((line) => financialLineTemplate(line)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="amount">Total</label><input id="amount" name="amount" readonly value="0.00" /></div></div></div>`;
+  const lineOptions = { vendor: modalType !== "payable" };
+  return `<div class="field full payment-request-editor"><label>Itemized Particulars</label><datalist id="financial-vendor-options">${vendorOptions}</datalist><div id="payment-request-line-list">${lines.map((line) => financialLineTemplate(line, lineOptions)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="amount">Total</label><input id="amount" name="amount" readonly value="0.00" /></div></div></div>`;
 }
 
 function collectFinancialLines() {
