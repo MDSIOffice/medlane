@@ -149,12 +149,12 @@ function normalizeData(next) {
   next.notifications ||= [];
   next.notificationsDismissed ||= [];
   next.reconHistory ||= [];
-  next.platformAreas ||= structuredClone(initialData.platformAreas);
-  next.platformBranches ||= structuredClone(initialData.platformBranches);
-  next.purchaseOrders ||= structuredClone(initialData.purchaseOrders || []);
-  next.collectionContacts ||= structuredClone(initialData.collectionContacts);
+  next.platformAreas ||= [];
+  next.platformBranches ||= [];
+  next.purchaseOrders ||= [];
+  next.collectionContacts ||= [];
   next.collectionContactHistory ||= [];
-  next.banks ||= structuredClone(initialData.banks);
+  next.banks ||= [];
   next.paymentRequests ||= [];
   next.inventoryPurchaseOrders ||= [];
   next.productIssues = (next.productIssues || []).map((report) => ({ status: "Open", history: [], ...report }));
@@ -230,7 +230,7 @@ function saveData() {
         const latest = await MedlaneAPI.loadAppState().catch(() => null);
         if (latest?.data) {
           serverRevision = Number(latest.revision || 0);
-          data = normalizeData({ ...structuredClone(initialData), ...latest.data });
+          data = normalizeData({ ...emptyProductionData(), ...latest.data });
           if (typeof renderAll === "function") renderAll();
           if (typeof toast === "function") toast("Another user saved first. Reloaded latest server data.");
           return;
