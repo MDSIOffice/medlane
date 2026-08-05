@@ -1050,13 +1050,13 @@ async function loadDigestState(env, modules = digestStateModules) {
 function pendingSummaryFields(state) {
   const sales = state.sales || [];
   const salesPurchaseOrders = (state.purchaseOrders || []).filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(salesPoStatusServer(po, sales)) && !poFullyPaidServer(po, sales));
-  const inventoryPurchaseOrders = (state.inventoryPurchaseOrders || []).filter((po) => !/fully received|cancelled/i.test(po.status || ""));
+  const inventoryPurchaseOrders = (state.inventoryPurchaseOrders || []).filter((po) => !/approved|fully received|cancelled/i.test(po.status || ""));
   const inventoryPoApproval = inventoryPurchaseOrders.filter((po) => po.status === "Pending Approval");
   const transfers = (state.pendingTransfers || []).filter((transfer) => !/received|cancelled/i.test(transfer.status || ""));
   const collectionContacts = (state.collectionContacts || []).filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status));
   const collectionApprovals = (state.paymentRequests || []).filter((request) => request.invoice && request.requestStatus === "Pending");
-  const payables = (state.payables || []).filter((payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
-  const expenses = (state.replenishments || []).filter((expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
+  const payables = (state.payables || []).filter((payable) => (payable.requestStatus || payable.status) === "For Approval");
+  const expenses = (state.replenishments || []).filter((expense) => (expense.requestStatus || expense.status) === "For Approval");
   const field = (name, rows, mapper) => ({ name: `${name} (${rows.length})`, value: rows.length ? discordFieldValue(rows.slice(0, 8).map(mapper), 850) : "No pending items.", inline: false });
   return [
     field("Sales Purchase Orders", salesPurchaseOrders, (po) => `${po.id} — ${po.client || "No client"} (${salesPoStatusServer(po, sales)})`),
