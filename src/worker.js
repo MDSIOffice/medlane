@@ -864,8 +864,8 @@ async function restoreBackupObject(env, key, actorId, auditContext) {
   const payload = JSON.parse(await gunzipText(object));
   if (!payload || payload.app !== "medlane" || payload.stateKey !== stateKey || !Array.isArray(payload.records)) throw new Error("Invalid Medlane backup payload");
   const records = payload.records
-    .filter((row) => row?.state_key === stateKey && persistedKeys.includes(row.module_name) && row.module_name !== "logs")
-    .map((row) => ({ state_key: row.state_key, module_name: row.module_name, record_key: String(row.record_key || recordKeyFor(row.module_name, row.data, 0)), data: row.data || {}, updated_by: actorId || null }));
+    .filter((row) => (!row?.state_key || row.state_key === stateKey) && persistedKeys.includes(row.module_name) && row.module_name !== "logs")
+    .map((row) => ({ state_key: stateKey, module_name: row.module_name, record_key: String(row.record_key || recordKeyFor(row.module_name, row.data, 0)), data: row.data || {}, updated_by: actorId || null }));
   if (!records.length) throw new Error("Backup has no restorable app records");
   const chunkSize = 300;
   for (let index = 0; index < records.length; index += chunkSize) {
