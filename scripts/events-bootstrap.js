@@ -123,7 +123,14 @@ async function submitModal(event) {
     try {
       const sale = buildSale(values);
       data.sales.push(sale);
-      log("Created invoice", "Invoicing", `${sale.documentNo} · ${sale.type} · ${sale.client}`);
+      await persistRecords({ sales: [sale], inventory: inventoryTouchedBySale(sale), purchaseOrders: purchaseOrdersTouchedBySales([sale]) });
+      log("Created invoice", "Invoicing", `${sale.documentNo} · ${sale.type} · ${sale.client}`, { save: false });
+      saveData(["notifications"]);
+      qs("#demo-modal").close();
+      form.reset();
+      renderAll();
+      toast(`${modalConfigs[modalType].title} saved.`);
+      return;
     }
     catch (error) { notify("Validation", error.message, "sales", values.documentNo || values.client || ""); saveData(); return toast(error.message); }
   }
@@ -146,8 +153,15 @@ async function submitModal(event) {
       oldSale.replacementId = replacement.documentNo;
       oldSale.cancelledBy = currentUser?.name || "System User";
       data.sales.push(replacement);
-      log("Cancelled and replaced invoice", "Invoicing", `${oldSale.documentNo || oldSale.id} -> ${replacement.documentNo}`);
+      await persistRecords({ sales: [oldSale, replacement], inventory: [...inventoryTouchedBySale(oldSale), ...inventoryTouchedBySale(replacement)], purchaseOrders: purchaseOrdersTouchedBySales([oldSale, replacement]) });
+      log("Cancelled and replaced invoice", "Invoicing", `${oldSale.documentNo || oldSale.id} -> ${replacement.documentNo}`, { save: false });
       notify("Cancellation", `${oldSale.documentNo || oldSale.id} cancelled and replaced by ${replacement.documentNo}.`, "receivables-tracker", replacement.documentNo || replacement.id);
+      saveData(["notifications"]);
+      qs("#demo-modal").close();
+      form.reset();
+      renderAll();
+      toast(`${modalConfigs[modalType].title} saved.`);
+      return;
     } catch (error) { deductSaleStock(oldSale); return toast(error.message); }
   }
   if (modalType === "paymentRequest") {

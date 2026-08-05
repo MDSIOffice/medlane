@@ -556,20 +556,23 @@ function filterRecordsForProfile(records, profile, mode = "view") {
 
 function recordKeyFor(key, value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return key;
+  if (key === "inventory") return [value.code || value.item || "stock", value.branch || "branch", value.lot || value.serial || "lot"].map((part) => String(part).trim() || "-").join("|");
   return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
 }
 
 function stateFromRecords(records) {
   const next = {};
+  const keyedArrays = {};
   for (const key of persistedKeys) next[key] = ["branch", "masterTab", "branchAddresses", "invoiceApprovals"].includes(key) ? undefined : [];
   for (const row of records) {
     const key = row.module_name;
     if (["branch", "masterTab", "branchAddresses", "invoiceApprovals"].includes(key)) next[key] = row.data?.value;
     else {
-      next[key] ||= [];
-      next[key].push(row.data);
+      keyedArrays[key] ||= new Map();
+      keyedArrays[key].set(recordKeyFor(key, row.data, keyedArrays[key].size), row.data);
     }
   }
+  for (const [key, map] of Object.entries(keyedArrays)) next[key] = [...map.values()];
   for (const key of ["branch", "masterTab", "branchAddresses", "invoiceApprovals"]) if (next[key] === undefined) delete next[key];
   return next;
 }

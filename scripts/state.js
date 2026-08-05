@@ -360,9 +360,10 @@ async function persistRecords(records) {
     setGlobalSaveStatus("saved", "Saved");
     return result;
   } catch (error) {
+    mergePendingSaveQueue(savePayloadForKeys(Object.keys(filtered)));
     setGlobalSaveStatus("error", "Save failed");
-    if (typeof toast === "function") toast(`Server save failed: ${error.message}`);
-    throw error;
+    if (typeof toast === "function") toast(`Server save failed; queued for retry: ${error.message}`);
+    return { ok: false, queued: true, error: error.message };
   }
 }
 function nextId(items, prefix) {

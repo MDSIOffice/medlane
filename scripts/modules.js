@@ -4092,6 +4092,17 @@ function buildPurchaseOrder(values) {
   return { id: nextPurchaseOrderId(), client: client.name, area: client.area, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
 }
 
+function inventoryTouchedBySale(sale) {
+  const warehouse = warehouseForArea(sale.area);
+  const touched = (sale.lines || []).map((line) => data.inventory.find((item) => item.code === line.code && item.branch === (line.sourceBranch || line.branch || warehouse) && item.lot === line.lot)).filter(Boolean);
+  return [...new Map(touched.map((item) => [`${item.code}|${item.branch}|${item.lot}`, item])).values()];
+}
+
+function purchaseOrdersTouchedBySales(sales = []) {
+  const ids = new Set(sales.map((sale) => sale?.po).filter(Boolean));
+  return data.purchaseOrders.filter((po) => ids.has(po.id));
+}
+
 function buildSale(values, replacementOf = null) {
   const client = findClientByName(values.client);
   if (!client) throw new Error("Client is required.");
