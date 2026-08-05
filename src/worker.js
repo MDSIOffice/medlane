@@ -1479,6 +1479,30 @@ export default {
         return methodNotAllowed();
       }
 
+      if (url.pathname === "/api/modules/records") {
+        if (request.method !== "POST") return methodNotAllowed();
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        requireWriteAccess(profile);
+        const stateKey = appStateKey(env);
+        const body = await request.json().catch(() => ({}));
+        const records = body.records && typeof body.records === "object" ? body.records : {};
+        const allowedKeys = new Set(writableKeys(profile));
+        const rows = [];
+        for (const [key, value] of Object.entries(records)) {
+          if (!allowedKeys.has(key)) throw new Error(`You do not have permission to edit ${key}`);
+          if (!Array.isArray(value)) throw new Error(`Per-record saves require an array for ${key}`);
+          rows.push(...recordsFromState({ [key]: value }, authUser.id, stateKey, [key]));
+        }
+        if (rows.length) {
+          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+            method: "POST",
+            headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+            body: JSON.stringify(rows),
+          });
+        }
+        return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
+      }
+
       if (url.pathname.startsWith("/api/purchase-orders/")) {
         const segments = url.pathname.split("/").filter(Boolean);
         const poId = decodeURIComponent(segments[2] || "");

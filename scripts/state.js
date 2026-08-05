@@ -297,6 +297,23 @@ function saveData(keys = null) {
     });
   }, 450);
 }
+
+async function persistRecords(records) {
+  if (!currentUser || !MedlaneAPI?.session()?.access_token) return null;
+  const filtered = Object.fromEntries(Object.entries(records || {}).filter(([, value]) => Array.isArray(value) && value.length));
+  if (!Object.keys(filtered).length) return null;
+  setGlobalSaveStatus("saving", "Saving...");
+  try {
+    const result = await MedlaneAPI.saveRecords(filtered);
+    if (result?.revision) serverRevision = Number(result.revision);
+    setGlobalSaveStatus("saved", "Saved");
+    return result;
+  } catch (error) {
+    setGlobalSaveStatus("error", "Save failed");
+    if (typeof toast === "function") toast(`Server save failed: ${error.message}`);
+    throw error;
+  }
+}
 function nextId(items, prefix) {
   const next = items.reduce((max, item) => Math.max(max, Number(String(item.id || "").replace(`${prefix}-`, "")) || 0), 0) + 1;
   return `${prefix}-${String(next).padStart(3, "0")}`;

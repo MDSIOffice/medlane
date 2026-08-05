@@ -104,9 +104,9 @@ function dateInRange(dateValue, from = "", to = "") {
 function getDashboardRange() {
   return { from: qs("#dashboard-date-from")?.value || "", to: qs("#dashboard-date-to")?.value || "" };
 }
-function log(action, module, record) {
+function log(action, module, record, options = {}) {
   MedlaneAPI.recordLog({ action, module, record: String(record ?? "") }).catch(() => {});
-  saveData();
+  if (options.save !== false) saveData();
 }
 function notify(type, message, section = "notifications", record = "") {
   data.notifications.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), type, message, section, record, status: "Unread" });
@@ -191,9 +191,20 @@ function table(target, headers, rows) {
   tableState.set(target, { headers, rows: normalizedRows, rendered: 0 });
   const tableEl = qs(target);
   tableEl.dataset.tableTarget = target;
+  tableEl.classList.remove("is-loading-table");
   tableEl.innerHTML = `<thead><tr>${headers.map((h, index) => `<th><button class="sort-button" type="button" data-sort-col="${index}">${escapeHtml(h)}</button></th>`).join("")}</tr></thead><tbody></tbody>`;
   if (!normalizedRows.length) { tableEl.tBodies[0].innerHTML = `<tr><td colspan="${headers.length}">No records found.</td></tr>`; renderViewMoreButton(target); }
   else appendTableRows(target, tableInitialBatchSize);
+  requestAnimationFrame(updateTableScrollHints);
+}
+
+function tableSkeleton(target, headers, rowCount = 5) {
+  const tableEl = qs(target);
+  if (!tableEl) return;
+  tableState.set(target, { headers, rows: [], rendered: 0 });
+  tableEl.dataset.tableTarget = target;
+  tableEl.classList.add("is-loading-table");
+  tableEl.innerHTML = `<thead><tr>${headers.map((h) => `<th><span>${escapeHtml(h)}</span></th>`).join("")}</tr></thead><tbody>${Array.from({ length: rowCount }, () => `<tr>${headers.map((header, index) => `<td data-label="${escapeHtml(header)}"><span class="skeleton-cell" style="--skeleton-width:${Math.max(38, 88 - index * 6)}%"></span></td>`).join("")}</tr>`).join("")}</tbody>`;
   requestAnimationFrame(updateTableScrollHints);
 }
 
@@ -206,6 +217,7 @@ function appendTableRows(target, count = tableBatchSize) {
   const state = tableState.get(target);
   const tableEl = qs(target);
   if (!state || !tableEl?.tBodies[0]) return;
+  tableEl.classList.remove("is-loading-table");
   const nextRows = state.rows.slice(state.rendered, state.rendered + count);
   tableEl.tBodies[0].insertAdjacentHTML("beforeend", nextRows.map((row) => rowHtml(row, state.headers)).join(""));
   state.rendered += nextRows.length;

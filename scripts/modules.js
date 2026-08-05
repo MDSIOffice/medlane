@@ -336,13 +336,16 @@ async function approvePaymentRequest(cvNo) {
   if (!ok) return;
   const by = currentUser?.name || "System User";
   let remaining = requestedAmount;
+  const newPayments = [];
   sales.forEach((sale) => {
     if (remaining <= 0) return;
     const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
     if (balance <= 0) return;
     const applied = Math.min(balance, remaining);
     remaining -= applied;
-    data.payments.push({ invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", reference: "", chequeDate: request.chequeDate || "", dateCollected: fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo });
+    const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", reference: "", chequeDate: request.chequeDate || "", dateCollected: fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo };
+    data.payments.push(payment);
+    newPayments.push(payment);
   });
   request.requestStatus = "Approved";
   request.status = "Approved";
@@ -350,9 +353,9 @@ async function approvePaymentRequest(cvNo) {
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
   request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s), oldest first. Invoice paid amount updates only after deposit.`, by });
-  log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`);
+  await persistRecords({ paymentRequests: [request], payments: newPayments });
+  log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
   notify("Payment Request", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
-  saveData();
   renderAll();
   toast(`${request.cvNo} approved and queued for deposition.`);
 }
@@ -393,9 +396,9 @@ async function cancelPaymentRequest(cvNo) {
   request.cancelReason = reason;
   request.history = paymentRequestHistory(request);
   request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Cancelled", note: `Cancelled by ${by}. Reason: ${reason}`, by });
-  log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`);
+  await persistRecords({ paymentRequests: [request], payments: payment ? [payment] : [], sales: sale ? [sale] : [] });
+  log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`, { save: false });
   notify("Payment Request", `${request.cvNo} cancelled.`, "collections", request.cvNo);
-  saveData();
   renderAll();
   toast(`${request.cvNo} cancelled.`);
 }
@@ -1735,7 +1738,7 @@ function openPaymentRequestForInvoice(documentNo) {
   syncPaymentRequestTotal();
 }
 
-function updateCollectionPaymentStatus(receiptNo, status) {
+async function updateCollectionPaymentStatus(receiptNo, status) {
   const payments = data.payments.filter((entry) => entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo);
   if (!payments.length) return toast("Collection not found.");
   if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited and can no longer be changed.");
@@ -1764,8 +1767,9 @@ function updateCollectionPaymentStatus(receiptNo, status) {
       request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, note: `${status} recorded by ${by}. Invoice paid amount was not updated.`, by });
     }
   }
-  log("Changed collection status", "Collections", `${receiptNo}: ${status}`);
-  saveData();
+  const affectedSales = [...new Map(payments.map((payment) => saleForPayment(payment)).filter(Boolean).map((sale) => [sale.documentNo || sale.id, sale])).values()];
+  await persistRecords({ payments, paymentRequests: request ? [request] : [], sales: affectedSales });
+  log("Changed collection status", "Collections", `${receiptNo}: ${status}`, { save: false });
   renderAll();
   if (payments[0].paymentRequestCvNo && document.body.dataset.activeSection === "payment-request-detail") renderPaymentRequestDetail(payments[0].paymentRequestCvNo);
   toast(`${receiptNo} marked ${status}.`);
@@ -3294,7 +3298,7 @@ let backupsLoaded = false;
 async function renderBackup() {
   if (!qs("#backup-table") || !canManageUsers()) return;
   backupsLoaded = true;
-  table("#backup-table", ["Created", "Run", "Type", "Mode", "Records", "Size", "Source", "Actions"], [["Loading backups...", "-", "-", "-", "-", "-", "-", "-"]]);
+  tableSkeleton("#backup-table", ["Created", "Run", "Type", "Mode", "Records", "Size", "Source", "Actions"], 4);
   try {
     const [trackedResult, objectResult] = await Promise.allSettled([MedlaneAPI.listBackups(), MedlaneAPI.listBackupObjects()]);
     const backups = trackedResult.status === "fulfilled" ? trackedResult.value.backups || [] : [];
@@ -3327,7 +3331,7 @@ async function renderUserSessions(target = selectedUserSessionsTarget) {
   selectedUserSessionsTarget = target;
   if (!canManageUsers() || !target) return;
   qs("#user-devices-title").textContent = `Logged-in Devices · ${target.name || target.email || "User"}`;
-  table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], [["Loading sessions...", "-", "-", "-", "-", "-", "-", "-"]]);
+  tableSkeleton("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], 4);
   try {
     const payload = await MedlaneAPI.listUserSessions({ userId: target.id, email: target.email });
     const currentSessionId = MedlaneAPI.session()?.app_session_id || "";
@@ -3490,6 +3494,7 @@ function showAuditLogDetail(index) {
 async function renderLogs() {
   renderLogFilters();
   logsState = { entries: [], nextCursor: null, loading: true };
+  tableSkeleton("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address", "Details"], 6);
   try {
     const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50 });
     logsState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
@@ -3536,6 +3541,7 @@ function renderNotificationLogTable() {
 }
 async function renderNotificationLogs() {
   notificationLogsState = { entries: [], nextCursor: null, loading: true };
+  tableSkeleton("#notification-logs-table", ["Date", "Channel", "Action", "Details"], 5);
   try {
     const result = await MedlaneAPI.listLogs({ ...notificationLogFilterParams(), limit: 50 });
     notificationLogsState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
