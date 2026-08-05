@@ -176,6 +176,35 @@ function loadData() {
   return normalizeData(emptyProductionData());
 }
 
+function roundCurrency(value) { return Math.round(Number(value || 0) * 100) / 100; }
+function withholdingBaseFromGross(gross) { return roundCurrency(Number(gross || 0) / 1.12); }
+function hasWithholding(value) { return value === true || Number(value || 0) > 0; }
+function itemGross(items = []) { return items.reduce((sum, item) => sum + Number(item.amount || 0), 0); }
+
+function normalizePaymentRequestWithholding(request) {
+  const items = request.items?.length ? request.items : [{ amount: request.amount || request.total || 0 }];
+  const oldWithholdingTax = Number(request.withholdingTax || 0);
+  const oldExpandedWithholdingTax = Number(request.expandedWithholdingTax || 0);
+  const gross = Number(request.gross || 0) || itemGross(items) || Number(request.total || 0) + oldWithholdingTax + oldExpandedWithholdingTax;
+  const base = withholdingBaseFromGross(gross);
+  const withholdingTax = hasWithholding(request.withholdingTax) ? roundCurrency(base * 0.05) : 0;
+  const expandedWithholdingTax = hasWithholding(request.expandedWithholdingTax) ? roundCurrency(base * 0.01) : 0;
+  return { ...request, gross, withholdingTax, expandedWithholdingTax, total: roundCurrency(Math.max(gross - withholdingTax - expandedWithholdingTax, 0)) };
+}
+
+function normalizePayableWithholding(payable) {
+  const oldWithholdingTax1 = Number(payable.withholdingTax1 || 0);
+  const oldWithholdingTax2 = Number(payable.withholdingTax2 || 0);
+  const grossAmount = Number(payable.grossAmount || 0) || itemGross(payable.items) || Number(payable.amount || 0) + oldWithholdingTax1 + oldWithholdingTax2;
+  const base = withholdingBaseFromGross(grossAmount);
+  const withholdingTax1 = hasWithholding(payable.withholdingTax1) ? roundCurrency(base * 0.01) : 0;
+  const withholdingTax2 = hasWithholding(payable.withholdingTax2) ? roundCurrency(base * 0.02) : 0;
+  const oldAmount = Number(payable.amount || 0);
+  const amount = roundCurrency(Math.max(grossAmount - withholdingTax1 - withholdingTax2, 0));
+  const paid = payable.paymentConfirmed && Number(payable.paid || 0) >= oldAmount ? amount : Number(payable.paid || 0);
+  return { ...payable, grossAmount, withholdingTax1, withholdingTax2, amount, paid };
+}
+
 function normalizeData(next) {
   next.pendingTransfers ||= [];
   next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };
@@ -223,7 +252,8 @@ function normalizeData(next) {
     const expandedWithholdingTax = Boolean(sale.expandedWithholdingTax);
     return { po: sale.po || `PO-${sale.id}`, documentNo: sale.documentNo || sale.id, dealer: sale.dealer || client?.dealer || "Direct", brand: sale.brand || item?.brand || "Medlane", area: client?.area || sale.area, status: sale.status || "Active", lines: (sale.lines || [line]).map((entry) => ({ lot: stock.lot || "Manual", expiry: stock.expiry || "N/A", ...entry })), discount: manualDiscount, discountReason: sale.discountReason || "", withholdingTax, expandedWithholdingTax, autoTaxRate: 0, withholdingDiscount: 0, expandedWithholdingDiscount: 0, taxTreatment: sale.taxTreatment || [withholdingTax ? "Withholding Tax 5%" : "", expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), ...sale };
   });
-  next.payables = next.payables.map((payable, index) => ({ id: payable.id || `PAY-${String(index + 1).padStart(3, "0")}`, requestStatus: payable.requestStatus || (payable.status === "Cancelled" ? "Cancelled" : payable.status === "Approved" ? "Approved" : "For Approval"), paymentConfirmed: Boolean(payable.paymentConfirmed), items: payable.items || [{ particulars: payable.item || "Payable", qty: Number(payable.qty || 1), uom: payable.uom || "unit", amount: Number(payable.amount || 0) }], method: payable.method || (payable.cheque ? "Cheque" : "Cash"), bank: payable.bank || "", cheque: payable.cheque || "", chequeDate: payable.chequeDate || "", uom: payable.uom || "unit", qty: Number(payable.qty || 1), ...payable }));
+  next.paymentRequests = next.paymentRequests.map(normalizePaymentRequestWithholding);
+  next.payables = next.payables.map((payable, index) => normalizePayableWithholding({ id: payable.id || `PAY-${String(index + 1).padStart(3, "0")}`, requestStatus: payable.requestStatus || (payable.status === "Cancelled" ? "Cancelled" : payable.status === "Approved" ? "Approved" : "For Approval"), paymentConfirmed: Boolean(payable.paymentConfirmed), items: payable.items || [{ particulars: payable.item || "Payable", qty: Number(payable.qty || 1), uom: payable.uom || "unit", amount: Number(payable.amount || 0) }], method: payable.method || (payable.cheque ? "Cheque" : "Cash"), bank: payable.bank || "", cheque: payable.cheque || "", chequeDate: payable.chequeDate || "", uom: payable.uom || "unit", qty: Number(payable.qty || 1), ...payable }));
   next.replenishments = next.replenishments.map((expense, index) => ({ id: expense.id || `REP-${String(index + 1).padStart(3, "0")}`, requestStatus: expense.requestStatus || (["Approved", "Approved by HR"].includes(expense.status) ? "Approved" : expense.status === "Cancelled" ? "Cancelled" : "For Approval"), paymentConfirmed: Boolean(expense.paymentConfirmed), method: expense.method || "Cash", bank: expense.bank || "", cheque: expense.cheque || "", chequeDate: expense.chequeDate || "", items: expense.items || [{ particulars: expense.file || expense.type || "Expense", amount: Number(expense.amount || 0) }], ...expense }));
   next.payments = next.payments.map((payment) => ({ receiptNo: payment.receiptNo || payment.reference || "Manual", tag: payment.tag || (String(payment.invoice).startsWith("TS") ? "TS-PR" : "SI-CR"), dateRecorded: payment.dateRecorded || fmtDate(today), bank: payment.bank || "", chequeDate: payment.chequeDate || "", collectionStatus: payment.collectionStatus || "For Deposition", postedDate: payment.postedDate || "", cheques: payment.cheques || [], statusHistory: payment.statusHistory || [{ date: payment.dateRecorded || fmtDate(today), status: payment.collectionStatus || "For Deposition", user: payment.client || "Imported" }], ...payment }));
   next.purchaseOrders = next.purchaseOrders.map((po) => {
