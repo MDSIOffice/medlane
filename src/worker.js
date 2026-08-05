@@ -557,6 +557,7 @@ function filterRecordsForProfile(records, profile, mode = "view") {
 function recordKeyFor(key, value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return key;
   if (key === "inventory") return [value.code || value.item || "stock", value.branch || "branch", value.lot || value.serial || "lot"].map((part) => String(part).trim() || "-").join("|");
+  if (key === "transferHistory") return String(value.id || [value.transferId, value.date, value.action].filter(Boolean).join("|") || `${key}-${index}`);
   return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
 }
 

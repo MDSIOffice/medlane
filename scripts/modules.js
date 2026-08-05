@@ -1209,8 +1209,10 @@ function renderInventory() {
 }
 
 function recordTransferHistory(transfer, action, notes) {
-  data.transferHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), transferId: transfer.id, action, item: transfer.item, from: transfer.from, to: transfer.to, qty: transfer.qty, lot: transfer.sourceLot || transfer.lot, user: currentUser?.name || "System User", notes });
+  const entry = { id: `TH-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), transferId: transfer.id, action, item: transfer.item, from: transfer.from, to: transfer.to, qty: transfer.qty, lot: transfer.sourceLot || transfer.lot, user: currentUser?.name || "System User", notes };
+  data.transferHistory.unshift(entry);
   data.transferHistory = data.transferHistory.slice(0, 80);
+  return entry;
 }
 
 function ensureInventoryDatalists() {
@@ -1344,7 +1346,7 @@ async function saveStockSheet() {
   toast(`${rows.length} stock row(s) saved.`);
 }
 
-function saveTransferSheet() {
+async function saveTransferSheet() {
   const rows = qsa("#transfer-sheet-table tbody tr").map((row) => {
     const code = row.querySelector(".transfer-code")?.value.trim();
     const itemName = row.querySelector(".transfer-item")?.value.trim();
@@ -1361,21 +1363,27 @@ function saveTransferSheet() {
   if (rows.some((row) => !row.item || !row.lot || !row.from || !row.to || row.qty <= 0)) return toast("Complete all stock transfer fields before saving.");
   if (rows.some((row) => row.from === row.to)) return toast("Transfer source and destination must be different.");
   if (rows.some((row) => !row.source)) return toast("Not enough source stock for the selected item lot.");
+  const transfers = [];
+  const historyEntries = [];
+  const touchedInventory = [];
   rows.forEach((row) => {
     row.source.qty -= row.qty;
+    touchedInventory.push(row.source);
     const transfer = { id: nextId(data.pendingTransfers, "TR"), code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, from: row.from, to: row.to, qty: row.qty, lot: row.lot, sourceLot: row.lot, expiry: row.source.expiry || "N/A", lines: [{ code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, qty: row.qty, uom: row.item.uom || "unit", lot: row.lot, expiry: row.source.expiry || "N/A" }], status: "For Receiving", requestedBy: currentUser?.name || "System User" };
     data.pendingTransfers.push(transfer);
-    recordTransferHistory(transfer, "Created", "Source stock deducted and transfer opened for dispatch.");
+    transfers.push(transfer);
+    historyEntries.push(recordTransferHistory(transfer, "Created", "Source stock deducted and transfer opened for dispatch."));
     notify("Transfer", `${transfer.id} requires receiving confirmation at ${transfer.to}.`, "inventory", transfer.id);
   });
-  log("Created stock transfer", "Inventory", `${rows.length} row(s)`);
-  saveData();
+  await persistRecords({ pendingTransfers: transfers, inventory: touchedInventory, transferHistory: historyEntries });
+  log("Created stock transfer", "Inventory", `${rows.length} row(s)`, { save: false });
+  saveData(["notifications"]);
   qs("#transfer-sheet-modal")?.close();
   renderAll();
   toast(`${rows.length} stock transfer row(s) created.`);
 }
 
-function dispatchTransfer(index) {
+async function dispatchTransfer(index) {
   if (!canApproveInventoryChanges()) return toast("Stock transfer dispatch needs Admin approval.");
   const transfer = data.pendingTransfers[index];
   if (!transfer || transfer.status !== "For Receiving") return toast("Transfer is not ready for dispatch.");
@@ -1383,73 +1391,80 @@ function dispatchTransfer(index) {
   transfer.status = "In Transit";
   transfer.dispatchedBy = currentUser?.name || "System User";
   transfer.dispatchedAt = fmtDate(today);
-  recordTransferHistory(transfer, "Marked In Transit", `Dispatched from ${transfer.from} to ${transfer.to}.`);
-  log("Marked stock transfer in transit", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`);
-  saveData();
+  const historyEntry = recordTransferHistory(transfer, "Marked In Transit", `Dispatched from ${transfer.from} to ${transfer.to}.`);
+  await persistRecords({ pendingTransfers: [transfer], transferHistory: [historyEntry] });
+  log("Marked stock transfer in transit", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`, { save: false });
   renderAll();
   toast("Transfer marked in transit.");
 }
 
-function receiveTransfer(index) {
+async function receiveTransfer(index) {
   const transfer = data.pendingTransfers[index];
   if (!transfer || transfer.status !== "In Transit") return toast("Transfer must be in transit before receiving.");
   if (!confirm(`Confirm full receipt of ${transfer.qty} ${transfer.item} for ${transfer.id}?`)) return;
   const existing = data.inventory.find((item) => item.code === transfer.code && item.branch === transfer.to && item.lot === transfer.lot);
+  let touchedInventory = existing;
   if (existing) existing.qty += transfer.qty;
-  else data.inventory.push({ code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: transfer.qty, min: 10 });
+  else { touchedInventory = { code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: transfer.qty, min: 10 }; data.inventory.push(touchedInventory); }
   transfer.status = "Received";
   transfer.receivedBy = currentUser?.name || "System User";
   transfer.receivedAt = fmtDate(today);
-  recordTransferHistory(transfer, "Confirmed Received", `Received at ${transfer.to}; destination inventory increased.`);
-  log("Confirmed stock transfer received", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`);
+  const historyEntry = recordTransferHistory(transfer, "Confirmed Received", `Received at ${transfer.to}; destination inventory increased.`);
+  await persistRecords({ pendingTransfers: [transfer], inventory: [touchedInventory], transferHistory: [historyEntry] });
+  log("Confirmed stock transfer received", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`, { save: false });
   notify("Transfer", `${transfer.id} was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory", transfer.id);
-  saveData();
+  saveData(["notifications"]);
   renderAll();
   toast("Transfer received and inventory adjusted.");
 }
 
-function incompleteTransfer(index) {
+async function incompleteTransfer(index) {
   const transfer = data.pendingTransfers[index];
   if (!transfer || transfer.status !== "In Transit") return toast("Only in-transit transfers can be marked incomplete.");
   const received = Number(prompt(`Actual received quantity for ${transfer.id} (0 to ${transfer.qty - 1}):`, "0"));
   if (!Number.isFinite(received) || received < 0 || received >= transfer.qty) return toast("Enter a valid incomplete received quantity.");
   if (!confirm(`Mark ${transfer.id} incomplete? Received ${received}, missing ${transfer.qty - received}.`)) return;
+  let touchedInventory = null;
   if (received > 0) {
     const existing = data.inventory.find((item) => item.code === transfer.code && item.branch === transfer.to && item.lot === transfer.lot);
+    touchedInventory = existing;
     if (existing) existing.qty += received;
-    else data.inventory.push({ code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: received, min: 10 });
+    else { touchedInventory = { code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: received, min: 10 }; data.inventory.push(touchedInventory); }
   }
   transfer.status = "Incomplete";
   transfer.receivedQty = received;
   transfer.missingQty = transfer.qty - received;
   transfer.incompleteBy = currentUser?.name || "System User";
   transfer.incompleteAt = fmtDate(today);
-  recordTransferHistory(transfer, "Marked Incomplete", `Received ${received}; missing ${transfer.missingQty}. Destination inventory updated only for received quantity.`);
+  const historyEntry = recordTransferHistory(transfer, "Marked Incomplete", `Received ${received}; missing ${transfer.missingQty}. Destination inventory updated only for received quantity.`);
+  await persistRecords({ pendingTransfers: [transfer], inventory: touchedInventory ? [touchedInventory] : [], transferHistory: [historyEntry] });
   notify("Transfer", `${transfer.id} marked incomplete: ${transfer.missingQty} missing.`, "inventory", transfer.id);
-  log("Marked stock transfer incomplete", "Inventory", `${transfer.id}: received ${received}, missing ${transfer.missingQty}`);
-  saveData();
+  log("Marked stock transfer incomplete", "Inventory", `${transfer.id}: received ${received}, missing ${transfer.missingQty}`, { save: false });
+  saveData(["notifications"]);
   renderAll();
   toast("Transfer marked incomplete.");
 }
 
-function completeIncompleteTransfer(index) {
+async function completeIncompleteTransfer(index) {
   const transfer = data.pendingTransfers[index];
   if (!transfer || transfer.status !== "Incomplete") return toast("Only incomplete transfers can receive missing quantity.");
   const missing = Number(transfer.missingQty || 0);
   if (missing <= 0) return toast("No missing quantity remains for this transfer.");
   if (!confirm(`Confirm missing ${missing} ${transfer.item} finally arrived for ${transfer.id}?`)) return;
   const existing = data.inventory.find((item) => item.code === transfer.code && item.branch === transfer.to && item.lot === transfer.lot);
+  let touchedInventory = existing;
   if (existing) existing.qty += missing;
-  else data.inventory.push({ code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: missing, min: 10 });
+  else { touchedInventory = { code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: missing, min: 10 }; data.inventory.push(touchedInventory); }
   transfer.status = "Received";
   transfer.receivedQty = Number(transfer.receivedQty || 0) + missing;
   transfer.missingQty = 0;
   transfer.receivedBy = currentUser?.name || "System User";
   transfer.receivedAt = fmtDate(today);
-  recordTransferHistory(transfer, "Confirmed Missing Quantity", `Missing ${missing} received at ${transfer.to}; transfer is now complete.`);
+  const historyEntry = recordTransferHistory(transfer, "Confirmed Missing Quantity", `Missing ${missing} received at ${transfer.to}; transfer is now complete.`);
+  await persistRecords({ pendingTransfers: [transfer], inventory: [touchedInventory], transferHistory: [historyEntry] });
   notify("Transfer", `${transfer.id} missing quantity was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory", transfer.id);
-  log("Confirmed missing transfer quantity", "Inventory", `${transfer.id}: received missing ${missing}`);
-  saveData();
+  log("Confirmed missing transfer quantity", "Inventory", `${transfer.id}: received missing ${missing}`, { save: false });
+  saveData(["notifications"]);
   renderAll();
   toast("Missing quantity received and transfer completed.");
 }
