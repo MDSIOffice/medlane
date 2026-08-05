@@ -356,6 +356,7 @@ async function approvePaymentRequest(cvNo) {
   await persistRecords({ paymentRequests: [request], payments: newPayments });
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
   notify("Payment Request", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
+  saveData(["notifications"]);
   renderAll();
   toast(`${request.cvNo} approved and queued for deposition.`);
 }
@@ -399,6 +400,7 @@ async function cancelPaymentRequest(cvNo) {
   await persistRecords({ paymentRequests: [request], payments: payment ? [payment] : [], sales: sale ? [sale] : [] });
   log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`, { save: false });
   notify("Payment Request", `${request.cvNo} cancelled.`, "collections", request.cvNo);
+  saveData(["notifications"]);
   renderAll();
   toast(`${request.cvNo} cancelled.`);
 }
@@ -1047,6 +1049,9 @@ function renderAnalytics() {
   qs("#analytics-top-items").innerHTML = barRows(topItems, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Computed from invoice line subtotals grouped by item name.");
   qs("#analytics-collection-rate").textContent = `${collectionRate}%`;
   qs("#analytics-collection-note").textContent = `${peso.format(totalPaid)} collected out of ${peso.format(totalSales)} sales in the selected branch view.`;
+  const uncollected = Math.max(totalSales - totalPaid, 0);
+  const collectedEnd = totalSales ? Math.round((totalPaid / totalSales) * 100) : 0;
+  qs("#analytics-collection-pie").innerHTML = `<div class="donut" style="--paid:${collectedEnd}%; --partial:${collectedEnd}%; --end:100%;" data-label="${collectionRate}%\ncollected"></div><div class="legend"><span class="green">Collected ${peso.format(totalPaid)}</span><span class="red">Uncollected ${peso.format(uncollected)}</span></div>${graphNote("Computed from invoice paid amount versus remaining receivable balance in the selected branch view.")}`;
 
   const stockCounts = ["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((status) => [status, visibleInventory.filter((item) => inventoryStatus(item) === status).length]);
   qs("#analytics-stock-health").innerHTML = barRows(stockCounts, (value) => `${value} records`, ["green", "orange", "red", "red", "red"]) + graphNote("Computed from inventory records using quantity vs minimum and expiry date rules. Expired lots are marked for disposal.");
@@ -1770,6 +1775,7 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
   const affectedSales = [...new Map(payments.map((payment) => saleForPayment(payment)).filter(Boolean).map((sale) => [sale.documentNo || sale.id, sale])).values()];
   await persistRecords({ payments, paymentRequests: request ? [request] : [], sales: affectedSales });
   log("Changed collection status", "Collections", `${receiptNo}: ${status}`, { save: false });
+  saveData(["notifications"]);
   renderAll();
   if (payments[0].paymentRequestCvNo && document.body.dataset.activeSection === "payment-request-detail") renderPaymentRequestDetail(payments[0].paymentRequestCvNo);
   toast(`${receiptNo} marked ${status}.`);

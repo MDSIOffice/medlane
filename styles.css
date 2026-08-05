@@ -1462,6 +1462,11 @@ button.calendar-cell:hover { background: var(--tint); }
 .legend .green::before { background: var(--green); }
 .legend .orange::before { background: var(--orange); }
 .legend .red::before { background: var(--red); }
+.collection-efficiency-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; }
+.compact-donut { margin-top: 0; justify-items: center; }
+.compact-donut .donut { width: 142px; height: 142px; }
+.compact-donut .donut::after { width: 88px; height: 88px; font-size: 13px; }
+.compact-donut .legend { max-width: 210px; font-size: 12px; }
 .big-number { font-size: 46px; font-weight: 900; letter-spacing: -0.06em; }
 .analytics-grid .panel { min-height: 0; }
 
@@ -1973,6 +1978,8 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 }
 
 @media (max-width: 640px) {
+  .collection-efficiency-card { grid-template-columns: 1fr; }
+  .compact-donut { justify-items: start; }
   .table-card { overflow: visible; border: 0; background: transparent; box-shadow: none; }
   .table-card table:not(#parameter-qc-table) { min-width: 0; width: 100%; border-collapse: separate; border-spacing: 0 12px; }
   .table-card table:not(#parameter-qc-table) thead { display: none; }

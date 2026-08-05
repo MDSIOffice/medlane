@@ -22,6 +22,10 @@ let inventoryCompactView = false;
 let transferRowUid = 0;
 let pendingServerSave = null;
 let serverRevision = 0;
+function pendingSaveQueueKey() {
+  const userKey = String(currentUser?.email || currentUser?.id || currentUser?.role || "guest").trim().toLowerCase();
+  return `medlane-pending-save-queue:${location.host || "local"}:${userKey}`;
+}
 
 const frontendModuleRecordKeys = {
   dashboard: [],
@@ -251,6 +255,31 @@ function savePayloadForKeys(keys) {
   return payload;
 }
 
+function readPendingSaveQueue() {
+  try { return JSON.parse(localStorage.getItem(pendingSaveQueueKey()) || "{}"); }
+  catch { return {}; }
+}
+
+function writePendingSaveQueue(payload) {
+  const cleaned = Object.fromEntries(Object.entries(payload || {}).filter(([, value]) => value !== undefined));
+  if (Object.keys(cleaned).length) localStorage.setItem(pendingSaveQueueKey(), JSON.stringify(cleaned));
+  else localStorage.removeItem(pendingSaveQueueKey());
+}
+
+function mergePendingSaveQueue(payload) {
+  writePendingSaveQueue({ ...readPendingSaveQueue(), ...(payload || {}) });
+}
+
+function hasPendingSaveQueue() {
+  return Object.keys(readPendingSaveQueue()).length > 0;
+}
+
+function applyPendingSaveQueueToLocal() {
+  const pending = readPendingSaveQueue();
+  if (!Object.keys(pending).length || !data) return;
+  data = normalizeData({ ...emptyProductionData(), ...data, ...pending });
+}
+
 function setGlobalSaveStatus(status, text) {
   const indicator = typeof qs === "function" ? qs("#save-status-indicator") : null;
   const label = typeof qs === "function" ? qs("#save-status-text") : null;
@@ -272,13 +301,20 @@ function saveData(keys = null) {
   if (typeof syncGeneratedNotifications === "function") syncGeneratedNotifications();
   const payload = savePayloadForKeys(keys || inferredSaveKeys());
   if (!Object.keys(payload).length) return;
+  mergePendingSaveQueue(payload);
   clearTimeout(pendingServerSave);
   setGlobalSaveStatus("saving", "Saving...");
   pendingServerSave = setTimeout(() => {
-    MedlaneAPI.saveAppState(payload, serverRevision).then((result) => {
+    const queuedPayload = readPendingSaveQueue();
+    if (!navigator.onLine) {
+      setGlobalSaveStatus("error", "Offline - pending save");
+      return;
+    }
+    MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
       if (result?.revision) {
         serverRevision = Number(result.revision);
       }
+      writePendingSaveQueue({});
       setGlobalSaveStatus("saved", "Saved");
     }).catch(async (error) => {
       if (error.message.includes("APP_STATE_CONFLICT")) {
@@ -296,6 +332,21 @@ function saveData(keys = null) {
       if (typeof toast === "function") toast(`Server save failed: ${error.message}`);
     });
   }, 450);
+}
+
+function flushPendingSaveQueue() {
+  if (!hasPendingSaveQueue() || !currentUser || !MedlaneAPI?.session()?.access_token || !navigator.onLine) return;
+  clearTimeout(pendingServerSave);
+  setGlobalSaveStatus("saving", "Saving pending changes...");
+  const queuedPayload = readPendingSaveQueue();
+  MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
+    if (result?.revision) serverRevision = Number(result.revision);
+    writePendingSaveQueue({});
+    setGlobalSaveStatus("saved", "Saved");
+  }).catch((error) => {
+    setGlobalSaveStatus("error", "Pending save failed");
+    if (typeof toast === "function") toast(`Pending save still needs retry: ${error.message}`);
+  });
 }
 
 async function persistRecords(records) {

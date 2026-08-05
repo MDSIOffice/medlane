@@ -1,6 +1,15 @@
 data = loadData();
 syncGeneratedNotifications();
 
+window.addEventListener("online", () => flushPendingSaveQueue());
+window.addEventListener("focus", () => flushPendingSaveQueue());
+document.addEventListener("visibilitychange", () => { if (!document.hidden) flushPendingSaveQueue(); });
+window.addEventListener("beforeunload", (event) => {
+  if (!hasPendingSaveQueue()) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
 function mergeUsersFromBackend(users = []) {
   const byEmail = new Map(data.users.map((user) => [String(user.email || "").trim().toLowerCase(), user]));
   users.forEach((user) => {
@@ -1056,7 +1065,9 @@ qs("#login-form").addEventListener("submit", async (event) => {
     if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state.");
     serverRevision = Number(serverState.revision || 0);
     data = normalizeData({ ...emptyProductionData(), ...serverState.data });
+    applyPendingSaveQueueToLocal();
     await syncBackendUsers();
+    flushPendingSaveQueue();
   } catch (error) {
     toast(`Logged in, but server data sync failed: ${error.message}`);
   }
@@ -1274,7 +1285,9 @@ async function hydrateAuthenticatedSession() {
   if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state. Refusing to load blank data over it.");
   serverRevision = Number(serverState.revision || 0);
   data = normalizeData({ ...emptyProductionData(), ...serverState.data });
+  applyPendingSaveQueueToLocal();
   await syncBackendUsers();
+  flushPendingSaveQueue();
 }
 async function initializeRoute() {
   if (showSupabasePasswordSetup()) return;
