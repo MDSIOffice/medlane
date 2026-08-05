@@ -1139,16 +1139,16 @@ function dashboardAnalyticsFields(state, monthKey) {
   ];
 }
 
-async function monitoringState(env) {
-  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.system-monitoring&record_key=eq.discord-dashboard&select=data`);
+async function monitoringState(env, recordKey) {
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.system-monitoring&record_key=eq.${encodeURIComponent(recordKey)}&select=data`);
   return rows[0]?.data || {};
 }
 
-async function saveMonitoringState(env, state) {
+async function saveMonitoringState(env, recordKey, state) {
   await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
     method: "POST",
     headers: { prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify([{ state_key: appStateKey(env), module_name: "system-monitoring", record_key: "discord-dashboard", data: state, updated_by: null }]),
+    body: JSON.stringify([{ state_key: appStateKey(env), module_name: "system-monitoring", record_key: recordKey, data: state, updated_by: null }]),
   });
 }
 
@@ -1169,7 +1169,19 @@ async function runApiHealthMonitor(env) {
   const failed = checks.filter((check) => !check.ok);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const embed = { title: failed.length ? "🔴 Medlane API Health — Failed" : "🟢 Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, description: failed.length ? "🚨 **Immediate review needed.** One or more API checks failed." : "✅ **All monitored API checks are healthy.**", fields: [{ name: "🕒 Latest Update", value: `**${updatedAt} PHT**`, inline: false }, { name: "⚡ Response Time", value: `**${Date.now() - started} ms**`, inline: true }, { name: "🧪 Checks", value: checks.map((check) => `${check.ok ? "✅" : "❌"} **${check.name}**${check.error ? `\n↳ ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
-  await sendDiscordWebhookUrl(env, env.DISCORD_HEALTH_WEBHOOK_URL, { embeds: [embed] }).catch((error) => recordSystemLog(env, { action: "Discord health monitor skipped/failed", module: "Discord", record: error.message }));
+  if (env.DISCORD_HEALTH_WEBHOOK_URL) {
+    const stored = await monitoringState(env, "discord-health").catch(() => ({}));
+    if (stored.messageId) {
+      const edited = await editDiscordWebhookMessage(env.DISCORD_HEALTH_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch(() => null);
+      if (edited?.edited) await saveMonitoringState(env, "discord-health", { ...stored, updatedAt: new Date().toISOString() });
+      else stored.messageId = "";
+    }
+    if (!stored.messageId) {
+      const sent = await sendDiscordWebhookUrl(env, env.DISCORD_HEALTH_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
+      if (sent.error) await recordSystemLog(env, { action: "Discord health monitor skipped/failed", module: "Discord", record: sent.error.message });
+      else if (sent.messageId) await saveMonitoringState(env, "discord-health", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
+    }
+  } else await recordSystemLog(env, { action: "Discord health monitor skipped", module: "Discord", record: "DISCORD_HEALTH_WEBHOOK_URL not configured" });
   if (failed.length) await sendDiscordWebhook(env, { content: "@everyone 🚨 **Medlane API health check failed.**", allowedMentions: { parse: ["everyone"] }, embeds: [embed] });
 }
 
@@ -1179,13 +1191,13 @@ async function runDashboardAnalyticsMonitor(env) {
   const month = manilaMonthParts();
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const embed = { title: "📊 Medlane Dashboard & Analytics", color: 0x0077bd, description: `📅 **Current month:** ${month.label}\n🕒 **Latest update:** ${updatedAt} PHT`, fields: dashboardAnalyticsFields(state, month.key), timestamp: new Date().toISOString() };
-  const stored = await monitoringState(env).catch(() => ({}));
+  const stored = await monitoringState(env, "discord-dashboard").catch(() => ({}));
   if (stored.messageId) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_DASHBOARD_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch(() => null);
-    if (edited?.edited) return saveMonitoringState(env, { ...stored, updatedAt: new Date().toISOString() });
+    if (edited?.edited) return saveMonitoringState(env, "discord-dashboard", { ...stored, updatedAt: new Date().toISOString() });
   }
   const sent = await sendDiscordWebhookUrl(env, env.DISCORD_DASHBOARD_WEBHOOK_URL, { embeds: [embed], wait: true });
-  if (sent.messageId) await saveMonitoringState(env, { messageId: sent.messageId, updatedAt: new Date().toISOString() });
+  if (sent.messageId) await saveMonitoringState(env, "discord-dashboard", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
 }
 
 async function runFiveMinuteDiscordMonitors(env) {
