@@ -1144,6 +1144,30 @@ function dashboardAnalyticsFields(state, monthKey) {
   ];
 }
 
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+function isTransientJwtClockSkew(error) {
+  return /jwt.*future|issued at future|not active|nbf/i.test(String(error?.message || error || ""));
+}
+
+async function checkSupabaseAppRecordsHealth(env) {
+  const query = `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name&limit=1`;
+  try {
+    requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+    await supabaseFetch(env, query);
+    return { name: "Supabase app_records", ok: true };
+  } catch (error) {
+    if (!isTransientJwtClockSkew(error)) return { name: "Supabase app_records", ok: false, error: error.message };
+    await sleep(1500);
+    try {
+      await supabaseFetch(env, query);
+      return { name: "Supabase app_records", ok: true, note: "Recovered after JWT clock-skew retry" };
+    } catch (retryError) {
+      return { name: "Supabase app_records", ok: false, error: `${retryError.message} (retried after JWT clock-skew)` };
+    }
+  }
+}
+
 async function monitoringState(env, recordKey) {
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.system-monitoring&record_key=eq.${encodeURIComponent(recordKey)}&select=data`);
   return rows[0]?.data || {};
@@ -1160,20 +1184,14 @@ async function saveMonitoringState(env, recordKey, state) {
 async function runApiHealthMonitor(env) {
   const checks = [];
   const started = Date.now();
-  try {
-    requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
-    await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name&limit=1`);
-    checks.push({ name: "Supabase app_records", ok: true });
-  } catch (error) {
-    checks.push({ name: "Supabase app_records", ok: false, error: error.message });
-  }
+  checks.push(await checkSupabaseAppRecordsHealth(env));
   checks.push({ name: "R2 binding", ok: Boolean(env.DOCUMENTS_BUCKET), error: env.DOCUMENTS_BUCKET ? "" : "DOCUMENTS_BUCKET binding missing" });
   checks.push({ name: "Supabase URL", ok: Boolean(env.SUPABASE_URL), error: env.SUPABASE_URL ? "" : "SUPABASE_URL missing" });
   checks.push({ name: "Supabase anon key", ok: Boolean(env.SUPABASE_ANON_KEY), error: env.SUPABASE_ANON_KEY ? "" : "SUPABASE_ANON_KEY missing" });
   checks.push({ name: "Supabase service role", ok: Boolean(env.SUPABASE_SERVICE_ROLE_KEY), error: env.SUPABASE_SERVICE_ROLE_KEY ? "" : "SUPABASE_SERVICE_ROLE_KEY missing" });
   const failed = checks.filter((check) => !check.ok);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const embed = { title: failed.length ? "🔴 Medlane API Health — Failed" : "🟢 Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, description: failed.length ? "🚨 **Immediate review needed.** One or more API checks failed." : "✅ **All monitored API checks are healthy.**", fields: [{ name: "🕒 Latest Update", value: `**${updatedAt} PHT**`, inline: false }, { name: "⚡ Response Time", value: `**${Date.now() - started} ms**`, inline: true }, { name: "🧪 Checks", value: checks.map((check) => `${check.ok ? "✅" : "❌"} **${check.name}**${check.error ? `\n↳ ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
+  const embed = { title: failed.length ? "🔴 Medlane API Health — Failed" : "🟢 Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, description: failed.length ? "🚨 **Immediate review needed.** One or more API checks failed." : "✅ **All monitored API checks are healthy.**", fields: [{ name: "🕒 Latest Update", value: `**${updatedAt} PHT**`, inline: false }, { name: "⚡ Response Time", value: `**${Date.now() - started} ms**`, inline: true }, { name: "🧪 Checks", value: checks.map((check) => `${check.ok ? "✅" : "❌"} **${check.name}**${check.note ? `\n↳ ${check.note}` : ""}${check.error ? `\n↳ ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
   if (env.DISCORD_HEALTH_WEBHOOK_URL) {
     const stored = await monitoringState(env, "discord-health").catch(() => ({}));
     if (stored.messageId) {
