@@ -1025,11 +1025,14 @@ function poFullyPaidServer(po, sales) {
   return linkedSales.length > 0 && linkedSales.every((sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
 }
 
-async function loadDigestState(env) {
+const digestStateModules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "purchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues", "payments", "imports", "reconHistory"];
+
+async function loadDigestState(env, modules = digestStateModules) {
   const stateKey = appStateKey(env);
-  const modules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "purchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues", "payments", "imports", "reconHistory"];
-  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(modules))}&select=module_name,record_key,data`);
-  return stateFromRecords(rows);
+  const chunks = [];
+  for (let index = 0; index < modules.length; index += 5) chunks.push(modules.slice(index, index + 5));
+  const results = await Promise.all(chunks.map((chunk) => supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(chunk))}&select=module_name,record_key,data`)));
+  return stateFromRecords(results.flat());
 }
 
 function detectThresholdsAndApprovals(state) {
@@ -1102,6 +1105,28 @@ function buildBusinessSummaryLines(state) {
     `Collections pending deposit: ${pendingDeposit}`,
     `Bounced payments: ${bounced}`,
     `Low / critical inventory: ${lowStock}`,
+  ];
+}
+
+function financialDigestLines(state, sinceIso) {
+  const since = new Date(sinceIso);
+  const inPeriod = (value) => value && new Date(value) >= since;
+  const purchaseOrders = state.purchaseOrders || [];
+  const inventoryPurchaseOrders = state.inventoryPurchaseOrders || [];
+  const payables = state.payables || [];
+  const replenishments = state.replenishments || [];
+  const openClientPos = purchaseOrders.filter((po) => !/completed|cancelled|invoice/i.test(po.status || ""));
+  const newClientPos = purchaseOrders.filter((po) => inPeriod(po.date));
+  const openInventoryPos = inventoryPurchaseOrders.filter((po) => !/completed|cancelled|received/i.test(po.status || ""));
+  const inventoryPoTotal = openInventoryPos.reduce((sum, po) => sum + (po.lines || []).reduce((lineSum, line) => lineSum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0), 0);
+  const openPayables = payables.filter((payable) => !/paid|cancelled|rejected/i.test(payable.requestStatus || payable.status || ""));
+  const pendingExpenses = replenishments.filter((expense) => !/paid|liquidated|cancelled|rejected/i.test(expense.requestStatus || expense.status || ""));
+  return [
+    `Client purchase orders open: ${openClientPos.length}`,
+    `Client purchase orders created: ${newClientPos.length}`,
+    `Inventory purchase orders open: ${openInventoryPos.length} (${money(inventoryPoTotal)})`,
+    `Payables open/for approval: ${openPayables.length} (${money(openPayables.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
+    `Expenses pending/for approval: ${pendingExpenses.length} (${money(pendingExpenses.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
   ];
 }
 
@@ -1260,7 +1285,10 @@ async function runApiHealthMonitor(env) {
 
 async function runDashboardAnalyticsMonitor(env) {
   if (!env.DISCORD_DASHBOARD_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord dashboard monitor skipped", module: "Discord", record: "DISCORD_DASHBOARD_WEBHOOK_URL not configured" });
-  const state = await loadDigestState(env);
+  const cached = await monitoringState(env, "dashboard-analytics-cache").catch(() => ({}));
+  const cacheAgeMs = cached.cachedAt ? Date.now() - new Date(cached.cachedAt).getTime() : Infinity;
+  const state = cached.state && cacheAgeMs < 10 * 60 * 1000 ? cached.state : await loadDigestState(env, ["sales", "payments", "inventory", "payables", "replenishments"]);
+  if (!cached.state || cacheAgeMs >= 10 * 60 * 1000) await saveMonitoringState(env, "dashboard-analytics-cache", { cachedAt: new Date().toISOString(), state }).catch((error) => recordSystemLog(env, { action: "Dashboard analytics cache save failed", module: "Monitoring", record: error.message }));
   const month = manilaMonthParts();
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const embed = { title: "📊 Medlane Dashboard & Analytics", color: 0x0077bd, description: `📅 **Current month:** ${month.label}\n🕒 **Latest update:** ${updatedAt} PHT`, fields: dashboardAnalyticsFields(state, month.key), timestamp: new Date().toISOString() };
@@ -1337,12 +1365,13 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   const sections = detectThresholdsAndApprovals(state);
   const allRoles = new Set([...Object.keys(sections), ...DIGEST_ROLE_RECIPIENTS.digestBusiness, ...DIGEST_ROLE_RECIPIENTS.digestAuditLog]);
   const businessSummary = buildBusinessSummaryLines(state);
+  const financialSummary = financialDigestLines(state, auditSinceIso);
   const auditRows = await auditLogDigestRows(env, auditSinceIso);
   const sends = [];
   for (const role of allRoles) {
     const parts = [];
     if (sections[role]?.length) parts.push(digestSectionHtml(sections[role]));
-    if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) parts.push(digestSectionHtml([{ title: `${periodLabel} Business Summary`, lines: [...businessSummary, ...backupDigestLines(auditRows)] }]));
+    if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) parts.push(digestSectionHtml([{ title: `${periodLabel} Business Summary`, lines: [...businessSummary, ...financialSummary, ...backupDigestLines(auditRows)] }]));
     if (DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role)) parts.push(`<h3 style="margin:18px 0 8px;color:#005a9c;">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
     if (!parts.length) continue;
     const emails = await emailsForRoles(env, [role]);
@@ -1352,11 +1381,17 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
     }
   }
   await Promise.all(sends);
-  await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, auditRows, auditLimitLabel, auditSinceIso }).catch((error) => console.error(JSON.stringify({ message: "Discord digest failed", error: error.message })));
+  await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }).catch(async (error) => {
+    console.error(JSON.stringify({ message: "Discord digest failed", error: error.message }));
+    await recordSystemLog(env, { action: "Discord digest failed", module: "Discord", record: `${periodLabel}: ${error.message}` }).catch(() => null);
+  });
 }
 
-async function sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, auditRows, auditLimitLabel, auditSinceIso }) {
-  if (!env.DISCORD_WEBHOOK_URL) return;
+async function sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }) {
+  if (!env.DISCORD_WEBHOOK_URL) {
+    await recordSystemLog(env, { action: "Discord digest skipped", module: "Discord", record: `${periodLabel}: DISCORD_WEBHOOK_URL not configured` });
+    return;
+  }
   const sales = state.sales || [];
   const clients = state.clients || [];
   const purchaseOrders = state.purchaseOrders || [];
@@ -1382,6 +1417,7 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
     roleSections.forEach((section) => fields.push({ name: `${section.title} (${role})`, value: discordFieldValue(section.lines, 300) }));
   });
   if (businessSummary.length) fields.push({ name: `${periodLabel} Business Summary`, value: discordFieldValue(businessSummary, 300) });
+  if (financialSummary.length) fields.push({ name: "Payables, Expenses & POs", value: discordFieldValue(financialSummary, 300) });
   if (pendingDeposits.length) fields.push({ name: "Collections Pending Deposit", value: discordFieldValue(pendingDeposits.map((p) => `${p.receiptNo} — ${p.client}, ${money(p.amount)} (${p.collectionStatus})`), 300) });
   if (bouncedCheques.length) fields.push({ name: "Bounced Cheques", value: discordFieldValue(bouncedCheques.map((p) => `${p.receiptNo} — ${p.client}, ${money(p.amount)}`), 300) });
   fields.push({ name: "Backup Status", value: discordFieldValue(backupDigestLines(auditRows), 300) });
