@@ -1025,6 +1025,18 @@ function poFullyPaidServer(po, sales) {
   return linkedSales.length > 0 && linkedSales.every((sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
 }
 
+function salesPoStatusServer(po, sales) {
+  const lines = po.lines || [];
+  const linkedSales = sales.filter((sale) => sale.po === po.id && sale.status !== "Cancelled");
+  if (!linkedSales.length) return "For Invoicing";
+  const pendingQty = lines.reduce((sum, line) => {
+    const served = linkedSales.flatMap((sale) => sale.lines || []).filter((saleLine) => (saleLine.code && line.code && saleLine.code === line.code) || saleLine.item === line.item).reduce((lineSum, saleLine) => lineSum + Number(saleLine.qty || 0), 0);
+    return sum + Math.max(Number(line.qty || 0) - served, 0);
+  }, 0);
+  if (pendingQty > 0) return "Pending Orders";
+  return linkedSales.some((sale) => sale.type === "SI") ? "Sales Invoice" : "Transmittal Slip";
+}
+
 const digestStateModules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "purchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues", "payments", "imports", "reconHistory"];
 
 async function loadDigestState(env, modules = digestStateModules) {
@@ -1033,6 +1045,28 @@ async function loadDigestState(env, modules = digestStateModules) {
   for (let index = 0; index < modules.length; index += 5) chunks.push(modules.slice(index, index + 5));
   const results = await Promise.all(chunks.map((chunk) => supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(chunk))}&select=module_name,record_key,data`)));
   return stateFromRecords(results.flat());
+}
+
+function pendingSummaryFields(state) {
+  const sales = state.sales || [];
+  const salesPurchaseOrders = (state.purchaseOrders || []).filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(salesPoStatusServer(po, sales)) && !poFullyPaidServer(po, sales));
+  const inventoryPurchaseOrders = (state.inventoryPurchaseOrders || []).filter((po) => !/fully received|cancelled/i.test(po.status || ""));
+  const inventoryPoApproval = inventoryPurchaseOrders.filter((po) => po.status === "Pending Approval");
+  const transfers = (state.pendingTransfers || []).filter((transfer) => !/received|cancelled/i.test(transfer.status || ""));
+  const collectionContacts = (state.collectionContacts || []).filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status));
+  const collectionApprovals = (state.paymentRequests || []).filter((request) => request.invoice && request.requestStatus === "Pending");
+  const payables = (state.payables || []).filter((payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
+  const expenses = (state.replenishments || []).filter((expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
+  const field = (name, rows, mapper) => ({ name: `${name} (${rows.length})`, value: rows.length ? discordFieldValue(rows.slice(0, 8).map(mapper), 850) : "No pending items.", inline: false });
+  return [
+    field("Sales Purchase Orders", salesPurchaseOrders, (po) => `${po.id} — ${po.client || "No client"} (${salesPoStatusServer(po, sales)})`),
+    field("Inventory Purchase Orders", inventoryPurchaseOrders, (po) => `${po.id} — ${po.supplier || "No supplier"} (${po.status || "Pending"})`),
+    field("Pending Approvals", [...inventoryPoApproval, ...collectionApprovals], (item) => item.supplier ? `Inventory PO ${item.id} — ${item.supplier}` : `Collection ${item.cvNo || item.id || "Request"} — ${item.employee || item.invoice}`),
+    field("Transfers", transfers, (transfer) => `${transfer.id} — ${transfer.item || "Items"}, ${transfer.from || "-"} -> ${transfer.to || "-"} (${transfer.status || "Pending"})`),
+    field("Collections", [...collectionContacts, ...collectionApprovals], (item) => item.client ? `${item.client} — ${item.status}${item.chequeInvoice ? ` (${item.chequeInvoice})` : ""}` : `${item.cvNo || item.id || "Collection"} — ${item.employee || item.invoice} (${item.requestStatus || "Pending"})`),
+    field("Payables", payables, (payable) => `${payable.id || payable.supplier} — ${payable.supplier || "Vendor"}, ${money(payable.amount || payable.total || 0)} (${payable.requestStatus || payable.status})`),
+    field("Expenses", expenses, (expense) => `${expense.id || expense.type} — ${expense.type || "Expense"}, ${money(expense.amount || expense.total || 0)} (${expense.requestStatus || expense.status})`),
+  ];
 }
 
 function detectThresholdsAndApprovals(state) {
@@ -1219,6 +1253,25 @@ async function checkBackupFreshnessHealth(env) {
   }
 }
 
+async function timedHealthCheck(name, check) {
+  const started = Date.now();
+  try {
+    const result = await check();
+    return { name, ...result, durationMs: Date.now() - started };
+  } catch (error) {
+    return { name, ok: false, error: error.message, durationMs: Date.now() - started };
+  }
+}
+
+function staticHealthCheck(name, ok, error = "") {
+  return { name, ok, error: ok ? "" : error, durationMs: 0 };
+}
+
+function healthCheckLine(check) {
+  const timing = typeof check.durationMs === "number" ? ` (${check.durationMs} ms)` : "";
+  return `${check.ok ? "✅" : "❌"} **${check.name}**${timing}${check.note ? `\n↳ ${check.note}` : ""}${check.error ? `\n↳ ${check.error}` : ""}`;
+}
+
 async function updateMonthlyUptime(env, ok) {
   const month = manilaMonthParts();
   const key = `api-health-uptime-${month.key}`;
@@ -1247,20 +1300,21 @@ async function saveMonitoringState(env, recordKey, state) {
 async function runApiHealthMonitor(env) {
   const checks = [];
   const started = Date.now();
-  checks.push(await checkSupabaseAppRecordsHealth(env));
-  checks.push(await checkAssetPageHealth(env, "/", "Landing page"));
-  checks.push(await checkAssetPageHealth(env, "/login", "Login page"));
-  checks.push(await checkBackupFreshnessHealth(env));
-  checks.push({ name: "R2 binding", ok: Boolean(env.DOCUMENTS_BUCKET), error: env.DOCUMENTS_BUCKET ? "" : "DOCUMENTS_BUCKET binding missing" });
-  checks.push({ name: "Supabase URL", ok: Boolean(env.SUPABASE_URL), error: env.SUPABASE_URL ? "" : "SUPABASE_URL missing" });
-  checks.push({ name: "Supabase anon key", ok: Boolean(env.SUPABASE_ANON_KEY), error: env.SUPABASE_ANON_KEY ? "" : "SUPABASE_ANON_KEY missing" });
-  checks.push({ name: "Supabase service role", ok: Boolean(env.SUPABASE_SERVICE_ROLE_KEY), error: env.SUPABASE_SERVICE_ROLE_KEY ? "" : "SUPABASE_SERVICE_ROLE_KEY missing" });
+  checks.push(await timedHealthCheck("Supabase app_records", () => checkSupabaseAppRecordsHealth(env)));
+  checks.push(await timedHealthCheck("Landing page", () => checkAssetPageHealth(env, "/", "Landing page")));
+  checks.push(await timedHealthCheck("Login page", () => checkAssetPageHealth(env, "/login", "Login page")));
+  checks.push(await timedHealthCheck("Backup freshness", () => checkBackupFreshnessHealth(env)));
+  checks.push(staticHealthCheck("R2 binding", Boolean(env.DOCUMENTS_BUCKET), "DOCUMENTS_BUCKET binding missing"));
+  checks.push(staticHealthCheck("Supabase URL", Boolean(env.SUPABASE_URL), "SUPABASE_URL missing"));
+  checks.push(staticHealthCheck("Supabase anon key", Boolean(env.SUPABASE_ANON_KEY), "SUPABASE_ANON_KEY missing"));
+  checks.push(staticHealthCheck("Supabase service role", Boolean(env.SUPABASE_SERVICE_ROLE_KEY), "SUPABASE_SERVICE_ROLE_KEY missing"));
   const failed = checks.filter((check) => !check.ok);
+  const checkRuntimeMs = Date.now() - started;
   const statusState = await monitoringState(env, "api-health-status").catch(() => ({}));
   const recovered = statusState.lastStatus === "failed" && !failed.length;
   const uptime = await updateMonthlyUptime(env, !failed.length);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const embed = { title: failed.length ? "🔴 Medlane API Health — Failed" : "🟢 Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, description: failed.length ? "🚨 **Immediate review needed.** One or more API checks failed." : "✅ **All monitored API checks are healthy.**", fields: [{ name: "🕒 Latest Update", value: `**${updatedAt} PHT**`, inline: false }, { name: "⚡ Response Time", value: `**${Date.now() - started} ms**`, inline: true }, { name: "📈 Monthly Uptime", value: `**${uptime.uptimePercent.toFixed(2)}%** (${uptime.successes}/${uptime.checks} checks)`, inline: true }, { name: "🧪 Checks", value: checks.map((check) => `${check.ok ? "✅" : "❌"} **${check.name}**${check.note ? `\n↳ ${check.note}` : ""}${check.error ? `\n↳ ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
+  const embed = { title: failed.length ? "🔴 Medlane API Health — Failed" : "🟢 Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, description: failed.length ? "🚨 **Immediate review needed.** One or more API checks failed." : "✅ **All monitored API checks are healthy.**", fields: [{ name: "🕒 Latest Update", value: `**${updatedAt} PHT**`, inline: false }, { name: "⚡ Check Runtime", value: `**${checkRuntimeMs} ms**`, inline: true }, { name: "📈 Monthly Uptime", value: `**${uptime.uptimePercent.toFixed(2)}%** (${uptime.successes}/${uptime.checks} checks)`, inline: true }, { name: "🧪 Checks by Duration", value: checks.map(healthCheckLine).join("\n").slice(0, 1500), inline: false }], timestamp: new Date().toISOString() };
   if (env.DISCORD_HEALTH_WEBHOOK_URL) {
     const stored = await monitoringState(env, "discord-health").catch(() => ({}));
     if (stored.messageId) {
@@ -1301,8 +1355,27 @@ async function runDashboardAnalyticsMonitor(env) {
   if (sent.messageId) await saveMonitoringState(env, "discord-dashboard", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
 }
 
+async function runPendingItemsMonitor(env) {
+  if (!env.DISCORD_PENDING_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord pending monitor skipped", module: "Discord", record: "DISCORD_PENDING_WEBHOOK_URL not configured" });
+  const state = await loadDigestState(env, ["sales", "purchaseOrders", "inventoryPurchaseOrders", "pendingTransfers", "collectionContacts", "paymentRequests", "payables", "replenishments"]);
+  const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const fields = pendingSummaryFields(state);
+  const totalPending = fields.reduce((sum, field) => sum + Number(field.name.match(/\((\d+)\)/)?.[1] || 0), 0);
+  const embed = { title: "📌 Medlane Pending Items", color: totalPending ? 0xf59e0b : 0x22c55e, description: `Items needing approval, receiving, collection follow-up, or action.\n🕒 **Latest update:** ${updatedAt} PHT\n📋 **Total pending buckets:** ${totalPending}`, fields, timestamp: new Date().toISOString() };
+  const stored = await monitoringState(env, "discord-pending").catch(() => ({}));
+  if (stored.messageId) {
+    const edited = await editDiscordWebhookMessage(env.DISCORD_PENDING_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
+    if (edited?.edited) return saveMonitoringState(env, "discord-pending", { ...stored, updatedAt: new Date().toISOString() });
+    await recordSystemLog(env, { action: "Discord pending edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
+  }
+  const sent = await sendDiscordWebhookUrl(env, env.DISCORD_PENDING_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
+  if (sent.error) return recordSystemLog(env, { action: "Discord pending monitor failed", module: "Discord", record: sent.error.message });
+  if (sent.messageId) await saveMonitoringState(env, "discord-pending", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
+  else await recordSystemLog(env, { action: "Discord pending message id missing", module: "Discord", record: "Discord post succeeded but did not return a message ID" });
+}
+
 async function runFiveMinuteDiscordMonitors(env) {
-  await Promise.allSettled([runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env)]);
+  await Promise.allSettled([runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env)]);
 }
 
 function manilaScheduleParts(value) {
@@ -1312,7 +1385,7 @@ function manilaScheduleParts(value) {
 
 async function runFiveMinuteScheduledTasks(event, env) {
   const scheduled = manilaScheduleParts(event.scheduledTime || Date.now());
-  const tasks = [runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env)];
+  const tasks = [runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env)];
   if (scheduled.minute === "00" && scheduled.hour === "17") {
     tasks.push(runDailyDigest(env));
     if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env));
