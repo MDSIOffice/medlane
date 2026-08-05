@@ -598,6 +598,10 @@
 
       <section class="section" id="backup">
         <div class="section-header"><div><p class="eyebrow">Backup</p><h2>Automated Recovery Points</h2><p class="page-description">Weekly, monthly, yearly, and manual backups are compressed and stored in R2. Only Superadmin/CEO can access this module.</p></div><button class="primary-button" id="run-manual-backup" type="button">Run Manual Backup</button></div>
+        <div class="backup-status-panel" id="backup-status-panel" hidden>
+          <div><span class="backup-status-dot"></span><strong id="backup-status-title">Preparing backup</strong><small id="backup-status-detail">Starting secure backup job...</small></div>
+          <div class="backup-progress"><span id="backup-progress-bar"></span></div>
+        </div>
         <div class="stats-grid" id="backup-summary-grid"></div>
         <article class="panel">
           <div class="panel-header"><div><p class="eyebrow">Schedule</p><h2>Backup Cadence</h2></div></div>

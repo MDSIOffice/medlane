@@ -862,39 +862,74 @@ qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessio
 qs("#refresh-backups")?.addEventListener("click", () => { renderBackup(); toast("Backups refreshed."); });
 qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
 
+function setBackupStatus(title, detail = "", progress = 0, tone = "active") {
+  const panel = qs("#backup-status-panel");
+  if (!panel) return;
+  panel.hidden = false;
+  panel.classList.toggle("success", tone === "success");
+  panel.classList.toggle("error", tone === "error");
+  qs("#backup-status-title").textContent = title;
+  qs("#backup-status-detail").textContent = detail;
+  const track = panel.querySelector(".backup-progress");
+  track?.classList.toggle("indeterminate", progress < 0);
+  const bar = qs("#backup-progress-bar");
+  if (bar && progress >= 0) bar.style.width = `${Math.max(0, Math.min(progress, 100))}%`;
+}
+
+function clearBackupStatus(delay = 3500) {
+  const panel = qs("#backup-status-panel");
+  if (!panel) return;
+  setTimeout(() => { panel.hidden = true; panel.classList.remove("success", "error"); }, delay);
+}
+
 async function runManualBackup() {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can run backups.");
   const button = qs("#run-manual-backup");
   const original = button?.textContent || "Run Manual Backup";
-  if (button) { button.disabled = true; button.textContent = "Running backup..."; }
+  if (button) { button.disabled = true; button.classList.add("is-loading"); button.textContent = "Running backup..."; }
   try {
+    setBackupStatus("Preparing backup", "Reading current app records from Supabase...", 15);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    setBackupStatus("Compressing recovery point", "Creating a compressed full backup for safe restore...", 45);
     await MedlaneAPI.runBackup("manual");
+    setBackupStatus("Refreshing backup list", "Backup created. Loading latest R2 recovery points...", 85);
     log("Created manual backup", "Backup", currentUser?.email || currentUser?.name || "Superadmin/CEO");
     await renderBackup();
+    setBackupStatus("Backup completed", "Manual recovery point is stored in R2.", 100, "success");
+    clearBackupStatus();
     toast("Manual backup created.");
   } catch (error) {
+    setBackupStatus("Backup failed", error.message || "Backup failed.", 100, "error");
     toast(error.message || "Backup failed.");
   } finally {
-    if (button) { button.disabled = false; button.textContent = original; }
+    if (button) { button.disabled = false; button.classList.remove("is-loading"); button.textContent = original; }
   }
 }
 
 async function downloadBackupFile(id) {
   try {
+    setBackupStatus("Preparing download", "Fetching backup metadata and R2 object...", -1);
     await MedlaneAPI.downloadBackup(id);
     log("Downloaded backup", "Backup", id);
+    setBackupStatus("Download started", "Your browser is downloading the backup file.", 100, "success");
+    clearBackupStatus();
     toast("Backup download started.");
   } catch (error) {
+    setBackupStatus("Download failed", error.message || "Backup download failed.", 100, "error");
     toast(error.message || "Backup download failed.");
   }
 }
 
 async function downloadBackupObjectFile(key) {
   try {
+    setBackupStatus("Preparing R2 download", "Fetching backup object directly from R2...", -1);
     await MedlaneAPI.downloadBackupObject(key);
     log("Downloaded R2 backup object", "Backup", key);
+    setBackupStatus("Download started", "Your browser is downloading the R2 backup file.", 100, "success");
+    clearBackupStatus();
     toast("Backup download started.");
   } catch (error) {
+    setBackupStatus("Download failed", error.message || "Backup download failed.", 100, "error");
     toast(error.message || "Backup download failed.");
   }
 }
@@ -905,14 +940,19 @@ async function restoreBackupFromRef(ref) {
   const typed = prompt(`Restore this backup?\n\n${label}\n\nThis will upsert records from the backup. It will not delete current records. Type RESTORE to continue.`);
   if (typed !== "RESTORE") return toast("Restore cancelled.");
   try {
+    setBackupStatus("Restoring backup", "Reading compressed backup and upserting app records. Existing records will not be deleted...", -1);
     const result = await MedlaneAPI.restoreBackup(ref);
+    setBackupStatus("Reloading restored data", `${result.restore?.restoredRecords || 0} records upserted. Refreshing dashboard data...`, 85);
     log("Restored backup", "Backup", `${label} · ${result.restore?.restoredRecords || 0} records`);
     await syncBackendUsers().catch(() => null);
     const fresh = await MedlaneAPI.loadAppState().catch(() => null);
     if (fresh?.data) data = normalizeData({ ...emptyProductionData(), ...fresh.data });
     renderAll();
+    setBackupStatus("Restore completed", `${result.restore?.restoredRecords || 0} records were restored safely by upsert.`, 100, "success");
+    clearBackupStatus(5000);
     toast(`Restore completed: ${result.restore?.restoredRecords || 0} records upserted.`);
   } catch (error) {
+    setBackupStatus("Restore failed", error.message || "Restore failed.", 100, "error");
     toast(error.message || "Restore failed.");
   }
 }
