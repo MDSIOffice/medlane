@@ -3053,9 +3053,9 @@ function renderReplenishments() {
     { title: "Expense Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averageExpense) }, { label: "Largest", value: peso.format(largestExpense) }] },
     { title: "Classification", kind: "pairs", items: [{ label: topType?.[0] || "Top Type", value: topType ? peso.format(topType[1]) : peso.format(0) }, { label: "Approved", value: peso.format(approvedAmount) }] },
   ]);
-  table("#expense-requests-table", ["ID", "Type", "Requester", "Items", "Amount", "Status", "Actions"], requests.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.requester, itemizedSummary(r.items), peso.format(r.amount), `<span class="pill ${statusClass(r.requestStatus)}">${r.requestStatus}</span>`, requestActions("expense", data.replenishments.indexOf(r), r)] })));
-  table("#confirmed-expenses-table", ["ID", "Type", "Requester", "Amount", "Status", "Payment"], approved.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.requester, peso.format(r.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("expense", data.replenishments.indexOf(r))] })));
-  table("#replenishments-table", ["ID", "Expense Type", "Requester", "Office", "Amount", "Receipt/File", "Status", "Payment"], rows.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.requester, r.office, peso.format(r.amount), r.file, `<span class="pill ${statusClass(r.requestStatus || r.status)}">${r.requestStatus || r.status}</span>`, r.paymentConfirmed ? `${escapeHtml(r.method)}<small>${escapeHtml(r.bank || r.cheque || "")}</small>` : "-"] })));
+  table("#expense-requests-table", ["ID", "Type", "Employee", "Requester", "Items", "Amount", "Status", "Actions"], requests.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, itemizedSummary(r.items), peso.format(r.amount), `<span class="pill ${statusClass(r.requestStatus)}">${r.requestStatus}</span>`, requestActions("expense", data.replenishments.indexOf(r), r)] })));
+  table("#confirmed-expenses-table", ["ID", "Type", "Employee", "Requester", "Amount", "Status", "Payment"], approved.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, peso.format(r.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("expense", data.replenishments.indexOf(r))] })));
+  table("#replenishments-table", ["ID", "Expense Type", "Employee", "Requester", "Office", "Amount", "Receipt/File", "Status", "Payment"], rows.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.office, peso.format(r.amount), r.file, `<span class="pill ${statusClass(r.requestStatus || r.status)}">${r.requestStatus || r.status}</span>`, r.paymentConfirmed ? `${escapeHtml(r.method)}<small>${escapeHtml(r.bank || r.cheque || "")}</small>` : "-"] })));
 }
 
 function renderReplenishmentsWorkflowTabs() {
@@ -3854,7 +3854,7 @@ const modalConfigs = {
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => data.clients.map((client) => client.name)], ["invoice", "Invoice(s) Being Paid (optional)", "multi-invoice"], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Debit Memo"]], ["bank", "Bank", "select", () => data.banks.map((bank) => bank.name)], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea"]] },
-  replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
+  replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => data.employees.map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
@@ -3952,6 +3952,7 @@ function openModal(type, edit = null) {
   }
   if (type === "replenishment" && !edit) {
     qs("#requester").value = currentUser?.name || "System User";
+    toggleReplenishmentEmployeeField();
   }
   if (type === "client" && !edit) {
     qs("#creditLimit").value = 150000;
@@ -4003,6 +4004,7 @@ function openModal(type, edit = null) {
       else if (field) field.value = value;
     });
     if (type === "payable") togglePayableFields();
+    if (type === "replenishment") toggleReplenishmentEmployeeField();
     if (type === "employee" && !canManageEmployeeSalary()) {
       qs("#salary").value = "";
       qs("#salary").placeholder = "CEO Only";
@@ -4147,6 +4149,17 @@ function formObject(form) { return Object.fromEntries(new FormData(form).entries
 
 function recordLabel(type, record) {
   return record?.name || record?.code || record?.supplier || record?.id || record?.documentNo || Object.values(record || {})[0] || "record";
+}
+
+function toggleReplenishmentEmployeeField() {
+  if (modalType !== "replenishment") return;
+  const field = qs("#employeeName");
+  const wrapper = field?.closest(".field");
+  if (!field || !wrapper) return;
+  const required = ["Per Diem", "Revolving Fund"].includes(qs("#type")?.value || "");
+  wrapper.hidden = !required;
+  field.required = required;
+  if (!required) field.value = "";
 }
 
 function masterlistRecordKey(type, record) {

@@ -234,6 +234,8 @@ async function submitModal(event) {
     const items = collectFinancialLines();
     const amount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     if (!items.length || amount <= 0) return toast("Add at least one expense item with amount.");
+    if (["Per Diem", "Revolving Fund"].includes(values.type) && !String(values.employeeName || "").trim()) return toast("Employee Name is required for Per Diem or Revolving Fund expenses.");
+    if (!["Per Diem", "Revolving Fund"].includes(values.type)) values.employeeName = "";
     const replenishment = { id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "" };
     data.replenishments.push(replenishment);
     await persistRecords({ replenishments: [replenishment] });
@@ -844,6 +846,7 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
   if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (event.target.id === "companyName" && modalType === "productIssue") syncProductIssueClientAddress();
+  if (event.target.id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
   if (event.target.id === "role" && modalType === "user") syncInviteUserPermissions();
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
   if (event.target.classList.contains("invoice-lot-input")) syncInvoiceRowLot(event.target);
@@ -864,6 +867,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (event.target.classList.contains("dept-contact-input")) syncClientDepartmentContactsHidden();
   if (event.target.name?.endsWith("Selected") && !["docsSelected", "benefitsSelected"].includes(event.target.name)) syncCheckboxGroupHidden(event.target.name.replace(/Selected$/, ""));
   if (event.target.id === "status" && modalType === "productIssue") toggleProductIssueResolvedByField();
+  if (event.target.id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
   if (event.target.id === "type") updateDocumentLabel();
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();

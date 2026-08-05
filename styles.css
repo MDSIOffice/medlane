@@ -1598,7 +1598,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .template-overlay .field { position: absolute; display: block; white-space: nowrap; overflow: hidden; color: #111827; font-weight: 700; }
 .template-overlay small { display: block; margin-top: 4px; color: #111827; font-size: 11px; font-weight: 700; }
 /* SI/TS/DR field coordinates are calibrated against real printed reference
-   copies (SI/TS/DR LAYOUT.pdf) supplied by the user — all three physical forms
+   copies in docs/reference supplied by the user — all three physical forms
    are 8.5x11in portrait, not the previously-assumed 9.25x8.5in landscape for
    TS/DR. Coordinates below are measured directly from those reference PDFs. */
 .template-si, .template-ts, .template-dr { width: 8.5in; height: 11in; }
