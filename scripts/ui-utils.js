@@ -61,7 +61,7 @@ function clientTaxLabels(client) {
 }
 function clientTaxBadge(client) {
   const labels = clientTaxLabels(client);
-  return labels.length ? labels.map((label) => `<span class="pill orange">${escapeHtml(label)}</span>`).join(" ") : `<span class="pill gray">No WTax/EWT</span>`;
+  return labels.length ? labels.map((label) => `<span class="pill orange">${escapeHtml(label)}</span>`).join(" ") : "";
 }
 function saleTaxBreakdown(sale) {
   const subtotal = Number(sale.amount || 0) - Number(sale.discount || 0);
@@ -74,7 +74,7 @@ function saleTaxBreakdown(sale) {
   return { totalSalesVatInclusive, withholdingTax: 0, expandedWithholdingTax: 0, amountNetVat, addVat, totalAmountDue };
 }
 function saleTaxSummary(sale) {
-  return "No WTax/EWT";
+  return "";
 }
 function arTrackerStage(sale) {
   if (sale.status === "Cancelled") return "cancelled";

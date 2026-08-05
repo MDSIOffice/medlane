@@ -671,7 +671,7 @@ async function writeAuditTrace(env, stateKey, { actor, role, action, module, rec
 }
 
 function money(value) {
-  return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(Number(value || 0));
+  return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
 }
 
 function moneyWithCents(value) {

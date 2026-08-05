@@ -1,4 +1,4 @@
-const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 });
+const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = new Date();
 const uomOptions = ["box", "kit", "piece", "vial", "gallon", "bottle", "set", "unit"];
 const supplierClassificationOptions = ["ACCOMMODATION", "BIDDING", "FREIGHT FEE", "FUEL", "GOVERNMENT BENEFITS", "IMPORTATION", "INSURANCE", "LEGAL AND PROFESSIONAL FEES", "LICENSES AND PERMIT", "LOCAL PURCHASES", "OFFICE EXPENSE", "OFFICE SUPPLIES", "OTHERS - INSURANCE", "PARKING FEE", "PER DIEM", "PETTY CASH", "REPAIR AND MAINTENANCE", "REPRESENTATION", "SPONSORSHIP", "TOLL FEE", "TRANSPORTATION", "UTILITIES", "WAREHOUSE EXPENSE"];
