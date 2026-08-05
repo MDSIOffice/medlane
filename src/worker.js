@@ -1168,6 +1168,44 @@ async function checkSupabaseAppRecordsHealth(env) {
   }
 }
 
+async function checkAssetPageHealth(env, path, name) {
+  if (!env.ASSETS) return { name, ok: false, error: "ASSETS binding missing" };
+  try {
+    const response = await env.ASSETS.fetch(new Request(`https://medlane.local${path}`, { method: "GET" }));
+    return { name, ok: response.ok, error: response.ok ? "" : `HTTP ${response.status}` };
+  } catch (error) {
+    return { name, ok: false, error: error.message };
+  }
+}
+
+async function backupStatus(env) {
+  const rows = await supabaseFetch(env, `/rest/v1/backup_runs?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=id,backup_type,mode,object_key,records_count,size_bytes,created_at&order=created_at.desc&limit=1`);
+  const latest = rows[0] || null;
+  const ageHours = latest?.created_at ? (Date.now() - new Date(latest.created_at).getTime()) / 36e5 : null;
+  return { latest, ageHours, stale: !latest || ageHours > 24 };
+}
+
+async function checkBackupFreshnessHealth(env) {
+  try {
+    const status = await backupStatus(env);
+    return { name: "Backup freshness", ok: !status.stale, note: status.latest ? `Latest ${status.latest.backup_type} backup ${status.ageHours.toFixed(1)} hours ago` : "No successful backup recorded", error: status.stale ? "No successful backup in the last 24 hours" : "" };
+  } catch (error) {
+    return { name: "Backup freshness", ok: false, error: error.message };
+  }
+}
+
+async function updateMonthlyUptime(env, ok) {
+  const month = manilaMonthParts();
+  const key = `api-health-uptime-${month.key}`;
+  const state = await monitoringState(env, key).catch(() => ({}));
+  const checks = Number(state.checks || 0) + 1;
+  const successes = Number(state.successes || 0) + (ok ? 1 : 0);
+  const failures = Number(state.failures || 0) + (ok ? 0 : 1);
+  const updated = { monthKey: month.key, monthLabel: month.label, checks, successes, failures, uptimePercent: checks ? Number(((successes / checks) * 100).toFixed(2)) : 100, lastStatus: ok ? "ok" : "failed", lastCheckedAt: new Date().toISOString() };
+  await saveMonitoringState(env, key, updated).catch((error) => recordSystemLog(env, { action: "Health uptime state save failed", module: "Monitoring", record: error.message }));
+  return updated;
+}
+
 async function monitoringState(env, recordKey) {
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.system-monitoring&record_key=eq.${encodeURIComponent(recordKey)}&select=data`);
   return rows[0]?.data || {};
@@ -1185,13 +1223,19 @@ async function runApiHealthMonitor(env) {
   const checks = [];
   const started = Date.now();
   checks.push(await checkSupabaseAppRecordsHealth(env));
+  checks.push(await checkAssetPageHealth(env, "/", "Landing page"));
+  checks.push(await checkAssetPageHealth(env, "/login", "Login page"));
+  checks.push(await checkBackupFreshnessHealth(env));
   checks.push({ name: "R2 binding", ok: Boolean(env.DOCUMENTS_BUCKET), error: env.DOCUMENTS_BUCKET ? "" : "DOCUMENTS_BUCKET binding missing" });
   checks.push({ name: "Supabase URL", ok: Boolean(env.SUPABASE_URL), error: env.SUPABASE_URL ? "" : "SUPABASE_URL missing" });
   checks.push({ name: "Supabase anon key", ok: Boolean(env.SUPABASE_ANON_KEY), error: env.SUPABASE_ANON_KEY ? "" : "SUPABASE_ANON_KEY missing" });
   checks.push({ name: "Supabase service role", ok: Boolean(env.SUPABASE_SERVICE_ROLE_KEY), error: env.SUPABASE_SERVICE_ROLE_KEY ? "" : "SUPABASE_SERVICE_ROLE_KEY missing" });
   const failed = checks.filter((check) => !check.ok);
+  const statusState = await monitoringState(env, "api-health-status").catch(() => ({}));
+  const recovered = statusState.lastStatus === "failed" && !failed.length;
+  const uptime = await updateMonthlyUptime(env, !failed.length);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const embed = { title: failed.length ? "🔴 Medlane API Health — Failed" : "🟢 Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, description: failed.length ? "🚨 **Immediate review needed.** One or more API checks failed." : "✅ **All monitored API checks are healthy.**", fields: [{ name: "🕒 Latest Update", value: `**${updatedAt} PHT**`, inline: false }, { name: "⚡ Response Time", value: `**${Date.now() - started} ms**`, inline: true }, { name: "🧪 Checks", value: checks.map((check) => `${check.ok ? "✅" : "❌"} **${check.name}**${check.note ? `\n↳ ${check.note}` : ""}${check.error ? `\n↳ ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
+  const embed = { title: failed.length ? "🔴 Medlane API Health — Failed" : "🟢 Medlane API Health — OK", color: failed.length ? 0xef4b4f : 0x22c55e, description: failed.length ? "🚨 **Immediate review needed.** One or more API checks failed." : "✅ **All monitored API checks are healthy.**", fields: [{ name: "🕒 Latest Update", value: `**${updatedAt} PHT**`, inline: false }, { name: "⚡ Response Time", value: `**${Date.now() - started} ms**`, inline: true }, { name: "📈 Monthly Uptime", value: `**${uptime.uptimePercent.toFixed(2)}%** (${uptime.successes}/${uptime.checks} checks)`, inline: true }, { name: "🧪 Checks", value: checks.map((check) => `${check.ok ? "✅" : "❌"} **${check.name}**${check.note ? `\n↳ ${check.note}` : ""}${check.error ? `\n↳ ${check.error}` : ""}`).join("\n").slice(0, 1000), inline: false }], timestamp: new Date().toISOString() };
   if (env.DISCORD_HEALTH_WEBHOOK_URL) {
     const stored = await monitoringState(env, "discord-health").catch(() => ({}));
     if (stored.messageId) {
@@ -1209,7 +1253,9 @@ async function runApiHealthMonitor(env) {
       else await recordSystemLog(env, { action: "Discord health message id missing", module: "Discord", record: "Discord post succeeded but did not return a message ID" });
     }
   } else await recordSystemLog(env, { action: "Discord health monitor skipped", module: "Discord", record: "DISCORD_HEALTH_WEBHOOK_URL not configured" });
+  await saveMonitoringState(env, "api-health-status", { lastStatus: failed.length ? "failed" : "ok", lastCheckedAt: new Date().toISOString(), lastFailedAt: failed.length ? new Date().toISOString() : statusState.lastFailedAt || null, lastRecoveredAt: recovered ? new Date().toISOString() : statusState.lastRecoveredAt || null, failedChecks: failed.map((check) => check.name) }).catch((error) => recordSystemLog(env, { action: "Health status state save failed", module: "Monitoring", record: error.message }));
   if (failed.length) await sendDiscordWebhook(env, { content: "@everyone 🚨 **Medlane API health check failed.**", allowedMentions: { parse: ["everyone"] }, embeds: [embed] });
+  else if (recovered) await sendDiscordWebhook(env, { embeds: [{ title: "Medlane API Health Recovered", color: 0x22c55e, description: "All monitored API checks are back to OK after the previous failure.", fields: [{ name: "Recovered At", value: `**${updatedAt} PHT**`, inline: false }, { name: "Monthly Uptime", value: `${uptime.uptimePercent.toFixed(2)}%`, inline: true }], timestamp: new Date().toISOString() }] });
 }
 
 async function runDashboardAnalyticsMonitor(env) {
@@ -1239,9 +1285,11 @@ function manilaScheduleParts(value) {
 async function runFiveMinuteScheduledTasks(event, env) {
   const scheduled = manilaScheduleParts(event.scheduledTime || Date.now());
   const tasks = [runApiHealthMonitor(env), runDashboardAnalyticsMonitor(env)];
-  if (scheduled.minute === "00" && scheduled.hour === "18") {
+  if (scheduled.minute === "00" && scheduled.hour === "17") {
     tasks.push(runDailyDigest(env));
     if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env));
+  }
+  if (scheduled.minute === "00" && scheduled.hour === "18") {
     if (scheduled.weekday === "Sun") tasks.push(createBackup(env, "weekly", null));
     if (scheduled.day === "01") tasks.push(createBackup(env, "monthly", null));
     if (scheduled.month === "01" && scheduled.day === "01") tasks.push(createBackup(env, "yearly", null));
@@ -2165,6 +2213,13 @@ export default {
           return json({ backup }, { status: 201 });
         }
         return methodNotAllowed();
+      }
+
+      if (url.pathname === "/api/backups/status" && request.method === "GET") {
+        await authenticatedProfile(request, env);
+        if (env.ENVIRONMENT !== "production") return json({ latest: null, ageHours: null, stale: true, message: "Backups are disabled outside production" });
+        const status = await backupStatus(env);
+        return json(status);
       }
 
       if (url.pathname === "/api/backups/objects" && request.method === "GET") {

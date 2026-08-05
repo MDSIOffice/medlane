@@ -950,7 +950,8 @@ function renderDashboard() {
   const chequeAvailableAlerts = data.collectionContacts.filter((contact) => contact.status === "Cheque Available").map((contact) => ({ color: "green", title: "Cheque available", text: `${contact.client} has a cheque ready${contact.chequeInvoice ? ` for ${contact.chequeInvoice}` : ""}.`, section: "collections", record: contact.client }));
   const salesAlerts = visibleSales.filter((sale) => ["Overdue", "Near Due"].includes(statusForSale(sale))).map((sale) => ({ color: statusForSale(sale) === "Overdue" ? "red" : "orange", title: `${statusForSale(sale)} invoice`, text: `${sale.id} for ${sale.client} has ${peso.format(sale.net - sale.paid)} balance.`, section: "receivables-tracker", record: sale.id }));
   const stockAlerts = invAlerts.map((item) => ({ color: ["Critical", "For Disposal"].includes(inventoryStatus(item)) ? "red" : "orange", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot }));
-  const alerts = [...chequeAvailableAlerts, ...salesAlerts, ...stockAlerts, ...creditAlerts, ...transferAlerts].slice(0, 8);
+  const backupAlert = data.backupStatus?.stale ? [{ color: "red", title: "Backup overdue", text: "No successful backup has been recorded in the last 24 hours.", section: "backup", record: data.backupStatus?.latest?.id || "backup" }] : [];
+  const alerts = [...backupAlert, ...chequeAvailableAlerts, ...salesAlerts, ...stockAlerts, ...creditAlerts, ...transferAlerts].slice(0, 8);
   qs("#urgent-count").textContent = `${alerts.length} urgent${dashboardRange.from || dashboardRange.to ? " in range" : ""}`;
   qs("#alerts-list").innerHTML = alerts.map((a) => `<div class="alert-item clickable" data-go-section="${a.section}" data-focus-record="${escapeHtml(a.record || "")}"><span class="alert-dot ${a.color}"></span><div><strong>${escapeHtml(a.title)}</strong><span>${escapeHtml(a.text)}</span></div></div>`).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>All clear</strong><span>No urgent records for this area.</span></div></div>`;
   const branches = platformAreas().map((branch) => ({ branch, amount: visibleSales.filter((s) => s.area === branch).reduce((sum, s) => sum + s.net, 0) }));
@@ -969,6 +970,7 @@ function renderDashboard() {
     [`${invAlerts.length} stock alerts`, `${duplicateReceipts} duplicate receipt risk`],
     ["Backup safety", "R2 restore + delete guard ready"],
   ].map(([label, status]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(status)}</strong></li>`).join("");
+  renderDashboardBackupStatus();
   registerCalendarWidget("dash-cal", "#dashboard-calendar-widget", true);
   renderCalendarWidget("dash-cal");
   const trendChart = qs("#dashboard-trend-chart");
@@ -1220,6 +1222,38 @@ function renderInventory() {
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
   table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, transfer.qty, (transfer.lines?.length ? transfer.lines : [transfer]).map((line) => `${line.lot || "-"}<small>${line.expiry || "N/A"}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">Timeline</button>`] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Item", "From", "To", "Qty", "Lot", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, entry.transferId, entry.action, entry.item, entry.from, entry.to, entry.qty, entry.lot, entry.user, entry.notes]));
+}
+
+let dashboardBackupStatusRequest = 0;
+async function renderDashboardBackupStatus() {
+  const list = qs("#dashboard-backup-list");
+  const badge = qs("#backup-health-badge");
+  if (!list || !badge || !MedlaneAPI?.backupStatus) return;
+  const requestId = ++dashboardBackupStatusRequest;
+  list.innerHTML = `<li><span>Latest backup</span><strong>Checking...</strong></li>`;
+  badge.className = "badge";
+  badge.textContent = "Checking";
+  try {
+    const status = await MedlaneAPI.backupStatus();
+    if (requestId !== dashboardBackupStatusRequest) return;
+    data.backupStatus = status;
+    const latest = status.latest;
+    const ageLabel = Number.isFinite(Number(status.ageHours)) ? `${Number(status.ageHours).toFixed(1)} hours ago` : "No backup recorded";
+    badge.className = `badge ${status.stale ? "danger" : "success"}`;
+    badge.textContent = status.stale ? "Overdue" : "Current";
+    list.innerHTML = [
+      ["Last backup", latest ? formatSessionDate(latest.created_at) : "None"],
+      ["Type", latest ? String(latest.backup_type || "backup") : "No successful backup"],
+      ["Size", latest ? formatBytes(latest.size_bytes) : "-"],
+      ["Result", status.stale ? `Alert: ${ageLabel}` : `Successful: ${ageLabel}`],
+    ].map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join("");
+    if (status.stale && !qs("#alerts-list")?.textContent.includes("No successful backup")) renderDashboard();
+  } catch (error) {
+    if (requestId !== dashboardBackupStatusRequest) return;
+    badge.className = "badge danger";
+    badge.textContent = "Unavailable";
+    list.innerHTML = `<li><span>Backup status</span><strong>${escapeHtml(error.message)}</strong></li>`;
+  }
 }
 
 function renderInventoryWorkflowTabs() {
