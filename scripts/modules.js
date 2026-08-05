@@ -283,6 +283,36 @@ function paymentRequestActionsCell(request) {
   return `<div class="inline-actions">${approveBtn}${cancelBtn}${statusActions}${timelineBtn}${printBtn}</div>`;
 }
 
+function saleForPayment(payment) {
+  return data.sales.find((sale) => (sale.documentNo || sale.id) === payment.invoice || sale.id === payment.invoice || sale.documentNo === payment.invoice);
+}
+
+function applyCollectionPayment(payment) {
+  const sale = saleForPayment(payment);
+  if (!sale) return;
+  if (payment.appliedToInvoice === true) return;
+  if (payment.appliedToInvoice === undefined) {
+    // Legacy approved requests used to add paid amount immediately on approval.
+    payment.appliedToInvoice = true;
+    return;
+  }
+  sale.paid = Number(sale.paid || 0) + Number(payment.amount || 0);
+  payment.appliedToInvoice = true;
+}
+
+function reverseCollectionPayment(payment) {
+  const sale = saleForPayment(payment);
+  if (!sale) return;
+  if (payment.appliedToInvoice === false) return;
+  sale.paid = Math.max(Number(sale.paid || 0) - Number(payment.amount || 0), 0);
+  payment.appliedToInvoice = false;
+}
+
+function paymentRequestPayments(requestOrCvNo) {
+  const cvNo = typeof requestOrCvNo === "string" ? requestOrCvNo : requestOrCvNo?.cvNo;
+  return data.payments.filter((entry) => entry.paymentRequestCvNo === cvNo || entry.receiptNo === cvNo);
+}
+
 async function approvePaymentRequest(cvNo) {
   if (!canApprovePaymentRequests()) return toast("Only Superadmin or CEO can approve payment requests.");
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
@@ -311,21 +341,20 @@ async function approvePaymentRequest(cvNo) {
     const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
     if (balance <= 0) return;
     const applied = Math.min(balance, remaining);
-    sale.paid = Number(sale.paid || 0) + applied;
     remaining -= applied;
-    data.payments.push({ invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", reference: "", chequeDate: request.chequeDate || "", dateCollected: fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo });
+    data.payments.push({ invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", reference: "", chequeDate: request.chequeDate || "", dateCollected: fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo });
   });
   request.requestStatus = "Approved";
   request.status = "Approved";
   request.approvedBy = by;
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
-  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} recorded across ${sales.length} invoice(s), oldest first.`, by });
-  log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} (${isFull ? "Full" : "Partial"})`);
-  notify("Payment Request", `${request.cvNo} approved — ${isFull ? "fully" : "partially"} paid.`, "collections", request.cvNo);
+  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s), oldest first. Invoice paid amount updates only after deposit.`, by });
+  log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`);
+  notify("Payment Request", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
   saveData();
   renderAll();
-  toast(`${request.cvNo} approved and payment recorded.`);
+  toast(`${request.cvNo} approved and queued for deposition.`);
 }
 
 async function cancelPaymentRequest(cvNo) {
@@ -1699,17 +1728,38 @@ function openPaymentRequestForInvoice(documentNo) {
 }
 
 function updateCollectionPaymentStatus(receiptNo, status) {
-  const payment = data.payments.find((entry) => entry.receiptNo === receiptNo);
-  if (!payment) return toast("Collection not found.");
-  if (payment.collectionStatus === "Deposited") return toast("This payment is already Deposited and can no longer be changed.");
-  payment.collectionStatus = status;
-  payment.postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payment.postedDate || fmtDate(today)) || "" : "";
-  payment.statusHistory ||= [];
-  payment.statusHistory.push(...collectionStatusHistory(status));
+  const payments = data.payments.filter((entry) => entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo);
+  if (!payments.length) return toast("Collection not found.");
+  if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited and can no longer be changed.");
+  const postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payments[0].postedDate || fmtDate(today)) || "" : "";
+  payments.forEach((payment) => {
+    if (status === "Deposited") applyCollectionPayment(payment);
+    else reverseCollectionPayment(payment);
+    payment.collectionStatus = status;
+    payment.postedDate = status === "Posted Date" ? postedDate : "";
+    payment.statusHistory ||= [];
+    payment.statusHistory.push(...collectionStatusHistory(status));
+  });
+  const request = data.paymentRequests.find((entry) => entry.cvNo === (payments[0].paymentRequestCvNo || receiptNo));
+  if (request) {
+    request.history = paymentRequestHistory(request);
+    const by = currentUser?.name || "System User";
+    if (status === "Deposited") {
+      request.requestStatus = "Completed";
+      request.status = "Completed";
+      request.completedAt = fmtDate(today);
+      request.completedBy = by;
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Completed", note: `Marked Deposited by ${by}. Invoice paid amount updated.`, by });
+    } else {
+      request.requestStatus = "Approved";
+      request.status = "Approved";
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, note: `${status} recorded by ${by}. Invoice paid amount was not updated.`, by });
+    }
+  }
   log("Changed collection status", "Collections", `${receiptNo}: ${status}`);
   saveData();
   renderAll();
-  if (payment.paymentRequestCvNo && document.body.dataset.activeSection === "payment-request-detail") renderPaymentRequestDetail(payment.paymentRequestCvNo);
+  if (payments[0].paymentRequestCvNo && document.body.dataset.activeSection === "payment-request-detail") renderPaymentRequestDetail(payments[0].paymentRequestCvNo);
   toast(`${receiptNo} marked ${status}.`);
 }
 
