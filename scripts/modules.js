@@ -1762,15 +1762,14 @@ function renderCollections() {
     visualCard("◆", "Payment Channels", `${data.payments.length} receipts`, barRows(methodMix, (value) => peso.format(value), ["green", "", "orange"]), "info", "Computed from collection records grouped by payment method."),
   ].join("");
   renderCollectionContactMap();
-  const rows = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).map((s) => {
+  const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).map((s) => {
     const payments = data.payments.filter((payment) => payment.invoice === s.id || payment.invoice === s.documentNo);
     const latest = payments.at(-1) || {};
-    const taxDeductions = Number(latest.withholdingTax || 0) + Number(latest.expandedWithholdingTax || 0);
     const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
     const status = latest.collectionStatus || "For Deposition";
-    return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, peso.format(s.paid), taxDeductions ? `${peso.format(taxDeductions)}<small>WTax ${peso.format(latest.withholdingTax || 0)} · EWT ${peso.format(latest.expandedWithholdingTax || 0)}</small>` : "-", `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
+    return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
-  table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Amount Paid", "WTax/EWT", "Collection Status", "Actions", "Balance", "AR Status"], rows);
+  table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Collection Status", "Actions", "Balance", "AR Status"], rows);
   table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Department", "Payment", "Total", "Status", "Actions"], data.paymentRequests.map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.department, r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
 }
 
@@ -1792,7 +1791,7 @@ function renderCollectionsWorkflowTabs() {
 function collectionStatusActions(payment, sale) {
   const doc = sale?.documentNo || sale?.id;
   if (!doc) return "-";
-  return `<button class="mini-button" data-make-payment-request="${escapeHtml(doc)}">Make Payment Request</button>`;
+  return `<button class="mini-button" data-make-payment-request="${escapeHtml(doc)}">Collection Status</button>`;
 }
 
 function openPaymentRequestForInvoice(documentNo) {
@@ -2435,8 +2434,19 @@ function soaHtml(client) {
   const clientRecord = data.clients.find((item) => item.name === client) || {};
   const invoices = data.sales.filter((sale) => sale.client === client && Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
   const totalBalance = invoices.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
-  const rows = invoices.map((sale) => `<tr><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(sale.date || "-")}</td><td>${escapeHtml(fmtDate(addDays(sale.date, sale.terms)))}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td></tr>`).join("");
-  return `<section class="payment-request-print soa-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>Statement of Account</span></header><div class="pr-meta"><span>Client: <strong>${escapeHtml(client)}</strong></span><span>TIN: <strong>${escapeHtml(clientRecord.tin || "-")}</strong></span><span>As of: <strong>${escapeHtml(fmtDate(today))}</strong></span></div><p class="pr-instructions">${escapeHtml(clientRecord.address || "No address recorded")}</p><table><thead><tr><th>Document No.</th><th>Invoice Date</th><th>Due Date</th><th>Amount</th><th>Paid</th><th>Balance</th></tr></thead><tbody>${rows || `<tr><td colspan="6">No open invoices.</td></tr>`}</tbody><tfoot><tr><td colspan="5"><strong>Total Balance Due</strong></td><td><strong>${peso.format(totalBalance)}</strong></td></tr></tfoot></table><footer><div>Prepared by:<br><strong>${escapeHtml(currentUser?.name || "System User")}</strong></div><div>This statement reflects open invoices as of the date above.</div></footer></section>`;
+  const shortDate = (value) => {
+    const parsed = value instanceof Date ? value : new Date(`${value}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return `${parsed.getMonth() + 1}/${parsed.getDate()}/${parsed.getFullYear()}`;
+  };
+  const rows = invoices.map((sale) => {
+    const dueDate = addDays(sale.date, sale.terms);
+    const daysDue = Math.max(0, -daysUntil(dueDate));
+    const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+    return `<tr><td>${escapeHtml(shortDate(sale.date))}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${peso.format(balance).replace("₱", "")}</td><td>${daysDue || ""}</td></tr>`;
+  });
+  const blankRows = Array.from({ length: Math.max(0, 18 - rows.length) }, () => `<tr class="soa-blank-row"><td>&nbsp;</td><td></td><td></td><td></td></tr>`).join("");
+  return `<section class="soa-print"><header><img src="medlane.jpg" alt="Medlane Diagnostic Solutions" /><h1>Statement of Account</h1></header><div class="soa-meta"><div><span>Account Name:</span><strong>${escapeHtml(client)}</strong></div><div><span>Terms:</span><strong>${escapeHtml(`${Number(clientRecord.terms || 30)} Days`)}</strong></div><div><span>Address:</span><strong>${escapeHtml(clientRecord.address || "No address recorded")}</strong></div><div><span>TIN No.:</span><strong>${escapeHtml(clientRecord.tin || "")}</strong></div><div><span>SOA Date:</span><strong>${escapeHtml(shortDate(today))}</strong></div></div><table><thead><tr><th>Date</th><th>Reference Number</th><th>Amount</th><th>Days Due</th></tr></thead><tbody>${rows.join("") || `<tr><td colspan="4">No open invoices.</td></tr>`}${blankRows}<tr class="soa-total-row"><td></td><td>Total</td><td>${peso.format(totalBalance).replace("₱", "")}</td><td></td></tr></tbody></table><div class="soa-notes"><p>Should there be any discrepancies, you may reach us through our company's contact number.</p><p>We respectfully request that all <strong>overdue accounts</strong>, if any, be settled immediately to <strong>avoid delays in your future orders and transactions.</strong> Kindly make all checks payable to <strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong></p><p>Please note that any payments and/or orders made <strong>after this billing date</strong> may not yet be reflected in this SOA. If payment has already been made, kindly disregard this notice.</p><p>Thank you very much.</p></div><div class="soa-signature"><p>Very truly yours,</p><strong>${escapeHtml(currentUser?.name || "Jessica Berry")}</strong><span>Accounting Staff</span><span>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</span></div><footer>13 Gumamela St. Pilar Village, Las Piñas<br />Las Piñas City 1740<br />Tel. No. (02) 8836-2853 Email: receivables.mdsi@gmail.com</footer></section>`;
 }
 
 function previewSoa(client) {
