@@ -185,6 +185,12 @@ async function submitModal(event) {
     if (data.paymentRequests.some((request) => request.cvNo.toLowerCase() === values.cvNo.toLowerCase() && cvYear(request.date || request.createdAt) === cvYear(values.date))) return toast("Duplicate CV number detected for this year.");
     if (!items.length || items.some((item) => !item.particulars || item.amount <= 0)) return toast("Each payment request item needs particulars and an amount greater than zero.");
     if (total <= 0) return toast("Payment request total must be greater than zero.");
+    if (values.paymentType === "Bank Transfer") {
+      if (!values.transferDate) return toast("Transfer date is required for bank transfer collections.");
+      if (!values.bank) return toast("Bank name is required for bank transfer collections.");
+      values.bankAccount = data.banks.find((bank) => bank.name === values.bank)?.account || values.bankAccount || "";
+    }
+    if (values.paymentType !== "Bank Transfer") { values.transferDate = ""; values.bankAccount = ""; }
     const invoiceIds = collectPaymentRequestInvoices();
     const linkedSales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
     if (invoiceIds.length && linkedSales.length !== invoiceIds.length) return toast("One or more selected invoices could not be found.");
@@ -875,6 +881,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (event.target.id === "method" && modalType === "payable") togglePayableFields();
   if (event.target.id === "paymentType" && modalType === "paymentRequest") togglePaymentRequestChequeFields();
+  if (event.target.id === "bank" && modalType === "paymentRequest") syncPaymentRequestBankAccount();
   if (["withholdingTax", "expandedWithholdingTax"].includes(event.target.id) && modalType === "paymentRequest") syncPaymentRequestTotal();
   if (event.target.classList.contains("payment-request-invoice-check")) syncPaymentRequestInvoiceHidden();
   if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value);
