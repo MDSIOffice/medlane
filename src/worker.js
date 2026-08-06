@@ -843,15 +843,33 @@ function printableInvoiceHtml({ sale, client, approvals, preparedBy, noDate, tem
 
 function paymentRequestPrintableHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
-  const oldWithholdingTax = Number(request.withholdingTax || 0);
-  const oldExpandedWithholdingTax = Number(request.expandedWithholdingTax || 0);
-  const gross = Number(request.gross || 0) || itemGross(items) || Number(request.total || 0) + oldWithholdingTax + oldExpandedWithholdingTax;
-  const taxBase = withholdingBaseFromGross(gross);
-  const withholdingTax = hasWithholding(request.withholdingTax) ? roundCurrency(taxBase * 0.05) : 0;
-  const expandedWithholdingTax = hasWithholding(request.expandedWithholdingTax) ? roundCurrency(taxBase * 0.01) : 0;
-  const total = roundCurrency(Math.max(gross - withholdingTax - expandedWithholdingTax, 0));
+  // Collections created with the per-invoice itemized editor carry an explicit invoice + net
+  // amount on every item; older/general payment requests only have flat particulars/amount
+  // lines with one aggregate withholding deduction for the whole voucher.
+  const perInvoice = items.length > 0 && items.every((item) => item.invoice && item.netAmount != null);
   const paymentDetails = ["Check", "Bank Transfer"].includes(request.paymentType) ? `<div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Account No.: ${escapeHtml(request.bankAccount || "-")}<br>Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml((request.paymentType === "Bank Transfer" ? request.transferDate : request.chequeDate) || "-")}</div>` : "";
-  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(request.cvNo)}</span></header><div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Department: <strong>${escapeHtml(request.department)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Bank Transfer" ? "[x]" : "[ ]"} Bank Transfer</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${money(item.amount)}</td></tr>`).join("")}${withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${moneyWithCents(withholdingTax)}</td></tr>` : ""}${expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${moneyWithCents(expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>Attach supporting official receipts, invoices, or billing statements before approval and release.</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div>${paymentDetails}</footer></section>`;
+  const metaNetAmount = request.netAmount ? `<span>Net Amount: <strong>${money(request.netAmount)}</strong></span>` : "";
+  let tableHtml;
+  let total;
+  if (perInvoice) {
+    total = items.reduce((sum, item) => sum + Number(item.netAmount || 0), 0);
+    tableHtml = `<table><thead><tr><th>Invoice</th><th>Amount</th><th>VAT-excl. Base</th><th>WTax 5%</th><th>EWT 1%</th><th>Net Amount</th></tr></thead><tbody>${items.map((item) => {
+      const taxBase = withholdingBaseFromGross(Number(item.amount || 0));
+      const withholdingTax = hasWithholding(item.withholdingTax) ? roundCurrency(taxBase * 0.05) : 0;
+      const expandedWithholdingTax = hasWithholding(item.expandedWithholdingTax) ? roundCurrency(taxBase * 0.01) : 0;
+      return `<tr><td>${escapeHtml(item.invoice)}</td><td>${money(item.amount)}</td><td>${moneyWithCents(taxBase)}</td><td>${withholdingTax ? moneyWithCents(withholdingTax) : "-"}</td><td>${expandedWithholdingTax ? moneyWithCents(expandedWithholdingTax) : "-"}</td><td>${money(item.netAmount)}</td></tr>`;
+    }).join("")}<tr><td colspan="5"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table>`;
+  } else {
+    const oldWithholdingTax = Number(request.withholdingTax || 0);
+    const oldExpandedWithholdingTax = Number(request.expandedWithholdingTax || 0);
+    const gross = Number(request.gross || 0) || itemGross(items) || Number(request.total || 0) + oldWithholdingTax + oldExpandedWithholdingTax;
+    const taxBase = withholdingBaseFromGross(gross);
+    const withholdingTax = hasWithholding(request.withholdingTax) ? roundCurrency(taxBase * 0.05) : 0;
+    const expandedWithholdingTax = hasWithholding(request.expandedWithholdingTax) ? roundCurrency(taxBase * 0.01) : 0;
+    total = roundCurrency(Math.max(gross - withholdingTax - expandedWithholdingTax, 0));
+    tableHtml = `<table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${money(item.amount)}</td></tr>`).join("")}${withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${moneyWithCents(withholdingTax)}</td></tr>` : ""}${expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${moneyWithCents(expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table>`;
+  }
+  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(request.cvNo)}</span></header><div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Department: <strong>${escapeHtml(request.department)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span>${metaNetAmount}</div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Bank Transfer" ? "[x]" : "[ ]"} Bank Transfer</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div>${tableHtml}<p class="pr-instructions"><strong>Attach supporting official receipts, invoices, or billing statements before approval and release.</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div>${paymentDetails}</footer></section>`;
 }
 
 function financialRequestPrintableHtml(record, type) {

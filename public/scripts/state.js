@@ -10,6 +10,7 @@ let currentClientView = null;
 let currentInvoiceFlow = null;
 let currentPrintNoDate = false;
 let currentPrintTemplateId = "default";
+let paymentRequestPreselectedInvoice = null;
 let selectedReconHistoryIndex = null;
 let reconciliationTab = "current";
 let collectionLeafletMap = null;

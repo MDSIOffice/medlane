@@ -925,7 +925,7 @@ select, .search-input {
 .invoice-tax-summary.live-preview { max-width: 520px; gap: 12px; border-color: rgba(0, 110, 182, 0.18); border-radius: 18px; background: var(--tint); padding: 14px 16px; }
 .invoice-tax-summary.live-preview .invoice-meta { display: flex; align-items: center; justify-content: space-between; gap: 18px; color: var(--ink); font-size: 16px; }
 .invoice-tax-summary.live-preview .invoice-meta span { color: var(--ink); }
-.invoice-tax-summary.live-preview .invoice-meta strong { color: #0f2748; font-size: 20px; font-weight: 950; text-align: right; white-space: nowrap; }
+.invoice-tax-summary.live-preview .invoice-meta strong { color: var(--ink); font-size: 20px; font-weight: 950; text-align: right; white-space: nowrap; }
 .invoice-tax-summary.live-preview .total-line strong { font-size: 21px; }
 .order-status-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 22px; background: var(--panel-solid); padding: 8px; box-shadow: 0 14px 36px rgba(15, 23, 42, 0.07); }
 .order-status-tab { flex: 1 1 128px; min-height: 46px; border: 0; border-radius: 16px; background: transparent; color: var(--muted); font-weight: 900; transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; }
@@ -1597,8 +1597,16 @@ button.calendar-cell:hover { background: var(--tint); }
 .payment-request-editor { border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: var(--tint); }
 .payment-request-line-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 0.28fr) auto; gap: 12px; align-items: end; margin-bottom: 12px; }
 .payment-request-line-row .icon-button { border-radius: 14px; width: auto; min-width: 84px; padding: 0 12px; }
+.payment-request-invoice-row { grid-template-columns: minmax(0, 1fr) minmax(120px, 0.22fr) auto auto; }
+.payment-request-row-withholding { display: flex; gap: 10px; align-items: center; }
+.payment-request-row-withholding .ios-check-row { min-height: auto; padding: 6px 8px; }
+.payment-request-net-amount-field { margin-bottom: 14px; }
 .payment-request-editor-actions { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-top: 6px; }
 .payment-request-total-field { width: min(260px, 100%); }
+.payment-request-row-previews { display: grid; gap: 12px; margin-top: 14px; }
+.payment-request-row-breakdown { margin: 0; }
+.field-error input, .field-error select { border-color: var(--red) !important; }
+.field-error-message { color: var(--red); font-size: 13px; font-weight: 700; margin: 8px 0 0; }
 .equipment-expiry-field { display: none; }
 .payment-request-fixed-instructions { margin-top: 14px; border: 1px dashed #bfdbfe; border-radius: 16px; background: var(--panel-solid); padding: 12px 14px; }
 .payment-request-fixed-instructions strong { color: var(--ink); }

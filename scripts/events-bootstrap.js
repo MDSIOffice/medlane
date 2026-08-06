@@ -177,22 +177,46 @@ async function submitModal(event) {
     } catch (error) { deductSaleStock(oldSale); return toast(error.message); }
   }
   if (modalType === "paymentRequest") {
-    const items = collectPaymentRequestLines();
-    const gross = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    const deductions = paymentRequestDeductions(gross);
-    const total = deductions.total;
     if (!values.cvNo?.trim()) return toast("CV number is required.");
     if (data.paymentRequests.some((request) => request.cvNo.toLowerCase() === values.cvNo.toLowerCase() && cvYear(request.date || request.createdAt) === cvYear(values.date))) return toast("Duplicate CV number detected for this year.");
-    if (!items.length || items.some((item) => !item.particulars || item.amount <= 0)) return toast("Each payment request item needs particulars and an amount greater than zero.");
-    if (total <= 0) return toast("Payment request total must be greater than zero.");
     if (values.paymentType === "Bank Transfer") {
       if (!values.transferDate) return toast("Transfer date is required for bank transfer collections.");
       if (!values.bank) return toast("Bank name is required for bank transfer collections.");
       values.bankAccount = data.banks.find((bank) => bank.name === values.bank)?.account || values.bankAccount || "";
     }
     if (values.paymentType !== "Bank Transfer") { values.transferDate = ""; values.bankAccount = ""; }
+
+    let items, gross, withholdingTax, expandedWithholdingTax, total, netAmount;
+    if (paymentRequestPreselectedInvoice) {
+      const amount = Number(qs("#single-amount")?.value || 0);
+      if (amount <= 0) return toast("Enter an amount greater than zero.");
+      const deductions = paymentRequestDeductions(amount);
+      gross = amount; withholdingTax = deductions.withholdingTax; expandedWithholdingTax = deductions.expandedWithholdingTax; total = deductions.total; netAmount = deductions.total;
+      items = [{ invoice: paymentRequestPreselectedInvoice, particulars: paymentRequestPreselectedInvoice, amount, withholdingTax: deductions.withholdingTax > 0, expandedWithholdingTax: deductions.expandedWithholdingTax > 0, netAmount: deductions.total }];
+    } else {
+      const rows = collectPaymentRequestLines();
+      netAmount = Number(values.netAmount || 0);
+      if (netAmount <= 0) return toast("Net Amount is required and must be greater than zero.");
+      if (!rows.length || rows.some((row) => !row.invoice || row.amount <= 0)) return toast("Each row needs an invoice and an amount greater than zero.");
+      const seen = new Set();
+      for (const row of rows) {
+        if (seen.has(row.invoice)) return toast(`${row.invoice} is selected in more than one row — each invoice can only be paid once per collection.`);
+        seen.add(row.invoice);
+      }
+      if (paymentRequestNetAmountExceeded(rows, netAmount)) return toast(`Itemized amount total exceeds Net Amount (${peso.format(netAmount)}). Reduce the amounts or increase Net Amount.`);
+      items = rows.map((row) => {
+        const deductions = paymentRequestRowDeductions(row);
+        return { invoice: row.invoice, particulars: row.invoice, amount: row.amount, withholdingTax: row.withholdingTax, expandedWithholdingTax: row.expandedWithholdingTax, netAmount: deductions.total };
+      });
+      gross = items.reduce((sum, item) => sum + item.amount, 0);
+      withholdingTax = items.reduce((sum, item) => sum + paymentRequestRowDeductions(item).withholdingTax, 0);
+      expandedWithholdingTax = items.reduce((sum, item) => sum + paymentRequestRowDeductions(item).expandedWithholdingTax, 0);
+      total = items.reduce((sum, item) => sum + item.netAmount, 0);
+    }
+    if (total <= 0) return toast("Payment request total must be greater than zero.");
+
     const invoiceIds = collectPaymentRequestInvoices();
-    const linkedSales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    const linkedSales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean);
     if (invoiceIds.length && linkedSales.length !== invoiceIds.length) return toast("One or more selected invoices could not be found.");
     if (linkedSales.length) {
       const combinedBalance = linkedSales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
@@ -205,7 +229,7 @@ async function submitModal(event) {
       items,
       particulars: items.map((item) => item.particulars).join("; "),
       amount: items[0]?.amount || 0,
-      gross, withholdingTax: deductions.withholdingTax, expandedWithholdingTax: deductions.expandedWithholdingTax, total,
+      gross, withholdingTax, expandedWithholdingTax, total, netAmount,
       instructions: paymentRequestInstructions,
       preparedBy: currentUser?.name || "System User",
       preparedRole: currentUser?.role || "Accounting",
@@ -895,10 +919,10 @@ qs("#modal-fields").addEventListener("input", (event) => {
     const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
     event.target.value = digits.replace(/(\d{3})(?=\d)/g, "$1-");
   }
-  if (modalType === "paymentRequest" && event.target.closest(".payment-request-line-row")) syncPaymentRequestTotal();
+  if (modalType === "paymentRequest" && (event.target.closest(".payment-request-line-row") || ["netAmount", "single-amount"].includes(event.target.id))) syncPaymentRequestTotal();
   if (["payable", "replenishment"].includes(modalType) && event.target.closest(".payment-request-line-row")) syncFinancialRequestTotal();
   if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
-  if (modalType === "paymentRequest" && event.target.id === "employee") { syncPaymentRequestTotal(); syncPaymentRequestInvoiceOptions(); syncPaymentRequestDeductionDefaults(); }
+  if (modalType === "paymentRequest" && event.target.id === "employee") { refreshPaymentRequestInvoiceRowOptions(); syncPaymentRequestDeductionDefaults(); syncPaymentRequestTotal(); }
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders();
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
@@ -936,7 +960,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
   if (event.target.id === "bank" && modalType === "paymentRequest") syncPaymentRequestBankAccount();
   if (["withholdingTax", "expandedWithholdingTax"].includes(event.target.id) && modalType === "paymentRequest") syncPaymentRequestTotal();
-  if (event.target.classList.contains("payment-request-invoice-check")) syncPaymentRequestInvoiceHidden();
+  if (modalType === "paymentRequest" && (event.target.classList.contains("payment-request-invoice-select") || event.target.classList.contains("payment-request-row-wtax") || event.target.classList.contains("payment-request-row-ewt"))) syncPaymentRequestTotal();
   if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value);
   if (event.target.id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(event.target.value));
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);

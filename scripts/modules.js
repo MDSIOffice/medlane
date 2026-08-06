@@ -326,8 +326,14 @@ async function approvePaymentRequest(cvNo) {
   const invoiceIds = request.invoices?.length ? request.invoices : (request.invoice ? request.invoice.split(",").map((id) => id.trim()).filter(Boolean) : []);
   if (!invoiceIds.length) return toast("This payment request is not linked to an invoice.");
   if (request.requestStatus !== "Pending") return toast("This payment request has already been processed.");
-  const sales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const sales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean);
   if (!sales.length) return toast("Linked invoice(s) not found.");
+  // Requests created with the per-invoice itemized editor carry an explicit net amount for
+  // each invoice (item.netAmount). Older requests only have one lump total, so fall back to
+  // applying that sequentially, oldest invoice first — matches the payment behavior those
+  // requests were originally created and approved under.
+  const perInvoiceItems = (request.items || []).filter((item) => item.invoice && item.netAmount != null);
+  const hasPerInvoiceAmounts = perInvoiceItems.length > 0;
   const combinedBalance = sales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
   const requestedAmount = Number(request.total || request.amount || 0);
   if (requestedAmount > combinedBalance) return toast(`Cannot approve: requested ${peso.format(requestedAmount)} exceeds the combined remaining balance of ${peso.format(combinedBalance)}.`);
@@ -337,28 +343,41 @@ async function approvePaymentRequest(cvNo) {
     title: `Approve ${request.cvNo}`,
     fields: [["Invoice(s)", sales.map((sale) => sale.documentNo || sale.id).join(", ")], ["Client", sales[0].client], ["Requested Amount", peso.format(requestedAmount)], ["Combined Balance", peso.format(combinedBalance)]],
     confirmLabel: "Approve & Record Payment",
-    note: isFull ? "This will fully settle the selected invoice(s)." : "This will be recorded as a partial payment, applied to the oldest invoice first.",
+    note: hasPerInvoiceAmounts ? "This will apply the specified amount to each selected invoice." : isFull ? "This will fully settle the selected invoice(s)." : "This will be recorded as a partial payment, applied to the oldest invoice first.",
   });
   if (!ok) return;
   const by = currentUser?.name || "System User";
-  let remaining = requestedAmount;
   const newPayments = [];
-  sales.forEach((sale) => {
-    if (remaining <= 0) return;
-    const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
-    if (balance <= 0) return;
-    const applied = Math.min(balance, remaining);
-    remaining -= applied;
+  const applyPayment = (sale, applied) => {
+    if (applied <= 0) return;
     const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: "", chequeDate: request.chequeDate || "", transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo };
     data.payments.push(payment);
     newPayments.push(payment);
-  });
+  };
+  if (hasPerInvoiceAmounts) {
+    perInvoiceItems.forEach((item) => {
+      const sale = sales.find((entry) => (entry.documentNo || entry.id) === item.invoice);
+      if (!sale) return;
+      const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+      applyPayment(sale, Math.min(balance, Number(item.netAmount || 0)));
+    });
+  } else {
+    let remaining = requestedAmount;
+    [...sales].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)).forEach((sale) => {
+      if (remaining <= 0) return;
+      const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+      if (balance <= 0) return;
+      const applied = Math.min(balance, remaining);
+      remaining -= applied;
+      applyPayment(sale, applied);
+    });
+  }
   request.requestStatus = "Approved";
   request.status = "Approved";
   request.approvedBy = by;
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
-  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s), oldest first. Invoice paid amount updates only after deposit.`, by });
+  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updates only after deposit.`, by });
   await persistRecords({ paymentRequests: [request], payments: newPayments });
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
   notify("Payment Request", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
@@ -432,30 +451,30 @@ function openInvoicesForPaymentRequest(clientName = "") {
     .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 }
 
-function syncPaymentRequestInvoiceOptions(preselect = []) {
-  const list = qs("#payment-request-invoice-list");
-  if (!list) return;
-  const clientName = qs("#employee")?.value.trim() || "";
+function paymentRequestInvoiceOptionsHtml(clientName, selectedDoc = "") {
+  if (!clientName) return `<option value="">Select a client first</option>`;
   const invoices = openInvoicesForPaymentRequest(clientName);
-  const preselectSet = new Set(preselect);
-  list.innerHTML = invoices.length
-    ? invoices.map((sale) => {
-        const doc = sale.documentNo || sale.id;
-        const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
-        return `<label class="ios-check-row compact-doc-check"><input class="payment-request-invoice-check" type="checkbox" value="${escapeHtml(doc)}" ${preselectSet.has(doc) ? "checked" : ""} /><span></span><strong>${escapeHtml(doc)}</strong><small>${peso.format(balance)} balance · Due ${escapeHtml(fmtDate(addDays(sale.date, sale.terms)))}</small></label>`;
-      }).join("")
-    : `<p class="field-help">${clientName ? "No unpaid or partially paid invoices for this client." : "Select a client to see their unpaid/partially paid invoices."}</p>`;
-  syncPaymentRequestInvoiceHidden();
+  if (!invoices.length) return `<option value="">No unpaid or partially paid invoices for this client</option>`;
+  const options = invoices.map((sale) => {
+    const doc = sale.documentNo || sale.id;
+    const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+    return `<option value="${escapeHtml(doc)}" ${doc === selectedDoc ? "selected" : ""}>${escapeHtml(doc)} — ${peso.format(balance)} balance · Due ${escapeHtml(fmtDate(addDays(sale.date, sale.terms)))}</option>`;
+  }).join("");
+  return `<option value="">Select invoice</option>${options}`;
 }
 
-function syncPaymentRequestInvoiceHidden() {
-  const hidden = qs("#invoice");
-  if (!hidden) return;
-  hidden.value = qsa(".payment-request-invoice-check:checked").map((input) => input.value).join(", ");
+function refreshPaymentRequestInvoiceRowOptions() {
+  const clientName = qs("#employee")?.value.trim() || "";
+  qsa(".payment-request-invoice-select").forEach((select) => {
+    const current = select.value;
+    select.innerHTML = paymentRequestInvoiceOptionsHtml(clientName, current);
+  });
+  syncPaymentRequestTotal();
 }
 
 function collectPaymentRequestInvoices() {
-  return qsa(".payment-request-invoice-check:checked").map((input) => input.value);
+  if (paymentRequestPreselectedInvoice) return [paymentRequestPreselectedInvoice];
+  return collectPaymentRequestLines().map((line) => line.invoice).filter(Boolean);
 }
 
 function findSaleByDocumentInput(value) {
@@ -1936,7 +1955,7 @@ function renderInvoicing() {
     const pending = Math.max(Number(s.net || 0) - paid, 0);
     const balanceLine = paid > 0 ? `<small class="invoice-balance-line">Paid ${peso.format(paid)} · Pending ${peso.format(pending)}</small>` : "";
     const taxSummary = saleTaxSummary(s);
-    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p>${taxSummary ? `<small>${escapeHtml(taxSummary)}</small>` : ""}${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`}</div><div class="modal-actions"><button class="ghost-button" data-sale-detail="${s.id}">View</button><button class="ghost-button" data-print-invoice="${s.id}">Print</button>${s.status === "Cancelled" ? "" : `<button class="ghost-button" data-cancel-replace="${s.id}">Cancel & Replace</button>`}</div></div></details>`;
+    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><span class="pill ${deliveryStatusPillClass(s.deliveryStatus)}">${escapeHtml(s.deliveryStatus || "Pending")}</span><small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p>${taxSummary ? `<small>${escapeHtml(taxSummary)}</small>` : ""}${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`}</div><div class="modal-actions"><button class="ghost-button" data-sale-detail="${s.id}">View</button><button class="ghost-button" data-print-invoice="${s.id}">Print</button>${s.status === "Cancelled" ? "" : `<button class="ghost-button" data-cancel-replace="${s.id}">Cancel & Replace</button>`}</div></div></details>`;
   }).join("");
 }
 
@@ -2148,11 +2167,10 @@ function collectionStatusActions(payment, sale) {
 }
 
 function openPaymentRequestForInvoice(documentNo) {
-  openModal("paymentRequest");
   const sale = data.sales.find((entry) => (entry.documentNo || entry.id) === documentNo);
+  openModal("paymentRequest", sale ? { preselectInvoice: documentNo } : null);
   if (!sale) return;
   if (qs("#employee")) qs("#employee").value = sale.client;
-  syncPaymentRequestInvoiceOptions([documentNo]);
   syncPaymentRequestDeductionDefaults();
   syncPaymentRequestTotal();
 }
@@ -2255,13 +2273,31 @@ function nextCvNumber(year = cvYear()) {
 }
 const paymentRequestInstructions = "INSTRUCTIONS : This form must be accomplished in duplicate. All supporting documents must be attached with receipts issued to Medlane Diagnostics Solutions Inc. Incomplete information will delay processing of this payment request or no attached receipts will not receive any payment.";
 function paymentRequestLineTemplate(line = {}) {
-  return `<div class="payment-request-line-row"><div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div><div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
+  const clientName = qs("#employee")?.value.trim() || "";
+  const payee = findClientByName(clientName);
+  const wtaxDefault = line.withholdingTax != null ? line.withholdingTax : Boolean(payee?.withholdingTax);
+  const ewtDefault = line.expandedWithholdingTax != null ? line.expandedWithholdingTax : Boolean(payee?.expandedWithholdingTax);
+  return `<div class="payment-request-line-row payment-request-invoice-row"><div class="field"><label>Invoice</label><select class="payment-request-invoice-select" required>${paymentRequestInvoiceOptionsHtml(clientName, line.invoice || "")}</select></div><div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><div class="payment-request-row-withholding"><label class="ios-check-row compact-doc-check"><input class="payment-request-row-wtax" type="checkbox" ${wtaxDefault ? "checked" : ""} /><span></span><strong>WTax 5%</strong></label><label class="ios-check-row compact-doc-check"><input class="payment-request-row-ewt" type="checkbox" ${ewtDefault ? "checked" : ""} /><span></span><strong>EWT 1%</strong></label></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
 }
-function renderPaymentRequestEditor(lines = [{}]) {
-  return `<div class="field full payment-request-editor"><label>Particulars and Amount</label><div id="payment-request-line-list">${lines.map((line) => paymentRequestLineTemplate(line)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="total">Total</label><input id="total" name="total" readonly value="0.00" /></div></div><div id="payment-request-tax-preview" class="invoice-compute-preview payment-deduction-preview"></div><div class="payment-request-fixed-instructions"><strong>Instructions</strong><p>${escapeHtml(paymentRequestInstructions)}</p></div></div>`;
+function renderPaymentRequestEditor(lines = [{}], preselectDoc = null) {
+  paymentRequestPreselectedInvoice = preselectDoc || null;
+  if (paymentRequestPreselectedInvoice) {
+    const sale = data.sales.find((entry) => (entry.documentNo || entry.id) === paymentRequestPreselectedInvoice);
+    const balance = sale ? Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) : 0;
+    return `<div class="field full payment-request-editor"><label>Invoice</label><input value="${escapeHtml(`${paymentRequestPreselectedInvoice} — ${peso.format(balance)} balance`)}" readonly /><div class="field"><label for="single-amount">Amount</label><input id="single-amount" class="payment-request-single-amount" type="number" min="0" step="0.01" required /></div><label class="ios-check-row"><input id="withholdingTax" name="withholdingTax" type="checkbox" value="true" /><span></span><strong>Eligible for WTax 5%</strong></label><label class="ios-check-row"><input id="expandedWithholdingTax" name="expandedWithholdingTax" type="checkbox" value="true" /><span></span><strong>Eligible for EWT 1%</strong></label><div class="field payment-request-total-field"><label for="total">Total</label><input id="total" name="total" readonly value="0.00" /></div><div id="payment-request-tax-preview" class="invoice-compute-preview payment-deduction-preview"></div><div class="payment-request-fixed-instructions"><strong>Instructions</strong><p>${escapeHtml(paymentRequestInstructions)}</p></div></div>`;
+  }
+  return `<div class="field full payment-request-editor"><div class="field payment-request-net-amount-field"><label for="netAmount">Net Amount</label><p class="field-help">Enter the total net amount this collection should cover, then add the invoice(s) it pays for below.</p><input id="netAmount" name="netAmount" type="number" min="0" step="0.01" required /></div><label>Invoices and Amount</label><div id="payment-request-line-list">${lines.map((line) => paymentRequestLineTemplate(line)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="total">Total</label><input id="total" name="total" readonly value="0.00" /></div></div><div id="payment-request-tax-preview" class="payment-request-row-previews"></div><div class="payment-request-fixed-instructions"><strong>Instructions</strong><p>${escapeHtml(paymentRequestInstructions)}</p></div></div>`;
 }
 function collectPaymentRequestLines() {
-  return qsa(".payment-request-line-row").map((row) => ({ particulars: row.querySelector(".payment-request-particulars")?.value.trim() || "", amount: Number(row.querySelector(".payment-request-amount")?.value || 0) })).filter((line) => line.particulars || line.amount);
+  return qsa(".payment-request-invoice-row").map((row) => ({
+    invoice: row.querySelector(".payment-request-invoice-select")?.value || "",
+    amount: Number(row.querySelector(".payment-request-amount")?.value || 0),
+    withholdingTax: Boolean(row.querySelector(".payment-request-row-wtax")?.checked),
+    expandedWithholdingTax: Boolean(row.querySelector(".payment-request-row-ewt")?.checked),
+  })).filter((line) => line.invoice || line.amount);
+}
+function paymentRequestNetAmountExceeded(rows, netAmount) {
+  return netAmount > 0 && rows.reduce((sum, row) => sum + Number(row.amount || 0), 0) > netAmount;
 }
 
 function financialLineTemplate(line = {}, options = {}) {
@@ -2335,12 +2371,36 @@ function syncPaymentRequestDeductionDefaults() {
   if (qs("#withholdingTax")) qs("#withholdingTax").checked = Boolean(payee?.withholdingTax);
   if (qs("#expandedWithholdingTax")) qs("#expandedWithholdingTax").checked = Boolean(payee?.expandedWithholdingTax);
 }
+function paymentRequestRowDeductions(row) {
+  const taxBase = withholdingTaxBase(row.amount);
+  const withholdingTax = row.withholdingTax ? roundMoney(taxBase * 0.05) : 0;
+  const expandedWithholdingTax = row.expandedWithholdingTax ? roundMoney(taxBase * 0.01) : 0;
+  return { taxBase, withholdingTax, expandedWithholdingTax, total: Math.max(row.amount - withholdingTax - expandedWithholdingTax, 0) };
+}
+
 function syncPaymentRequestTotal() {
-  const gross = collectPaymentRequestLines().reduce((sum, line) => sum + Number(line.amount || 0), 0);
-  const deductions = paymentRequestDeductions(gross);
-  if (qs("#total")) qs("#total").value = deductions.total.toFixed(2);
+  if (paymentRequestPreselectedInvoice) {
+    const gross = Number(qs("#single-amount")?.value || 0);
+    const deductions = paymentRequestDeductions(gross);
+    if (qs("#total")) qs("#total").value = deductions.total.toFixed(2);
+    const preview = qs("#payment-request-tax-preview");
+    if (preview) preview.innerHTML = `<div class="preview-tax-label">WTax/EWT computed from VAT-exclusive base</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Request</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${withholdingMoney(withholdingTaxBase(gross))}</strong></div><div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${withholdingMoney(deductions.withholdingTax)}</strong></div><div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${withholdingMoney(deductions.expandedWithholdingTax)}</strong></div><div class="invoice-meta total-line"><span>Total Payment Request</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
+    return;
+  }
+  const rows = collectPaymentRequestLines();
+  const netAmount = Number(qs("#netAmount")?.value || 0);
+  const sumAmounts = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  let grandTotal = 0;
+  const blocks = rows.filter((row) => row.invoice || row.amount).map((row) => {
+    const deductions = paymentRequestRowDeductions(row);
+    grandTotal += deductions.total;
+    return `<div class="invoice-tax-summary live-preview payment-request-row-breakdown"><div class="preview-tax-label">${escapeHtml(row.invoice || "Unselected invoice")}</div><div class="invoice-meta"><span>Amount</span><strong>${peso.format(row.amount)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${withholdingMoney(deductions.taxBase)}</strong></div>${deductions.withholdingTax ? `<div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${withholdingMoney(deductions.withholdingTax)}</strong></div>` : ""}${deductions.expandedWithholdingTax ? `<div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${withholdingMoney(deductions.expandedWithholdingTax)}</strong></div>` : ""}<div class="invoice-meta total-line"><span>Net For This Invoice</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
+  }).join("");
+  if (qs("#total")) qs("#total").value = grandTotal.toFixed(2);
+  const overLimit = paymentRequestNetAmountExceeded(rows, netAmount);
+  qs("#netAmount")?.closest(".field")?.classList.toggle("field-error", overLimit);
   const preview = qs("#payment-request-tax-preview");
-  if (preview) preview.innerHTML = `<div class="preview-tax-label">WTax/EWT computed from VAT-exclusive base</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Request</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${withholdingMoney(withholdingTaxBase(gross))}</strong></div><div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${withholdingMoney(deductions.withholdingTax)}</strong></div><div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${withholdingMoney(deductions.expandedWithholdingTax)}</strong></div><div class="invoice-meta total-line"><span>Total Payment Request</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
+  if (preview) preview.innerHTML = `${blocks}${overLimit ? `<p class="field-error-message">Itemized amount total (${peso.format(sumAmounts)}) exceeds Net Amount (${peso.format(netAmount)}). Reduce the amounts or increase Net Amount.</p>` : ""}`;
 }
 function paymentRequestHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
@@ -4311,7 +4371,7 @@ const modalConfigs = {
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
-  paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => data.clients.map((client) => client.name)], ["invoice", "Invoice(s) Being Paid (optional)", "multi-invoice"], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => data.banks.map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"], ["withholdingTax", "Eligible for WTax 5%", "checkbox"], ["expandedWithholdingTax", "Eligible for EWT 1%", "checkbox"]] },
+  paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => data.clients.map((client) => client.name)], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => data.banks.map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => data.employees.map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
@@ -4356,7 +4416,6 @@ function openModal(type, edit = null) {
       const values = typeof options === "function" ? options() : options;
       return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${values.map((value) => `<label class="ios-check-row compact-doc-check"><input name="${name}Selected" type="checkbox" value="${escapeHtml(value)}" /><span></span><strong>${escapeHtml(value)}</strong></label>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /></div>`;
     }
-    if (kind === "multi-invoice") return `<div class="field full"><label>${label}</label><div id="payment-request-invoice-list" class="doc-checkbox-grid"><p class="field-help">Select a client to see their unpaid/partially paid invoices.</p></div><p class="field-help">Payment is applied to the oldest selected invoice first.</p><input id="${name}" name="${name}" type="hidden" /></div>`;
     if (kind === "department-contacts") return `<div class="field full department-contacts-field"><label>${label}</label><p class="field-help">Format shown below is a guide, not required — leave any line blank if not applicable.</p><div class="department-contacts-grid">${clientContactDepartments.map(([key, deptLabel]) => `<fieldset class="department-contact-block"><legend>${escapeHtml(deptLabel)}</legend><div class="field"><label>Contact Person</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="person" /></div><div class="field"><label>Contact No.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="phone" /></div><div class="field"><label>E-mail Add.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="email" type="email" /></div></fieldset>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /><input id="contactDepartments" name="contactDepartments" type="hidden" /></div>`;
     return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${kind}" ${kind === "date" && name.toLowerCase().includes("expiry") ? `min="${fmtDate(today)}"` : ""} ${kind !== "date" && name !== "creditLimit" ? "required" : ""} /></div>`;
   }).join("");
@@ -4397,7 +4456,7 @@ function openModal(type, edit = null) {
     syncFinancialRequestTotal();
     if (!edit) qs("#date").value = fmtDate(today);
   }
-  if (type === "paymentRequest") qs("#modal-fields").insertAdjacentHTML("beforeend", renderPaymentRequestEditor(edit?.record?.items || [{}]));
+  if (type === "paymentRequest") qs("#modal-fields").insertAdjacentHTML("beforeend", renderPaymentRequestEditor(edit?.record?.items || [{}], edit?.preselectInvoice || null));
   if (type === "payable") togglePayableFields();
   if (type === "user") {
     qs("#role").value = "Admin";
@@ -4419,13 +4478,12 @@ function openModal(type, edit = null) {
     qs("#terms").value = 30;
     syncClientDocsHidden();
   }
-  if (type === "paymentRequest" && !edit) {
+  if (type === "paymentRequest" && !edit?.record) {
     qs("#department").value = currentUser?.role || "Accounting";
     qs("#date").value = fmtDate(today);
     qs("#cvNo").value = nextCvNumber(cvYear(qs("#date").value));
     qs("#total").value = "0.00";
     togglePaymentRequestChequeFields();
-    syncPaymentRequestInvoiceOptions();
     syncPaymentRequestTotal();
   }
   if (type === "employee" && !edit) {

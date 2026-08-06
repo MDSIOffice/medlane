@@ -23,6 +23,7 @@ function statusClass(status) {
   if (value.includes("si") || value.includes("admin")) return "purple";
   return "gray";
 }
+function deliveryStatusPillClass(status) { return status === "Pending" || !status ? "orange" : "green"; }
 function documentType(type) { return type === "DRS" ? "DR" : type; }
 function invoiceTypeIcon(type) {
   return ({ SI: "₱", TS: "T", DR: "D", DRS: "D" }[type] || "#");
