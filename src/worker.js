@@ -965,13 +965,6 @@ function objectKeyFor(fileName, recordType) {
   return `uploads/${folder}/${crypto.randomUUID()}-${safeFileName(fileName)}`;
 }
 
-function backupTypeForCron(cron) {
-  if (cron === "0 10 1 1 *") return "yearly";
-  if (cron === "0 10 1 * *") return "monthly";
-  if (cron === "0 10 * * sun") return "weekly";
-  return null;
-}
-
 async function gzipBytes(text) {
   const stream = new Blob([text], { type: "application/json" }).stream().pipeThrough(new CompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -1004,7 +997,7 @@ async function createBackup(env, backupType = "manual", actor = null) {
   } catch (error) {
     await releaseStorage(env, bytes.byteLength).catch(() => null);
     await env.DOCUMENTS_BUCKET.delete(objectKey).catch(() => null);
-    await sendDiscordWebhook(env, { content: "@everyone Backup failed. Immediate review recommended.", allowedMentions: { parse: ["everyone"] }, embeds: [{ title: "Backup Failed", color: 0xef4b4f, description: String(error.message || error).slice(0, 500), fields: [{ name: "Type", value: backupType, inline: true }], timestamp: new Date().toISOString() }] }).catch(() => null);
+    await sendDiscordWebhook(env, { content: "Backup failed. Immediate review recommended.", embeds: [{ title: "Backup Failed", color: 0xef4b4f, description: String(error.message || error).slice(0, 500), fields: [{ name: "Type", value: backupType, inline: true }], timestamp: new Date().toISOString() }] }).catch(() => null);
     throw error;
   }
 }
@@ -1049,8 +1042,6 @@ const DIGEST_ROLE_RECIPIENTS = {
   digestAuditLog: ["Superadmin", "CEO"],
 };
 
-const DAILY_DIGEST_CRON = "0 10 * * *";
-const WEEKLY_DIGEST_CRON = "0 10 * * fri";
 const FIVE_MINUTE_MONITOR_CRON = "*/5 * * * *";
 
 function digestDaysUntil(dateStr) {
@@ -1301,17 +1292,22 @@ async function checkAssetPageHealth(env, path, name) {
   }
 }
 
+// Backups only run weekly (Sun), monthly (1st), yearly (Jan 1) — never daily — so "stale" must
+// be judged against that cadence, not a flat 24h window. A flat 24h threshold would report
+// "stale" on 6 of every 7 days by design, not because anything is wrong.
+const BACKUP_STALE_HOURS = 24 * 7;
+
 async function backupStatus(env) {
   const rows = await supabaseFetch(env, `/rest/v1/backup_runs?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=id,backup_type,mode,object_key,records_count,size_bytes,created_at&order=created_at.desc&limit=1`);
   const latest = rows[0] || null;
   const ageHours = latest?.created_at ? (Date.now() - new Date(latest.created_at).getTime()) / 36e5 : null;
-  return { latest, ageHours, stale: !latest || ageHours > 24 };
+  return { latest, ageHours, stale: !latest || ageHours > BACKUP_STALE_HOURS };
 }
 
 async function checkBackupFreshnessHealth(env) {
   try {
     const status = await backupStatus(env);
-    return { name: "Backup freshness", ok: !status.stale, note: status.latest ? `Latest ${status.latest.backup_type} backup ${status.ageHours.toFixed(1)} hours ago` : "No successful backup recorded", error: status.stale ? "No successful backup in the last 24 hours" : "" };
+    return { name: "Backup freshness", ok: !status.stale, note: status.latest ? `Latest ${status.latest.backup_type} backup ${status.ageHours.toFixed(1)} hours ago` : "No successful backup recorded", error: status.stale ? `No successful backup in the last ${BACKUP_STALE_HOURS / 24} days` : "" };
   } catch (error) {
     return { name: "Backup freshness", ok: false, error: error.message };
   }
@@ -1397,7 +1393,7 @@ async function runApiHealthMonitor(env) {
     }
   } else await recordSystemLog(env, { action: "Discord health monitor skipped", module: "Discord", record: "DISCORD_HEALTH_WEBHOOK_URL not configured" });
   await saveMonitoringState(env, "api-health-status", { lastStatus: failed.length ? "failed" : "ok", lastCheckedAt: new Date().toISOString(), lastFailedAt: failed.length ? new Date().toISOString() : statusState.lastFailedAt || null, lastRecoveredAt: recovered ? new Date().toISOString() : statusState.lastRecoveredAt || null, failedChecks: failed.map((check) => check.name) }).catch((error) => recordSystemLog(env, { action: "Health status state save failed", module: "Monitoring", record: error.message }));
-  if (failed.length) await sendDiscordWebhook(env, { content: "@everyone 🚨 **Medlane API health check failed.**", allowedMentions: { parse: ["everyone"] }, embeds: [embed] });
+  if (failed.length) await sendDiscordWebhook(env, { content: "🚨 **Medlane API health check failed.**", embeds: [embed] });
   else if (recovered) await sendDiscordWebhook(env, { embeds: [{ title: "Medlane API Health Recovered", color: 0x22c55e, description: "All monitored API checks are back to OK after the previous failure.", fields: [{ name: "Recovered At", value: `**${updatedAt} PHT**`, inline: false }, { name: "Monthly Uptime", value: `${uptime.uptimePercent.toFixed(2)}%`, inline: true }], timestamp: new Date().toISOString() }] });
 }
 
@@ -1454,11 +1450,13 @@ async function runFiveMinuteScheduledTasks(event, env) {
   const scheduled = manilaScheduleParts(event.scheduledTime || Date.now());
   const tasks = [runApiHealthMonitor(env)];
   if (["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env));
-  if (scheduled.minute === "00" && scheduled.hour === "17") {
+  // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
+  // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
+  // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
+  // fired — this internal hour check is what has always driven the real sends.
+  if (scheduled.minute === "00" && scheduled.hour === "18") {
     tasks.push(runDailyDigest(env));
     if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env));
-  }
-  if (scheduled.minute === "00" && scheduled.hour === "18") {
     if (scheduled.weekday === "Sun") tasks.push(createBackup(env, "weekly", null));
     if (scheduled.day === "01") tasks.push(createBackup(env, "monthly", null));
     if (scheduled.month === "01" && scheduled.day === "01") tasks.push(createBackup(env, "yearly", null));
@@ -1583,8 +1581,8 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
     budgetedFields.push(field);
     charBudget -= cost;
   }
-  const mentionContent = [...mentionedRoleIds].map((id) => `<@&${id}>`).join(" ");
-  await sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
+  const mentionContent = ["@everyone", ...[...mentionedRoleIds].map((id) => `<@&${id}>`)].join(" ");
+  await sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { parse: ["everyone"], roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
 }
 
 async function runDailyDigest(env) {
@@ -1602,19 +1600,7 @@ export default {
     if (env.ENVIRONMENT !== "production") return;
     if (event.cron === FIVE_MINUTE_MONITOR_CRON) {
       ctx.waitUntil(runFiveMinuteScheduledTasks(event, env).catch((error) => console.error(JSON.stringify({ message: "Five-minute scheduled tasks failed", error: error.message }))));
-      return;
     }
-    if (event.cron === DAILY_DIGEST_CRON) {
-      ctx.waitUntil(runDailyDigest(env).catch((error) => console.error(JSON.stringify({ message: "Daily digest failed", error: error.message }))));
-      return;
-    }
-    if (event.cron === WEEKLY_DIGEST_CRON) {
-      ctx.waitUntil(runWeeklyDigest(env).catch((error) => console.error(JSON.stringify({ message: "Weekly digest failed", error: error.message }))));
-      return;
-    }
-    const backupType = backupTypeForCron(event.cron);
-    if (!backupType) return;
-    ctx.waitUntil(createBackup(env, backupType, null).catch((error) => console.error(JSON.stringify({ message: "Scheduled backup failed", cron: event.cron, error: error.message }))));
   },
   async fetch(request, env) {
     const url = new URL(request.url);

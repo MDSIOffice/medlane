@@ -612,7 +612,7 @@ body[data-active-section="notifications"] #export-demo { display: none; }
 :root[data-theme="dark"] .theme-switch { background: linear-gradient(90deg, #0b1424, #16233d); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
 .theme-switch-thumb {
   position: absolute;
-  top: 1px;
+  top: 50%;
   left: 1px;
   width: 31px;
   height: 31px;
@@ -621,10 +621,11 @@ body[data-active-section="notifications"] #export-demo { display: none; }
   place-items: center;
   background: #f59e0b;
   color: #fff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  transform: translateY(-50%);
   transition: transform 0.25s ease, background 0.25s ease;
 }
-:root[data-theme="dark"] .theme-switch-thumb { transform: translateX(27px); background: #5ab4ff; }
+:root[data-theme="dark"] .theme-switch-thumb { transform: translateY(-50%) translateX(27px); background: #5ab4ff; }
 .theme-switch-thumb svg { width: 17px; height: 17px; }
 .theme-switch-icon-moon { display: none; }
 :root[data-theme="dark"] .theme-switch-icon-sun { display: none; }
@@ -1190,6 +1191,8 @@ select, .search-input {
   padding: 14px;
   resize: vertical;
   font: 500 14px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--panel-solid);
+  color: var(--ink);
 }
 .import-preview-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .import-preview-summary article { border: 1px solid var(--line); border-radius: 16px; background: var(--tint); padding: 12px; }
@@ -1272,9 +1275,11 @@ tbody tr[data-sale-row] { cursor: pointer; }
 tbody tr[data-sale-row]:hover { background: var(--tint-strong); }
 td small { display: block; color: var(--muted); margin-top: 3px; }
 .focus-target { position: relative; outline: 3px solid rgba(215, 25, 32, 0.72) !important; outline-offset: 3px; animation: focusPulse 1.1s ease-in-out 3; background: var(--tint-orange) !important; }
-#logs-table { min-width: 1320px; }
-#logs-table th:nth-child(6), #logs-table td:nth-child(6) { min-width: 640px; max-width: 900px; white-space: normal; }
-.log-record { display: block; max-width: 900px; white-space: normal; word-break: break-word; line-height: 1.35; }
+@media (min-width: 641px) {
+  #logs-table { min-width: 1320px; }
+  #logs-table th:nth-child(6), #logs-table td:nth-child(6) { min-width: 640px; max-width: 900px; white-space: normal; }
+}
+.log-record { display: block; max-width: 100%; white-space: normal; word-break: break-word; line-height: 1.35; }
 
 .invoice-card strong, .report-card strong { display: block; margin: 9px 0 8px; font-size: 20px; }
 .collapsible-invoice { align-self: start; padding: 0; }
@@ -1299,7 +1304,7 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .invoice-type-icon.type-TS, .invoice-type-badge.type-TS span { background: linear-gradient(135deg, var(--green), #4ade80); }
 .invoice-type-icon.type-DR, .invoice-type-icon.type-DRS, .invoice-type-badge.type-DR span, .invoice-type-badge.type-DRS span { background: linear-gradient(135deg, var(--orange), #facc15); color: #10213d; }
 .invoice-type-icon.type-PO, .invoice-type-badge.type-PO span { background: linear-gradient(135deg, var(--purple), #a78bfa); }
-.sales-total-panel { margin-top: 16px; }
+.sales-total-panel { margin-top: 16px; margin-bottom: 16px; }
 .sales-summary-grid { display: grid; gap: 14px; }
 .sales-summary-hero { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 14px; }
 .sales-summary-card { border: 1px solid var(--line); border-radius: 22px; background: var(--tint); padding: 18px 20px; }
@@ -1320,8 +1325,9 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .invoice-details { display: grid; gap: 12px; border-top: 1px solid var(--line); padding: 16px 18px 18px; }
 .invoice-details > p { margin: 0; line-height: 1.45; }
 .invoice-tax-summary { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 18px; background: var(--tint); padding: 12px; }
-.invoice-meta { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-top: 0; }
+.invoice-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; margin-top: 0; }
 .invoice-meta span { min-width: 0; color: var(--muted); font-weight: 800; line-height: 1.25; }
+.invoice-meta select { min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-solid); color: var(--ink); padding: 6px 8px; font-size: 13px; justify-self: end; }
 .invoice-meta strong { margin: 0 !important; color: var(--ink); font-size: 18px !important; text-align: right; white-space: nowrap; }
 .invoice-details .modal-actions { justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .invoice-details .modal-actions button { flex: 0 1 auto; min-width: 92px; }
@@ -1358,7 +1364,7 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .tracker-step.done i { background: var(--chip-green-bg); color: var(--text-on-green-chip); }
 .tracker-step.pending i { background: var(--chip-amber-bg); color: var(--text-on-amber-chip); }
 .tracker-step.blocked i { background: var(--chip-red-bg); color: var(--text-on-red-chip); }
-.tracker-step strong, .tracker-step span { display: block; }
+.tracker-step strong, .tracker-step span { display: block; white-space: normal; overflow-wrap: anywhere; }
 .tracker-step span { margin-top: 5px; color: var(--muted); font-size: 12px; }
 .tracker-step small { display: block; margin-top: 7px; color: var(--blue-dark); font-size: 11px; font-weight: 900; }
 .tracker-step em { display: block; margin-top: 7px; color: #475569; font-size: 11px; font-style: normal; line-height: 1.35; white-space: normal; }
@@ -1384,7 +1390,10 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .credit-warning { color: var(--red); font-weight: 900; }
 
 .chart-bars { display: grid; gap: 10px; margin-top: 14px; }
-.chart-row { display: grid; grid-template-columns: 190px 1fr 120px; align-items: center; gap: 12px; }
+/* minmax(), not fixed px, on every track so the row can never demand more width than its
+   container has — fixed 190px/120px tracks were forcing overflow (silently clipped by the
+   page's overflow-x:hidden) on narrow screens before the 860px stacking breakpoint kicked in. */
+.chart-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(50px, 100px) minmax(0, max-content); align-items: center; gap: 8px 12px; }
 .chart-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 800; }
 .chart-track { overflow: hidden; height: 18px; border-radius: 999px; background: var(--chip-blue-bg-strong); }
 .chart-fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), #38bdf8); }
@@ -1392,12 +1401,12 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .chart-fill.green { background: linear-gradient(90deg, var(--green), #4ade80); }
 .chart-fill.orange { background: linear-gradient(90deg, var(--orange), #fbbf24); }
 .chart-fill.red { background: linear-gradient(90deg, var(--red), #fb7185); }
-.chart-value { color: var(--muted); font-weight: 800; text-align: right; }
+.chart-value { min-width: 0; color: var(--muted); font-weight: 800; text-align: right; white-space: nowrap; }
 .graph-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; font-weight: 800; line-height: 1.45; }
 .visual-card .graph-note { margin-top: auto; padding-top: 10px; border-top: 1px dashed rgba(96, 116, 141, 0.25); }
 .compact-chart .chart-row { grid-template-columns: 1fr; gap: 5px; }
 .compact-chart .chart-value { text-align: left; }
-.line-chart { margin-top: 14px; }
+.line-chart { margin-top: 14px; padding: 0 4px; }
 .line-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
 .chart-axis { stroke: var(--gray-chip); stroke-width: 2; }
 .chart-gridline { stroke: #e2e8f0; stroke-width: 1; stroke-dasharray: 4 7; }
@@ -1607,11 +1616,17 @@ button.calendar-cell:hover { background: var(--tint); }
 .payment-request-row-breakdown { margin: 0; }
 .field-error input, .field-error select { border-color: var(--red) !important; }
 .field-error-message { color: var(--red); font-size: 13px; font-weight: 700; margin: 8px 0 0; }
+.attached-files-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.attached-file-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); color: var(--blue-dark); padding: 6px 12px; font-size: 12px; font-weight: 800; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attached-file-chip:hover { background: var(--tint-strong); }
 .equipment-expiry-field { display: none; }
 .payment-request-fixed-instructions { margin-top: 14px; border: 1px dashed #bfdbfe; border-radius: 16px; background: var(--panel-solid); padding: 12px 14px; }
 .payment-request-fixed-instructions strong { color: var(--ink); }
 .payment-request-fixed-instructions p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
-.template-overlay { position: relative; margin: 0 auto; background: var(--panel-solid); color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.12; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12); }
+/* Always represents physical white paper (pre-printed form / print-template editor canvas),
+   regardless of site theme — background and text colors here are intentionally hardcoded,
+   not theme variables, so it stays legible in dark mode instead of turning near-black-on-navy. */
+.template-overlay { position: relative; margin: 0 auto; background: #ffffff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.12; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12); }
 .template-overlay::before { content: "Data-only print overlay. Use with pre-printed form."; position: absolute; inset: 12px auto auto 12px; color: #94a3b8; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
 .template-overlay .field { position: absolute; display: block; white-space: nowrap; overflow: hidden; color: #111827; font-weight: 700; }
 .template-overlay small { display: block; margin-top: 4px; color: #111827; font-size: 11px; font-weight: 700; }
@@ -1725,11 +1740,20 @@ button.calendar-cell:hover { background: var(--tint); }
 .pt-arrow-row { display: flex; gap: 4px; }
 .print-template-actions { justify-content: flex-end; margin-top: 14px; }
 .report-preview-template-field { max-width: 260px; margin: 10px 0; }
+@media (max-width: 640px) {
+  .print-template-editor { grid-template-columns: 1fr; }
+  .print-template-canvas-wrap { width: 100%; max-width: 342px; height: auto; aspect-ratio: 8.5 / 11; margin: 0 auto; }
+  .print-template-canvas-wrap .pt-canvas-inner { transform: scale(0.4); }
+  .print-template-panel { position: static; }
+}
 .modal-header { align-items: flex-start; margin-bottom: 18px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .field { display: grid; gap: 7px; }
 .field label { font-weight: 800; color: var(--ink); }
 .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-solid); padding: 12px 13px; color: var(--ink); }
+input[type="file"] { color: var(--ink); }
+input[type="file"]::file-selector-button { margin-right: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--tint); color: var(--ink); padding: 8px 14px; font-weight: 700; cursor: pointer; }
+input[type="file"]::file-selector-button:hover { background: var(--tint-strong); }
 .field input[readonly] { cursor: not-allowed; background: var(--tint-strong); color: var(--muted); }
 .field input[readonly]:focus { outline-color: rgba(100, 116, 139, 0.28); }
 .field textarea { min-height: 92px; resize: vertical; }
@@ -2080,18 +2104,21 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .table-card table:not(#parameter-qc-table) thead { display: none; }
   .table-card table:not(#parameter-qc-table) tbody, .table-card table:not(#parameter-qc-table) tr, .table-card table:not(#parameter-qc-table) td { display: block; width: 100%; }
   .table-card table:not(#parameter-qc-table) tr { padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-solid); box-shadow: var(--shadow-soft); }
-  .table-card table:not(#parameter-qc-table) td { display: grid; grid-template-columns: minmax(104px, 36%) 1fr; gap: 10px; padding: 9px 0; border: 0; text-align: right; }
+  .table-card table:not(#parameter-qc-table) td { display: grid; grid-template-columns: minmax(104px, 36%) minmax(0, 1fr); gap: 10px; padding: 9px 0; border: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
   .table-card table:not(#parameter-qc-table) td::before { content: attr(data-label); color: var(--muted); font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; text-align: left; }
-  .table-card table:not(#parameter-qc-table) td > * { justify-self: end; }
+  .table-card table:not(#parameter-qc-table) td > * { justify-self: end; min-width: 0; }
   .table-card table:not(#parameter-qc-table) .skeleton-cell { align-self: center; justify-self: end; max-width: 170px; }
   .table-card table:not(#parameter-qc-table).is-loading-table tr { min-height: 180px; }
   .table-card table:not(#parameter-qc-table).is-loading-table td { min-height: 26px; }
   .table-card table:not(#parameter-qc-table) td[data-label="Actions"],
-  .table-card table:not(#parameter-qc-table) td[data-label="Action"] { grid-template-columns: 1fr; text-align: left; }
+  .table-card table:not(#parameter-qc-table) td[data-label="Action"],
+  .table-card table:not(#parameter-qc-table) td[data-label="Fix"] { grid-template-columns: 1fr; text-align: left; }
   .table-card table:not(#parameter-qc-table) td[data-label="Actions"]::before,
-  .table-card table:not(#parameter-qc-table) td[data-label="Action"]::before { margin-bottom: 2px; }
+  .table-card table:not(#parameter-qc-table) td[data-label="Action"]::before,
+  .table-card table:not(#parameter-qc-table) td[data-label="Fix"]::before { margin-bottom: 2px; }
   .table-card table:not(#parameter-qc-table) td[data-label="Actions"] > *,
-  .table-card table:not(#parameter-qc-table) td[data-label="Action"] > * { justify-self: stretch; width: 100%; }
+  .table-card table:not(#parameter-qc-table) td[data-label="Action"] > *,
+  .table-card table:not(#parameter-qc-table) td[data-label="Fix"] > * { justify-self: stretch; width: 100%; }
   .table-card table:not(#parameter-qc-table) td[data-label="Actions"] .inline-actions,
   .table-card table:not(#parameter-qc-table) td[data-label="Action"] .inline-actions,
   .table-card table:not(#parameter-qc-table) td[data-label="Actions"] .modal-actions,

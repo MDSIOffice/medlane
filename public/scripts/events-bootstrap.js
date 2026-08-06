@@ -700,9 +700,18 @@ document.addEventListener("blur", (event) => {
 document.addEventListener("click", (event) => {
   const removeSheetRow = event.target.closest(".remove-sheet-row");
   if (removeSheetRow) removeInventorySheetRow(removeSheetRow);
+  const uploadCopyButton = event.target.closest("[data-upload-copy]");
+  if (uploadCopyButton) uploadCopyButton.parentElement.querySelector(".physical-copy-input")?.click();
 });
 document.addEventListener("change", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
+  if (event.target.classList.contains("physical-copy-input") && event.target.files?.length) {
+    const file = event.target.files[0];
+    const { recordType, recordId, rerender } = event.target.dataset;
+    const onDone = rerender === "payment-request-detail" ? () => renderPaymentRequestDetail(recordId) : rerender && sectionRenderers[rerender] ? sectionRenderers[rerender] : null;
+    uploadPhysicalCopy(file, recordType, recordId, "Physical copy", onDone);
+    event.target.value = "";
+  }
 });
 qs("#inventory-branch-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-inventory-branch]");

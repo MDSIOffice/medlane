@@ -431,6 +431,7 @@ async function cancelPaymentRequest(cvNo) {
 }
 
 function renderPaymentRequestDetail(cvNo) {
+  ensureUploadedFilesLoaded(() => renderPaymentRequestDetail(cvNo));
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
   if (!request) return toast("Payment request not found.");
   const events = paymentRequestHistory(request);
@@ -441,8 +442,9 @@ function renderPaymentRequestDetail(cvNo) {
     ? `<p class="page-description">${request.requestStatus === "Cancelled" ? "This payment request was cancelled." : "Deposited — this payment is final and its status can no longer be changed."}</p>`
     : `<div class="modal-actions collection-status-actions"><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Deposited">Deposited</button><button class="ghost-button danger-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Bounced">Bounced</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Posted Date">Posted Date</button></div>`;
   const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposition</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposition")}">${escapeHtml(payment.collectionStatus || "For Deposition")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
+  const physicalCopySection = request.requestStatus === "Approved" ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Physical Copy</span><strong>Signed CV Voucher</strong><small>Upload a photo/scan of the physically signed and released voucher.</small></div></header>${attachedFilesHtml("paymentRequest", request.cvNo)}<div class="modal-actions"><button class="ghost-button" data-upload-copy="${escapeHtml(request.cvNo)}" type="button">Upload Physical Copy</button><input type="file" accept="image/*" class="physical-copy-input" data-record-type="paymentRequest" data-record-id="${escapeHtml(request.cvNo)}" data-rerender="payment-request-detail" hidden /></div></div>` : "";
   qs("#payment-request-detail-title").textContent = `${request.cvNo} · ${request.employee}`;
-  qs("#payment-request-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.employee || "-")}</p><h2>${escapeHtml(request.invoice ? `Linked to ${request.invoice}` : "CV Voucher")}</h2></div><span class="pill ${statusClass(request.requestStatus || request.status)}">${escapeHtml(request.requestStatus || request.status || "-")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(request.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(request.total || 0)}</strong></div><div class="report-preview-card"><small>Prepared By</small><strong>${escapeHtml(request.preparedBy || "-")}</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(request.approvedBy || "-")}</strong></div></div>${depositSection}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Approved" ? "done" : "pending"}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  qs("#payment-request-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.employee || "-")}</p><h2>${escapeHtml(request.invoice ? `Linked to ${request.invoice}` : "CV Voucher")}</h2></div><span class="pill ${statusClass(request.requestStatus || request.status)}">${escapeHtml(request.requestStatus || request.status || "-")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(request.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(request.total || 0)}</strong></div><div class="report-preview-card"><small>Prepared By</small><strong>${escapeHtml(request.preparedBy || "-")}</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(request.approvedBy || "-")}</strong></div></div>${depositSection}${physicalCopySection}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Approved" ? "done" : "pending"}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
   showSection("payment-request-detail");
 }
 
@@ -1948,14 +1950,79 @@ function invoiceTaxMetaHtml(sale) {
   return `<div class="invoice-tax-summary"><div class="invoice-meta"><span>${salesLabel}</span><strong>${peso.format(breakdown.totalSalesVatInclusive)}</strong></div>${breakdown.withholdingTax ? `<div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${peso.format(breakdown.withholdingTax)}</strong></div>` : ""}${breakdown.expandedWithholdingTax ? `<div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${peso.format(breakdown.expandedWithholdingTax)}</strong></div>` : ""}${breakdown.addVat ? `<div class="invoice-meta"><span>Amount Net VAT</span><strong>${peso.format(breakdown.amountNetVat)}</strong></div><div class="invoice-meta"><span>Add VAT</span><strong>${peso.format(breakdown.addVat)}</strong></div>` : ""}<div class="invoice-meta total-line"><span>Total Amount Due</span><strong>${peso.format(breakdown.totalAmountDue)}</strong></div>${paid > 0 ? `<div class="invoice-meta"><span>Paid Balance</span><strong>${peso.format(paid)}</strong></div><div class="invoice-meta total-line"><span>Pending Balance</span><strong>${peso.format(pending)}</strong></div>` : ""}</div>`;
 }
 
+// ---- Physical-copy uploads (invoice scans, signed CV vouchers) ----
+// Re-encodes to JPEG at a capped max dimension before upload so scanned photos (often several
+// MB straight off a phone camera) don't eat into the shared R2 storage quota.
+function compressImageFile(file, { maxDimension = 1600, quality = 0.72 } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) { reject(new Error("Only image files (photo or scan) can be uploaded here.")); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the selected file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not read the selected image."));
+      img.onload = () => {
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error("Could not compress the image.")); return; }
+          resolve(new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" }));
+        }, "image/jpeg", quality);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function refreshUploadedFiles() {
+  uploadedFilesCache = (await MedlaneAPI.listFiles().catch(() => ({ files: [] }))).files || [];
+  uploadedFilesLoaded = true;
+}
+
+function ensureUploadedFilesLoaded(onLoaded) {
+  if (uploadedFilesLoaded) return;
+  refreshUploadedFiles().then(onLoaded);
+}
+
+function attachedFilesFor(recordType, recordId) {
+  return uploadedFilesCache.filter((file) => file.record_type === recordType && file.record_id === recordId);
+}
+
+function attachedFilesHtml(recordType, recordId) {
+  const files = attachedFilesFor(recordType, recordId);
+  if (!files.length) return "";
+  return `<div class="attached-files-list">${files.map((file) => `<a class="attached-file-chip" href="/api/files/${escapeHtml(file.id)}" target="_blank" rel="noopener">📎 ${escapeHtml(file.file_name)}</a>`).join("")}</div>`;
+}
+
+async function uploadPhysicalCopy(file, recordType, recordId, label, onDone) {
+  if (!file) return;
+  const maxOriginalBytes = 26214400;
+  if (file.size > maxOriginalBytes) return toast("File is too large (max 25 MB before compression).");
+  toast(`Compressing and uploading ${label}...`);
+  try {
+    const compressed = await compressImageFile(file);
+    await MedlaneAPI.uploadFile(compressed, { recordType, recordId });
+    await refreshUploadedFiles();
+    toast(`${label} uploaded.`);
+    if (onDone) onDone();
+  } catch (error) {
+    toast(error.message || "Upload failed.");
+  }
+}
+
 function renderInvoicing() {
+  ensureUploadedFilesLoaded(renderInvoicing);
   qs("#invoice-grid").innerHTML = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).map((s) => {
     const due = fmtDate(addDays(s.date, s.terms));
     const paid = Number(s.paid || 0);
     const pending = Math.max(Number(s.net || 0) - paid, 0);
     const balanceLine = paid > 0 ? `<small class="invoice-balance-line">Paid ${peso.format(paid)} · Pending ${peso.format(pending)}</small>` : "";
     const taxSummary = saleTaxSummary(s);
-    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><span class="pill ${deliveryStatusPillClass(s.deliveryStatus)}">${escapeHtml(s.deliveryStatus || "Pending")}</span><small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p>${taxSummary ? `<small>${escapeHtml(taxSummary)}</small>` : ""}${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`}</div><div class="modal-actions"><button class="ghost-button" data-sale-detail="${s.id}">View</button><button class="ghost-button" data-print-invoice="${s.id}">Print</button>${s.status === "Cancelled" ? "" : `<button class="ghost-button" data-cancel-replace="${s.id}">Cancel & Replace</button>`}</div></div></details>`;
+    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><span class="pill ${deliveryStatusPillClass(s.deliveryStatus)}">${escapeHtml(s.deliveryStatus || "Pending")}</span><small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p>${taxSummary ? `<small>${escapeHtml(taxSummary)}</small>` : ""}${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`}</div>${attachedFilesHtml("sale", s.id)}<div class="modal-actions"><button class="ghost-button" data-sale-detail="${s.id}">View</button><button class="ghost-button" data-print-invoice="${s.id}">Print</button><button class="ghost-button" data-upload-copy="${escapeHtml(s.id)}" type="button">Upload Copy</button><input type="file" accept="image/*" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" ? "" : `<button class="ghost-button" data-cancel-replace="${s.id}">Cancel & Replace</button>`}</div></div></details>`;
   }).join("");
 }
 
