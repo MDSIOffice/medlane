@@ -895,6 +895,11 @@ function inventoryPoPrintableHtml(po) {
   return `<section class="payment-request-print inventory-po-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS INC.</strong><span>${escapeHtml(po.id)}</span></header><div class="pr-meta"><span>Supplier: <strong>${escapeHtml(po.supplier)}</strong></span><span>Date: <strong>${escapeHtml(po.date)}</strong></span><span>Terms: <strong>${Number(po.terms || 30)} Days</strong></span></div><table><thead><tr><th>Qty.</th><th>U/M</th><th>Item Description</th><th>Lot</th><th>Expiry</th><th>Unit Cost</th><th>Disc. Amt</th><th>Total Amount</th></tr></thead><tbody>${(po.lines || []).map((line) => { const discount = Number(line.discount || 0); const totalLine = Number(line.qty || 0) * Number(line.price || 0) - discount; return `<tr><td>${Number(line.qty || 0)}</td><td>${escapeHtml(line.uom || "")}</td><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.brand || "")}</small></td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${money(line.price || 0)}</td><td>${money(discount)}</td><td>${money(totalLine)}</td></tr>`; }).join("")}<tr><td colspan="7"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table></section>`;
 }
 
+function transferRequestPrintableHtml(transfer) {
+  const lines = transfer.lines || [];
+  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>${escapeHtml(transfer.id)}</span></header><div class="pr-meta"><span>From: <strong>${escapeHtml(transfer.from)}</strong></span><span>To: <strong>${escapeHtml(transfer.to)}</strong></span><span>Status: <strong>${escapeHtml(transfer.status || "-")}</strong></span><span>Requested by: <strong>${escapeHtml(transfer.requestedBy || "-")}</strong></span>${transfer.dispatchedAt ? `<span>Dispatched: <strong>${escapeHtml(transfer.dispatchedAt)}</strong></span>` : ""}</div><table><thead><tr><th>Item</th><th>Requested Qty</th><th>Requested Lot</th><th>Requested Expiry</th><th>Dispatched Qty</th><th>Dispatched Lot</th><th>Dispatched Expiry</th></tr></thead><tbody>${lines.map((line) => `<tr><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.code || "")}</small></td><td>${Number(line.requestedQty || 0)}</td><td>${escapeHtml(line.requestedLot || "-")}</td><td>${escapeHtml(line.requestedExpiry || "N/A")}</td><td>${line.dispatchedQty != null ? Number(line.dispatchedQty) : "-"}</td><td>${escapeHtml(line.dispatchedLot || "-")}</td><td>${escapeHtml(line.dispatchedExpiry || "-")}</td></tr>`).join("")}</tbody></table><footer><div>Prepared by:<br><strong>${escapeHtml(transfer.requestedBy || "-")}</strong></div><div>Dispatched by:<br><strong>${escapeHtml(transfer.dispatchedBy || "Pending")}</strong></div></footer></section>`;
+}
+
 function splitList(value) {
   return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
@@ -2069,6 +2074,19 @@ export default {
         const requestRecord = (state.paymentRequests || []).find((item) => item.cvNo === id || item.id === id);
         if (!requestRecord) return json({ error: "Payment request not found" }, { status: 404 });
         return json({ id: requestRecord.cvNo || requestRecord.id, title: requestRecord.cvNo || requestRecord.id, html: paymentRequestPrintableHtml(requestRecord) });
+      }
+
+      if (url.pathname === "/api/printables/transfer") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "GET") return methodNotAllowed();
+        if (!canAccessKey(profile, "pendingTransfers", "view")) throw new Error("You do not have permission to print transfer requests");
+        const id = String(url.searchParams.get("id") || "").trim();
+        if (!id) return json({ error: "Transfer ID is required" }, { status: 400 });
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.pendingTransfers&select=module_name,record_key,data&order=updated_at.asc`);
+        const state = stateFromRecords(rows);
+        const transfer = (state.pendingTransfers || []).find((item) => item.id === id);
+        if (!transfer) return json({ error: "Transfer request not found" }, { status: 404 });
+        return json({ id: transfer.id, title: `Transfer Request ${transfer.id}`, description: `${transfer.from} to ${transfer.to} · ${transfer.status || "-"}`, html: transferRequestPrintableHtml(transfer) });
       }
 
       if (url.pathname === "/api/printables/inventory-po") {

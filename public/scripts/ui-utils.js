@@ -8,6 +8,28 @@ function statusForSale(sale) {
   if (sale.paid > 0) return "Partially Paid";
   return "Unpaid";
 }
+function paymentStatusForSale(sale) {
+  const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+  if (balance <= 0) return "Paid";
+  if (Number(sale.paid || 0) > 0) return "Partially Paid";
+  return "Unpaid";
+}
+function downloadCsv(filename, rows) {
+  const escapeCsv = (value) => {
+    const text = String(value ?? "");
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const csv = rows.map((row) => row.map(escapeCsv).join(",")).join("\r\n");
+  const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 function inventoryStatus(item) {
   if (item.expiry !== "N/A" && daysUntil(item.expiry) < 0) return "For Disposal";
   if (item.qty <= Math.ceil(item.min * 0.5)) return "Critical";

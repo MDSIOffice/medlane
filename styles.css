@@ -1606,7 +1606,8 @@ button.calendar-cell:hover { background: var(--tint); }
 .payment-request-editor { border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: var(--tint); }
 .payment-request-line-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 0.28fr) auto; gap: 12px; align-items: end; margin-bottom: 12px; }
 .payment-request-line-row .icon-button { border-radius: 14px; width: auto; min-width: 84px; padding: 0 12px; }
-.payment-request-invoice-row { grid-template-columns: minmax(0, 1fr) minmax(120px, 0.22fr) auto auto; }
+.payment-request-invoice-row { grid-template-columns: minmax(0, 1.3fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr) auto auto; }
+.payment-request-invoice-row .payment-request-amount-due, .payment-request-invoice-row .payment-request-balance { color: var(--muted); background: var(--tint); }
 .payment-request-row-withholding { display: flex; gap: 10px; align-items: center; }
 .payment-request-row-withholding .ios-check-row { min-height: auto; padding: 6px 8px; }
 .payment-request-net-amount-field { margin-bottom: 14px; }
@@ -1616,9 +1617,34 @@ button.calendar-cell:hover { background: var(--tint); }
 .payment-request-row-breakdown { margin: 0; }
 .field-error input, .field-error select { border-color: var(--red) !important; }
 .field-error-message { color: var(--red); font-size: 13px; font-weight: 700; margin: 8px 0 0; }
+.total-collections-panel .toolbar { align-items: end; }
+.total-collections-amount { margin-top: 14px; }
+.total-collections-amount strong { display: block; font-size: 40px; font-weight: 900; letter-spacing: -0.04em; color: var(--ink); }
+.total-collections-amount small { color: var(--muted); font-weight: 700; }
 .attached-files-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.docs-complete { background: var(--tint-green); color: var(--green); }
+.client-docs-modal { max-width: 480px; width: 100%; }
+.client-docs-list { display: grid; gap: 12px; margin-top: 14px; }
+.client-doc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--tint); }
+.client-doc-info { display: grid; gap: 4px; min-width: 0; }
+.client-doc-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .attached-file-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); color: var(--blue-dark); padding: 6px 12px; font-size: 12px; font-weight: 800; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attached-file-chip:hover { background: var(--tint-strong); }
+.transfer-review-modal { max-width: 640px; width: 100%; }
+.transfer-review-list { display: grid; gap: 12px; margin-top: 14px; }
+.transfer-review-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(80px, 0.6fr) minmax(120px, 0.8fr) minmax(110px, 0.7fr); grid-template-areas: "item qty lot expiry" "note note note note"; gap: 10px 12px; align-items: end; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--tint); }
+.transfer-review-item { grid-area: item; display: grid; gap: 4px; min-width: 0; align-self: center; }
+.transfer-review-item small { color: var(--muted); }
+.transfer-review-row .field:nth-of-type(1) { grid-area: qty; }
+.transfer-review-row .field:nth-of-type(2) { grid-area: lot; }
+.transfer-review-row .field:nth-of-type(3) { grid-area: expiry; }
+.transfer-review-available { grid-area: note; color: var(--muted); font-size: 12px; font-weight: 700; }
+.purchase-history-groups { display: grid; gap: 16px; }
+.purchase-history-agent .panel-header { margin-bottom: 12px; }
+.client-invoices-toolbar { align-items: end; }
+.client-invoices-filtered-total { margin: 4px 0 14px; }
+.client-invoices-filtered-total strong { display: block; font-size: 22px; font-weight: 900; letter-spacing: -0.02em; color: var(--ink); }
+.client-invoices-filtered-total small { color: var(--muted); font-weight: 700; }
 .equipment-expiry-field { display: none; }
 .payment-request-fixed-instructions { margin-top: 14px; border: 1px dashed #bfdbfe; border-radius: 16px; background: var(--panel-solid); padding: 12px 14px; }
 .payment-request-fixed-instructions strong { color: var(--ink); }

@@ -7,10 +7,14 @@ function applyThemePreference(theme) {
 }
 applyThemePreference(currentUser?.themePreference);
 let currentClientView = null;
+let clientInvoicesStatusFilter = "all";
+let clientInvoicesFrom = "";
+let clientInvoicesTo = "";
 let currentInvoiceFlow = null;
 let currentPrintNoDate = false;
 let currentPrintTemplateId = "default";
 let paymentRequestPreselectedInvoice = null;
+let paymentRequestRowUid = 0;
 let uploadedFilesCache = [];
 let uploadedFilesLoaded = false;
 let selectedReconHistoryIndex = null;
@@ -25,8 +29,8 @@ let collectionMapZoom = 1;
 let inventoryBranchTab = "Las Pinas";
 let inventoryWorkflowTab = "receiving";
 let inventoryCompactView = false;
-let payablesWorkflowTab = "requests";
-let replenishmentsWorkflowTab = "requests";
+let payablesWorkflowTab = "all";
+let replenishmentsWorkflowTab = "all";
 let transferRowUid = 0;
 let ptActiveType = "SI";
 let ptOverrides = { fields: {}, row: null };

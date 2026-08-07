@@ -413,10 +413,22 @@ document.body.addEventListener("click", (event) => {
   if (invoicePoButton) return openInvoiceForPurchaseOrder(invoicePoButton.dataset.createInvoicePo);
   const clientInvoices = event.target.closest("[data-client-invoices]");
   if (clientInvoices) {
-    currentClientView = clientInvoices.dataset.clientInvoices;
+    const nextClient = clientInvoices.dataset.clientInvoices;
+    if (nextClient !== currentClientView) {
+      if (qs("#client-invoices-status-filter")) qs("#client-invoices-status-filter").value = "all";
+      if (qs("#client-invoices-from")) qs("#client-invoices-from").value = "";
+      if (qs("#client-invoices-to")) qs("#client-invoices-to").value = "";
+    }
+    currentClientView = nextClient;
     renderClientInvoices();
     return showSection("client-invoices");
   }
+  const clientInvoicesExportCsv = event.target.closest("#client-invoices-export-csv");
+  if (clientInvoicesExportCsv) return exportClientInvoicesCsv();
+  const clientInvoicesExportPdf = event.target.closest("#client-invoices-export-pdf");
+  if (clientInvoicesExportPdf) return printClientInvoicesReport();
+  const clientInvoicesResetFilters = event.target.closest("#client-invoices-reset-filters");
+  if (clientInvoicesResetFilters) return resetClientInvoicesFilters();
   const logDetail = event.target.closest("[data-log-detail]");
   if (logDetail) return showAuditLogDetail(Number(logDetail.dataset.logDetail));
   const createSoa = event.target.closest("[data-create-soa]");
@@ -563,9 +575,14 @@ qs("#platform-branch-form").addEventListener("submit", (event) => {
   renderAll();
   toast(`${branch} added to platform branches.`);
 });
-document.body.addEventListener("change", (event) => {
-  const uploadDoc = event.target.closest("input[type='file'][data-upload-doc]");
-  if (uploadDoc && uploadDoc.files?.length) return uploadClientDoc(Number(uploadDoc.dataset.clientIndex), uploadDoc.dataset.uploadDoc, uploadDoc.files[0].name);
+document.body.addEventListener("click", (event) => {
+  const openDocs = event.target.closest("[data-open-client-docs]");
+  if (openDocs) return openClientDocsModal(openDocs.dataset.openClientDocs);
+  const closeDocs = event.target.closest("[data-close-client-docs]");
+  if (closeDocs) return qs("#client-docs-modal")?.close();
+});
+document.addEventListener("click", (event) => {
+  if (event.target.id === "client-docs-modal") qs("#client-docs-modal")?.close();
 });
 qs("#platform-branch-list").addEventListener("click", (event) => {
   const addressButton = event.target.closest("[data-edit-branch-address]");
@@ -707,12 +724,21 @@ document.addEventListener("change", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
   if (event.target.classList.contains("physical-copy-input") && event.target.files?.length) {
     const file = event.target.files[0];
-    const { recordType, recordId, rerender } = event.target.dataset;
-    const onDone = rerender === "payment-request-detail" ? () => renderPaymentRequestDetail(recordId) : rerender && sectionRenderers[rerender] ? sectionRenderers[rerender] : null;
-    uploadPhysicalCopy(file, recordType, recordId, "Physical copy", onDone);
+    const { recordType, recordId, rerender, docName, clientName } = event.target.dataset;
+    const onDone = rerender === "payment-request-detail" ? () => renderPaymentRequestDetail(recordId)
+      : rerender === "client-docs-modal" ? () => refreshClientDocsModal(clientName)
+      : rerender && sectionRenderers[rerender] ? sectionRenderers[rerender] : null;
+    uploadPhysicalCopy(file, recordType, recordId, docName || "Physical copy", onDone);
     event.target.value = "";
   }
 });
+qs("#total-collections-client")?.addEventListener("change", renderCollectionsTotalSummary);
+qs("#total-collections-from")?.addEventListener("change", renderCollectionsTotalSummary);
+qs("#total-collections-to")?.addEventListener("change", renderCollectionsTotalSummary);
+qs("#total-collections-annual")?.addEventListener("click", () => { resetCollectionsTotalToAnnual(); renderCollectionsTotalSummary(); });
+qs("#client-invoices-status-filter")?.addEventListener("change", renderClientInvoices);
+qs("#client-invoices-from")?.addEventListener("change", renderClientInvoices);
+qs("#client-invoices-to")?.addEventListener("change", renderClientInvoices);
 qs("#inventory-branch-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-inventory-branch]");
   if (!button) return;
@@ -807,20 +833,36 @@ qs("#open-followup-history").addEventListener("click", () => { renderCollectionC
 qs("#followup-history-close").addEventListener("click", () => qs("#followup-history-modal").close());
 qs("#followup-history-cancel").addEventListener("click", () => qs("#followup-history-modal").close());
 qs("#add-transfer-sheet-row").addEventListener("click", addTransferSheetRow);
+qs("#transfer-sheet-from")?.addEventListener("change", () => qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true)));
 qs("#save-stock-sheet").addEventListener("click", saveStockSheet);
 qs("#stock-sheet-modal").addEventListener("change", (event) => { if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value); });
 qs("#save-transfer-sheet").addEventListener("click", saveTransferSheet);
 qs("#transfer-table").addEventListener("click", (event) => {
   const dispatch = event.target.closest("[data-dispatch-transfer]");
-  if (dispatch) return dispatchTransfer(Number(dispatch.dataset.dispatchTransfer));
+  if (dispatch) return openTransferDispatchModal(Number(dispatch.dataset.dispatchTransfer));
   const receive = event.target.closest("[data-receive-transfer]");
-  if (receive) return receiveTransfer(Number(receive.dataset.receiveTransfer));
-  const incomplete = event.target.closest("[data-incomplete-transfer]");
-  if (incomplete) return incompleteTransfer(Number(incomplete.dataset.incompleteTransfer));
-  const complete = event.target.closest("[data-complete-transfer]");
-  if (complete) return completeIncompleteTransfer(Number(complete.dataset.completeTransfer));
+  if (receive) return openTransferReceiveModal(Number(receive.dataset.receiveTransfer));
   const transferTimeline = event.target.closest("[data-transfer-timeline]");
   if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
+});
+qs("#transfer-history-table").addEventListener("click", (event) => {
+  const transferTimeline = event.target.closest("[data-transfer-timeline]");
+  if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
+});
+document.body.addEventListener("click", (event) => {
+  const closeReview = event.target.closest("[data-close-transfer-review]");
+  if (closeReview) return qs("#transfer-review-modal")?.close();
+  const confirmDispatch = event.target.closest("#confirm-transfer-dispatch");
+  if (confirmDispatch) return confirmTransferDispatch();
+  const confirmReceive = event.target.closest("#confirm-transfer-receive");
+  if (confirmReceive) return confirmTransferReceive();
+});
+document.body.addEventListener("input", (event) => {
+  if (event.target.matches(".transfer-review-lot, .transfer-review-qty")) {
+    const dialog = qs("#transfer-review-modal");
+    const row = event.target.closest(".transfer-review-row");
+    if (dialog && row && event.target.classList.contains("transfer-review-lot")) refreshTransferDispatchModalRow(dialog, row);
+  }
 });
 qs("#collections").addEventListener("click", (event) => {
   const statusButton = event.target.closest("[data-contact-status]");
@@ -928,6 +970,8 @@ qs("#modal-fields").addEventListener("input", (event) => {
     const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
     event.target.value = digits.replace(/(\d{3})(?=\d)/g, "$1-");
   }
+  if (modalType === "paymentRequest" && event.target.classList.contains("payment-request-invoice-input")) syncPaymentRequestRowDerived(event.target.closest(".payment-request-invoice-row"), { invoiceChanged: true });
+  if (modalType === "paymentRequest" && event.target.classList.contains("payment-request-amount") && event.target.closest(".payment-request-invoice-row")) syncPaymentRequestRowDerived(event.target.closest(".payment-request-invoice-row"));
   if (modalType === "paymentRequest" && (event.target.closest(".payment-request-line-row") || ["netAmount", "single-amount"].includes(event.target.id))) syncPaymentRequestTotal();
   if (["payable", "replenishment"].includes(modalType) && event.target.closest(".payment-request-line-row")) syncFinancialRequestTotal();
   if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
@@ -969,7 +1013,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
   if (event.target.id === "bank" && modalType === "paymentRequest") syncPaymentRequestBankAccount();
   if (["withholdingTax", "expandedWithholdingTax"].includes(event.target.id) && modalType === "paymentRequest") syncPaymentRequestTotal();
-  if (modalType === "paymentRequest" && (event.target.classList.contains("payment-request-invoice-select") || event.target.classList.contains("payment-request-row-wtax") || event.target.classList.contains("payment-request-row-ewt"))) syncPaymentRequestTotal();
+  if (modalType === "paymentRequest" && (event.target.classList.contains("payment-request-invoice-input") || event.target.classList.contains("payment-request-row-wtax") || event.target.classList.contains("payment-request-row-ewt"))) syncPaymentRequestTotal();
   if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value);
   if (event.target.id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(event.target.value));
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);

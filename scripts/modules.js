@@ -453,23 +453,12 @@ function openInvoicesForPaymentRequest(clientName = "") {
     .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 }
 
-function paymentRequestInvoiceOptionsHtml(clientName, selectedDoc = "") {
-  if (!clientName) return `<option value="">Select a client first</option>`;
-  const invoices = openInvoicesForPaymentRequest(clientName);
-  if (!invoices.length) return `<option value="">No unpaid or partially paid invoices for this client</option>`;
-  const options = invoices.map((sale) => {
-    const doc = sale.documentNo || sale.id;
-    const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
-    return `<option value="${escapeHtml(doc)}" ${doc === selectedDoc ? "selected" : ""}>${escapeHtml(doc)} — ${peso.format(balance)} balance · Due ${escapeHtml(fmtDate(addDays(sale.date, sale.terms)))}</option>`;
-  }).join("");
-  return `<option value="">Select invoice</option>${options}`;
-}
-
 function refreshPaymentRequestInvoiceRowOptions() {
   const clientName = qs("#employee")?.value.trim() || "";
-  qsa(".payment-request-invoice-select").forEach((select) => {
-    const current = select.value;
-    select.innerHTML = paymentRequestInvoiceOptionsHtml(clientName, current);
+  qsa(".payment-request-invoice-row").forEach((row) => {
+    const datalist = row.querySelector("datalist");
+    if (datalist) datalist.innerHTML = paymentRequestInvoiceDatalistOptions(clientName);
+    syncPaymentRequestRowDerived(row);
   });
   syncPaymentRequestTotal();
 }
@@ -1121,10 +1110,13 @@ function renderInventoryBranchTabs() {
 }
 
 function transferAuthorizationCell(transfer, index) {
-  if (transfer.status === "For Receiving") return canApproveInventoryChanges() ? `<div class="inline-actions"><button class="mini-button" data-dispatch-transfer="${index}">Admin Approve / In Transit</button></div>` : `<small>Awaiting Admin approval</small>`;
-  if (transfer.status === "In Transit") return `<div class="inline-actions"><button class="mini-button" data-receive-transfer="${index}">Confirm Received</button><button class="mini-button danger-button" data-incomplete-transfer="${index}">Mark Incomplete</button></div>`;
-  if (transfer.status === "Incomplete") return `<div class="inline-actions"><button class="mini-button" data-complete-transfer="${index}">Confirm Missing Qty</button><small>Missing ${Number(transfer.missingQty || 0)}</small></div>`;
-  return transfer.receivedBy || transfer.incompleteBy || transfer.status;
+  if (transfer.status === "For Receiving") return canApproveInventoryChanges() ? `<div class="inline-actions"><button class="mini-button" data-dispatch-transfer="${index}">Review &amp; Dispatch</button></div>` : `<small>Awaiting Admin approval</small>`;
+  if (transfer.status === "In Transit") return `<div class="inline-actions"><button class="mini-button" data-receive-transfer="${index}">Confirm Received</button></div>`;
+  if (transfer.status === "Incomplete") {
+    const missing = (transfer.lines || []).reduce((sum, line) => sum + Math.max(Number(line.dispatchedQty ?? line.requestedQty ?? 0) - Number(line.receivedQty || 0), 0), 0);
+    return `<div class="inline-actions"><button class="mini-button" data-receive-transfer="${index}">Receive Remainder</button><small>Missing ${missing}</small></div>`;
+  }
+  return transfer.receivedBy || transfer.status;
 }
 
 function canApproveInventoryChanges() { return ["Admin", "Superadmin"].includes(currentUser?.role); }
@@ -1236,9 +1228,21 @@ function openStockSheetForPo(poId) {
   qs("#stock-sheet-modal").showModal();
 }
 
+function transferLineQty(line) {
+  return Number(line.dispatchedQty ?? line.requestedQty ?? 0);
+}
+
+function transferLineLot(line) {
+  return line.dispatchedLot || line.requestedLot || "-";
+}
+
+function transferLineExpiry(line) {
+  return line.dispatchedExpiry || line.requestedExpiry || "N/A";
+}
+
 function transferItemizedDetail(transfer) {
-  const lines = transfer.lines?.length ? transfer.lines : [{ item: transfer.item, code: transfer.code, brand: transfer.brand, qty: transfer.qty, lot: transfer.lot, expiry: transfer.expiry || "N/A" }];
-  return `<div class="mini-transfer-lines">${lines.map((line) => `<span><strong>${escapeHtml(line.item || transfer.item)}</strong> ${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}<small>Lot ${escapeHtml(line.lot || "-")} · Exp ${escapeHtml(line.expiry || "N/A")}</small></span>`).join("")}</div>`;
+  const lines = transfer.lines || [];
+  return `<div class="mini-transfer-lines">${lines.map((line) => `<span><strong>${escapeHtml(line.item)}</strong> ${transferLineQty(line)} ${escapeHtml(line.uom || "")}<small>Lot ${escapeHtml(transferLineLot(line))} · Exp ${escapeHtml(transferLineExpiry(line))}</small></span>`).join("")}</div>`;
 }
 
 function renderDashboard() {
@@ -1432,6 +1436,7 @@ function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, total
 }
 
 function renderMasterlists() {
+  ensureUploadedFilesLoaded(renderMasterlists);
   if (data.masterTab === "employees" && !canManageEmployees()) data.masterTab = "clients";
   qsa("#master-tabs .tab[data-master='employees']").forEach((tab) => { tab.hidden = !canManageEmployees(); });
   qsa("#master-tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.master === data.masterTab));
@@ -1466,36 +1471,42 @@ function renderMasterlists() {
   if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Actions"], data.banks.filter((b) => includesSearch(Object.values(b))).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, masterEditAction("bank", data.banks.indexOf(b))] })));
 }
 
+function clientDocRecordId(clientName, doc) {
+  return `${clientName}::${doc}`;
+}
+
 function docUploadButtons(client) {
-  const index = data.clients.indexOf(client);
-  return `<div class="doc-upload-grid">${requiredClientDocs.map((doc) => {
-    const uploaded = client.docs?.includes(doc);
-    return `<label class="doc-upload-button ${uploaded ? "uploaded" : "missing"}"><span>${escapeHtml(doc)}</span><strong>${uploaded ? "Uploaded" : "Upload File"}</strong><em>${uploaded ? "Replace" : "Choose document"}</em><input class="doc-file-input" type="file" data-upload-doc="${escapeHtml(doc)}" data-client-index="${index}" /></label>`;
-  }).join("")}</div>`;
+  const uploadedCount = requiredClientDocs.filter((doc) => attachedFilesFor("client-doc", clientDocRecordId(client.name, doc)).length).length;
+  const complete = uploadedCount === requiredClientDocs.length;
+  return `<button class="ghost-button${complete ? " docs-complete" : ""}" data-open-client-docs="${escapeHtml(client.name)}" type="button">Docs (${uploadedCount}/${requiredClientDocs.length})</button>`;
 }
 
-function uploadAllClientDocs(index) {
-  const client = data.clients[index];
+function clientDocsModalRowsHtml(client) {
+  return requiredClientDocs.map((doc) => {
+    const files = attachedFilesFor("client-doc", clientDocRecordId(client.name, doc));
+    const latest = files[files.length - 1];
+    return `<div class="client-doc-row"><div class="client-doc-info"><strong>${escapeHtml(doc)}</strong>${latest ? `<a class="attached-file-chip" href="/api/files/${escapeHtml(latest.id)}" target="_blank" rel="noopener">📎 ${escapeHtml(latest.file_name)}</a>` : `<small class="field-help">Not uploaded</small>`}</div><div class="client-doc-actions"><button class="ghost-button" data-upload-copy="${escapeHtml(clientDocRecordId(client.name, doc))}" type="button">${latest ? "Replace" : "Upload"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="client-doc" data-record-id="${escapeHtml(clientDocRecordId(client.name, doc))}" data-doc-name="${escapeHtml(doc)}" data-client-name="${escapeHtml(client.name)}" data-rerender="client-docs-modal" hidden /></div></div>`;
+  }).join("");
+}
+
+function refreshClientDocsModal(clientName) {
+  const client = data.clients.find((entry) => entry.name === clientName);
+  const modal = qs("#client-docs-modal");
+  if (client && modal) modal.querySelector(".client-docs-list").innerHTML = clientDocsModalRowsHtml(client);
+  renderMasterlists();
+}
+
+function openClientDocsModal(clientName) {
+  const client = data.clients.find((entry) => entry.name === clientName);
   if (!client) return toast("Client not found.");
-  const docs = new Set(String(client.docs || "").split(",").map((item) => item.trim()).filter(Boolean));
-  requiredClientDocs.forEach((doc) => docs.add(doc));
-  client.docs = [...docs].join(", ");
-  log("Uploaded all required client docs", "Masterlists", client.name);
-  saveData();
-  renderMasterlists();
-  toast(`All required documents marked uploaded for ${client.name}.`);
-}
-
-function uploadClientDoc(index, doc, fileName = "") {
-  const client = data.clients[index];
-  if (!client) return;
-  const docs = new Set(String(client.docs || "").split(",").map((item) => item.trim()).filter(Boolean));
-  docs.add(doc);
-  client.docs = [...docs].join(", ");
-  log("Uploaded required client document", "Masterlists", `${client.name}: ${doc}${fileName ? ` (${fileName})` : ""}`);
-  saveData();
-  renderMasterlists();
-  toast(`${doc} uploaded for ${client.name}.`);
+  qs("#client-docs-modal")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal client-docs-modal";
+  dialog.id = "client-docs-modal";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Required Docs</p><h2>${escapeHtml(client.name)}</h2></div><button class="icon-button" data-close-client-docs type="button" aria-label="Close">x</button></div><div class="client-docs-list">${clientDocsModalRowsHtml(client)}</div>`;
+  document.body.appendChild(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
 }
 
 function inventoryItemLabel(item) {
@@ -1528,8 +1539,8 @@ function renderInventory() {
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
   table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
-  table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, transfer.qty, (transfer.lines?.length ? transfer.lines : [transfer]).map((line) => `${line.lot || "-"}<small>${line.expiry || "N/A"}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">Timeline</button>`] })));
-  table("#transfer-history-table", ["Date", "Transfer", "Action", "Item", "From", "To", "Qty", "Lot", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, entry.transferId, entry.action, entry.item, entry.from, entry.to, entry.qty, entry.lot, entry.user, entry.notes]));
+  table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, (transfer.lines || []).reduce((sum, line) => sum + transferLineQty(line), 0), (transfer.lines || []).map((line) => `${escapeHtml(transferLineLot(line))}<small>${escapeHtml(transferLineExpiry(line))}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View Details</button>`] })));
+  table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
 }
 
 let dashboardBackupStatusRequest = 0;
@@ -1583,18 +1594,24 @@ function renderInventoryWorkflowTabs() {
 }
 
 function recordTransferHistory(transfer, action, notes) {
-  const entry = { id: `TH-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), transferId: transfer.id, action, item: transfer.item, from: transfer.from, to: transfer.to, qty: transfer.qty, lot: transfer.sourceLot || transfer.lot, user: currentUser?.name || "System User", notes };
+  const itemSummary = (transfer.lines || []).map((line) => `${line.item} (${line.dispatchedQty ?? line.requestedQty ?? 0})`).join(", ");
+  const entry = { id: `TH-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), transferId: transfer.id, action, item: itemSummary, itemCount: (transfer.lines || []).length, from: transfer.from, to: transfer.to, user: currentUser?.name || "System User", notes };
   data.transferHistory.unshift(entry);
   data.transferHistory = data.transferHistory.slice(0, 80);
   return entry;
 }
 
+function transferLineComparisonRowsHtml(transfer) {
+  return (transfer.lines || []).map((line) => `<tr><td>${escapeHtml(line.item)}<small>${escapeHtml(line.code)}</small></td><td>${Number(line.requestedQty || 0)}<small>Lot ${escapeHtml(line.requestedLot || "-")} · Exp ${escapeHtml(line.requestedExpiry || "N/A")}</small></td><td>${line.dispatchedQty != null ? Number(line.dispatchedQty) : "—"}<small>${line.dispatchedLot ? `Lot ${escapeHtml(line.dispatchedLot)} · Exp ${escapeHtml(line.dispatchedExpiry || "N/A")}` : "Not yet dispatched"}</small></td><td>${line.receivedQty != null ? Number(line.receivedQty) : "—"}<small>${line.receivedLot ? `Lot ${escapeHtml(line.receivedLot)} · Exp ${escapeHtml(line.receivedExpiry || "N/A")}` : "Not yet received"}</small></td></tr>`).join("");
+}
+
 function showTransferTimeline(id) {
-  const transfer = data.pendingTransfers.find((item) => item.id === id) || {};
+  const transfer = data.pendingTransfers.find((item) => item.id === id);
   const events = data.transferHistory.filter((entry) => entry.transferId === id);
+  if (!transfer) return toast("Transfer not found.");
   const dialog = document.createElement("dialog");
-  dialog.className = "modal audit-detail-modal";
-  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Transfer Timeline</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-transfer-timeline aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Item</small><strong>${escapeHtml(transfer.item || events[0]?.item || "-")}</strong></div><div class="report-preview-card"><small>Route</small><strong>${escapeHtml([transfer.from || events[0]?.from, transfer.to || events[0]?.to].filter(Boolean).join(" -> ") || "-")}</strong></div><div class="report-preview-card"><small>Qty</small><strong>${escapeHtml(String(transfer.qty || events[0]?.qty || "-"))}</strong></div><div class="report-preview-card"><small>Status</small><strong>${escapeHtml(transfer.status || events.at(-1)?.action || "-")}</strong></div></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${/receive|complete/i.test(event.action) ? "done" : /incomplete|cancel/i.test(event.action) ? "blocked" : "pending"}"><span>${escapeHtml((event.action || "T")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.action || "")}</strong><p>${escapeHtml(event.notes || "-")}</p><small>${escapeHtml(event.user || "-")}</small></div></div>`).join("") || `<p>No transfer history recorded yet.</p>`}</div></details>`;
+  dialog.className = "modal audit-detail-modal transfer-detail-modal";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Shipment Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-transfer-timeline aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Items</small><strong>${transfer.lines?.length || 0}</strong></div><div class="report-preview-card"><small>Route</small><strong>${escapeHtml(`${transfer.from} -> ${transfer.to}`)}</strong></div><div class="report-preview-card"><small>Requested By</small><strong>${escapeHtml(transfer.requestedBy || "-")}</strong></div><div class="report-preview-card"><small>Status</small><strong>${escapeHtml(transfer.status || "-")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Requested</th><th>Dispatched</th><th>Received</th></tr></thead><tbody>${transferLineComparisonRowsHtml(transfer)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${/receive|complete/i.test(event.action) ? "done" : /incomplete|cancel/i.test(event.action) ? "blocked" : "pending"}"><span>${escapeHtml((event.action || "T")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.action || "")}</strong><p>${escapeHtml(event.notes || "-")}</p><small>${escapeHtml(event.user || "-")}</small></div></div>`).join("") || `<p>No transfer history recorded yet.</p>`}</div></details>`;
   document.body.appendChild(dialog);
   dialog.querySelector("[data-close-transfer-timeline]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
@@ -1640,19 +1657,22 @@ function addStockSheetRow() {
 
 function transferSheetRow() {
   const uid = ++transferRowUid;
-  return `<tr><td><input class="transfer-code" list="inventory-code-options" /></td><td><input class="transfer-item" list="inventory-item-options" /></td><td><input class="transfer-lot" list="transfer-lot-options-${uid}" /><datalist id="transfer-lot-options-${uid}"></datalist></td><td><select class="transfer-from">${branchOptions(platformBranches()[0])}</select></td><td><select class="transfer-to">${branchOptions(platformBranches()[1] || platformBranches()[0])}</select></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+  return `<tr><td><input class="transfer-code" list="inventory-code-options" /></td><td><input class="transfer-item" list="inventory-item-options" /></td><td><input class="transfer-lot" list="transfer-lot-options-${uid}" /><datalist id="transfer-lot-options-${uid}"></datalist></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
 function addTransferSheetRow() {
   const body = qs("#transfer-sheet-table tbody");
   if (!body) return;
   body.insertAdjacentHTML("beforeend", transferSheetRow());
+  qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true));
 }
 
 function renderTransferSheet() {
   const tableEl = qs("#transfer-sheet-table");
   if (!tableEl) return;
-  tableEl.innerHTML = `<thead><tr><th>Item Code</th><th>Item Name</th><th>Lot Number</th><th>From Branch</th><th>To Branch</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${transferSheetRow()}</tbody>`;
+  if (qs("#transfer-sheet-from")) qs("#transfer-sheet-from").innerHTML = branchOptions(platformBranches()[0]);
+  if (qs("#transfer-sheet-to")) qs("#transfer-sheet-to").innerHTML = branchOptions(platformBranches()[1] || platformBranches()[0]);
+  tableEl.innerHTML = `<thead><tr><th>Item Code</th><th>Item Name</th><th>Lot Number</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${transferSheetRow()}</tbody>`;
 }
 
 function removeInventorySheetRow(button) {
@@ -1686,7 +1706,7 @@ function syncStockSheetRow(input, allowPartial = false) {
   }
   const lotInput = row.querySelector(".transfer-lot");
   const lotDatalist = row.querySelector("datalist[id^='transfer-lot-options-']");
-  const from = row.querySelector(".transfer-from")?.value;
+  const from = row.querySelector(".transfer-from")?.value || qs("#transfer-sheet-from")?.value;
   const matchingStock = data.inventory.filter((entry) => entry.code === match.code && (!from || entry.branch === from) && entry.qty > 0);
   if (lotDatalist) lotDatalist.innerHTML = matchingStock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
   if (lotInput && matchingStock[0] && !lotInput.value.trim()) lotInput.value = matchingStock[0].lot;
@@ -1741,126 +1761,184 @@ async function saveStockSheet() {
 }
 
 async function saveTransferSheet() {
+  const from = qs("#transfer-sheet-from")?.value;
+  const to = qs("#transfer-sheet-to")?.value;
+  if (!from || !to) return toast("Select a From and To branch.");
+  if (from === to) return toast("Transfer source and destination must be different.");
   const rows = qsa("#transfer-sheet-table tbody tr").map((row) => {
     const code = row.querySelector(".transfer-code")?.value.trim();
     const itemName = row.querySelector(".transfer-item")?.value.trim();
     const lot = row.querySelector(".transfer-lot")?.value.trim();
-    const from = row.querySelector(".transfer-from")?.value;
-    const to = row.querySelector(".transfer-to")?.value;
     const qty = Number(row.querySelector(".transfer-qty")?.value || 0);
     const item = findItemByCodeOrName(code || itemName);
     if (!code && !itemName && !lot && !qty) return null;
     const source = item && lot ? data.inventory.find((entry) => entry.code === item.code && entry.branch === from && entry.lot === lot && entry.qty >= qty) : null;
-    return { item, lot, from, to, qty, source };
+    return { item, lot, qty, source };
   }).filter(Boolean);
   if (!rows.length) return toast("No transfer rows to save.");
-  if (rows.some((row) => !row.item || !row.lot || !row.from || !row.to || row.qty <= 0)) return toast("Complete all stock transfer fields before saving.");
-  if (rows.some((row) => row.from === row.to)) return toast("Transfer source and destination must be different.");
+  if (rows.some((row) => !row.item || !row.lot || row.qty <= 0)) return toast("Complete all stock transfer fields before saving.");
   if (rows.some((row) => !row.source)) return toast("Not enough source stock for the selected item lot.");
-  const transfers = [];
-  const historyEntries = [];
-  const touchedInventory = [];
-  rows.forEach((row) => {
-    row.source.qty -= row.qty;
-    touchedInventory.push(row.source);
-    const transfer = { id: nextId(data.pendingTransfers, "TR"), code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, from: row.from, to: row.to, qty: row.qty, lot: row.lot, sourceLot: row.lot, expiry: row.source.expiry || "N/A", lines: [{ code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, qty: row.qty, uom: row.item.uom || "unit", lot: row.lot, expiry: row.source.expiry || "N/A" }], status: "For Receiving", requestedBy: currentUser?.name || "System User" };
-    data.pendingTransfers.push(transfer);
-    transfers.push(transfer);
-    historyEntries.push(recordTransferHistory(transfer, "Created", "Source stock deducted and transfer opened for dispatch."));
-    notify("Transfer", `${transfer.id} requires receiving confirmation at ${transfer.to}.`, "inventory", transfer.id);
-  });
-  await persistRecords({ pendingTransfers: transfers, inventory: touchedInventory, transferHistory: historyEntries });
-  log("Created stock transfer", "Inventory", `${rows.length} row(s)`, { save: false });
+  // Stock is NOT deducted here — a request only reserves nothing yet. The approving branch
+  // reviews each line against currently-available stock and confirms dispatch, which is when
+  // the actual deduction happens (see reviewAndDispatchTransfer / confirmTransferDispatch).
+  const transfer = {
+    id: nextId(data.pendingTransfers, "TR"),
+    from, to,
+    status: "For Receiving",
+    requestedBy: currentUser?.name || "System User",
+    lines: rows.map((row) => ({ code: row.item.code, item: row.item.name, brand: row.source.brand || row.item.brand, uom: row.item.uom || "unit", requestedQty: row.qty, requestedLot: row.lot, requestedExpiry: row.source.expiry || "N/A" })),
+  };
+  data.pendingTransfers.push(transfer);
+  const historyEntry = recordTransferHistory(transfer, "Created", `Transfer request opened with ${rows.length} item(s), awaiting admin approval.`);
+  notify("Transfer", `${transfer.id} awaiting admin approval for dispatch from ${from} to ${to}.`, "inventory", transfer.id);
+  await persistRecords({ pendingTransfers: [transfer], transferHistory: [historyEntry] });
+  log("Created stock transfer", "Inventory", `${transfer.id}: ${rows.length} item(s), ${from} -> ${to}`, { save: false });
   saveData(["notifications"]);
   qs("#transfer-sheet-modal")?.close();
   renderAll();
-  toast(`${rows.length} stock transfer row(s) created.`);
+  toast(`${transfer.id} created with ${rows.length} item(s).`);
 }
 
-async function dispatchTransfer(index) {
+function transferLineAvailableStock(line, branch) {
+  return data.inventory.filter((entry) => entry.code === line.code && entry.branch === branch && entry.qty > 0);
+}
+
+function transferDispatchModalRowsHtml(transfer) {
+  return (transfer.lines || []).map((line, i) => {
+    const stock = transferLineAvailableStock(line, transfer.from);
+    const lot = line.dispatchedLot || line.requestedLot;
+    const currentStock = stock.find((entry) => entry.lot === lot);
+    const maxQty = currentStock ? currentStock.qty : 0;
+    return `<div class="transfer-review-row"><div class="transfer-review-item"><strong>${escapeHtml(line.item)}</strong><small>${escapeHtml(line.code)} · Requested ${line.requestedQty} · Lot ${escapeHtml(line.requestedLot)}</small></div><div class="field"><label>Qty</label><input class="transfer-review-qty" type="number" min="0" max="${maxQty}" value="${line.dispatchedQty ?? line.requestedQty}" /></div><div class="field"><label>Lot</label><input class="transfer-review-lot" list="transfer-review-lot-options-${i}" value="${escapeHtml(lot)}" /><datalist id="transfer-review-lot-options-${i}">${stock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("")}</datalist></div><div class="field"><label>Expiry</label><input class="transfer-review-expiry" value="${escapeHtml(line.dispatchedExpiry || line.requestedExpiry || "")}" readonly /></div><small class="transfer-review-available">${maxQty} available in lot ${escapeHtml(lot)} at ${escapeHtml(transfer.from)}</small></div>`;
+  }).join("");
+}
+
+function openTransferDispatchModal(index) {
   if (!canApproveInventoryChanges()) return toast("Stock transfer dispatch needs Admin approval.");
   const transfer = data.pendingTransfers[index];
   if (!transfer || transfer.status !== "For Receiving") return toast("Transfer is not ready for dispatch.");
-  if (!confirm(`Mark ${transfer.id} as In Transit from ${transfer.from} to ${transfer.to}?`)) return;
+  qs("#transfer-review-modal")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal transfer-review-modal";
+  dialog.id = "transfer-review-modal";
+  dialog.dataset.transferIndex = index;
+  dialog.dataset.mode = "dispatch";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Review Before Dispatch</p><h2>${escapeHtml(transfer.id)}</h2></div><button class="icon-button" data-close-transfer-review type="button" aria-label="Close">x</button></div><p class="page-description">Adjust quantity, lot, or expiry per item based on current stock at ${escapeHtml(transfer.from)}, then confirm to deduct stock and mark In Transit.</p><div class="transfer-review-list">${transferDispatchModalRowsHtml(transfer)}</div><div class="modal-actions"><button class="ghost-button" data-close-transfer-review type="button">Cancel</button><button class="primary-button" id="confirm-transfer-dispatch" type="button">Confirm &amp; Dispatch</button></div>`;
+  document.body.appendChild(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
+function refreshTransferDispatchModalRow(dialog, rowEl) {
+  const transfer = data.pendingTransfers[Number(dialog.dataset.transferIndex)];
+  const rows = [...dialog.querySelectorAll(".transfer-review-row")];
+  const i = rows.indexOf(rowEl);
+  const line = transfer?.lines?.[i];
+  if (!line) return;
+  const lotInput = rowEl.querySelector(".transfer-review-lot");
+  const qtyInput = rowEl.querySelector(".transfer-review-qty");
+  const expiryInput = rowEl.querySelector(".transfer-review-expiry");
+  const stock = transferLineAvailableStock(line, transfer.from);
+  const lotDatalist = rowEl.querySelector("datalist");
+  if (lotDatalist) lotDatalist.innerHTML = stock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
+  const match = stock.find((entry) => entry.lot === lotInput.value.trim());
+  expiryInput.value = match?.expiry || "N/A";
+  qtyInput.max = match ? match.qty : 0;
+  const availableNote = rowEl.querySelector(".transfer-review-available");
+  if (availableNote) availableNote.textContent = `${match ? match.qty : 0} available in lot ${lotInput.value.trim() || "-"} at ${transfer.from}`;
+}
+
+async function confirmTransferDispatch() {
+  const dialog = qs("#transfer-review-modal");
+  const transfer = data.pendingTransfers[Number(dialog.dataset.transferIndex)];
+  if (!transfer) return;
+  const rows = [...dialog.querySelectorAll(".transfer-review-row")];
+  const updates = rows.map((row, i) => ({ index: i, qty: Number(row.querySelector(".transfer-review-qty").value || 0), lot: row.querySelector(".transfer-review-lot").value.trim(), expiry: row.querySelector(".transfer-review-expiry").value.trim() }));
+  if (updates.some((u) => u.qty <= 0 || !u.lot)) return toast("Enter a valid quantity and lot for every item.");
+  for (const u of updates) {
+    const line = transfer.lines[u.index];
+    const source = data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot);
+    if (!source || source.qty < u.qty) return toast(`Not enough stock for ${line.item} in lot ${u.lot}.`);
+  }
+  const touchedInventory = [];
+  updates.forEach((u) => {
+    const line = transfer.lines[u.index];
+    const source = data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot);
+    source.qty -= u.qty;
+    touchedInventory.push(source);
+    line.dispatchedQty = u.qty;
+    line.dispatchedLot = u.lot;
+    line.dispatchedExpiry = u.expiry || "N/A";
+  });
   transfer.status = "In Transit";
   transfer.dispatchedBy = currentUser?.name || "System User";
   transfer.dispatchedAt = fmtDate(today);
-  const historyEntry = recordTransferHistory(transfer, "Marked In Transit", `Dispatched from ${transfer.from} to ${transfer.to}.`);
-  await persistRecords({ pendingTransfers: [transfer], transferHistory: [historyEntry] });
+  const historyEntry = recordTransferHistory(transfer, "Marked In Transit", `Dispatched ${updates.length} item(s) from ${transfer.from} to ${transfer.to}.`);
+  await persistRecords({ pendingTransfers: [transfer], inventory: touchedInventory, transferHistory: [historyEntry] });
   log("Marked stock transfer in transit", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`, { save: false });
+  dialog.close();
   renderAll();
-  toast("Transfer marked in transit.");
+  toast("Transfer dispatched. Opening printable transfer request...");
+  printTransferRequest(transfer.id);
 }
 
-async function receiveTransfer(index) {
+function transferReceiveModalRowsHtml(transfer) {
+  return (transfer.lines || []).map((line, i) => {
+    const alreadyReceived = Number(line.receivedQty || 0);
+    const dispatchedQty = Number(line.dispatchedQty ?? line.requestedQty ?? 0);
+    const remaining = Math.max(dispatchedQty - alreadyReceived, 0);
+    return `<div class="transfer-review-row"><div class="transfer-review-item"><strong>${escapeHtml(line.item)}</strong><small>${escapeHtml(line.code)} · Dispatched ${dispatchedQty} · Lot ${escapeHtml(line.dispatchedLot || line.requestedLot)}${alreadyReceived ? ` · Already received ${alreadyReceived}` : ""}</small></div><div class="field"><label>Received Qty</label><input class="transfer-receive-qty" type="number" min="0" max="${remaining}" value="${remaining}" /></div><div class="field"><label>Lot</label><input class="transfer-receive-lot" value="${escapeHtml(line.receivedLot || line.dispatchedLot || line.requestedLot)}" /></div><div class="field"><label>Expiry</label><input class="transfer-receive-expiry" type="date" value="${escapeHtml(String(line.receivedExpiry || line.dispatchedExpiry || line.requestedExpiry || "").slice(0, 10))}" /></div></div>`;
+  }).join("");
+}
+
+function openTransferReceiveModal(index) {
   const transfer = data.pendingTransfers[index];
-  if (!transfer || transfer.status !== "In Transit") return toast("Transfer must be in transit before receiving.");
-  if (!confirm(`Confirm full receipt of ${transfer.qty} ${transfer.item} for ${transfer.id}?`)) return;
-  const existing = data.inventory.find((item) => item.code === transfer.code && item.branch === transfer.to && item.lot === transfer.lot);
-  let touchedInventory = existing;
-  if (existing) existing.qty += transfer.qty;
-  else { touchedInventory = { code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: transfer.qty, min: 10 }; data.inventory.push(touchedInventory); }
-  transfer.status = "Received";
+  if (!transfer || !["In Transit", "Incomplete"].includes(transfer.status)) return toast("Transfer must be in transit (or incomplete) before receiving.");
+  qs("#transfer-review-modal")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal transfer-review-modal";
+  dialog.id = "transfer-review-modal";
+  dialog.dataset.transferIndex = index;
+  dialog.dataset.mode = "receive";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Confirm Receipt</p><h2>${escapeHtml(transfer.id)}</h2></div><button class="icon-button" data-close-transfer-review type="button" aria-label="Close">x</button></div><p class="page-description">Enter what was actually received at ${escapeHtml(transfer.to)}. Adjust for shortages — reopen this later to receive the remainder.</p><div class="transfer-review-list">${transferReceiveModalRowsHtml(transfer)}</div><div class="modal-actions"><button class="ghost-button" data-close-transfer-review type="button">Cancel</button><button class="primary-button" id="confirm-transfer-receive" type="button">Confirm Receipt</button></div>`;
+  document.body.appendChild(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
+async function confirmTransferReceive() {
+  const dialog = qs("#transfer-review-modal");
+  const transfer = data.pendingTransfers[Number(dialog.dataset.transferIndex)];
+  if (!transfer) return;
+  const rows = [...dialog.querySelectorAll(".transfer-review-row")];
+  const updates = rows.map((row, i) => ({ index: i, qty: Number(row.querySelector(".transfer-receive-qty").value || 0), lot: row.querySelector(".transfer-receive-lot").value.trim(), expiry: row.querySelector(".transfer-receive-expiry").value.trim() }));
+  if (updates.some((u) => u.qty < 0 || (u.qty > 0 && !u.lot))) return toast("Enter a valid received quantity and lot for every item.");
+  const touchedInventory = [];
+  updates.forEach((u) => {
+    if (u.qty <= 0) return;
+    const line = transfer.lines[u.index];
+    const existing = data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.to && entry.lot === u.lot);
+    let target = existing;
+    if (existing) existing.qty += u.qty;
+    else { target = { code: line.code, item: line.item, brand: line.brand, branch: transfer.to, lot: u.lot, serial: "N/A", expiry: u.expiry || "N/A", qty: u.qty, min: 10 }; data.inventory.push(target); }
+    touchedInventory.push(target);
+    line.receivedQty = Number(line.receivedQty || 0) + u.qty;
+    line.receivedLot = u.lot;
+    line.receivedExpiry = u.expiry || "N/A";
+  });
+  const allComplete = (transfer.lines || []).every((line) => Number(line.receivedQty || 0) >= Number(line.dispatchedQty ?? line.requestedQty ?? 0));
+  transfer.status = allComplete ? "Received" : "Incomplete";
   transfer.receivedBy = currentUser?.name || "System User";
   transfer.receivedAt = fmtDate(today);
-  const historyEntry = recordTransferHistory(transfer, "Confirmed Received", `Received at ${transfer.to}; destination inventory increased.`);
-  await persistRecords({ pendingTransfers: [transfer], inventory: [touchedInventory], transferHistory: [historyEntry] });
-  log("Confirmed stock transfer received", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`, { save: false });
-  notify("Transfer", `${transfer.id} was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory", transfer.id);
+  const totalReceived = updates.reduce((sum, u) => sum + u.qty, 0);
+  const historyEntry = recordTransferHistory(transfer, allComplete ? "Confirmed Received" : "Partially Received", `Received ${totalReceived} unit(s) at ${transfer.to} across ${updates.filter((u) => u.qty > 0).length} item(s). ${allComplete ? "Transfer complete." : "Some items still short."}`);
+  await persistRecords({ pendingTransfers: [transfer], inventory: touchedInventory, transferHistory: [historyEntry] });
+  log("Confirmed stock transfer received", "Inventory", `${transfer.id}: ${totalReceived} received${allComplete ? "" : " (partial)"}`, { save: false });
+  notify("Transfer", `${transfer.id} ${allComplete ? "fully received" : "partially received"} at ${transfer.to}.`, "inventory", transfer.id);
   saveData(["notifications"]);
+  dialog.close();
   renderAll();
-  toast("Transfer received and inventory adjusted.");
-}
-
-async function incompleteTransfer(index) {
-  const transfer = data.pendingTransfers[index];
-  if (!transfer || transfer.status !== "In Transit") return toast("Only in-transit transfers can be marked incomplete.");
-  const received = Number(prompt(`Actual received quantity for ${transfer.id} (0 to ${transfer.qty - 1}):`, "0"));
-  if (!Number.isFinite(received) || received < 0 || received >= transfer.qty) return toast("Enter a valid incomplete received quantity.");
-  if (!confirm(`Mark ${transfer.id} incomplete? Received ${received}, missing ${transfer.qty - received}.`)) return;
-  let touchedInventory = null;
-  if (received > 0) {
-    const existing = data.inventory.find((item) => item.code === transfer.code && item.branch === transfer.to && item.lot === transfer.lot);
-    touchedInventory = existing;
-    if (existing) existing.qty += received;
-    else { touchedInventory = { code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: received, min: 10 }; data.inventory.push(touchedInventory); }
-  }
-  transfer.status = "Incomplete";
-  transfer.receivedQty = received;
-  transfer.missingQty = transfer.qty - received;
-  transfer.incompleteBy = currentUser?.name || "System User";
-  transfer.incompleteAt = fmtDate(today);
-  const historyEntry = recordTransferHistory(transfer, "Marked Incomplete", `Received ${received}; missing ${transfer.missingQty}. Destination inventory updated only for received quantity.`);
-  await persistRecords({ pendingTransfers: [transfer], inventory: touchedInventory ? [touchedInventory] : [], transferHistory: [historyEntry] });
-  notify("Transfer", `${transfer.id} marked incomplete: ${transfer.missingQty} missing.`, "inventory", transfer.id);
-  log("Marked stock transfer incomplete", "Inventory", `${transfer.id}: received ${received}, missing ${transfer.missingQty}`, { save: false });
-  saveData(["notifications"]);
-  renderAll();
-  toast("Transfer marked incomplete.");
-}
-
-async function completeIncompleteTransfer(index) {
-  const transfer = data.pendingTransfers[index];
-  if (!transfer || transfer.status !== "Incomplete") return toast("Only incomplete transfers can receive missing quantity.");
-  const missing = Number(transfer.missingQty || 0);
-  if (missing <= 0) return toast("No missing quantity remains for this transfer.");
-  if (!confirm(`Confirm missing ${missing} ${transfer.item} finally arrived for ${transfer.id}?`)) return;
-  const existing = data.inventory.find((item) => item.code === transfer.code && item.branch === transfer.to && item.lot === transfer.lot);
-  let touchedInventory = existing;
-  if (existing) existing.qty += missing;
-  else { touchedInventory = { code: transfer.code, item: transfer.item, brand: transfer.brand || data.items.find((item) => item.code === transfer.code)?.brand || "Medlane", branch: transfer.to, lot: transfer.lot, serial: "N/A", expiry: transfer.expiry || "N/A", qty: missing, min: 10 }; data.inventory.push(touchedInventory); }
-  transfer.status = "Received";
-  transfer.receivedQty = Number(transfer.receivedQty || 0) + missing;
-  transfer.missingQty = 0;
-  transfer.receivedBy = currentUser?.name || "System User";
-  transfer.receivedAt = fmtDate(today);
-  const historyEntry = recordTransferHistory(transfer, "Confirmed Missing Quantity", `Missing ${missing} received at ${transfer.to}; transfer is now complete.`);
-  await persistRecords({ pendingTransfers: [transfer], inventory: [touchedInventory], transferHistory: [historyEntry] });
-  notify("Transfer", `${transfer.id} missing quantity was received by ${transfer.receivedBy}. Inventory adjusted at ${transfer.to}.`, "inventory", transfer.id);
-  log("Confirmed missing transfer quantity", "Inventory", `${transfer.id}: received missing ${missing}`, { save: false });
-  saveData(["notifications"]);
-  renderAll();
-  toast("Missing quantity received and transfer completed.");
+  toast(allComplete ? "Transfer received and inventory adjusted." : "Partial receipt recorded — reopen later for the remainder.");
 }
 
 function renderSales() {
@@ -2002,10 +2080,11 @@ async function uploadPhysicalCopy(file, recordType, recordId, label, onDone) {
   if (!file) return;
   const maxOriginalBytes = 26214400;
   if (file.size > maxOriginalBytes) return toast("File is too large (max 25 MB before compression).");
-  toast(`Compressing and uploading ${label}...`);
+  const isImage = file.type.startsWith("image/");
+  toast(`${isImage ? "Compressing and uploading" : "Uploading"} ${label}...`);
   try {
-    const compressed = await compressImageFile(file);
-    await MedlaneAPI.uploadFile(compressed, { recordType, recordId });
+    const toUpload = isImage ? await compressImageFile(file) : file;
+    await MedlaneAPI.uploadFile(toUpload, { recordType, recordId });
     await refreshUploadedFiles();
     toast(`${label} uploaded.`);
     if (onDone) onDone();
@@ -2016,7 +2095,7 @@ async function uploadPhysicalCopy(file, recordType, recordId, label, onDone) {
 
 function renderInvoicing() {
   ensureUploadedFilesLoaded(renderInvoicing);
-  qs("#invoice-grid").innerHTML = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).map((s) => {
+  qs("#invoice-grid").innerHTML = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((s) => {
     const due = fmtDate(addDays(s.date, s.terms));
     const paid = Number(s.paid || 0);
     const pending = Math.max(Number(s.net || 0) - paid, 0);
@@ -2169,10 +2248,39 @@ function renderSaleDetail(invoiceId) {
   showSection("sale-detail");
 }
 
+function resetCollectionsTotalToAnnual() {
+  const year = new Date(today).getFullYear();
+  if (qs("#total-collections-from")) qs("#total-collections-from").value = `${year}-01-01`;
+  if (qs("#total-collections-to")) qs("#total-collections-to").value = `${year}-12-31`;
+}
+
+function renderCollectionsTotalSummary() {
+  const clientSelect = qs("#total-collections-client");
+  if (clientSelect && !clientSelect.dataset.populated) {
+    clientSelect.innerHTML = `<option value="">All Clients</option>${[...new Set(data.clients.map((c) => c.name))].map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}`;
+    clientSelect.dataset.populated = "true";
+  }
+  if (!qs("#total-collections-from")?.value && !qs("#total-collections-to")?.value) resetCollectionsTotalToAnnual();
+  const client = qs("#total-collections-client")?.value || "";
+  const from = qs("#total-collections-from")?.value || "";
+  const to = qs("#total-collections-to")?.value || "";
+  const filtered = data.payments.filter((payment) => {
+    if (client && payment.client !== client) return false;
+    const paymentDate = payment.dateRecorded || payment.dateCollected || "";
+    if (from && paymentDate < from) return false;
+    if (to && paymentDate > to) return false;
+    return true;
+  });
+  const total = filtered.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const el = qs("#total-collections-amount");
+  if (el) el.innerHTML = `<strong>${peso.format(total)}</strong><small>${filtered.length} receipt${filtered.length === 1 ? "" : "s"}${client ? ` · ${escapeHtml(client)}` : ""}${from || to ? ` · ${escapeHtml(from || "…")} to ${escapeHtml(to || "…")}` : ""}</small>`;
+}
+
 function renderCollections() {
   syncCollectionContactsForBalances();
   syncPostedCollectionReminders();
   renderCollectionsWorkflowTabs();
+  renderCollectionsTotalSummary();
   const visibleSales = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s)));
   const visibleDocs = new Set(visibleSales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
   const visiblePayments = data.payments.filter((payment) => visibleDocs.has(payment.invoice));
@@ -2339,12 +2447,37 @@ function nextCvNumber(year = cvYear()) {
   return `CV${String(next).padStart(6, "0")}`;
 }
 const paymentRequestInstructions = "INSTRUCTIONS : This form must be accomplished in duplicate. All supporting documents must be attached with receipts issued to Medlane Diagnostics Solutions Inc. Incomplete information will delay processing of this payment request or no attached receipts will not receive any payment.";
+function paymentRequestInvoiceDatalistOptions(clientName) {
+  return openInvoicesForPaymentRequest(clientName).map((sale) => `<option value="${escapeHtml(sale.documentNo || sale.id)}"></option>`).join("");
+}
+
+function paymentRequestRowBalance(clientName, invoice) {
+  const sale = invoice ? openInvoicesForPaymentRequest(clientName).find((entry) => (entry.documentNo || entry.id) === invoice) : null;
+  return sale ? Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) : 0;
+}
+
 function paymentRequestLineTemplate(line = {}) {
   const clientName = qs("#employee")?.value.trim() || "";
   const payee = findClientByName(clientName);
   const wtaxDefault = line.withholdingTax != null ? line.withholdingTax : Boolean(payee?.withholdingTax);
   const ewtDefault = line.expandedWithholdingTax != null ? line.expandedWithholdingTax : Boolean(payee?.expandedWithholdingTax);
-  return `<div class="payment-request-line-row payment-request-invoice-row"><div class="field"><label>Invoice</label><select class="payment-request-invoice-select" required>${paymentRequestInvoiceOptionsHtml(clientName, line.invoice || "")}</select></div><div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><div class="payment-request-row-withholding"><label class="ios-check-row compact-doc-check"><input class="payment-request-row-wtax" type="checkbox" ${wtaxDefault ? "checked" : ""} /><span></span><strong>WTax 5%</strong></label><label class="ios-check-row compact-doc-check"><input class="payment-request-row-ewt" type="checkbox" ${ewtDefault ? "checked" : ""} /><span></span><strong>EWT 1%</strong></label></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
+  const rowId = `pr-row-${++paymentRequestRowUid}`;
+  const amountDue = line.amountDue != null ? line.amountDue : paymentRequestRowBalance(clientName, line.invoice || "");
+  const amountPaid = line.amount != null ? line.amount : amountDue;
+  const balance = Math.max(amountDue - amountPaid, 0);
+  return `<div class="payment-request-line-row payment-request-invoice-row"><div class="field"><label>Invoice</label><input class="payment-request-invoice-input" list="${rowId}-options" value="${escapeHtml(line.invoice || "")}" placeholder="Type or pick invoice" /><datalist id="${rowId}-options">${paymentRequestInvoiceDatalistOptions(clientName)}</datalist></div><div class="field"><label>Amount Due</label><input class="payment-request-amount-due" readonly value="${amountDue ? amountDue.toFixed(2) : "0.00"}" /></div><div class="field"><label>Amount Paid</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${amountPaid || ""}" /></div><div class="field"><label>Balance</label><input class="payment-request-balance" readonly value="${balance.toFixed(2)}" /></div><div class="payment-request-row-withholding"><label class="ios-check-row compact-doc-check"><input class="payment-request-row-wtax" type="checkbox" ${wtaxDefault ? "checked" : ""} /><span></span><strong>WTax 5%</strong></label><label class="ios-check-row compact-doc-check"><input class="payment-request-row-ewt" type="checkbox" ${ewtDefault ? "checked" : ""} /><span></span><strong>EWT 1%</strong></label></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
+}
+
+function syncPaymentRequestRowDerived(row, { invoiceChanged = false } = {}) {
+  const clientName = qs("#employee")?.value.trim() || "";
+  const invoice = row.querySelector(".payment-request-invoice-input")?.value.trim() || "";
+  const amountDue = paymentRequestRowBalance(clientName, invoice);
+  const amountDueInput = row.querySelector(".payment-request-amount-due");
+  if (amountDueInput) amountDueInput.value = amountDue.toFixed(2);
+  const amountInput = row.querySelector(".payment-request-amount");
+  if (invoiceChanged && amountInput) amountInput.value = amountDue || "";
+  const balanceInput = row.querySelector(".payment-request-balance");
+  if (balanceInput) balanceInput.value = Math.max(amountDue - Number(amountInput?.value || 0), 0).toFixed(2);
 }
 function renderPaymentRequestEditor(lines = [{}], preselectDoc = null) {
   paymentRequestPreselectedInvoice = preselectDoc || null;
@@ -2356,12 +2489,17 @@ function renderPaymentRequestEditor(lines = [{}], preselectDoc = null) {
   return `<div class="field full payment-request-editor"><div class="field payment-request-net-amount-field"><label for="netAmount">Net Amount</label><p class="field-help">Enter the total net amount this collection should cover, then add the invoice(s) it pays for below.</p><input id="netAmount" name="netAmount" type="number" min="0" step="0.01" required /></div><label>Invoices and Amount</label><div id="payment-request-line-list">${lines.map((line) => paymentRequestLineTemplate(line)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="total">Total</label><input id="total" name="total" readonly value="0.00" /></div></div><div id="payment-request-tax-preview" class="payment-request-row-previews"></div><div class="payment-request-fixed-instructions"><strong>Instructions</strong><p>${escapeHtml(paymentRequestInstructions)}</p></div></div>`;
 }
 function collectPaymentRequestLines() {
-  return qsa(".payment-request-invoice-row").map((row) => ({
-    invoice: row.querySelector(".payment-request-invoice-select")?.value || "",
-    amount: Number(row.querySelector(".payment-request-amount")?.value || 0),
-    withholdingTax: Boolean(row.querySelector(".payment-request-row-wtax")?.checked),
-    expandedWithholdingTax: Boolean(row.querySelector(".payment-request-row-ewt")?.checked),
-  })).filter((line) => line.invoice || line.amount);
+  const clientName = qs("#employee")?.value.trim() || "";
+  return qsa(".payment-request-invoice-row").map((row) => {
+    const invoice = row.querySelector(".payment-request-invoice-input")?.value.trim() || "";
+    const amountDue = paymentRequestRowBalance(clientName, invoice);
+    const amount = Number(row.querySelector(".payment-request-amount")?.value || 0);
+    return {
+      invoice, amountDue, amount, balance: Math.max(amountDue - amount, 0),
+      withholdingTax: Boolean(row.querySelector(".payment-request-row-wtax")?.checked),
+      expandedWithholdingTax: Boolean(row.querySelector(".payment-request-row-ewt")?.checked),
+    };
+  }).filter((line) => line.invoice || line.amount);
 }
 function paymentRequestNetAmountExceeded(rows, netAmount) {
   return netAmount > 0 && rows.reduce((sum, row) => sum + Number(row.amount || 0), 0) > netAmount;
@@ -2480,6 +2618,14 @@ async function previewPaymentRequest(identifier) {
   if (!id) return toast("Payment request not found.");
   showPaymentRequestPreviewLoading();
   const printable = await MedlaneAPI.printablePaymentRequest(id).catch((error) => { toast(error.message || "Unable to load payment request."); qs("#payment-request-preview-modal").close(); return null; });
+  if (!printable) return;
+  qs("#payment-request-preview-title").textContent = printable.title;
+  qs("#payment-request-preview-content").innerHTML = printable.html;
+}
+
+async function printTransferRequest(id) {
+  showPaymentRequestPreviewLoading();
+  const printable = await MedlaneAPI.printableTransfer(id).catch((error) => { toast(error.message || "Unable to load transfer request."); qs("#payment-request-preview-modal").close(); return null; });
   if (!printable) return;
   qs("#payment-request-preview-title").textContent = printable.title;
   qs("#payment-request-preview-content").innerHTML = printable.html;
@@ -2883,11 +3029,9 @@ function renderReceivablesTracker() {
   qs("#ar-tracker-tabs").innerHTML = tabs.map(([key, label, count]) => `<button class="order-status-tab ${arTrackerTab === key ? "active" : ""}" data-ar-tab="${key}">${escapeHtml(label)}${key === "all" ? "" : ` <span>(${count})</span>`}</button>`).join("");
   const rows = arTrackerTab === "all" ? allRows : allRows.filter((sale) => arTrackerStage(sale) === arTrackerTab);
   const openBalance = rows.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-  const collected = rows.reduce((sum, sale) => sum + sale.paid, 0);
   qs("#ar-tracker-visuals").innerHTML = [
     visualCard("▦", "Current Tab", tabs.find(([key]) => key === arTrackerTab)?.[1] || "All", barRows(tabs.filter(([key]) => key !== "all").map(([, label, count]) => [label, count]), (value) => `${value} docs`, ["orange", "", "", "green", "red", "orange"]), "info", "Computed from invoice workflow status across PO, invoice, delivery, payment, and AR stages."),
     visualCard("₱", "Open AR", peso.format(openBalance), `<div class="big-number compact-big">${peso.format(openBalance)}</div><p>${rows.length} invoice${rows.length === 1 ? "" : "s"} in this view.</p>`, openBalance ? "warning" : "success", "Computed as invoice net amount minus paid amount for the filtered records."),
-    visualCard("✓", "Collected", peso.format(collected), `<div class="big-number compact-big">${peso.format(collected)}</div><p>Paid amount from filtered invoices.</p>`, "success", "Computed as the sum of paid amounts from invoices in the current tracker tab."),
   ].join("");
   const byClientReceivables = Object.entries(allRows.reduce((acc, sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
     .map(([client, invoices]) => [client, invoices, invoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
@@ -2942,6 +3086,25 @@ function renderInvoiceFlowDetail(invoiceId) {
   showSection("invoice-flow-detail");
 }
 
+function clientInvoicesFilteredSales(invoices) {
+  const status = qs("#client-invoices-status-filter")?.value || "all";
+  const from = qs("#client-invoices-from")?.value || "";
+  const to = qs("#client-invoices-to")?.value || "";
+  return invoices.filter((sale) => {
+    if (status !== "all" && paymentStatusForSale(sale) !== status) return false;
+    if (from && sale.date < from) return false;
+    if (to && sale.date > to) return false;
+    return true;
+  });
+}
+
+function resetClientInvoicesFilters() {
+  if (qs("#client-invoices-status-filter")) qs("#client-invoices-status-filter").value = "all";
+  if (qs("#client-invoices-from")) qs("#client-invoices-from").value = "";
+  if (qs("#client-invoices-to")) qs("#client-invoices-to").value = "";
+  renderClientInvoices();
+}
+
 function renderClientInvoices() {
   const client = currentClientView || data.sales[0]?.client;
   const invoices = data.sales.filter((sale) => sale.client === client);
@@ -2956,7 +3119,53 @@ function renderClientInvoices() {
   const lastPurchase = invoices.map((sale) => sale.date).sort().at(-1) || "No purchase";
   const clientGrade = !invoices.length ? "No activity" : overdue.length ? "Needs follow-up" : balance > 0 ? "Active AR" : "Good standing";
   qs("#client-invoices-title").textContent = `${client || "Client"} invoices`;
-  qs("#client-invoices-grid").innerHTML = invoices.length ? `<article class="panel full-client-timeline"><div class="panel-header"><div><p class="eyebrow">Client Performance</p><h2>${escapeHtml(client)}</h2><p>${escapeHtml(clientRecord.address || "No address recorded")} · ${escapeHtml(clientRecord.contact || "No contact recorded")}</p></div><span class="pill ${statusClass(overdue.length ? "Overdue" : balance ? "Near Due" : "Paid")}">${escapeHtml(clientGrade)}</span></div><div class="report-preview-grid"><div class="report-preview-card"><small>Total invoices</small><strong>${invoices.length}</strong></div><div class="report-preview-card"><small>Pending invoices</small><strong>${pending.length}</strong></div><div class="report-preview-card"><small>Completed invoices</small><strong>${completed.length}</strong></div><div class="report-preview-card"><small>Overdue invoices</small><strong>${overdue.length}</strong></div><div class="report-preview-card"><small>Total sales</small><strong>${peso.format(total)}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(paid)}</strong></div><div class="report-preview-card"><small>AR balance</small><strong>${peso.format(balance)}</strong></div><div class="report-preview-card"><small>Average order</small><strong>${peso.format(avgOrder)}</strong></div><div class="report-preview-card"><small>Last purchase</small><strong>${escapeHtml(lastPurchase)}</strong></div></div><div class="chart-bars">${barRows([["Collected", paid], ["Open AR", balance]], (value) => peso.format(value), ["green", "orange"])}${graphNote("Client health is computed from all SI/TS/DR invoices: pending, completed, overdue, collected amount, and open AR balance.")}</div><div class="modal-actions"><button class="primary-button" data-create-soa="${escapeHtml(client)}">Create SOA</button></div></article><article class="panel"><div class="panel-header"><div><p class="eyebrow">Pending Invoices</p><h2>${pending.length} still open</h2></div></div>${pending.length ? pending.map((sale) => trackerCard(sale, false)).join("") : `<p class="page-description">No pending invoices.</p>`}</article><article class="panel"><div class="panel-header"><div><p class="eyebrow">Completed Invoices</p><h2>${completed.length} completed</h2></div></div>${completed.length ? completed.map((sale) => trackerCard(sale, false)).join("") : `<p class="page-description">No completed invoices.</p>`}</article>` : `<article class="panel"><p>No invoices found for this client.</p></article>`;
+
+  const filtered = clientInvoicesFilteredSales(invoices).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  const filteredTotal = filtered.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const filteredBalance = filtered.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  const totalEl = qs("#client-invoices-filtered-total");
+  if (totalEl) totalEl.innerHTML = invoices.length ? `<strong>${filtered.length} invoice${filtered.length === 1 ? "" : "s"} in view · ${peso.format(filteredTotal)}</strong><small>Open balance in view: ${peso.format(filteredBalance)}</small>` : "";
+
+  qs("#client-invoices-grid").innerHTML = invoices.length ? `<article class="panel full-client-timeline"><div class="panel-header"><div><p class="eyebrow">Client Performance</p><h2>${escapeHtml(client)}</h2><p>${escapeHtml(clientRecord.address || "No address recorded")} · ${escapeHtml(clientRecord.contact || "No contact recorded")}</p></div><span class="pill ${statusClass(overdue.length ? "Overdue" : balance ? "Near Due" : "Paid")}">${escapeHtml(clientGrade)}</span></div><div class="report-preview-grid"><div class="report-preview-card"><small>Total invoices</small><strong>${invoices.length}</strong></div><div class="report-preview-card"><small>Pending invoices</small><strong>${pending.length}</strong></div><div class="report-preview-card"><small>Completed invoices</small><strong>${completed.length}</strong></div><div class="report-preview-card"><small>Overdue invoices</small><strong>${overdue.length}</strong></div><div class="report-preview-card"><small>Total sales</small><strong>${peso.format(total)}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(paid)}</strong></div><div class="report-preview-card"><small>AR balance</small><strong>${peso.format(balance)}</strong></div><div class="report-preview-card"><small>Average order</small><strong>${peso.format(avgOrder)}</strong></div><div class="report-preview-card"><small>Last purchase</small><strong>${escapeHtml(lastPurchase)}</strong></div></div><div class="chart-bars">${barRows([["Collected", paid], ["Open AR", balance]], (value) => peso.format(value), ["green", "orange"])}${graphNote("Client health is computed from all SI/TS/DR invoices: pending, completed, overdue, collected amount, and open AR balance.")}</div><div class="modal-actions"><button class="primary-button" data-create-soa="${escapeHtml(client)}">Create SOA</button></div></article><article class="panel"><div class="panel-header"><div><p class="eyebrow">Filtered Invoices</p><h2>${filtered.length} of ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}</h2></div></div>${filtered.length ? filtered.map((sale) => trackerCard(sale, false)).join("") : `<p class="page-description">No invoices match the current filters.</p>`}</article>` : `<article class="panel"><p>No invoices found for this client.</p></article>`;
+}
+
+function clientInvoicesExportRows(filtered) {
+  const header = ["Document No.", "Type", "Date", "Amount", "Paid", "Balance", "Status", "Salesperson"];
+  const rows = filtered.map((sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), paymentStatusForSale(sale), sale.salesperson || "-"]);
+  return [header, ...rows];
+}
+
+function exportClientInvoicesCsv() {
+  const client = currentClientView || data.sales[0]?.client;
+  if (!client) return toast("No client selected.");
+  const invoices = data.sales.filter((sale) => sale.client === client);
+  const filtered = clientInvoicesFilteredSales(invoices).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  if (!filtered.length) return toast("No invoices match the current filters.");
+  downloadCsv(`${client.replace(/[^a-z0-9]+/gi, "-")}-invoices.csv`, clientInvoicesExportRows(filtered));
+  log("Exported client invoice report (CSV)", "Client History", client, { save: false });
+}
+
+function clientInvoiceReportHtml(client, filtered) {
+  const status = qs("#client-invoices-status-filter")?.value || "all";
+  const from = qs("#client-invoices-from")?.value || "";
+  const to = qs("#client-invoices-to")?.value || "";
+  const totalNet = filtered.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const totalPaid = filtered.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const totalBalance = Math.max(totalNet - totalPaid, 0);
+  const rows = filtered.map((sale) => `<tr><td>${escapeHtml(sale.date)}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(invoiceTypeLabel(sale.type))}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td><td>${escapeHtml(paymentStatusForSale(sale))}</td></tr>`).join("");
+  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>Client Invoice Report</span></header><div class="pr-meta"><span>Client: <strong>${escapeHtml(client)}</strong></span><span>Status: <strong>${status === "all" ? "All Invoices" : escapeHtml(status)}</strong></span><span>Period: <strong>${escapeHtml(from || "…")} to ${escapeHtml(to || "…")}</strong></span></div><table><thead><tr><th>Date</th><th>Document</th><th>Type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows || `<tr><td colspan="7">No invoices match the current filters.</td></tr>`}<tr><td colspan="3"><strong>Total</strong></td><td><strong>${peso.format(totalNet)}</strong></td><td><strong>${peso.format(totalPaid)}</strong></td><td><strong>${peso.format(totalBalance)}</strong></td><td></td></tr></tbody></table></section>`;
+}
+
+function printClientInvoicesReport() {
+  const client = currentClientView || data.sales[0]?.client;
+  if (!client) return toast("No client selected.");
+  const invoices = data.sales.filter((sale) => sale.client === client);
+  const filtered = clientInvoicesFilteredSales(invoices).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const dialog = qs("#payment-request-preview-modal");
+  qs("#payment-request-preview-title").textContent = `Client Invoice Report — ${client}`;
+  qs("#payment-request-preview-content").innerHTML = clientInvoiceReportHtml(client, filtered);
+  if (!dialog.open) dialog.showModal();
+  log("Exported client invoice report (PDF)", "Client History", client, { save: false });
 }
 
 function soaHtml(client) {
@@ -3148,16 +3357,35 @@ async function updateProductIssueStatus(id, status) {
   toast(`${id} marked ${status}.`);
 }
 
+function purchaseHistoryVisibleClients() {
+  const clients = data.clients.filter((client) => includesSearch(Object.values(client)));
+  if (currentUser?.role === "Sales") return clients.filter((client) => client.salesperson === currentUser?.name);
+  return clients;
+}
+
 function renderPurchaseHistory() {
-  const rows = data.clients.filter((client) => includesSearch(Object.values(client))).map((client) => {
-    const purchases = data.sales.filter((sale) => sale.client === client.name);
-    const total = purchases.reduce((sum, sale) => sum + sale.net, 0);
-    const last = purchases.map((sale) => sale.date).sort().at(-1) || "No purchase";
-    const items = [...new Set(purchases.map((sale) => sale.item))].join(", ") || "-";
-    const balance = purchases.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-    return [`<button class="link-button dark" data-client-invoices="${escapeHtml(client.name)}">${escapeHtml(client.name)}</button>`, client.area, purchases.length, items, peso.format(total), peso.format(balance), last];
-  });
-  table("#purchase-history-table", ["Client", "Area", "Orders", "Items Purchased", "Lifetime Value", "AR Balance", "Last Purchase"], rows);
+  const container = qs("#purchase-history-groups");
+  if (!container) return;
+  const byAgent = purchaseHistoryVisibleClients().reduce((acc, client) => {
+    const agent = client.salesperson || "Unassigned";
+    (acc[agent] ||= []).push(client);
+    return acc;
+  }, {});
+  const agentNames = Object.keys(byAgent).sort((a, b) => (a === "Unassigned") - (b === "Unassigned") || a.localeCompare(b));
+  container.innerHTML = agentNames.length ? agentNames.map((agent) => {
+    const agentClients = byAgent[agent];
+    let agentTotal = 0;
+    const rows = agentClients.map((client) => {
+      const purchases = data.sales.filter((sale) => sale.client === client.name);
+      const total = purchases.reduce((sum, sale) => sum + sale.net, 0);
+      agentTotal += total;
+      const last = purchases.map((sale) => sale.date).sort().at(-1) || "No purchase";
+      const items = [...new Set(purchases.map((sale) => sale.item))].join(", ") || "-";
+      const balance = purchases.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
+      return `<tr data-focus-text="${escapeHtml(`${client.name} ${client.area || ""} ${items}`)}"><td data-label="Client"><button class="link-button dark" data-client-invoices="${escapeHtml(client.name)}">${escapeHtml(client.name)}</button></td><td data-label="Area">${escapeHtml(client.area || "-")}</td><td data-label="Orders">${purchases.length}</td><td data-label="Items Purchased">${escapeHtml(items)}</td><td data-label="Lifetime Value">${peso.format(total)}</td><td data-label="AR Balance">${peso.format(balance)}</td><td data-label="Last Purchase">${escapeHtml(last)}</td></tr>`;
+    }).join("");
+    return `<article class="panel purchase-history-agent"><div class="panel-header"><div><p class="eyebrow">Sales Agent</p><h2>${escapeHtml(agent)}</h2></div><span class="pill gray">${agentClients.length} client${agentClients.length === 1 ? "" : "s"} · ${peso.format(agentTotal)}</span></div><div class="table-card"><table><thead><tr><th>Client</th><th>Area</th><th>Orders</th><th>Items Purchased</th><th>Lifetime Value</th><th>AR Balance</th><th>Last Purchase</th></tr></thead><tbody>${rows}</tbody></table></div></article>`;
+  }).join("") : `<article class="panel"><p>No clients found.</p></article>`;
 }
 
 function renderImports() {
@@ -3806,6 +4034,9 @@ function getReconciliationFindings(scope = getReconScope()) {
   const docCounts = scope.sales.reduce((acc, sale) => { acc[sale.documentNo] = (acc[sale.documentNo] || 0) + 1; return acc; }, {});
   Object.entries(docCounts).filter(([, count]) => count > 1).forEach(([documentNo]) => findings.push(["Duplicate Document", documentNo, "Manual SI/TS/DR number appears more than once", "High", "sales", documentNo]));
   scope.sales.forEach((sale) => {
+    // DR (Delivery Receipt) documents are expected to carry 0 gross — they record a delivery,
+    // not a billable amount — so a line-total/gross mismatch there is normal, not a data error.
+    if (documentType(sale.type) === "DR") return;
     const lineTotal = saleAmount(sale.lines || []);
     if (Math.abs(lineTotal - sale.amount) > 1) findings.push(["Sales Amount", sale.documentNo, `Line total ${peso.format(lineTotal)} does not match gross ${peso.format(sale.amount)}`, "High", "sales", sale.documentNo]);
     if (sale.paid > sale.net) findings.push(["Collection", sale.documentNo, "Paid amount is higher than invoice net", "High", "collections", sale.documentNo]);
@@ -3825,7 +4056,7 @@ function getReconciliationFindings(scope = getReconScope()) {
   scope.clients.forEach((client) => {
     const balance = getScopedClientBalance(client.name, scope.sales);
     if (client.creditLimit > 0 && balance > client.creditLimit) findings.push(["Credit Limit", client.name, `${peso.format(balance)} exceeds ${peso.format(client.creditLimit)} for selected dates`, "Medium", "masterlists", client.name]);
-    requiredClientDocs.forEach((doc) => { if (!client.docs?.includes(doc)) findings.push(["Client Docs", client.name, `Missing ${doc}`, "Low", "masterlists", client.name]); });
+    requiredClientDocs.forEach((doc) => { if (!attachedFilesFor("client-doc", clientDocRecordId(client.name, doc)).length) findings.push(["Client Docs", client.name, `Missing ${doc}`, "Low", "masterlists", client.name]); });
   });
   scope.transfers.filter((transfer) => transfer.status === "For Receiving").forEach((transfer) => findings.push(["Stock Transfer", transfer.id, "Pending receiving confirmation", "Medium", "inventory", transfer.id]));
   return findings;

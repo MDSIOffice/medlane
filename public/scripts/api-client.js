@@ -231,6 +231,10 @@ const MedlaneAPI = (() => {
     return request(`/api/printables/payment-request?${new URLSearchParams({ id })}`);
   }
 
+  async function printableTransfer(id) {
+    return request(`/api/printables/transfer?${new URLSearchParams({ id })}`);
+  }
+
   async function printableInventoryPurchaseOrder(id) {
     return request(`/api/printables/inventory-po?${new URLSearchParams({ id })}`);
   }
@@ -297,5 +301,5 @@ const MedlaneAPI = (() => {
     return request("/api/backups/restore", { method: "POST", body: JSON.stringify(ref) });
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, listBackupObjects, runBackup, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, listBackupObjects, runBackup, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock };
 })();
