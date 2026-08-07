@@ -4687,7 +4687,7 @@ function openModal(type, edit = null) {
   modalType = type;
   editContext = edit?.record ? edit : null;
   const config = modalConfigs[type];
-  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue"].includes(type));
+  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue", "paymentRequest"].includes(type));
   qs("#demo-modal").classList.toggle("inventory-po-modal", type === "inventoryPurchaseOrder");
   const isEditRecord = Boolean(edit?.record);
   qs("#modal-title").textContent = isEditRecord ? config.title.replace("Add", "Edit") : config.title;
