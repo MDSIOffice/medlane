@@ -1941,11 +1941,16 @@ async function confirmTransferReceive() {
   toast(allComplete ? "Transfer received and inventory adjusted." : "Partial receipt recorded — reopen later for the remainder.");
 }
 
+function isClientAssignedToCurrentUser(clientName) {
+  const client = data.clients.find((c) => c.name === clientName);
+  return client?.salesperson === currentUser?.name;
+}
+
 function renderSales() {
   const status = qs("#sales-status").value;
   const type = qs("#sales-type").value;
   const canViewAllSales = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
-  const rows = byBranch(data.sales, "area").filter((s) => ["SI", "TS"].includes(documentType(s.type))).filter((s) => canViewAllSales || s.salesperson === currentUser?.name).filter((s) => status === "all" || statusForSale(s) === status).filter((s) => type === "all" || documentType(s.type) === type).filter((s) => includesSearch(Object.values(s)));
+  const rows = byBranch(data.sales, "area").filter((s) => ["SI", "TS"].includes(documentType(s.type))).filter((s) => canViewAllSales || isClientAssignedToCurrentUser(s.client)).filter((s) => status === "all" || statusForSale(s) === status).filter((s) => type === "all" || documentType(s.type) === type).filter((s) => includesSearch(Object.values(s)));
   const nearExpiry = byBranch(data.inventory).filter((item) => inventoryStatus(item) === "Near Expiry");
   const firstNearExpiry = nearExpiry[0];
   qs("#near-expiry-sales-alert").innerHTML = nearExpiry.length
