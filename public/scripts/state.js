@@ -32,6 +32,7 @@ let inventoryCompactView = false;
 let payablesWorkflowTab = "all";
 let replenishmentsWorkflowTab = "all";
 let transferRowUid = 0;
+let invoiceRowUid = 0;
 let ptActiveType = "SI";
 let ptOverrides = { fields: {}, row: null };
 let ptSelectedField = null;

@@ -475,6 +475,11 @@ function findSaleByDocumentInput(value) {
     || data.sales.find((item) => (item.id || "").toLowerCase().startsWith(query) || (item.documentNo || "").toLowerCase().startsWith(query));
 }
 
+function invoiceRowLotOptionsHtml(item, branch) {
+  if (!item) return "";
+  return data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0).map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.branch)} · Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
+}
+
 function invoiceLineTemplate(line = {}, options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
@@ -484,6 +489,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
   const preferredBranch = selectedInvoiceBranch;
   const stock = item ? data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === preferredBranch) || {} : {};
   const selectedUom = line.uom || item?.uom || "unit";
+  const uid = ++invoiceRowUid;
   return `<div class="invoice-line-row">
     <div class="invoice-line-fields">
       <div class="field item-field"><label>Item</label><input class="invoice-item-input" list="item-master-options" value="${escapeHtml(line.item || item?.name || "")}" placeholder="Type item name or code" required /></div>
@@ -492,7 +498,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="1" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${uomOptions.map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" value="${line.price || ""}" required /></div>
-      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label><input class="invoice-lot-input" list="invoice-lot-options" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /></div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
+      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label><input class="invoice-lot-input" list="invoice-lot-options-${uid}" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist></div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
     </div>
     <button class="icon-button remove-invoice-line" type="button" aria-label="Remove item" title="Remove item">×</button>
@@ -544,7 +550,7 @@ function renderInvoiceEditor(lines = [{}], options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
   const help = requireLot ? "Search item name. Enter lot and expiry before creating SI, TS, or DR." : "Search item name. Lot and expiry will be entered during invoicing.";
-  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("")}</datalist><datalist id="invoice-lot-options">${data.inventory.map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.item)} · ${escapeHtml(entry.branch)} · Qty ${entry.qty}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
+  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
 }
 
 function collectInvoiceEditorLines() {
@@ -580,9 +586,12 @@ function syncInvoiceRowLot(input) {
 
 function syncInvoiceRowItem(input) {
   if (!input) return;
-  const item = findItemByCodeOrName(input.value);
-  if (!item) return;
   const row = input.closest(".invoice-line-row");
+  const item = findItemByCodeOrName(input.value);
+  const warehouse = qs("#sourceBranch")?.value || row.querySelector(".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
+  const lotDatalist = row.querySelector("datalist[id^='invoice-lot-options-']");
+  if (lotDatalist) lotDatalist.innerHTML = invoiceRowLotOptionsHtml(item, warehouse);
+  if (!item) return;
   row.querySelector(".invoice-brand-input").value = item.brand || "";
   row.querySelector(".invoice-uom-input").value = item.uom || "unit";
   const expiryField = row.querySelector(".expiry-field");
@@ -591,7 +600,6 @@ function syncInvoiceRowItem(input) {
   expiryField?.classList.toggle("equipment-expiry-field", equipment);
   if (expiryInput) { expiryInput.required = !equipment; if (equipment) expiryInput.value = ""; }
   if (!row.querySelector(".invoice-price-input").value) row.querySelector(".invoice-price-input").value = "";
-  const warehouse = qs("#sourceBranch")?.value || row.querySelector(".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
   const stock = data.inventory
     .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (entry.expiry === "N/A" || daysUntil(entry.expiry) >= 0))
     .sort((a, b) => daysUntil(a.expiry === "N/A" ? "2099-12-31" : a.expiry) - daysUntil(b.expiry === "N/A" ? "2099-12-31" : b.expiry))[0];
@@ -1245,10 +1253,14 @@ function transferItemizedDetail(transfer) {
   return `<div class="mini-transfer-lines">${lines.map((line) => `<span><strong>${escapeHtml(line.item)}</strong> ${transferLineQty(line)} ${escapeHtml(line.uom || "")}<small>Lot ${escapeHtml(transferLineLot(line))} · Exp ${escapeHtml(transferLineExpiry(line))}</small></span>`).join("")}</div>`;
 }
 
+function dashboardVisibleSales(dashboardRange = getDashboardRange()) {
+  return byBranch(data.sales, "area").filter((sale) => currentUser?.role !== "Sales" || sale.salesperson === currentUser?.name).filter((sale) => dateInRange(sale.date, dashboardRange.from, dashboardRange.to));
+}
+
 function renderDashboard() {
   syncCollectionContactsForBalances();
   const dashboardRange = getDashboardRange();
-  const visibleSales = byBranch(data.sales, "area").filter((sale) => currentUser?.role !== "Sales" || sale.salesperson === currentUser?.name).filter((sale) => dateInRange(sale.date, dashboardRange.from, dashboardRange.to));
+  const visibleSales = dashboardVisibleSales(dashboardRange);
   const totalSales = visibleSales.reduce((sum, sale) => sum + sale.net, 0);
   const totalPaid = visibleSales.reduce((sum, sale) => sum + sale.paid, 0);
   const outstanding = visibleSales.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
@@ -1304,6 +1316,41 @@ function renderDashboard() {
         ]) + graphNote("Computed from invoice net totals, payments received, and open balances grouped by invoice month within the selected date range.")
       : `<p>No sales trend available for this view.</p>`;
   }
+}
+
+function dashboardReportRows(visibleSales) {
+  const header = ["Document No.", "Type", "Client", "Area", "Salesperson", "Date", "Amount", "Paid", "Balance", "Status"];
+  const rows = visibleSales.map((sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.client, sale.area, sale.salesperson || "-", sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), statusForSale(sale)]);
+  return [header, ...rows];
+}
+
+function exportDashboardCsv() {
+  const dashboardRange = getDashboardRange();
+  const visibleSales = dashboardVisibleSales(dashboardRange).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  if (!visibleSales.length) return toast("No invoices in the current dashboard view to export.");
+  const period = dashboardRange.from || dashboardRange.to ? `${dashboardRange.from || "start"}_to_${dashboardRange.to || "now"}` : "all-dates";
+  downloadCsv(`dashboard-report-${period}.csv`, dashboardReportRows(visibleSales));
+  log("Exported dashboard report (CSV)", "Dashboard", period, { save: false });
+}
+
+function dashboardReportHtml(visibleSales, dashboardRange) {
+  const totalSales = visibleSales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const totalPaid = visibleSales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const outstanding = visibleSales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  const invAlerts = byBranch(data.inventory).filter((item) => ["Low Stock", "Critical", "Near Expiry", "For Disposal"].includes(inventoryStatus(item)));
+  const branches = platformAreas().map((branch) => ({ branch, amount: visibleSales.filter((s) => s.area === branch).reduce((sum, s) => sum + Number(s.net || 0), 0) })).filter((b) => b.amount > 0);
+  const rows = visibleSales.slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))).map((sale) => `<tr><td>${escapeHtml(sale.date)}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(sale.client)}</td><td>${escapeHtml(sale.area || "-")}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td><td>${escapeHtml(statusForSale(sale))}</td></tr>`).join("");
+  return `<section class="payment-request-print"><header><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong><span>Dashboard Report</span></header><div class="pr-meta"><span>Period: <strong>${escapeHtml(dashboardRange.from || "…")} to ${escapeHtml(dashboardRange.to || "…")}</strong></span><span>Branch: <strong>${escapeHtml(data.branch === "all" ? "All Branches" : data.branch)}</strong></span><span>Invoices: <strong>${visibleSales.length}</strong></span></div><div class="pr-meta"><span>Total Sales: <strong>${peso.format(totalSales)}</strong></span><span>Collections: <strong>${peso.format(totalPaid)}</strong></span><span>Outstanding AR: <strong>${peso.format(outstanding)}</strong></span><span>Stock Alerts: <strong>${invAlerts.length}</strong></span></div>${branches.length ? `<table><thead><tr><th>Region</th><th>Sales</th></tr></thead><tbody>${branches.map((b) => `<tr><td>${escapeHtml(b.branch)}</td><td>${peso.format(b.amount)}</td></tr>`).join("")}</tbody></table>` : ""}<table><thead><tr><th>Date</th><th>Document</th><th>Client</th><th>Area</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No invoices in this view.</td></tr>`}</tbody></table></section>`;
+}
+
+function printDashboardReport() {
+  const dashboardRange = getDashboardRange();
+  const visibleSales = dashboardVisibleSales(dashboardRange);
+  const dialog = qs("#payment-request-preview-modal");
+  qs("#payment-request-preview-title").textContent = "Dashboard Report";
+  qs("#payment-request-preview-content").innerHTML = dashboardReportHtml(visibleSales, dashboardRange);
+  if (!dialog.open) dialog.showModal();
+  log("Exported dashboard report (PDF)", "Dashboard", dashboardRange.from || dashboardRange.to ? `${dashboardRange.from || "start"} to ${dashboardRange.to || "now"}` : "all-dates", { save: false });
 }
 
 const calendarWidgetRegistry = {};
@@ -1539,7 +1586,7 @@ function renderInventory() {
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
   table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
-  table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, (transfer.lines || []).reduce((sum, line) => sum + transferLineQty(line), 0), (transfer.lines || []).map((line) => `${escapeHtml(transferLineLot(line))}<small>${escapeHtml(transferLineExpiry(line))}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View Details</button>`] })));
+  table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, (transfer.lines || []).reduce((sum, line) => sum + transferLineQty(line), 0), (transfer.lines || []).map((line) => `${escapeHtml(transferLineLot(line))}<small>${escapeHtml(transferLineExpiry(line))}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View Details</button><button class="mini-button" data-transfer-print="${escapeHtml(transfer.id)}">Print</button>`] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
 }
 
@@ -1657,7 +1704,11 @@ function addStockSheetRow() {
 
 function transferSheetRow() {
   const uid = ++transferRowUid;
-  return `<tr><td><input class="transfer-code" list="inventory-code-options" /></td><td><input class="transfer-item" list="inventory-item-options" /></td><td><input class="transfer-lot" list="transfer-lot-options-${uid}" /><datalist id="transfer-lot-options-${uid}"></datalist></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+  return `<tr><td><input class="transfer-code" list="inventory-code-options" /></td><td><input class="transfer-item" list="inventory-item-options" /><small class="transfer-balance-hint"></small></td><td><input class="transfer-lot" list="transfer-lot-options-${uid}" /><datalist id="transfer-lot-options-${uid}"></datalist></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+}
+
+function itemBranchBalances(code) {
+  return platformBranches().map((branch) => `${branch}: ${data.inventory.filter((entry) => entry.code === code && entry.branch === branch).reduce((sum, entry) => sum + Number(entry.qty || 0), 0)}`).join(" · ");
 }
 
 function addTransferSheetRow() {
@@ -1673,6 +1724,15 @@ function renderTransferSheet() {
   if (qs("#transfer-sheet-from")) qs("#transfer-sheet-from").innerHTML = branchOptions(platformBranches()[0]);
   if (qs("#transfer-sheet-to")) qs("#transfer-sheet-to").innerHTML = branchOptions(platformBranches()[1] || platformBranches()[0]);
   tableEl.innerHTML = `<thead><tr><th>Item Code</th><th>Item Name</th><th>Lot Number</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${transferSheetRow()}</tbody>`;
+}
+
+function preventSameTransferBranch(changed) {
+  const fromSelect = qs("#transfer-sheet-from");
+  const toSelect = qs("#transfer-sheet-to");
+  if (!fromSelect || !toSelect || fromSelect.value !== toSelect.value) return;
+  const other = changed === "from" ? toSelect : fromSelect;
+  const alt = platformBranches().find((branch) => branch !== fromSelect.value);
+  if (alt) other.value = alt;
 }
 
 function removeInventorySheetRow(button) {
@@ -1710,6 +1770,8 @@ function syncStockSheetRow(input, allowPartial = false) {
   const matchingStock = data.inventory.filter((entry) => entry.code === match.code && (!from || entry.branch === from) && entry.qty > 0);
   if (lotDatalist) lotDatalist.innerHTML = matchingStock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
   if (lotInput && matchingStock[0] && !lotInput.value.trim()) lotInput.value = matchingStock[0].lot;
+  const balanceHint = row.querySelector(".transfer-balance-hint");
+  if (balanceHint) balanceHint.textContent = `Balance — ${itemBranchBalances(match.code)}`;
 }
 
 async function saveStockSheet() {
@@ -4206,7 +4268,10 @@ function formatBytes(value) {
   return `${bytes} B`;
 }
 function backupRunLabel(type = "manual") {
-  return String(type).toLowerCase() === "manual" ? `<span class="pill purple">Manual</span>` : `<span class="pill green">Automatic</span>`;
+  const value = String(type).toLowerCase();
+  if (value === "manual") return `<span class="pill purple">Manual</span>`;
+  if (value === "pre-restore") return `<span class="pill orange">Safety Snapshot</span>`;
+  return `<span class="pill green">Automatic</span>`;
 }
 let backupsLoaded = false;
 async function renderBackup() {

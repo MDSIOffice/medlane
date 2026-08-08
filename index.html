@@ -37,6 +37,7 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div class="global-loading-bar" id="global-loading-bar" aria-hidden="true"></div>
     <div class="loading-overlay" id="loading-overlay" aria-hidden="true">
       <div class="loader-card"><div class="loader-orbit"><img src="medlane.jpg" alt="" /><span></span><i></i></div><strong>Loading Medlane OS</strong><small>Securing diagnostics operations...</small></div>
     </div>
@@ -275,6 +276,8 @@
           <div class="field"><label for="dashboard-date-from">Dashboard from</label><input id="dashboard-date-from" type="date" /></div>
           <div class="field"><label for="dashboard-date-to">Dashboard until</label><input id="dashboard-date-to" type="date" /></div>
           <button class="ghost-button" id="clear-dashboard-dates" type="button">All Dates</button>
+          <button class="ghost-button" id="dashboard-export-csv" type="button">Export CSV</button>
+          <button class="ghost-button" id="dashboard-export-pdf" type="button">Print / Export PDF</button>
         </div>
         <div class="stats-grid">
           <article class="stat-card accent-blue"><span class="card-icon">₱</span><span>Total Sales</span><strong id="sales-total">PHP 0</strong><small>SI + TS</small></article>

@@ -833,7 +833,8 @@ qs("#open-followup-history").addEventListener("click", () => { renderCollectionC
 qs("#followup-history-close").addEventListener("click", () => qs("#followup-history-modal").close());
 qs("#followup-history-cancel").addEventListener("click", () => qs("#followup-history-modal").close());
 qs("#add-transfer-sheet-row").addEventListener("click", addTransferSheetRow);
-qs("#transfer-sheet-from")?.addEventListener("change", () => qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true)));
+qs("#transfer-sheet-from")?.addEventListener("change", () => { preventSameTransferBranch("from"); qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true)); });
+qs("#transfer-sheet-to")?.addEventListener("change", () => preventSameTransferBranch("to"));
 qs("#save-stock-sheet").addEventListener("click", saveStockSheet);
 qs("#stock-sheet-modal").addEventListener("change", (event) => { if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value); });
 qs("#save-transfer-sheet").addEventListener("click", saveTransferSheet);
@@ -844,6 +845,8 @@ qs("#transfer-table").addEventListener("click", (event) => {
   if (receive) return openTransferReceiveModal(Number(receive.dataset.receiveTransfer));
   const transferTimeline = event.target.closest("[data-transfer-timeline]");
   if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
+  const transferPrint = event.target.closest("[data-transfer-print]");
+  if (transferPrint) return printTransferRequest(transferPrint.dataset.transferPrint);
 });
 qs("#transfer-history-table").addEventListener("click", (event) => {
   const transferTimeline = event.target.closest("[data-transfer-timeline]");
@@ -1046,6 +1049,8 @@ qs("#global-search").addEventListener("input", () => {
 qs("#dashboard-date-from").addEventListener("change", renderDashboard);
 qs("#dashboard-date-to").addEventListener("change", renderDashboard);
 qs("#clear-dashboard-dates").addEventListener("click", () => { qs("#dashboard-date-from").value = ""; qs("#dashboard-date-to").value = ""; renderDashboard(); toast("Dashboard date filter cleared."); });
+qs("#dashboard-export-csv").addEventListener("click", exportDashboardCsv);
+qs("#dashboard-export-pdf").addEventListener("click", printDashboardReport);
 qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
 qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
 qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
@@ -1183,20 +1188,20 @@ async function restoreBackupFromRef(ref) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can restore backups.");
   const label = ref.key || ref.id || "backup";
   const preview = [`Source: ${ref.source || "Backup"}`, `Created: ${ref.created || "Unknown"}`, `Records: ${ref.records || "-"}`, `Size: ${ref.size || "-"}`].join("\n");
-  const typed = prompt(`Restore this backup?\n\n${label}\n${preview}\n\nThis will upsert records from the backup. It will not delete current records. Type RESTORE to continue.`);
+  const typed = prompt(`Restore this backup?\n\n${label}\n${preview}\n\nThis will upsert records from the backup. It will not delete current records. Before restoring, the current data is automatically saved as a "Safety Snapshot" backup so you can always revert back to it, no matter how many restores you do. Type RESTORE to continue.`);
   if (typed !== "RESTORE") return toast("Restore cancelled.");
   try {
-    setBackupStatus("Restoring backup", "Reading compressed backup and upserting app records. Existing records will not be deleted...", -1);
+    setBackupStatus("Restoring backup", "Saving a safety snapshot of the current data, then upserting records from the backup...", -1);
     const result = await MedlaneAPI.restoreBackup(ref);
     setBackupStatus("Reloading restored data", `${result.restore?.restoredRecords || 0} records upserted. Refreshing dashboard data...`, 85);
-    log("Restored backup", "Backup", `${label} · ${result.restore?.restoredRecords || 0} records`);
+    log("Restored backup", "Backup", `${label} · ${result.restore?.restoredRecords || 0} records · safety snapshot ${result.restore?.preRestoreBackupKey || "saved"}`);
     await syncBackendUsers().catch(() => null);
     const fresh = await MedlaneAPI.loadAppState().catch(() => null);
     if (fresh?.data) data = normalizeData({ ...emptyProductionData(), ...fresh.data });
     renderAll();
-    setBackupStatus("Restore completed", `${result.restore?.restoredRecords || 0} records were restored safely by upsert.`, 100, "success");
+    setBackupStatus("Restore completed", `${result.restore?.restoredRecords || 0} records were restored safely by upsert. The prior data was saved as a Safety Snapshot backup in case you need to revert.`, 100, "success");
     clearBackupStatus(5000);
-    toast(`Restore completed: ${result.restore?.restoredRecords || 0} records upserted.`);
+    toast(`Restore completed: ${result.restore?.restoredRecords || 0} records upserted. Prior data saved as a Safety Snapshot.`);
   } catch (error) {
     setBackupStatus("Restore failed", error.message || "Restore failed.", 100, "error");
     toast(error.message || "Restore failed.");

@@ -11,6 +11,11 @@ const MedlaneAPI = (() => {
   }
 
   let refreshInFlight = null;
+  let pendingRequestCount = 0;
+  function trackGlobalLoading(delta) {
+    pendingRequestCount = Math.max(0, pendingRequestCount + delta);
+    if (typeof setGlobalLoading === "function") setGlobalLoading(pendingRequestCount > 0);
+  }
 
   async function refreshSession() {
     const active = session();
@@ -40,6 +45,15 @@ const MedlaneAPI = (() => {
   }
 
   async function request(path, options = {}, retried = false) {
+    trackGlobalLoading(1);
+    try {
+      return await requestInner(path, options, retried);
+    } finally {
+      trackGlobalLoading(-1);
+    }
+  }
+
+  async function requestInner(path, options = {}, retried = false) {
     const active = session();
     const headers = { ...(options.headers || {}) };
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;

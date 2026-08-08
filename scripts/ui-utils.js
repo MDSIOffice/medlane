@@ -1,3 +1,6 @@
+function setGlobalLoading(active) {
+  document.getElementById("global-loading-bar")?.classList.toggle("active", active);
+}
 function statusForSale(sale) {
   if (sale.status === "Cancelled") return "Cancelled";
   const balance = sale.net - sale.paid;

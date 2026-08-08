@@ -1021,6 +1021,12 @@ async function restoreBackupObject(env, key, actorId, auditContext) {
     .filter((row) => (!row?.state_key || row.state_key === stateKey) && persistedKeys.includes(row.module_name) && row.module_name !== "logs")
     .map((row) => ({ state_key: stateKey, module_name: row.module_name, record_key: String(row.record_key || recordKeyFor(row.module_name, row.data, 0)), data: row.data || {}, updated_by: actorId || null }));
   if (!records.length) throw new Error("Backup has no restorable app records");
+  // Snapshot the current data BEFORE overwriting it with the older backup. This is not the
+  // backup being restored — it is a full backup of whatever was live a moment ago, so the true
+  // latest state can always be recovered no matter how many times a user restores an old
+  // backup afterward (each restore snapshots what was live right before it, chaining back to
+  // the original latest state).
+  const preRestoreBackup = await createBackup(env, "pre-restore", actorId);
   const chunkSize = 300;
   for (let index = 0; index < records.length; index += chunkSize) {
     await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
@@ -1029,8 +1035,8 @@ async function restoreBackupObject(env, key, actorId, auditContext) {
       body: JSON.stringify(records.slice(index, index + chunkSize)),
     });
   }
-  await writeAuditTrace(env, stateKey, { actor: actorId || "System User", role: "Superadmin", action: "Restored backup object", module: "Backup", record: `${key} · ${records.length} records upserted` }, actorId, auditContext);
-  return { restoredRecords: records.length, objectKey: key, backupCreatedAt: payload.createdAt || null };
+  await writeAuditTrace(env, stateKey, { actor: actorId || "System User", role: "Superadmin", action: "Restored backup object", module: "Backup", record: `${key} · ${records.length} records upserted · pre-restore safety backup ${preRestoreBackup.object_key}` }, actorId, auditContext);
+  return { restoredRecords: records.length, objectKey: key, backupCreatedAt: payload.createdAt || null, preRestoreBackupKey: preRestoreBackup.object_key };
 }
 
 // ---- Automated alert / digest emails (threshold, approval-needed, daily/weekly digest) ----
@@ -1553,9 +1559,18 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   const blockedImports = imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status || ""));
   const latestRecon = reconHistory[0];
 
-  const newlyPaidPoIds = await trackNewOccurrences(env, "discordKnownPaidPOs", purchaseOrders.filter((po) => poFullyPaidServer(po, sales)).map((po) => po.id));
+  // These two "what's new since last digest" lookups are a nice-to-have, not core to the
+  // digest — a failure here (e.g. a transient Supabase error) must never prevent the digest
+  // embed itself from posting, so each is isolated with its own catch.
+  const newlyPaidPoIds = await trackNewOccurrences(env, "discordKnownPaidPOs", purchaseOrders.filter((po) => poFullyPaidServer(po, sales)).map((po) => po.id)).catch(async (error) => {
+    await recordSystemLog(env, { action: "Discord digest tracking failed", module: "Discord", record: `discordKnownPaidPOs: ${error.message}` }).catch(() => null);
+    return [];
+  });
   const newlyPaidPos = purchaseOrders.filter((po) => newlyPaidPoIds.includes(po.id));
-  const newClientNames = await trackNewOccurrences(env, "discordKnownClients", clients.map((client) => client.name));
+  const newClientNames = await trackNewOccurrences(env, "discordKnownClients", clients.map((client) => client.name)).catch(async (error) => {
+    await recordSystemLog(env, { action: "Discord digest tracking failed", module: "Discord", record: `discordKnownClients: ${error.message}` }).catch(() => null);
+    return [];
+  });
 
   const fields = [];
   const mentionedRoleIds = new Set();
