@@ -1572,7 +1572,10 @@ button.calendar-cell:hover { background: var(--tint); }
 .invite-confirm-modal .modal-actions button { min-width: 180px; }
 .invite-confirm-modal form { padding: 32px; }
 .invite-confirm-modal .modal-header { margin-bottom: 8px; }
-.payment-request-print { max-width: 980px; margin: 0 auto; border: 2px solid #111827; background: var(--panel-solid); color: #111827; font-family: Arial, sans-serif; }
+/* Always represents physical white paper, regardless of site theme — background and text
+   colors here are intentionally hardcoded, not theme variables, so it stays legible in dark
+   mode instead of turning near-black text on a dark-navy panel background. */
+.payment-request-print { max-width: 980px; margin: 0 auto; border: 2px solid #111827; background: #ffffff; color: #111827; font-family: Arial, sans-serif; }
 .payment-request-print header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #111827; padding: 16px 18px; font-size: 18px; }
 .payment-request-print .pr-meta, .payment-request-print .pr-checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; border-bottom: 1px solid #111827; padding: 12px 18px; }
 .payment-request-print .pr-checks { grid-template-columns: 1.1fr repeat(3, 1fr); }
@@ -1857,6 +1860,17 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   h2 { font-size: 18px; }
   .panel, .table-card, .stat-card, .invoice-card, .report-card {
     box-shadow: none;
+  }
+  /* .panel and .table-card can legitimately span many pages of a report (a full invoice
+     table, a report page's chart + table). Marking the whole block "avoid break" forces the
+     browser to push it entirely onto the next page when it doesn't fit what's left of the
+     current one, leaving the first page almost blank. Only small, atomic cards should avoid
+     being split mid-card. */
+  .stat-card, .invoice-card, .report-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  table, tr {
     break-inside: avoid;
     page-break-inside: avoid;
   }
