@@ -508,6 +508,27 @@ function requireMemoAdmin(profile) {
   if (!["Superadmin", "CEO", "HR"].includes(profile?.role)) throw new Error("Only Superadmin, CEO, or HR can post a memo");
 }
 
+async function postMemoToDiscord(env, memo) {
+  if (!env.MEMO_DISCORD_WEBHOOK_URL) {
+    await recordSystemLog(env, { action: "Memo Discord post skipped", module: "Discord", record: `${memo.id}: MEMO_DISCORD_WEBHOOK_URL not configured` });
+    return;
+  }
+  const audienceLabel = memo.audience === "all" ? "🌐 All Departments" : `🎯 ${memo.audience.join(", ")}`;
+  const bodyPreview = String(memo.body || "").length > 600 ? `${memo.body.slice(0, 600)}…` : memo.body;
+  const fields = [
+    { name: "👥 Audience", value: audienceLabel, inline: true },
+    { name: "🧑‍💼 Posted By", value: `${memo.createdBy} (${memo.createdByRole})`, inline: true },
+  ];
+  if (memo.eventDate) fields.push({ name: "📅 Event", value: `${memo.eventDate}${memo.eventTime ? ` · 🕒 ${memo.eventTime}` : ""}${memo.place ? ` · 📍 ${memo.place}` : ""}`, inline: false });
+  fields.push({ name: "📝 Message", value: bodyPreview || "—", inline: false });
+  await sendDiscordWebhookUrl(env, env.MEMO_DISCORD_WEBHOOK_URL, {
+    content: "📢 **New Memo Posted!**",
+    embeds: [{ title: `📋 ${memo.title}`, description: `Memo No. **${memo.id}**`, color: 0x006eb6, fields, timestamp: new Date().toISOString(), footer: { text: "Medlane OS · Memos & Announcements" } }],
+  }).catch(async (error) => {
+    await recordSystemLog(env, { action: "Memo Discord post failed", module: "Discord", record: `${memo.id}: ${error.message}` }).catch(() => null);
+  });
+}
+
 function requireBackupAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage backups");
 }
@@ -1984,6 +2005,7 @@ export default {
           body: JSON.stringify([{ state_key: stateKey, module_name: "memos", record_key: id, data: memo, updated_by: authUser.id }]),
         });
         await writeAuditTrace(env, stateKey, { actor: profile.name, role: profile.role, action: "Posted memo", module: "Memos", record: `${id}: ${title}` }, authUser.id, auditContextForRequest(request));
+        await postMemoToDiscord(env, memo).catch(() => null);
         return json({ ok: true, memo }, { status: 201 });
       }
 
