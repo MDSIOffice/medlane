@@ -96,6 +96,7 @@ const frontendModuleRecordKeys = {
   "product-issue-detail": ["productIssues"],
   "inventory-po-detail": ["inventoryPurchaseOrders", "inventory"],
   "print-templates": ["printTemplates"],
+  memos: ["memos"],
 };
 
 const philippinesRegionsGeoJsonUrl = "https://raw.githubusercontent.com/wmgeolab/geoBoundaries/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
@@ -121,6 +122,9 @@ const accounts = {
   Engineering: { name: "Service Engineer", role: "Engineering", branch: "all", email: "engineering@medlane.local", phone: "+63 917 800 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
   HR: { name: "HR User", role: "HR", branch: "all", email: "hr@medlane.local", phone: "+63 917 600 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"] },
 };
+// Every role can view memos (audience targeting is enforced per-memo); only Superadmin/CEO/HR
+// get "memos" in roleEditableModules below, which is what actually gates posting one.
+Object.values(accounts).forEach((account) => account.modules.push("memos"));
 if (currentUser?.role && accounts[currentUser.role] && !currentUser.id && !currentUser.customPermissions) currentUser = accounts[currentUser.role];
 
 const sectionMeta = {
@@ -133,6 +137,7 @@ const sectionMeta = {
   "payment-request-detail": ["Payment Request Detail", "Approval and payment history for this collection payment request."],
   "sale-detail": ["Invoice Detail", "How and when this invoice was created and collected."],
   "user-audit-log": ["User Activity Log", "Every recorded action for one user, newest first."],
+  memos: ["Memos", "Company memos and announcements, with acknowledgment tracking."],
 };
 
 function userProfileKey() { return `medlane-profile-${currentUser?.role || "guest"}`; }
@@ -147,15 +152,15 @@ function invoiceApprovals() { return data?.invoiceApprovals || { SI: "ECTOSOC", 
 function isDevEnvironment() { return ["localhost", "127.0.0.1", ""].includes(location.hostname) || location.protocol === "file:"; }
 function effectiveModules() { return currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || []; }
 const roleEditableModules = {
-  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
   Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
-  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
   Accounting: ["purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings"],
   Sales: ["sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
   Logistics: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
   "Product Specialist": ["inventory", "reports", "notifications", "user-settings", "product-issues"],
   Engineering: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
-  HR: ["replenishments", "reports", "notifications", "user-settings"],
+  HR: ["replenishments", "reports", "notifications", "user-settings", "memos"],
 };
 function editableModules() { return currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || []; }
 function canEditModule(sectionId) { return editableModules().includes(sectionId); }
@@ -210,6 +215,7 @@ function emptyProductionData() {
     collectionContactHistory: [],
     banks: [],
     printTemplates: [],
+    memos: [],
   };
 }
 
@@ -248,6 +254,7 @@ function normalizePayableWithholding(payable) {
 
 function normalizeData(next) {
   next.printTemplates ||= [];
+  next.memos ||= [];
   next.pendingTransfers ||= [];
   next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };
   next.invoiceApprovals ||= { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" };

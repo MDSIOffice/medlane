@@ -2160,6 +2160,149 @@ async function uploadPhysicalCopy(file, recordType, recordId, label, onDone) {
   }
 }
 
+function canPostMemo() { return ["Superadmin", "CEO", "HR"].includes(currentUser?.role); }
+const memoAudienceRoleOptions = ["Superadmin", "Admin", "CEO", "Accounting", "Sales", "Logistics", "Product Specialist", "Engineering", "HR"];
+
+function memoVisibleToCurrentUser(memo) {
+  if (canPostMemo()) return true;
+  return memo.audience === "all" || (Array.isArray(memo.audience) && memo.audience.includes(currentUser?.role));
+}
+
+function memoAcknowledgedByCurrentUser(memo) {
+  const email = String(currentUser?.email || "").trim().toLowerCase();
+  return (memo.acknowledgments || []).some((entry) => String(entry.email || "").trim().toLowerCase() === email);
+}
+
+function memoAudienceLabel(memo) {
+  if (memo.audience === "all") return "ALL DEPARTMENTS";
+  const roles = memo.audience || [];
+  return `${roles.map((role) => role.toUpperCase()).join(" AND ")} DEPARTMENT`;
+}
+
+function memoRecipientCount(memo) {
+  const roster = dedupedUsers();
+  if (memo.audience === "all") return roster.length;
+  return roster.filter((user) => (memo.audience || []).includes(user.role)).length;
+}
+
+function memoCardHtml(memo) {
+  const acked = memoAcknowledgedByCurrentUser(memo);
+  const acknowledgments = memo.acknowledgments || [];
+  const total = memoRecipientCount(memo);
+  const rosterHtml = canPostMemo()
+    ? `<details class="memo-ack-roster"><summary>${acknowledgments.length} of ${total} acknowledged</summary>${acknowledgments.length ? `<ul class="compact-list">${acknowledgments.map((entry) => `<li><span>${escapeHtml(entry.name)} · ${escapeHtml(entry.role)}</span><strong>${escapeHtml(entry.at)}</strong></li>`).join("")}</ul>` : `<p class="page-description">No one has acknowledged this memo yet.</p>`}</details>`
+    : `<small class="field-help">${acknowledgments.length} acknowledged</small>`;
+  const eventLine = memo.eventDate ? `<div class="memo-event-line"><strong>${escapeHtml(fmtDate(memo.eventDate))}${memo.eventTime ? ` · ${escapeHtml(memo.eventTime)}` : ""}</strong>${memo.place ? `<span>${escapeHtml(memo.place)}</span>` : ""}</div>` : "";
+  return `<article class="panel memo-card" data-focus-record="${escapeHtml(memo.id)}"><div class="panel-header memo-card-header"><div><p class="eyebrow">${escapeHtml(memo.id)} · ${escapeHtml(memoAudienceLabel(memo))}</p><h2>${escapeHtml(memo.title)}</h2><p class="page-description">By ${escapeHtml(memo.createdBy)} (${escapeHtml(memo.createdByRole)}) · ${escapeHtml(formatSessionDate(memo.createdAt))}</p></div><span class="pill ${acked ? "green" : "orange"}">${acked ? "Acknowledged" : "Needs Acknowledgment"}</span></div>${eventLine}<p class="memo-body">${escapeHtml(memo.body).replace(/\n/g, "<br>")}</p>${attachedFilesHtml("memo", memo.id)}<div class="modal-actions">${acked ? "" : `<button class="primary-button" data-acknowledge-memo="${escapeHtml(memo.id)}" type="button">Acknowledge</button>`}<button class="ghost-button" data-print-memo="${escapeHtml(memo.id)}" type="button">Print</button></div>${rosterHtml}</article>`;
+}
+
+function renderMemoBadge() {
+  const badge = qs("#memo-count");
+  const toggle = qs("#memo-toggle");
+  if (!badge || !toggle || !data?.memos) return;
+  const visible = data.memos.filter(memoVisibleToCurrentUser);
+  const pending = canPostMemo() ? 0 : visible.filter((memo) => !memoAcknowledgedByCurrentUser(memo)).length;
+  badge.textContent = pending;
+  badge.hidden = pending === 0;
+  toggle.classList.toggle("has-unread", pending > 0);
+}
+
+function renderMemos() {
+  if (!qs("#memo-list")) return;
+  ensureUploadedFilesLoaded(renderMemos);
+  qs("#post-memo-button").hidden = !canPostMemo();
+  const visible = data.memos.filter(memoVisibleToCurrentUser).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  qs("#memo-list").innerHTML = visible.map(memoCardHtml).join("") || `<article class="panel"><p>No memos yet.</p></article>`;
+  renderMemoBadge();
+}
+
+function memoAudienceCheckboxesHtml() {
+  return memoAudienceRoleOptions.map((role) => `<label class="ios-check-row compact-doc-check"><input type="checkbox" class="memo-audience-role" value="${escapeHtml(role)}" /><span></span><strong>${escapeHtml(role)}</strong></label>`).join("");
+}
+
+function openMemoComposeModal() {
+  if (!canPostMemo()) return toast("Only Superadmin, CEO, or HR can post a memo.");
+  qs("#memo-compose-modal")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal memo-compose-modal";
+  dialog.id = "memo-compose-modal";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">New Announcement</p><h2>Post Memo</h2></div><button class="icon-button" data-close-memo-compose type="button" aria-label="Close">x</button></div><form id="memo-compose-form" class="form-grid" onsubmit="return false;"><div class="field full"><label for="memo-title">Title</label><input id="memo-title" required /></div><div class="field full"><label for="memo-body">Body</label><textarea id="memo-body" rows="6" required></textarea></div><div class="field"><label for="memo-event-date">Event Date (optional)</label><input id="memo-event-date" type="date" /></div><div class="field"><label for="memo-event-time">Event Time (optional)</label><input id="memo-event-time" type="time" /></div><div class="field full"><label for="memo-place">Place (optional)</label><input id="memo-place" placeholder="Venue or location" /></div><div class="field full"><label for="memo-attachments">Attachments (optional)</label><input id="memo-attachments" type="file" multiple /></div><div class="field full"><label>Audience</label><label class="ios-check-row compact-doc-check"><input type="checkbox" id="memo-audience-all" checked /><span></span><strong>All Roles</strong></label><div class="memo-audience-grid" id="memo-audience-grid" hidden>${memoAudienceCheckboxesHtml()}</div></div></form><div class="modal-actions"><button class="ghost-button" type="button" data-close-memo-compose>Cancel</button><button class="primary-button" id="submit-memo-compose" type="button">Post Memo</button></div>`;
+  document.body.appendChild(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
+async function submitMemoCompose() {
+  const dialog = qs("#memo-compose-modal");
+  const title = qs("#memo-title").value.trim();
+  const body = qs("#memo-body").value.trim();
+  if (!title) return toast("Enter a memo title.");
+  if (!body) return toast("Enter a memo body.");
+  const eventDate = qs("#memo-event-date").value;
+  const eventTime = qs("#memo-event-time").value;
+  const place = qs("#memo-place").value.trim();
+  const allRoles = qs("#memo-audience-all").checked;
+  const selectedRoles = qsa(".memo-audience-role:checked").map((input) => input.value);
+  if (!allRoles && !selectedRoles.length) return toast("Select at least one role, or choose All Roles.");
+  const audience = allRoles ? "all" : selectedRoles;
+  const files = [...(qs("#memo-attachments")?.files || [])];
+  const submitBtn = qs("#submit-memo-compose");
+  submitBtn.disabled = true;
+  try {
+    const result = await MedlaneAPI.createMemo({ title, body, eventDate, eventTime, place, audience });
+    const memo = result.memo;
+    for (const file of files) {
+      await uploadPhysicalCopy(file, "memo", memo.id, file.name, null).catch(() => null);
+    }
+    data.memos.unshift(memo);
+    notify("Memo", `New memo posted: ${title}`, "memos", memo.id, audience === "all" ? null : audience);
+    saveData(["notifications"]);
+    log("Posted memo", "Memos", `${memo.id}: ${title}`, { save: false });
+    dialog.close();
+    renderAll();
+    toast(`${memo.id} posted.`);
+  } catch (error) {
+    toast(error.message || "Unable to post memo.");
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function acknowledgeMemo(id) {
+  try {
+    const result = await MedlaneAPI.acknowledgeMemo(id);
+    const index = data.memos.findIndex((entry) => entry.id === id);
+    if (index >= 0) data.memos[index] = result.memo;
+    log("Acknowledged memo", "Memos", id, { save: false });
+    renderMemos();
+    toast("Memo acknowledged.");
+  } catch (error) {
+    toast(error.message || "Unable to acknowledge memo.");
+  }
+}
+
+function memoPrintDateLabel(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }).toUpperCase();
+}
+
+function memoPrintableHtml(memo) {
+  const dateLabel = memoPrintDateLabel(memo.createdAt || today);
+  const bodyParagraphs = String(memo.body || "").split(/\n{2,}/).map((para) => `<p>${escapeHtml(para).replace(/\n/g, "<br>")}</p>`).join("");
+  const eventBlock = memo.eventDate ? `<div class="memo-print-event"><strong>Event:</strong> ${escapeHtml(fmtDate(memo.eventDate))}${memo.eventTime ? ` · ${escapeHtml(memo.eventTime)}` : ""}${memo.place ? ` · ${escapeHtml(memo.place)}` : ""}</div>` : "";
+  return `<section class="memo-print"><header class="memo-print-header"><img src="medlane.jpg" alt="Medlane Diagnostic Solutions" /></header><div class="memo-print-no">MEMO NO. ${escapeHtml(memo.id)}</div><div class="memo-print-meta"><div><span>DATE</span><span>:</span><strong>${dateLabel}</strong></div><div><span>TO</span><span>:</span><strong>${escapeHtml(memoAudienceLabel(memo))}</strong></div><div><span>FROM</span><span>:</span><strong>MANAGEMENT</strong></div><div><span>SUBJECT</span><span>:</span><strong>${escapeHtml(String(memo.title || "").toUpperCase())}</strong></div></div><div class="memo-print-body">${bodyParagraphs}</div>${eventBlock}<div class="memo-print-signature"><p>Sincerely,</p><strong>${escapeHtml(memo.createdBy)}</strong><span>${escapeHtml(memo.createdByRole)}</span></div></section>`;
+}
+
+function printMemo(id) {
+  const memo = data.memos.find((entry) => entry.id === id);
+  if (!memo) return toast("Memo not found.");
+  const dialog = qs("#payment-request-preview-modal");
+  qs("#payment-request-preview-title").textContent = `Memo ${memo.id}`;
+  qs("#payment-request-preview-content").innerHTML = memoPrintableHtml(memo);
+  if (!dialog.open) dialog.showModal();
+}
+
 function renderInvoicing() {
   ensureUploadedFilesLoaded(renderInvoicing);
   qs("#invoice-grid").innerHTML = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((s) => {
@@ -4629,6 +4772,7 @@ const sectionRenderers = {
   backup: renderBackup,
   logs: renderLogs,
   "user-settings": renderUserSettings,
+  memos: renderMemos,
 };
 function renderSection(sectionId = document.body.dataset.activeSection || "dashboard") {
   sectionRenderers[sectionId]?.();
@@ -4637,7 +4781,7 @@ function renderSection(sectionId = document.body.dataset.activeSection || "dashb
 }
 function renderAll() {
   if (appInitialRenderComplete) return renderSection();
-  renderBranchFilter(); renderDashboard(); renderCalendarSection(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); if (document.body.dataset.activeSection === "logs") renderLogs(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); appInitialRenderComplete = true;
+  renderBranchFilter(); renderDashboard(); renderCalendarSection(); renderAnalytics(); renderMasterlists(); renderInventory(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderMemoBadge(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); if (document.body.dataset.activeSection === "logs") renderLogs(); if (document.body.dataset.activeSection === "memos") renderMemos(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); appInitialRenderComplete = true;
 }
 
 async function runReconciliationWorkflow() {

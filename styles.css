@@ -596,8 +596,9 @@ body[data-active-section="notifications"] #export-demo { display: none; }
 .notification-button.has-unread { background: linear-gradient(135deg, #d71920, #f97316); color: #fff; border-color: rgba(255,255,255,0.72); box-shadow: 0 16px 34px rgba(215, 25, 32, 0.28); }
 .notification-button[aria-expanded="true"], .user-chip[aria-expanded="true"] { outline: 3px solid rgba(0, 110, 182, 0.18); border-color: var(--blue); box-shadow: 0 0 0 6px rgba(14, 165, 233, 0.12), 0 16px 34px rgba(1, 79, 134, 0.18); }
 .notification-symbol { display: block; font-size: 18px; font-weight: 900; line-height: 1; }
-#notification-count { position: absolute; top: -7px; right: -7px; min-width: 21px; height: 21px; border: 2px solid #fff; border-radius: 999px; background: var(--red); color: #fff; font-size: 11px; line-height: 17px; }
+#notification-count, #memo-count { position: absolute; top: -7px; right: -7px; min-width: 21px; height: 21px; border: 2px solid #fff; border-radius: 999px; background: var(--red); color: #fff; font-size: 11px; line-height: 17px; }
 .notification-button.has-unread #notification-count { background: #10213d; }
+#memo-toggle.has-unread #memo-count { background: var(--blue-dark); }
 .notification-popover { position: absolute; top: calc(100% + 12px); right: -8px; z-index: 20; width: min(390px, calc(100vw - 28px)); border: 1px solid rgba(0, 110, 182, 0.24); border-radius: 18px; background: var(--panel-solid); color: var(--ink); padding: 12px; box-shadow: 0 24px 70px rgba(1, 79, 134, 0.22), inset 0 1px 0 var(--panel-solid); }
 .notification-popover::before, .user-popover::before { content: ""; position: absolute; top: -8px; right: 25px; width: 14px; height: 14px; transform: rotate(45deg); background: var(--panel-solid); border-left: 1px solid rgba(0, 110, 182, 0.24); border-top: 1px solid rgba(0, 110, 182, 0.24); }
 .popover-source-hint { position: relative; z-index: 1; margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .01em; }
@@ -1658,6 +1659,30 @@ button.calendar-cell:hover { background: var(--tint); }
 .client-invoices-filtered-total strong { display: block; font-size: 22px; font-weight: 900; letter-spacing: -0.02em; color: var(--ink); }
 .client-invoices-filtered-total small { color: var(--muted); font-weight: 700; }
 .equipment-expiry-field { display: none; }
+.memo-list { display: grid; gap: 16px; }
+.memo-card-header { margin-bottom: 10px; }
+.memo-event-line { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 14px; background: var(--tint); color: var(--ink); }
+.memo-event-line span { color: var(--muted); font-weight: 700; }
+.memo-body { white-space: pre-line; line-height: 1.6; }
+.memo-ack-roster { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.memo-ack-roster summary { cursor: pointer; font-weight: 800; color: var(--blue-dark); }
+.memo-audience-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin-top: 10px; }
+.memo-compose-modal .ios-check-row { margin-top: 8px; }
+/* Always represents physical white paper, regardless of site theme — background and text
+   colors here are intentionally hardcoded so it stays legible in dark mode. */
+.memo-print { max-width: 820px; margin: 0 auto; background: #ffffff; color: #111827; font-family: Arial, Helvetica, sans-serif; padding: 0 0 32px; }
+.memo-print-header { display: flex; justify-content: center; border-bottom: 3px solid #005a9c; padding-bottom: 18px; margin-bottom: 22px; }
+.memo-print-header img { max-height: 90px; object-fit: contain; }
+.memo-print-no { font-weight: 800; letter-spacing: 0.04em; margin-bottom: 16px; }
+.memo-print-meta { display: grid; grid-template-columns: 90px 12px 1fr; row-gap: 8px; margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid #111827; }
+.memo-print-meta strong { font-weight: 700; }
+.memo-print-body { line-height: 1.65; }
+.memo-print-body p { margin: 0 0 14px; }
+.memo-print-event { margin: 4px 0 18px; padding: 10px 14px; border: 1px dashed #111827; border-radius: 8px; }
+.memo-print-signature { margin-top: 36px; }
+.memo-print-signature p { margin: 0 0 34px; }
+.memo-print-signature strong { display: block; }
+.memo-print-signature span { color: #475569; }
 .payment-request-fixed-instructions { margin-top: 14px; border: 1px dashed #bfdbfe; border-radius: 16px; background: var(--panel-solid); padding: 12px 14px; }
 .payment-request-fixed-instructions strong { color: var(--ink); }
 .payment-request-fixed-instructions p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }

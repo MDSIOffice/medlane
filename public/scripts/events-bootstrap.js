@@ -580,9 +580,24 @@ document.body.addEventListener("click", (event) => {
   if (openDocs) return openClientDocsModal(openDocs.dataset.openClientDocs);
   const closeDocs = event.target.closest("[data-close-client-docs]");
   if (closeDocs) return qs("#client-docs-modal")?.close();
+  const closeMemoCompose = event.target.closest("[data-close-memo-compose]");
+  if (closeMemoCompose) return qs("#memo-compose-modal")?.close();
+  const submitMemo = event.target.closest("#submit-memo-compose");
+  if (submitMemo) return submitMemoCompose();
 });
 document.addEventListener("click", (event) => {
   if (event.target.id === "client-docs-modal") qs("#client-docs-modal")?.close();
+  if (event.target.id === "memo-compose-modal") qs("#memo-compose-modal")?.close();
+});
+document.addEventListener("change", (event) => {
+  if (event.target.id === "memo-audience-all") qs("#memo-audience-grid").hidden = event.target.checked;
+});
+qs("#post-memo-button").addEventListener("click", openMemoComposeModal);
+qs("#memo-list").addEventListener("click", (event) => {
+  const ack = event.target.closest("[data-acknowledge-memo]");
+  if (ack) return acknowledgeMemo(ack.dataset.acknowledgeMemo);
+  const print = event.target.closest("[data-print-memo]");
+  if (print) return printMemo(print.dataset.printMemo);
 });
 qs("#platform-branch-list").addEventListener("click", (event) => {
   const addressButton = event.target.closest("[data-edit-branch-address]");

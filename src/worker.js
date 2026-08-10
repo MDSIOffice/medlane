@@ -14,6 +14,9 @@ const roleModules = {
   Engineering: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
   HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
 };
+// Every role can view memos (audience targeting is enforced per-memo, not per-module); only
+// requireMemoAdmin() gates who may post one.
+Object.values(roleModules).forEach((modules) => modules.push("memos"));
 
 const DISCORD_ROLE_IDS = {
   nagaTeam: "1356861232480780421",
@@ -56,6 +59,7 @@ const moduleRecordKeys = {
   system: ["branch", "notifications", "imports", "reconHistory"],
   "product-issues": ["productIssues"],
   "print-templates": ["printTemplates"],
+  memos: ["memos"],
 };
 
 const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
@@ -494,6 +498,10 @@ function requireWriteAccess(profile) {
 
 function requireUserAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage users");
+}
+
+function requireMemoAdmin(profile) {
+  if (!["Superadmin", "CEO", "HR"].includes(profile?.role)) throw new Error("Only Superadmin, CEO, or HR can post a memo");
 }
 
 function requireBackupAdmin(profile) {
@@ -1934,6 +1942,62 @@ export default {
           return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
         }
         return methodNotAllowed();
+      }
+
+      if (url.pathname === "/api/memos" && request.method === "POST") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        requireMemoAdmin(profile);
+        const body = await request.json().catch(() => ({}));
+        const title = String(body.title || "").trim();
+        const bodyText = String(body.body || "").trim();
+        if (!title) return json({ error: "Memo title is required" }, { status: 400 });
+        if (!bodyText) return json({ error: "Memo body is required" }, { status: 400 });
+        const audience = body.audience === "all" ? "all" : (Array.isArray(body.audience) ? [...new Set(body.audience.filter(Boolean))] : []);
+        if (audience !== "all" && !audience.length) return json({ error: "Select at least one role or All Roles" }, { status: 400 });
+        const stateKey = appStateKey(env);
+        const existing = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.memos&select=record_key`);
+        const year = new Date().getFullYear();
+        const yearIds = existing.map((row) => row.record_key).filter((id) => id.startsWith(`MEMO-${year}-`));
+        const id = `MEMO-${year}-${String(yearIds.length + 1).padStart(3, "0")}`;
+        const memo = {
+          id, title, body: bodyText,
+          eventDate: String(body.eventDate || "").trim(),
+          eventTime: String(body.eventTime || "").trim(),
+          place: String(body.place || "").trim(),
+          attachments: Array.isArray(body.attachments) ? body.attachments.filter((item) => item?.id && item?.file_name) : [],
+          audience,
+          createdBy: profile.name || profile.email || "System User",
+          createdByRole: profile.role,
+          createdAt: new Date().toISOString(),
+          acknowledgments: [],
+        };
+        await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+          method: "POST",
+          headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify([{ state_key: stateKey, module_name: "memos", record_key: id, data: memo, updated_by: authUser.id }]),
+        });
+        await writeAuditTrace(env, stateKey, { actor: profile.name, role: profile.role, action: "Posted memo", module: "Memos", record: `${id}: ${title}` }, authUser.id, auditContextForRequest(request));
+        return json({ ok: true, memo }, { status: 201 });
+      }
+
+      if (/^\/api\/memos\/[^/]+\/acknowledge$/.test(url.pathname) && request.method === "POST") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const id = decodeURIComponent(url.pathname.split("/")[3]);
+        const stateKey = appStateKey(env);
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.memos&record_key=eq.${encodeURIComponent(id)}&select=data`);
+        const memo = rows[0]?.data;
+        if (!memo) return json({ error: "Memo not found" }, { status: 404 });
+        const email = cleanEmail(profile.email);
+        memo.acknowledgments = memo.acknowledgments || [];
+        if (!memo.acknowledgments.some((entry) => cleanEmail(entry.email) === email)) {
+          memo.acknowledgments.push({ name: profile.name || profile.email || "System User", email: profile.email, role: profile.role, at: manilaTimestamp() });
+          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+            method: "POST",
+            headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+            body: JSON.stringify([{ state_key: stateKey, module_name: "memos", record_key: id, data: memo, updated_by: authUser.id }]),
+          });
+        }
+        return json({ ok: true, memo });
       }
 
       if (url.pathname === "/api/modules/records") {

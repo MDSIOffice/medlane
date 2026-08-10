@@ -224,6 +224,7 @@
             <strong id="save-status-text">Saved</strong>
           </div>
           <input id="global-search" class="search-input" type="search" placeholder="Search client, reagent, invoice..." />
+          <button class="icon-button notification-button" id="memo-toggle" type="button" aria-label="Memos" data-go-section="memos" title="Memos &amp; Announcements"><span class="notification-symbol">📋</span><span id="memo-count" hidden>0</span></button>
           <div class="notification-menu">
             <button class="icon-button notification-button" id="notification-toggle" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notification-popover"><span class="notification-symbol">🔔</span><span id="notification-count">0</span></button>
             <div class="notification-popover" id="notification-popover" hidden>
@@ -614,6 +615,11 @@
       <section class="section" id="notifications">
         <div class="section-header"><div><p class="eyebrow">Notifications</p><h2>Operational alerts and approvals</h2></div><div class="inline-actions"><button class="ghost-button" id="mark-all-read-notifications">Mark All as Read</button><button class="ghost-button" id="clear-notifications">Clear Read</button></div></div>
         <div class="alert-list" id="notification-list"></div>
+      </section>
+
+      <section class="section" id="memos">
+        <div class="section-header"><div><p class="eyebrow">Announcements</p><h2>Memos</h2></div><button class="primary-button" id="post-memo-button" type="button" hidden>Post Memo</button></div>
+        <div class="memo-list" id="memo-list"></div>
       </section>
 
       <section class="section" id="user-settings">

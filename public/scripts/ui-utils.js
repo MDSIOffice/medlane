@@ -134,8 +134,10 @@ function log(action, module, record, options = {}) {
   MedlaneAPI.recordLog({ action, module, record: String(record ?? "") }).catch(() => {});
   if (options.save !== false) saveData();
 }
-function notify(type, message, section = "notifications", record = "") {
-  data.notifications.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), type, message, section, record, status: "Unread" });
+function notify(type, message, section = "notifications", record = "", audience = null) {
+  const entry = { date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), type, message, section, record, status: "Unread" };
+  if (Array.isArray(audience)) entry.audience = audience;
+  data.notifications.unshift(entry);
   data.notifications = data.notifications.slice(0, 80);
 }
 function canSeeNotification(notice) {
@@ -143,6 +145,7 @@ function canSeeNotification(notice) {
   const section = notice?.section || "notifications";
   if (["users", "settings", "backup", "security", "logs"].includes(section)) return false;
   if (/user|account|permission|password|security|audit|login|logout|session/i.test(`${notice?.type || ""} ${notice?.message || ""}`)) return false;
+  if (Array.isArray(notice?.audience) && !notice.audience.includes(currentUser?.role)) return false;
   return section === "notifications" || effectiveModules().includes(section);
 }
 function visibleNotifications() {
