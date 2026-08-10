@@ -2824,7 +2824,10 @@ function syncPaymentRequestTotal() {
   let grandTotal = 0;
   const blocks = rows.filter((row) => row.invoice || row.amount).map((row) => {
     const deductions = paymentRequestRowDeductions(row);
-    grandTotal += deductions.total;
+    // "Total" must tally with the Net Amount entered above (both represent cash being
+    // collected) — deductions.total is the invoice-settlement value (cash + withholding
+    // credit) used for AR-crediting on approval, not for this cash-reconciliation total.
+    grandTotal += Number(row.amount || 0);
     return `<div class="invoice-tax-summary live-preview payment-request-row-breakdown"><div class="preview-tax-label">${escapeHtml(row.invoice || "Unselected invoice")}</div><div class="invoice-meta"><span>Amount</span><strong>${peso.format(row.amount)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${withholdingMoney(deductions.taxBase)}</strong></div>${deductions.withholdingTax ? `<div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${withholdingMoney(deductions.withholdingTax)}</strong></div>` : ""}${deductions.expandedWithholdingTax ? `<div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${withholdingMoney(deductions.expandedWithholdingTax)}</strong></div>` : ""}<div class="invoice-meta total-line"><span>Net For This Invoice</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
   }).join("");
   if (qs("#total")) qs("#total").value = grandTotal.toFixed(2);

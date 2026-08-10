@@ -211,7 +211,10 @@ async function submitModal(event) {
       gross = items.reduce((sum, item) => sum + item.amount, 0);
       withholdingTax = items.reduce((sum, item) => sum + paymentRequestRowDeductions(item).withholdingTax, 0);
       expandedWithholdingTax = items.reduce((sum, item) => sum + paymentRequestRowDeductions(item).expandedWithholdingTax, 0);
-      total = items.reduce((sum, item) => sum + item.netAmount, 0);
+      // "total" must tally with the entered Net Amount (cash) — item.netAmount is the
+      // per-invoice AR-settlement value (cash + withholding credit) used on approval, not the
+      // cash total this voucher/deposit itself represents.
+      total = gross;
     }
     if (total <= 0) return toast("Payment request total must be greater than zero.");
 
