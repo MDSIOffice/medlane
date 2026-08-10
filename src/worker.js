@@ -522,7 +522,8 @@ async function postMemoToDiscord(env, memo) {
   if (memo.eventDate) fields.push({ name: "📅 Event", value: `${memo.eventDate}${memo.eventTime ? ` · 🕒 ${memo.eventTime}` : ""}${memo.place ? ` · 📍 ${memo.place}` : ""}`, inline: false });
   fields.push({ name: "📝 Message", value: bodyPreview || "—", inline: false });
   await sendDiscordWebhookUrl(env, env.MEMO_DISCORD_WEBHOOK_URL, {
-    content: "📢 **New Memo Posted!**",
+    content: "@everyone 📢 **New Memo Posted!**",
+    allowedMentions: { parse: ["everyone"] },
     embeds: [{ title: `📋 ${memo.title}`, description: `Memo No. **${memo.id}**`, color: 0x006eb6, fields, timestamp: new Date().toISOString(), footer: { text: "Medlane OS · Memos & Announcements" } }],
   }).catch(async (error) => {
     await recordSystemLog(env, { action: "Memo Discord post failed", module: "Discord", record: `${memo.id}: ${error.message}` }).catch(() => null);

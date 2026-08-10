@@ -1680,7 +1680,9 @@ button.calendar-cell:hover { background: var(--tint); }
 .memo-print-header { display: flex; justify-content: center; border-bottom: 3px solid #005a9c; padding-bottom: 18px; margin-bottom: 22px; }
 .memo-print-header img { max-height: 90px; object-fit: contain; }
 .memo-print-no { font-weight: 800; letter-spacing: 0.04em; margin-bottom: 16px; }
-.memo-print-meta { display: grid; grid-template-columns: 90px 12px 1fr; row-gap: 8px; margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid #111827; }
+.memo-print-meta { display: grid; grid-template-columns: 1fr; row-gap: 10px; margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid #111827; }
+.memo-print-meta > div { display: grid; grid-template-columns: 90px 14px 1fr; column-gap: 4px; align-items: start; }
+.memo-print-meta span:first-child { font-weight: 700; }
 .memo-print-meta strong { font-weight: 700; }
 .memo-print-body { line-height: 1.65; }
 .memo-print-body p { margin: 0 0 14px; }
