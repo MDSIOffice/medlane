@@ -1985,9 +1985,13 @@ export default {
         if (audience !== "all" && !audience.length) return json({ error: "Select at least one role or All Roles" }, { status: 400 });
         const stateKey = appStateKey(env);
         const existing = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.memos&select=record_key`);
-        const year = new Date().getFullYear();
-        const yearIds = existing.map((row) => row.record_key).filter((id) => id.startsWith(`MEMO-${year}-`));
-        const id = `MEMO-${year}-${String(yearIds.length + 1).padStart(3, "0")}`;
+        // Memo numbers are entered manually (the client pre-fills a suggested next number, but
+        // the user can override it) — validate it here too, since the client's suggestion can
+        // race with another admin posting at the same time.
+        const requestedId = String(body.id || "").trim();
+        if (!requestedId) return json({ error: "Memo number is required" }, { status: 400 });
+        if (existing.some((row) => row.record_key.toLowerCase() === requestedId.toLowerCase())) return json({ error: `${requestedId} is already in use. Enter a different memo number.` }, { status: 409 });
+        const id = requestedId;
         const memo = {
           id, title, body: bodyText,
           eventDate: String(body.eventDate || "").trim(),

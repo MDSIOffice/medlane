@@ -2221,13 +2221,18 @@ function memoAudienceCheckboxesHtml() {
   return memoAudienceRoleOptions.map((role) => `<label class="ios-check-row compact-doc-check"><input type="checkbox" class="memo-audience-role" value="${escapeHtml(role)}" /><span></span><strong>${escapeHtml(role)}</strong></label>`).join("");
 }
 
+function nextMemoNumber(year = new Date().getFullYear()) {
+  const next = (data.memos || []).filter((memo) => String(memo.id || "").startsWith(`MEMO-${year}-`)).reduce((max, memo) => Math.max(max, Number(String(memo.id || "").split("-").pop()) || 0), 0) + 1;
+  return `MEMO-${year}-${String(next).padStart(3, "0")}`;
+}
+
 function openMemoComposeModal() {
   if (!canPostMemo()) return toast("Only Superadmin, CEO, or HR can post a memo.");
   qs("#memo-compose-modal")?.remove();
   const dialog = document.createElement("dialog");
   dialog.className = "modal memo-compose-modal";
   dialog.id = "memo-compose-modal";
-  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">New Announcement</p><h2>Post Memo</h2></div><button class="icon-button" data-close-memo-compose type="button" aria-label="Close">x</button></div><form id="memo-compose-form" class="form-grid" onsubmit="return false;"><div class="field full"><label for="memo-title">Title</label><input id="memo-title" required /></div><div class="field full"><label for="memo-body">Body</label><textarea id="memo-body" rows="6" required></textarea></div><div class="field"><label for="memo-event-date">Event Date (optional)</label><input id="memo-event-date" type="date" /></div><div class="field"><label for="memo-event-time">Event Time (optional)</label><input id="memo-event-time" type="time" /></div><div class="field full"><label for="memo-place">Place (optional)</label><input id="memo-place" placeholder="Venue or location" /></div><div class="field full"><label for="memo-attachments">Attachments (optional)</label><input id="memo-attachments" type="file" multiple /></div><div class="field full"><label>Audience</label><label class="ios-check-row compact-doc-check"><input type="checkbox" id="memo-audience-all" checked /><span></span><strong>All Roles</strong></label><div class="memo-audience-grid" id="memo-audience-grid" hidden>${memoAudienceCheckboxesHtml()}</div></div></form><div class="modal-actions"><button class="ghost-button" type="button" data-close-memo-compose>Cancel</button><button class="primary-button" id="submit-memo-compose" type="button">Post Memo</button></div>`;
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">New Announcement</p><h2>Post Memo</h2></div><button class="icon-button" data-close-memo-compose type="button" aria-label="Close">x</button></div><form id="memo-compose-form" class="form-grid" onsubmit="return false;"><div class="field full"><label for="memo-no">Memo No.</label><input id="memo-no" value="${escapeHtml(nextMemoNumber())}" required /></div><div class="field full"><label for="memo-title">Title</label><input id="memo-title" required /></div><div class="field full"><label for="memo-body">Body</label><textarea id="memo-body" rows="6" required></textarea></div><div class="field"><label for="memo-event-date">Event Date (optional)</label><input id="memo-event-date" type="date" /></div><div class="field"><label for="memo-event-time">Event Time (optional)</label><input id="memo-event-time" type="time" /></div><div class="field full"><label for="memo-place">Place (optional)</label><input id="memo-place" placeholder="Venue or location" /></div><div class="field full"><label for="memo-attachments">Attachments (optional)</label><input id="memo-attachments" type="file" multiple /></div><div class="field full"><label>Audience</label><label class="ios-check-row compact-doc-check"><input type="checkbox" id="memo-audience-all" checked /><span></span><strong>All Roles</strong></label><div class="memo-audience-grid" id="memo-audience-grid" hidden>${memoAudienceCheckboxesHtml()}</div></div></form><div class="modal-actions"><button class="ghost-button" type="button" data-close-memo-compose>Cancel</button><button class="primary-button" id="submit-memo-compose" type="button">Post Memo</button></div>`;
   document.body.appendChild(dialog);
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
@@ -2235,8 +2240,11 @@ function openMemoComposeModal() {
 
 async function submitMemoCompose() {
   const dialog = qs("#memo-compose-modal");
+  const memoNo = qs("#memo-no").value.trim();
   const title = qs("#memo-title").value.trim();
   const body = qs("#memo-body").value.trim();
+  if (!memoNo) return toast("Enter a memo number.");
+  if ((data.memos || []).some((memo) => String(memo.id || "").toLowerCase() === memoNo.toLowerCase())) return toast(`${memoNo} is already in use. Enter a different memo number.`);
   if (!title) return toast("Enter a memo title.");
   if (!body) return toast("Enter a memo body.");
   const eventDate = qs("#memo-event-date").value;
@@ -2251,7 +2259,7 @@ async function submitMemoCompose() {
   submitBtn.disabled = true;
   showActionLoading(dialog, "Posting memo...");
   try {
-    const result = await MedlaneAPI.createMemo({ title, body, eventDate, eventTime, place, audience });
+    const result = await MedlaneAPI.createMemo({ id: memoNo, title, body, eventDate, eventTime, place, audience });
     const memo = result.memo;
     for (const file of files) {
       await uploadPhysicalCopy(file, "memo", memo.id, file.name, null).catch(() => null);
