@@ -492,7 +492,7 @@ body.app-route .landing-page { display: none !important; }
 .nav {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-content: space-between;
+  align-content: start;
   gap: 7px;
   overflow-y: auto;
   overflow-x: hidden;
