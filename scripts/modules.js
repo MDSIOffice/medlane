@@ -2193,7 +2193,8 @@ function memoCardHtml(memo) {
     ? `<details class="memo-ack-roster"><summary>${acknowledgments.length} of ${total} acknowledged</summary>${acknowledgments.length ? `<ul class="compact-list">${acknowledgments.map((entry) => `<li><span>${escapeHtml(entry.name)} · ${escapeHtml(entry.role)}</span><strong>${escapeHtml(entry.at)}</strong></li>`).join("")}</ul>` : `<p class="page-description">No one has acknowledged this memo yet.</p>`}</details>`
     : `<small class="field-help">${acknowledgments.length} acknowledged</small>`;
   const eventLine = memo.eventDate ? `<div class="memo-event-line"><strong>${escapeHtml(fmtDate(memo.eventDate))}${memo.eventTime ? ` · ${escapeHtml(memo.eventTime)}` : ""}</strong>${memo.place ? `<span>${escapeHtml(memo.place)}</span>` : ""}</div>` : "";
-  return `<article class="panel memo-card" data-focus-record="${escapeHtml(memo.id)}"><div class="panel-header memo-card-header"><div><p class="eyebrow">${escapeHtml(memo.id)} · ${escapeHtml(memoAudienceLabel(memo))}</p><h2>${escapeHtml(memo.title)}</h2><p class="page-description">By ${escapeHtml(memo.createdBy)} (${escapeHtml(memo.createdByRole)}) · ${escapeHtml(formatSessionDate(memo.createdAt))}</p></div><span class="pill ${acked ? "green" : "orange"}">${acked ? "Acknowledged" : "Needs Acknowledgment"}</span></div>${eventLine}<p class="memo-body">${escapeHtml(memo.body).replace(/\n/g, "<br>")}</p>${attachedFilesHtml("memo", memo.id)}<div class="modal-actions">${acked ? "" : `<button class="primary-button" data-acknowledge-memo="${escapeHtml(memo.id)}" type="button">Acknowledge</button>`}<button class="ghost-button" data-print-memo="${escapeHtml(memo.id)}" type="button">Print</button></div>${rosterHtml}</article>`;
+  const printButton = canPostMemo() ? `<button class="ghost-button" data-print-memo="${escapeHtml(memo.id)}" type="button">Print</button>` : "";
+  return `<article class="panel memo-card" data-focus-record="${escapeHtml(memo.id)}"><div class="panel-header memo-card-header"><div><p class="eyebrow">${escapeHtml(memo.id)} · ${escapeHtml(memoAudienceLabel(memo))}</p><h2>${escapeHtml(memo.title)}</h2><p class="page-description">By ${escapeHtml(memo.createdBy)} (${escapeHtml(memo.createdByRole)}) · ${escapeHtml(formatSessionDate(memo.createdAt))}</p></div><span class="pill ${acked ? "green" : "orange"}">${acked ? "Acknowledged" : "Needs Acknowledgment"}</span></div>${eventLine}<p class="memo-body">${escapeHtml(memo.body).replace(/\n/g, "<br>")}</p>${attachedFilesHtml("memo", memo.id)}<div class="modal-actions">${acked ? "" : `<button class="primary-button" data-acknowledge-memo="${escapeHtml(memo.id)}" type="button">Acknowledge</button>`}${printButton}</div>${rosterHtml}</article>`;
 }
 
 function renderMemoBadge() {
@@ -2248,6 +2249,7 @@ async function submitMemoCompose() {
   const files = [...(qs("#memo-attachments")?.files || [])];
   const submitBtn = qs("#submit-memo-compose");
   submitBtn.disabled = true;
+  showActionLoading(dialog, "Posting memo...");
   try {
     const result = await MedlaneAPI.createMemo({ title, body, eventDate, eventTime, place, audience });
     const memo = result.memo;
@@ -2265,10 +2267,13 @@ async function submitMemoCompose() {
     toast(error.message || "Unable to post memo.");
   } finally {
     submitBtn.disabled = false;
+    hideActionLoading(dialog);
   }
 }
 
 async function acknowledgeMemo(id) {
+  const card = document.querySelector(`.memo-card[data-focus-record="${CSS.escape(id)}"]`);
+  showActionLoading(card, "Acknowledging...");
   try {
     const result = await MedlaneAPI.acknowledgeMemo(id);
     const index = data.memos.findIndex((entry) => entry.id === id);
@@ -2278,6 +2283,7 @@ async function acknowledgeMemo(id) {
     toast("Memo acknowledged.");
   } catch (error) {
     toast(error.message || "Unable to acknowledge memo.");
+    hideActionLoading(card);
   }
 }
 
@@ -2686,8 +2692,11 @@ function syncPaymentRequestRowDerived(row, { invoiceChanged = false } = {}) {
   if (amountDueInput) amountDueInput.value = amountDue.toFixed(2);
   const amountInput = row.querySelector(".payment-request-amount");
   if (invoiceChanged && amountInput) amountInput.value = amountDue || "";
+  const withholdingTax = Boolean(row.querySelector(".payment-request-row-wtax")?.checked);
+  const expandedWithholdingTax = Boolean(row.querySelector(".payment-request-row-ewt")?.checked);
+  const deductions = paymentRequestRowDeductions({ amountDue, amount: 0, withholdingTax, expandedWithholdingTax });
   const balanceInput = row.querySelector(".payment-request-balance");
-  if (balanceInput) balanceInput.value = Math.max(amountDue - Number(amountInput?.value || 0), 0).toFixed(2);
+  if (balanceInput) balanceInput.value = Math.max(amountDue - Number(amountInput?.value || 0) - deductions.withholdingTax - deductions.expandedWithholdingTax, 0).toFixed(2);
 }
 function renderPaymentRequestEditor(lines = [{}], preselectDoc = null) {
   paymentRequestPreselectedInvoice = preselectDoc || null;
@@ -2704,10 +2713,13 @@ function collectPaymentRequestLines() {
     const invoice = row.querySelector(".payment-request-invoice-input")?.value.trim() || "";
     const amountDue = paymentRequestRowBalance(clientName, invoice);
     const amount = Number(row.querySelector(".payment-request-amount")?.value || 0);
+    const withholdingTax = Boolean(row.querySelector(".payment-request-row-wtax")?.checked);
+    const expandedWithholdingTax = Boolean(row.querySelector(".payment-request-row-ewt")?.checked);
+    const deductions = paymentRequestRowDeductions({ amountDue, amount, withholdingTax, expandedWithholdingTax });
     return {
-      invoice, amountDue, amount, balance: Math.max(amountDue - amount, 0),
-      withholdingTax: Boolean(row.querySelector(".payment-request-row-wtax")?.checked),
-      expandedWithholdingTax: Boolean(row.querySelector(".payment-request-row-ewt")?.checked),
+      invoice, amountDue, amount,
+      balance: Math.max(amountDue - amount - deductions.withholdingTax - deductions.expandedWithholdingTax, 0),
+      withholdingTax, expandedWithholdingTax,
     };
   }).filter((line) => line.invoice || line.amount);
 }
@@ -2787,10 +2799,14 @@ function syncPaymentRequestDeductionDefaults() {
   if (qs("#expandedWithholdingTax")) qs("#expandedWithholdingTax").checked = Boolean(payee?.expandedWithholdingTax);
 }
 function paymentRequestRowDeductions(row) {
-  const taxBase = withholdingTaxBase(row.amount);
+  // Withholding tax is computed off the invoice's gross amount due, not the cash amount being
+  // collected — the client withholds tax and remits it to BIR on the invoice's full value, so
+  // the invoice is credited for cash received PLUS the withheld tax credit (not cash minus tax,
+  // which double-counts the withholding and leaves the invoice looking under-settled).
+  const taxBase = withholdingTaxBase(Number(row.amountDue ?? row.amount ?? 0));
   const withholdingTax = row.withholdingTax ? roundMoney(taxBase * 0.05) : 0;
   const expandedWithholdingTax = row.expandedWithholdingTax ? roundMoney(taxBase * 0.01) : 0;
-  return { taxBase, withholdingTax, expandedWithholdingTax, total: Math.max(row.amount - withholdingTax - expandedWithholdingTax, 0) };
+  return { taxBase, withholdingTax, expandedWithholdingTax, total: roundMoney(Number(row.amount || 0) + withholdingTax + expandedWithholdingTax) };
 }
 
 function syncPaymentRequestTotal() {

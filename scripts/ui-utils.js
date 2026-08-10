@@ -1,3 +1,14 @@
+function showActionLoading(container, message) {
+  if (!container) return;
+  container.querySelector(":scope > .action-loading-overlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.className = "action-loading-overlay";
+  overlay.innerHTML = `<div class="action-loading-card"><div class="action-loading-orbit"><img src="medlane.jpg" alt="" /><span></span></div><small>${escapeHtml(message || "Working...")}</small></div>`;
+  container.appendChild(overlay);
+}
+function hideActionLoading(container) {
+  container?.querySelector(":scope > .action-loading-overlay")?.remove();
+}
 function setGlobalLoading(active) {
   document.getElementById("global-loading-bar")?.classList.toggle("active", active);
 }

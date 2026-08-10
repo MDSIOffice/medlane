@@ -450,6 +450,10 @@ async function profileForUser(env, userId, email) {
   const fallback = roleModules[profile[0].role] || roleModules.Sales;
   const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
   const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : fallback;
+  // Every role can view memos regardless of when their module_permissions rows were created —
+  // this is a newer module that predates most existing users' explicit permission grants, and
+  // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
+  if (!view.includes("memos")) view.push("memos");
   if (["Superadmin", "CEO"].includes(profile[0].role)) {
     if (!view.includes("backup")) view.push("backup");
     if (!edit.includes("backup")) edit.push("backup");
@@ -862,7 +866,10 @@ function paymentRequestPrintableHtml(request) {
   if (perInvoice) {
     total = items.reduce((sum, item) => sum + Number(item.netAmount || 0), 0);
     tableHtml = `<table><thead><tr><th>Invoice</th><th>Amount</th><th>VAT-excl. Base</th><th>WTax 5%</th><th>EWT 1%</th><th>Net Amount</th></tr></thead><tbody>${items.map((item) => {
-      const taxBase = withholdingBaseFromGross(Number(item.amount || 0));
+      // Withholding is computed off the invoice's gross amount due (falling back to the
+      // collected amount for older records saved before amountDue was tracked per line), not
+      // the cash collected — see paymentRequestRowDeductions in modules.js for why.
+      const taxBase = withholdingBaseFromGross(Number(item.amountDue ?? item.amount ?? 0));
       const withholdingTax = hasWithholding(item.withholdingTax) ? roundCurrency(taxBase * 0.05) : 0;
       const expandedWithholdingTax = hasWithholding(item.expandedWithholdingTax) ? roundCurrency(taxBase * 0.01) : 0;
       return `<tr><td>${escapeHtml(item.invoice)}</td><td>${money(item.amount)}</td><td>${moneyWithCents(taxBase)}</td><td>${withholdingTax ? moneyWithCents(withholdingTax) : "-"}</td><td>${expandedWithholdingTax ? moneyWithCents(expandedWithholdingTax) : "-"}</td><td>${money(item.netAmount)}</td></tr>`;

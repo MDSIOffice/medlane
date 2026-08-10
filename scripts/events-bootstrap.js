@@ -206,7 +206,7 @@ async function submitModal(event) {
       if (paymentRequestNetAmountExceeded(rows, netAmount)) return toast(`Itemized amount total exceeds Net Amount (${peso.format(netAmount)}). Reduce the amounts or increase Net Amount.`);
       items = rows.map((row) => {
         const deductions = paymentRequestRowDeductions(row);
-        return { invoice: row.invoice, particulars: row.invoice, amount: row.amount, withholdingTax: row.withholdingTax, expandedWithholdingTax: row.expandedWithholdingTax, netAmount: deductions.total };
+        return { invoice: row.invoice, particulars: row.invoice, amount: row.amount, amountDue: row.amountDue, withholdingTax: row.withholdingTax, expandedWithholdingTax: row.expandedWithholdingTax, netAmount: deductions.total };
       });
       gross = items.reduce((sum, item) => sum + item.amount, 0);
       withholdingTax = items.reduce((sum, item) => sum + paymentRequestRowDeductions(item).withholdingTax, 0);
@@ -1031,7 +1031,10 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
   if (event.target.id === "bank" && modalType === "paymentRequest") syncPaymentRequestBankAccount();
   if (["withholdingTax", "expandedWithholdingTax"].includes(event.target.id) && modalType === "paymentRequest") syncPaymentRequestTotal();
-  if (modalType === "paymentRequest" && (event.target.classList.contains("payment-request-invoice-input") || event.target.classList.contains("payment-request-row-wtax") || event.target.classList.contains("payment-request-row-ewt"))) syncPaymentRequestTotal();
+  if (modalType === "paymentRequest" && (event.target.classList.contains("payment-request-invoice-input") || event.target.classList.contains("payment-request-row-wtax") || event.target.classList.contains("payment-request-row-ewt"))) {
+    if (event.target.classList.contains("payment-request-row-wtax") || event.target.classList.contains("payment-request-row-ewt")) syncPaymentRequestRowDerived(event.target.closest(".payment-request-invoice-row"));
+    syncPaymentRequestTotal();
+  }
   if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value);
   if (event.target.id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(event.target.value));
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
