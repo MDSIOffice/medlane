@@ -355,13 +355,15 @@ document.body.addEventListener("click", (event) => {
   const workflowAction = event.target.closest("[data-workflow-action]");
   if (workflowAction) return handleWorkflowAction(workflowAction.dataset.workflowAction);
   const paymentRequestPreview = event.target.closest("[data-payment-request-preview]");
-  if (paymentRequestPreview) return previewPaymentRequest(paymentRequestPreview.dataset.paymentRequestPreview);
+  if (paymentRequestPreview) { qs("#payment-request-more-modal")?.close(); return previewPaymentRequest(paymentRequestPreview.dataset.paymentRequestPreview); }
   const paymentRequestApprove = event.target.closest("[data-payment-request-approve]");
   if (paymentRequestApprove) return approvePaymentRequest(paymentRequestApprove.dataset.paymentRequestApprove);
   const paymentRequestCancel = event.target.closest("[data-payment-request-cancel]");
   if (paymentRequestCancel) return cancelPaymentRequest(paymentRequestCancel.dataset.paymentRequestCancel);
   const paymentRequestTimeline = event.target.closest("[data-payment-request-timeline]");
-  if (paymentRequestTimeline) return renderPaymentRequestDetail(paymentRequestTimeline.dataset.paymentRequestTimeline);
+  if (paymentRequestTimeline) { qs("#payment-request-more-modal")?.close(); return renderPaymentRequestDetail(paymentRequestTimeline.dataset.paymentRequestTimeline); }
+  const paymentRequestMore = event.target.closest("[data-payment-request-more]");
+  if (paymentRequestMore) return openPaymentRequestMoreMenu(paymentRequestMore.dataset.paymentRequestMore);
   const openPaymentRequest = event.target.closest("[data-open-payment-request]");
   if (openPaymentRequest) { closeReportPreview(); return renderPaymentRequestDetail(openPaymentRequest.dataset.openPaymentRequest); }
   const requestPreview = event.target.closest("[data-request-preview]");

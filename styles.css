@@ -1649,6 +1649,9 @@ button.calendar-cell:hover { background: var(--tint); }
 .client-doc-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .attached-file-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); color: var(--blue-dark); padding: 6px 12px; font-size: 12px; font-weight: 800; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 0; }
 .attached-file-chip:hover { background: var(--tint-strong); }
+.action-menu-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.action-menu-list button { width: 100%; justify-content: center; }
+.payment-request-more-modal { max-width: 360px; width: 100%; }
 .transfer-review-modal { max-width: 640px; width: 100%; }
 .transfer-review-list { display: grid; gap: 12px; margin-top: 14px; }
 .transfer-review-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(80px, 0.6fr) minmax(120px, 0.8fr) minmax(110px, 0.7fr); grid-template-areas: "item qty lot expiry" "note note note note"; gap: 10px 12px; align-items: end; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--tint); }

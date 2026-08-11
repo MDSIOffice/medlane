@@ -274,8 +274,7 @@ function paymentRequestHistory(request) {
 }
 
 function paymentRequestActionsCell(request) {
-  const printBtn = `<button class="mini-button" data-payment-request-preview="${escapeHtml(request.cvNo)}">Preview / Print</button>`;
-  const timelineBtn = `<button class="mini-button" data-payment-request-timeline="${escapeHtml(request.cvNo)}">View Timeline</button>`;
+  const moreBtn = `<button class="mini-button" data-payment-request-more="${escapeHtml(request.cvNo)}">More...</button>`;
   const approveBtn = request.invoice && request.requestStatus === "Pending"
     ? (canApprovePaymentRequests() ? `<button class="mini-button" data-payment-request-approve="${escapeHtml(request.cvNo)}">Approve</button>` : `<small>Awaiting Superadmin/CEO</small>`)
     : "";
@@ -286,7 +285,19 @@ function paymentRequestActionsCell(request) {
   const statusActions = request.requestStatus === "Approved" && linkedPayment && !isDepositFinal
     ? `<button class="mini-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Deposited">Deposited</button><button class="mini-button danger-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Bounced">Bounced</button><button class="mini-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Posted Date">Posted Date</button>`
     : "";
-  return `<div class="inline-actions">${approveBtn}${cancelBtn}${statusActions}${timelineBtn}${printBtn}</div>`;
+  return `<div class="inline-actions">${approveBtn}${cancelBtn}${statusActions}${moreBtn}</div>`;
+}
+
+function openPaymentRequestMoreMenu(cvNo) {
+  qs("#payment-request-more-modal")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal payment-request-more-modal";
+  dialog.id = "payment-request-more-modal";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">${escapeHtml(cvNo)}</p><h2>More Actions</h2></div><button class="icon-button" type="button" data-close-payment-request-more aria-label="Close">x</button></div><div class="action-menu-list"><button class="ghost-button" type="button" data-payment-request-timeline="${escapeHtml(cvNo)}">View Timeline</button><button class="ghost-button" type="button" data-payment-request-preview="${escapeHtml(cvNo)}">Preview / Print</button></div>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-close-payment-request-more]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
 }
 
 function saleForPayment(payment) {
