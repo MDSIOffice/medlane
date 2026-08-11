@@ -737,6 +737,8 @@ document.addEventListener("click", (event) => {
   if (removeSheetRow) removeInventorySheetRow(removeSheetRow);
   const uploadCopyButton = event.target.closest("[data-upload-copy]");
   if (uploadCopyButton) uploadCopyButton.parentElement.querySelector(".physical-copy-input")?.click();
+  const viewFileButton = event.target.closest("[data-view-file]");
+  if (viewFileButton) MedlaneAPI.viewFile(viewFileButton.dataset.viewFile).catch((error) => toast(error.message || "Unable to open file."));
 });
 document.addEventListener("change", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);

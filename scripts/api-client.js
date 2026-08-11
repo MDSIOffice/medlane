@@ -124,6 +124,22 @@ const MedlaneAPI = (() => {
     return request("/api/files");
   }
 
+  async function viewFile(id) {
+    const active = session();
+    const headers = {};
+    if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
+    if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+    const response = await fetch(`/api/files/${encodeURIComponent(id)}`, { headers });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error || `Request failed: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
   async function inviteUser(user) {
     return request("/api/users/invite", { method: "POST", body: JSON.stringify(user) });
   }
@@ -323,5 +339,5 @@ const MedlaneAPI = (() => {
     return request("/api/backups/restore", { method: "POST", body: JSON.stringify(ref) });
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, listBackupObjects, runBackup, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock, createMemo, acknowledgeMemo };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, listBackupObjects, runBackup, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock, createMemo, acknowledgeMemo };
 })();

@@ -1647,7 +1647,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .client-doc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--tint); }
 .client-doc-info { display: grid; gap: 4px; min-width: 0; }
 .client-doc-actions { display: flex; gap: 8px; flex: 0 0 auto; }
-.attached-file-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); color: var(--blue-dark); padding: 6px 12px; font-size: 12px; font-weight: 800; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attached-file-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); color: var(--blue-dark); padding: 6px 12px; font-size: 12px; font-weight: 800; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 0; }
 .attached-file-chip:hover { background: var(--tint-strong); }
 .transfer-review-modal { max-width: 640px; width: 100%; }
 .transfer-review-list { display: grid; gap: 12px; margin-top: 14px; }
