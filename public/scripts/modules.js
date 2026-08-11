@@ -1595,8 +1595,8 @@ function renderInventory() {
     return { focus: i.lot, cells: inventoryCompactView ? fullCells.slice(3) : fullCells };
   }));
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
-  table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
-  table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
+  table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
+  table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
   table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, (transfer.lines || []).reduce((sum, line) => sum + transferLineQty(line), 0), (transfer.lines || []).map((line) => `${escapeHtml(transferLineLot(line))}<small>${escapeHtml(transferLineExpiry(line))}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View Details</button><button class="mini-button" data-transfer-print="${escapeHtml(transfer.id)}">Print</button>`] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
 }
@@ -1611,18 +1611,23 @@ async function renderDashboardBackupStatus() {
   badge.className = "badge";
   badge.textContent = "Checking";
   try {
-    const status = await MedlaneAPI.backupStatus();
+    const [status, usage] = await Promise.all([
+      MedlaneAPI.backupStatus(),
+      MedlaneAPI.storageUsage().catch(() => null),
+    ]);
     if (requestId !== dashboardBackupStatusRequest) return;
     data.backupStatus = status;
     const latest = status.latest;
     const ageLabel = Number.isFinite(Number(status.ageHours)) ? `${Number(status.ageHours).toFixed(1)} hours ago` : "No backup recorded";
     badge.className = `badge ${status.stale ? "danger" : "success"}`;
     badge.textContent = status.stale ? "Overdue" : "Current";
+    const storagePercent = usage?.configured && usage.maxBytes ? Math.min(100, Math.round((usage.usedBytes / usage.maxBytes) * 100)) : null;
     list.innerHTML = [
       ["Last backup", latest ? formatSessionDate(latest.created_at) : "None"],
       ["Type", latest ? String(latest.backup_type || "backup") : "No successful backup"],
       ["Size", latest ? formatBytes(latest.size_bytes) : "-"],
       ["Result", status.stale ? `Alert: ${ageLabel}` : `Successful: ${ageLabel}`],
+      ...(storagePercent !== null ? [["Storage used", `${formatBytes(usage.usedBytes)} of ${formatBytes(usage.maxBytes)} (${storagePercent}%)`]] : []),
     ].map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join("");
     if (status.stale && !qs("#alerts-list")?.textContent.includes("No successful backup")) renderDashboard();
   } catch (error) {
@@ -2023,7 +2028,7 @@ function renderSales() {
   const status = qs("#sales-status").value;
   const type = qs("#sales-type").value;
   const canViewAllSales = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
-  const rows = byBranch(data.sales, "area").filter((s) => ["SI", "TS"].includes(documentType(s.type))).filter((s) => canViewAllSales || isClientAssignedToCurrentUser(s.client)).filter((s) => status === "all" || statusForSale(s) === status).filter((s) => type === "all" || documentType(s.type) === type).filter((s) => includesSearch(Object.values(s)));
+  const rows = byBranch(data.sales, "area").filter((s) => ["SI", "TS"].includes(documentType(s.type))).filter((s) => canViewAllSales || isClientAssignedToCurrentUser(s.client)).filter((s) => status === "all" || statusForSale(s) === status).filter((s) => type === "all" || documentType(s.type) === type).filter((s) => includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   const nearExpiry = byBranch(data.inventory).filter((item) => inventoryStatus(item) === "Near Expiry");
   const firstNearExpiry = nearExpiry[0];
   qs("#near-expiry-sales-alert").innerHTML = nearExpiry.length
@@ -2069,7 +2074,8 @@ function renderPurchaseOrders() {
   const to = qs("#po-date-to")?.value || "";
   const visible = byBranch(data.purchaseOrders || [], "area")
     .filter((po) => dateInRange(po.date, from, to))
-    .filter((po) => includesSearch([po.id, po.client, po.area, po.salesperson, poStatus(po), ...(po.lines || []).map((line) => line.item)]));
+    .filter((po) => includesSearch([po.id, po.client, po.area, po.salesperson, poStatus(po), ...(po.lines || []).map((line) => line.item)]))
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   const pending = visible.filter((po) => poStatus(po) === "Pending Orders");
   const forInvoicing = visible.filter((po) => poStatus(po) === "For Invoicing");
   qs("#purchase-order-visuals").innerHTML = [
