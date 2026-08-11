@@ -1207,7 +1207,7 @@ function detectThresholdsAndApprovals(state) {
 
   const paymentRequests = state.paymentRequests || [];
   const paymentPending = paymentRequests.filter((request) => request.invoice && request.requestStatus === "Pending");
-  if (paymentPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPaymentRequest, "Payment Requests Awaiting Approval", paymentPending.map((request) => `${request.cvNo} — ${request.invoice}, ${money(request.total)}`));
+  if (paymentPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPaymentRequest, "Payments Received Awaiting Approval", paymentPending.map((request) => `${request.cvNo} — ${request.invoice}, ${money(request.total)}`));
 
   const payables = state.payables || [];
   const payablesPending = payables.filter((payable) => (payable.requestStatus || payable.status) === "For Approval");
@@ -1509,7 +1509,13 @@ async function runFiveMinuteScheduledTasks(event, env) {
     if (scheduled.day === "01") tasks.push(createBackup(env, "monthly", null));
     if (scheduled.month === "01" && scheduled.day === "01") tasks.push(createBackup(env, "yearly", null));
   }
-  await Promise.allSettled(tasks);
+  const results = await Promise.allSettled(tasks);
+  for (const result of results) {
+    if (result.status !== "rejected") continue;
+    const message = result.reason?.message || String(result.reason);
+    console.error(JSON.stringify({ message: "Five-minute scheduled task failed", error: message }));
+    await recordSystemLog(env, { action: "Scheduled task failed", module: "System", record: message }).catch(() => null);
+  }
 }
 
 function backupDigestLines(auditRows) {
@@ -1559,15 +1565,22 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   const auditRows = await auditLogDigestRows(env, auditSinceIso);
   const sends = [];
   for (const role of allRoles) {
-    const parts = [];
-    if (sections[role]?.length) parts.push(digestSectionHtml(sections[role]));
-    if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) parts.push(digestSectionHtml([{ title: `${periodLabel} Business Summary`, lines: [...businessSummary, ...financialSummary, ...backupDigestLines(auditRows)] }]));
-    if (DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role)) parts.push(`<h3 style="margin:18px 0 8px;color:#005a9c;">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
-    if (!parts.length) continue;
-    const emails = await emailsForRoles(env, [role]);
-    const html = digestEmailHtml({ title: `${periodLabel} Digest`, bodyHtml: parts.join("") });
-    for (const email of emails) {
-      sends.push(sendResendEmail(env, { to: email, subject: `Medlane OS — ${periodLabel} Digest`, html }).catch((error) => console.error(JSON.stringify({ message: "Digest email failed", role, email, error: error.message }))));
+    try {
+      const parts = [];
+      if (sections[role]?.length) parts.push(digestSectionHtml(sections[role]));
+      if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) parts.push(digestSectionHtml([{ title: `${periodLabel} Business Summary`, lines: [...businessSummary, ...financialSummary, ...backupDigestLines(auditRows)] }]));
+      if (DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role)) parts.push(`<h3 style="margin:18px 0 8px;color:#005a9c;">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
+      if (!parts.length) continue;
+      const emails = await emailsForRoles(env, [role]);
+      const html = digestEmailHtml({ title: `${periodLabel} Digest`, bodyHtml: parts.join("") });
+      for (const email of emails) {
+        sends.push(sendResendEmail(env, { to: email, subject: `Medlane OS — ${periodLabel} Digest`, html }).catch((error) => console.error(JSON.stringify({ message: "Digest email failed", role, email, error: error.message }))));
+      }
+    } catch (error) {
+      // A single role's lookup/build failing (e.g. a transient Supabase error) must never
+      // stop other roles from getting their digest, nor block the Discord post below.
+      console.error(JSON.stringify({ message: "Digest role processing failed", role, error: error.message }));
+      await recordSystemLog(env, { action: "Digest role failed", module: "Email", record: `${role}: ${error.message}` }).catch(() => null);
     }
   }
   await Promise.all(sends);

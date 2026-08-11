@@ -447,7 +447,7 @@
           <div class="total-collections-amount" id="total-collections-amount"></div>
         </article>
         <div class="visual-grid" id="collections-visuals"></div>
-        <div class="tabs workflow-tabs" id="collections-workflow-tabs"><button class="tab active" data-collections-workflow="ledger">AR Ledger</button><button class="tab" data-collections-workflow="requests">Payment Requests</button><button class="tab" data-collections-workflow="followups">Follow-ups Map</button></div>
+        <div class="tabs workflow-tabs" id="collections-workflow-tabs"><button class="tab active" data-collections-workflow="ledger">AR Ledger</button><button class="tab" data-collections-workflow="requests">Payment Received</button><button class="tab" data-collections-workflow="history">Collections History</button><button class="tab" data-collections-workflow="followups">Follow-ups Map</button></div>
         <div class="workflow-panel" data-collections-panel="followups"><article class="panel collection-map-panel">
           <div class="panel-header"><div><p class="eyebrow">Weekly Contact Map</p><h2>Client Follow-up Status Across the Philippines</h2><p>Manually mark each client and the channels used this week.</p></div><span class="badge">Call / email / telephone</span></div>
           <div class="collection-map-layout">
@@ -459,7 +459,8 @@
           </div>
         </article></div>
         <div class="workflow-panel active" data-collections-panel="ledger"><div class="table-card"><table id="collections-table"></table></div></div>
-        <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Requests</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div></article></div>
+        <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Received</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div></article></div>
+        <div class="workflow-panel" data-collections-panel="history"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Collections History</p><h2>All previous collection activity</h2></div></div><div class="table-card compact-table"><table id="collections-history-table"></table></div><button class="ghost-button" id="load-more-collections-history" type="button" hidden>Load More</button></article></div>
       </section>
 
       <section class="section" id="receivables-tracker">
@@ -522,7 +523,7 @@
       </section>
 
       <section class="section" id="payment-request-detail">
-        <div class="section-header"><div><p class="eyebrow">Payment Request Detail</p><h2 id="payment-request-detail-title">Request timeline</h2></div><button class="ghost-button" data-go-section="collections">Back to Collections</button></div>
+        <div class="section-header"><div><p class="eyebrow">Payment Received Detail</p><h2 id="payment-request-detail-title">Request timeline</h2></div><button class="ghost-button" data-go-section="collections">Back to Collections</button></div>
         <article class="panel" id="payment-request-detail-panel"></article>
       </section>
 

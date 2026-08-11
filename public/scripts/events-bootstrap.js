@@ -247,7 +247,7 @@ async function submitModal(event) {
       createdAt: fmtDate(today),
     });
     log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`);
-    notify("Payment Request", `${values.cvNo} ${isCollection ? "pending approval" : "prepared"} for ${values.employee}.`, "collections", values.cvNo);
+    notify("Payment Received", `${values.cvNo} ${isCollection ? "pending approval" : "prepared"} for ${values.employee}.`, "collections", values.cvNo);
   }
   if (modalType === "payable") {
     const items = collectFinancialLines();
@@ -824,6 +824,7 @@ qs("#collections-workflow-tabs").addEventListener("click", (event) => {
   collectionsWorkflowTab = button.dataset.collectionsWorkflow;
   renderCollections();
 });
+qs("#load-more-collections-history").addEventListener("click", loadMoreCollectionsHistory);
 qs("#payables-workflow-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-payables-workflow]");
   if (!button) return;

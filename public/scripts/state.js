@@ -134,7 +134,7 @@ const sectionMeta = {
   "report-detail": ["Report Detail", "Focused report view with graphs, source records, and connected module actions."],
   "product-issue-detail": ["Support Report Detail", "Full status history and turnaround timeline for this technical support report."],
   "inventory-po-detail": ["Purchase Order Detail", "Approval, dispatch, and receiving history for this purchase order."],
-  "payment-request-detail": ["Payment Request Detail", "Approval and payment history for this collection payment request."],
+  "payment-request-detail": ["Payment Received Detail", "Approval and payment history for this collection payment received."],
   "sale-detail": ["Invoice Detail", "How and when this invoice was created and collected."],
   "user-audit-log": ["User Activity Log", "Every recorded action for one user, newest first."],
   memos: ["Memos", "Company memos and announcements, with acknowledgment tracking."],

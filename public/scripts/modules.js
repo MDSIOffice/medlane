@@ -380,7 +380,7 @@ async function approvePaymentRequest(cvNo) {
   request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updates only after deposit.`, by });
   await persistRecords({ paymentRequests: [request], payments: newPayments });
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
-  notify("Payment Request", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
+  notify("Payment Received", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
   saveData(["notifications"]);
   renderAll();
   toast(`${request.cvNo} approved and queued for deposition.`);
@@ -424,7 +424,7 @@ async function cancelPaymentRequest(cvNo) {
   request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Cancelled", note: `Cancelled by ${by}. Reason: ${reason}`, by });
   await persistRecords({ paymentRequests: [request], payments: payment ? [payment] : [], sales: sale ? [sale] : [] });
   log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`, { save: false });
-  notify("Payment Request", `${request.cvNo} cancelled.`, "collections", request.cvNo);
+  notify("Payment Received", `${request.cvNo} cancelled.`, "collections", request.cvNo);
   saveData(["notifications"]);
   renderAll();
   toast(`${request.cvNo} cancelled.`);
@@ -785,7 +785,7 @@ function renderSettingsTutorial() {
       ["Record Payment", "Posts payment against SI/TS/DR.", "Type document number, select method, enter receipt and amount.", "Use for cash, cheque, multiple cheques, bank deposit, or bank transfer."],
       ["Multiple Cheques", "Tracks several cheque references under one collection.", "Add cheque rows with reference number, cheque date, and amount.", "Use when one client pays one invoice using multiple cheques."],
       ["Collection Status", "Tracks bank handling status.", "Set For Deposition, Deposited, Bounced, or Posted Date.", "Use Posted Date when a cheque can be claimed on a future date."],
-      ["Payment Request", "Creates printable CV/payment request forms.", "Add employee/vendor, department, CV number, items, deductions, and preview/print.", "Use for internal reimbursement, supplier fees, or priority payment requests."],
+      ["Payment Received", "Creates printable CV/payment received forms.", "Add employee/vendor, department, CV number, items, deductions, and preview/print.", "Use for internal reimbursement, supplier fees, or priority payments received."],
       ["Follow-up Map", "Tracks weekly client collection contact status.", "Open client area, choose channels, then select outcome.", "When marking Cheque Available, enter the invoice number for traceability."],
       ["Follow-up History", "Shows all client contact outcomes.", "Click Follow-up History to open the full modal.", "Use to see who contacted the client, when, through what channel, and the result."],
     ] },
@@ -2451,7 +2451,7 @@ function saleCollectionTimeline(sale) {
     (payment.statusHistory || []).forEach((entry) => events.push({ date: entry.date, status: entry.status, note: `${payment.receiptNo} — ${peso.format(Number(payment.amount || 0))}${entry.status === "Posted Date" && payment.postedDate ? ` (claim ${payment.postedDate})` : ""}`, by: entry.user || "System User" }));
   });
   data.paymentRequests.filter((request) => request.invoice === sale.documentNo || request.invoice === sale.id).forEach((request) => {
-    paymentRequestHistory(request).forEach((entry) => events.push({ date: entry.date, status: `Payment Request: ${entry.status}`, note: `${request.cvNo} — ${entry.note || "-"}`, by: entry.by || "-" }));
+    paymentRequestHistory(request).forEach((entry) => events.push({ date: entry.date, status: `Payment Received: ${entry.status}`, note: `${request.cvNo} — ${entry.note || "-"}`, by: entry.by || "-" }));
   });
   return events.sort((a, b) => new Date(a.date) - new Date(b.date));
 }
@@ -2504,6 +2504,7 @@ function renderCollections() {
   syncCollectionContactsForBalances();
   syncPostedCollectionReminders();
   renderCollectionsWorkflowTabs();
+  if (collectionsWorkflowTab === "history") renderCollectionsHistory();
   renderCollectionsTotalSummary();
   const visibleSales = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s)));
   const visibleDocs = new Set(visibleSales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
@@ -2533,7 +2534,7 @@ function renderCollections() {
     visualCard("◆", "Payment Channels", `${data.payments.length} receipts`, barRows(methodMix, (value) => peso.format(value), ["green", "", "orange"]), "info", "Computed from collection records grouped by payment method."),
   ].join("");
   renderCollectionContactMap();
-  const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).map((s) => {
+  const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((s) => {
     const payments = data.payments.filter((payment) => payment.invoice === s.id || payment.invoice === s.documentNo);
     const latest = payments.at(-1) || {};
     const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
@@ -2541,7 +2542,7 @@ function renderCollections() {
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Collection Status", "Actions", "Balance", "AR Status"], rows);
-  table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Department", "Payment", "Total", "Status", "Actions"], data.paymentRequests.map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.department, r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
+  table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Department", "Payment", "Total", "Status", "Actions"], [...data.paymentRequests].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.department, r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
 }
 
 function renderCollectionsWorkflowTabs() {
@@ -2550,11 +2551,11 @@ function renderCollectionsWorkflowTabs() {
     requests: data.paymentRequests.filter((request) => !["Completed", "Cancelled"].includes(request.requestStatus || request.status)).length,
     followups: data.collectionContacts.filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status)).length,
   };
-  const labels = { ledger: "AR Ledger", requests: "Payment Requests", followups: "Follow-ups Map" };
+  const labels = { ledger: "AR Ledger", requests: "Payment Received", history: "Collections History", followups: "Follow-ups Map" };
   qs("#collections-workflow-tabs")?.querySelectorAll("[data-collections-workflow]").forEach((button) => {
     const tab = button.dataset.collectionsWorkflow;
     button.classList.toggle("active", tab === collectionsWorkflowTab);
-    button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
+    button.innerHTML = `${escapeHtml(labels[tab])}${counts[tab] != null ? ` <span class="tab-count">${counts[tab]}</span>` : ""}`;
   });
   qsa("[data-collections-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.collectionsPanel === collectionsWorkflowTab));
 }
@@ -2823,7 +2824,7 @@ function syncPaymentRequestTotal() {
     const deductions = paymentRequestDeductions(gross);
     if (qs("#total")) qs("#total").value = deductions.total.toFixed(2);
     const preview = qs("#payment-request-tax-preview");
-    if (preview) preview.innerHTML = `<div class="preview-tax-label">WTax/EWT computed from VAT-exclusive base</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Request</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${withholdingMoney(withholdingTaxBase(gross))}</strong></div><div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${withholdingMoney(deductions.withholdingTax)}</strong></div><div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${withholdingMoney(deductions.expandedWithholdingTax)}</strong></div><div class="invoice-meta total-line"><span>Total Payment Request</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
+    if (preview) preview.innerHTML = `<div class="preview-tax-label">WTax/EWT computed from VAT-exclusive base</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Request</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${withholdingMoney(withholdingTaxBase(gross))}</strong></div><div class="invoice-meta"><span>Withholding Tax 5%</span><strong>${withholdingMoney(deductions.withholdingTax)}</strong></div><div class="invoice-meta"><span>Expanded Withholding Tax 1%</span><strong>${withholdingMoney(deductions.expandedWithholdingTax)}</strong></div><div class="invoice-meta total-line"><span>Total Payment Received</span><strong>${peso.format(deductions.total)}</strong></div></div>`;
     return;
   }
   const rows = collectPaymentRequestLines();
@@ -4597,7 +4598,7 @@ function formatLogRecord(record) {
   const short = compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
   return `<span class="log-record" title="${escapeHtml(compact)}">${escapeHtml(short)}</span>`;
 }
-const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Request", "Support Tracker", "Reconciliation", "Reports", "Settings", "System", "User Settings", "Users"];
+const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Received", "Support Tracker", "Reconciliation", "Reports", "Settings", "System", "User Settings", "Users"];
 function visibleAuditLogEntries(entries) {
   const selectedModule = qs("#logs-module-filter")?.value || "all";
   return selectedModule === "all" ? entries.filter((entry) => String(entry.module || "System").toLowerCase() !== "system") : entries;
@@ -4717,6 +4718,37 @@ async function loadMoreNotificationLogs() {
   }
   notificationLogsState.loading = false;
   renderNotificationLogTable();
+}
+let collectionsHistoryState = { entries: [], nextCursor: null, loading: false };
+function renderCollectionsHistoryTable() {
+  table("#collections-history-table", ["Date", "User", "Role", "Action", "Details"], collectionsHistoryState.entries.map((l) => ({ focus: [l.record, l.action, l.user].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(l.user), formatLogCell(l.role), formatLogCell(l.action), formatLogRecord(l.record)] })));
+  const loadMoreButton = qs("#load-more-collections-history");
+  if (loadMoreButton) loadMoreButton.hidden = !collectionsHistoryState.nextCursor;
+}
+async function renderCollectionsHistory() {
+  collectionsHistoryState = { entries: [], nextCursor: null, loading: true };
+  tableSkeleton("#collections-history-table", ["Date", "User", "Role", "Action", "Details"], 6);
+  try {
+    const result = await MedlaneAPI.listLogs({ module: "Collections", limit: 50 });
+    collectionsHistoryState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
+  } catch (error) {
+    collectionsHistoryState = { entries: [], nextCursor: null, loading: false };
+    toast(error.message || "Could not load collections history.");
+  }
+  renderCollectionsHistoryTable();
+}
+async function loadMoreCollectionsHistory() {
+  if (!collectionsHistoryState.nextCursor || collectionsHistoryState.loading) return;
+  collectionsHistoryState.loading = true;
+  try {
+    const result = await MedlaneAPI.listLogs({ module: "Collections", limit: 50, before: collectionsHistoryState.nextCursor });
+    collectionsHistoryState.entries = [...collectionsHistoryState.entries, ...(result.entries || [])];
+    collectionsHistoryState.nextCursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more collections history.");
+  }
+  collectionsHistoryState.loading = false;
+  renderCollectionsHistoryTable();
 }
 let userAuditLogState = { user: "", entries: [], nextCursor: null, loading: false };
 const userAuditLogWideDateFrom = "2020-01-01T00:00:00.000Z";
