@@ -3735,7 +3735,8 @@ function validateClientsMasterlistRows(rows) {
     const issues = [];
     const key = name.trim().toLowerCase();
     if (!name) issues.push("Missing client name");
-    if (name && data.clients.some((client) => client.name.toLowerCase() === key || String(client.code || "").trim().toLowerCase() === String(code).trim().toLowerCase())) issues.push("Duplicate existing client/code");
+    const trimmedCode = String(code || "").trim().toLowerCase();
+    if (name && data.clients.some((client) => client.name.toLowerCase() === key || (trimmedCode && String(client.code || "").trim().toLowerCase() === trimmedCode))) issues.push("Duplicate existing client/code");
     if (key && seen.has(key)) issues.push("Duplicate input client");
     if (key) seen.add(key);
     return { row: index + 2, kind: "clientsMasterlist", code, name, area, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
@@ -3758,7 +3759,8 @@ function validateSuppliersMasterlistRows(rows) {
     const issues = [];
     const key = name.trim().toLowerCase();
     if (!name) issues.push("Missing supplier/vendor name");
-    if (name && data.suppliers.some((supplier) => supplier.name.toLowerCase() === key || String(supplier.code || "").trim().toLowerCase() === String(code).trim().toLowerCase())) issues.push("Duplicate existing supplier/code");
+    const trimmedCode = String(code || "").trim().toLowerCase();
+    if (name && data.suppliers.some((supplier) => supplier.name.toLowerCase() === key || (trimmedCode && String(supplier.code || "").trim().toLowerCase() === trimmedCode))) issues.push("Duplicate existing supplier/code");
     if (key && seen.has(key)) issues.push("Duplicate input supplier");
     if (key) seen.add(key);
     return { row: index + 2, kind: "suppliersMasterlist", code, name, area: rowValue(headers, row, ["Classification"]), status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
