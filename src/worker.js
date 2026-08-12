@@ -770,7 +770,24 @@ function recordsFromState(data, userId, stateKey, allowedKeys = persistedKeys, a
       rows.push({ state_key: stateKey, module_name: key, record_key: key, data: { value }, updated_by: userId });
     }
   }
-  return rows;
+  return dedupeRowsByRecordKey(rows);
+}
+
+// A single upsert statement that targets the same (module_name, record_key) twice is
+// rejected outright by Postgres ("ON CONFLICT DO UPDATE command cannot affect row a
+// second time"), taking the whole batch down with it. Two client-supplied records that
+// resolve to the same derived key (e.g. an import with a repeated code) must never be
+// allowed to reach that statement — collapse them here, keeping the last occurrence so
+// the most recently supplied version of a record wins, matching normal upsert semantics.
+function dedupeRowsByRecordKey(rows) {
+  const seen = new Map();
+  const order = [];
+  for (const row of rows) {
+    const dedupeKey = `${row.module_name} ${row.record_key}`;
+    if (!seen.has(dedupeKey)) order.push(dedupeKey);
+    seen.set(dedupeKey, row);
+  }
+  return order.map((dedupeKey) => seen.get(dedupeKey));
 }
 
 function postgrestIn(values) {
@@ -2137,12 +2154,13 @@ export default {
         const records = body.records && typeof body.records === "object" ? body.records : {};
         const recordKeys = body.recordKeys && typeof body.recordKeys === "object" ? body.recordKeys : {};
         const allowedKeys = new Set(writableKeys(profile));
-        const rows = [];
+        let rows = [];
         for (const [key, value] of Object.entries(records)) {
           if (!allowedKeys.has(key)) throw new Error(`You do not have permission to edit ${key}`);
           if (!Array.isArray(value)) throw new Error(`Per-record saves require an array for ${key}`);
           value.forEach((record, index) => rows.push({ state_key: stateKey, module_name: key, record_key: String(recordKeys[key]?.[index] || recordKeyFor(key, record, index)), data: record, updated_by: authUser.id }));
         }
+        rows = dedupeRowsByRecordKey(rows);
         const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].includes(key)))];
         const beforeRows = eventModules.length ? await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`) : [];
         if (rows.length) {
