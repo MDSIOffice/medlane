@@ -3728,6 +3728,7 @@ function importedCategory(value) {
 function validateClientsMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
+  const seenCodes = new Set();
   return rows.slice(1).map((row, index) => {
     const code = rowValue(headers, row, ["Code"]);
     const name = rowValue(headers, row, ["Name"]);
@@ -3738,7 +3739,9 @@ function validateClientsMasterlistRows(rows) {
     const trimmedCode = String(code || "").trim().toLowerCase();
     if (name && data.clients.some((client) => client.name.toLowerCase() === key || (trimmedCode && String(client.code || "").trim().toLowerCase() === trimmedCode))) issues.push("Duplicate existing client/code");
     if (key && seen.has(key)) issues.push("Duplicate input client");
+    if (trimmedCode && seenCodes.has(trimmedCode)) issues.push("Duplicate input client code");
     if (key) seen.add(key);
+    if (trimmedCode) seenCodes.add(trimmedCode);
     return { row: index + 2, kind: "clientsMasterlist", code, name, area, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
@@ -3753,6 +3756,7 @@ function buildImportedClient(row, headers) {
 function validateSuppliersMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
+  const seenCodes = new Set();
   return rows.slice(1).map((row, index) => {
     const code = rowValue(headers, row, ["Code"]);
     const name = rowValue(headers, row, ["Name"]);
@@ -3762,7 +3766,9 @@ function validateSuppliersMasterlistRows(rows) {
     const trimmedCode = String(code || "").trim().toLowerCase();
     if (name && data.suppliers.some((supplier) => supplier.name.toLowerCase() === key || (trimmedCode && String(supplier.code || "").trim().toLowerCase() === trimmedCode))) issues.push("Duplicate existing supplier/code");
     if (key && seen.has(key)) issues.push("Duplicate input supplier");
+    if (trimmedCode && seenCodes.has(trimmedCode)) issues.push("Duplicate input supplier code");
     if (key) seen.add(key);
+    if (trimmedCode) seenCodes.add(trimmedCode);
     return { row: index + 2, kind: "suppliersMasterlist", code, name, area: rowValue(headers, row, ["Classification"]), status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }

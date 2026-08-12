@@ -1288,15 +1288,27 @@ qs("#run-import").addEventListener("click", async () => {
     note: "This creates new live records. Review the preview table carefully before confirming.",
   });
   if (!ok) return;
-  const result = importCheckedRows(checked);
-  const importEntry = { id: `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" };
-  data.imports.unshift(importEntry);
-  await persistRecords({ ...(result.createdRecords || {}), imports: [importEntry] });
-  log("Imported confirmed CSV/TSV rows", "Imports", `${result.records} ${result.module} records · ${result.skipped || 0} skipped`, { save: false });
-  renderAll();
-  toast(`${result.records} ${result.module} record/s imported; ${result.skipped || 0} skipped.`);
-  lastImportFileName = null;
-  qs("#csv-file-input").value = "";
+  const progressWrap = qs("#import-progress");
+  const progressLabel = qs("#import-progress-label");
+  const runButton = qs("#run-import");
+  runButton.disabled = true;
+  if (progressLabel) progressLabel.textContent = `Importing ${ready.length} ${moduleLabel} record${ready.length === 1 ? "" : "s"}...`;
+  if (progressWrap) progressWrap.hidden = false;
+  try {
+    const result = importCheckedRows(checked);
+    const importEntry = { id: `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" };
+    data.imports.unshift(importEntry);
+    if (progressLabel) progressLabel.textContent = "Saving to server...";
+    await persistRecords({ ...(result.createdRecords || {}), imports: [importEntry] });
+    log("Imported confirmed CSV/TSV rows", "Imports", `${result.records} ${result.module} records · ${result.skipped || 0} skipped`, { save: false });
+    renderAll();
+    toast(`${result.records} ${result.module} record/s imported; ${result.skipped || 0} skipped.`);
+    lastImportFileName = null;
+    qs("#csv-file-input").value = "";
+  } finally {
+    runButton.disabled = false;
+    if (progressWrap) progressWrap.hidden = true;
+  }
 });
 window.addEventListener("afterprint", clearPrintTarget);
 window.addEventListener("resize", updateTableScrollHints);
