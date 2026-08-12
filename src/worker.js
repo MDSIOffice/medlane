@@ -278,6 +278,87 @@ function discordFieldValue(lines, limit = 900) {
   return value || "None";
 }
 
+function moduleRecordMap(rows, moduleName) {
+  const map = new Map();
+  rows.filter((row) => row.module_name === moduleName).forEach((row) => map.set(String(row.record_key), row.data || {}));
+  return map;
+}
+
+function inventoryPoTotal(po) {
+  return (po.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0);
+}
+
+function salesPoTotal(po) {
+  return Number(po.amount || po.total || po.net || 0);
+}
+
+function eventActor(profile) {
+  return profile.name || profile.email || "System User";
+}
+
+function webhookText(value, fallback = "-") {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+}
+
+function discordEventEmbed(title, color, fields, profile) {
+  return {
+    title,
+    color,
+    fields: [
+      ...fields.filter((field) => field.value !== undefined && field.value !== null).map((field) => ({ ...field, value: String(field.value).slice(0, 1024) })),
+      { name: "Created / Updated By", value: `${eventActor(profile)} (${profile.role || "Unknown"})`, inline: false },
+    ].slice(0, 25),
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function postNewRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
+  if (!env.DISCORD_WEBHOOK_URL || !savedRows.length) return;
+  const beforeByModule = {};
+  ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].forEach((moduleName) => { beforeByModule[moduleName] = moduleRecordMap(beforeRows, moduleName); });
+  const posts = [];
+  for (const row of savedRows) {
+    const key = String(row.record_key);
+    if (beforeByModule[row.module_name]?.has(key)) continue;
+    const record = row.data || {};
+    if (row.module_name === "purchaseOrders") {
+      posts.push(sendDiscordWebhook(env, { embeds: [discordEventEmbed("New Sales Purchase Order", 0x0077bd, [
+        { name: "PO", value: webhookText(record.id || key), inline: true },
+        { name: "Client", value: webhookText(record.client), inline: true },
+        { name: "Amount", value: money(salesPoTotal(record)), inline: true },
+        { name: "Date", value: webhookText(record.date), inline: true },
+        { name: "Status", value: webhookText(record.status || "Open"), inline: true },
+      ], profile)] }).catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `New sales PO ${record.id || key}: ${error.message}` })));
+    } else if (row.module_name === "inventoryPurchaseOrders") {
+      posts.push(sendDiscordWebhook(env, { embeds: [discordEventEmbed("New Inventory Purchase Order", 0xf59e0b, [
+        { name: "PO", value: webhookText(record.id || key), inline: true },
+        { name: "Supplier", value: webhookText(record.supplier), inline: true },
+        { name: "Total", value: money(inventoryPoTotal(record)), inline: true },
+        { name: "Branch", value: webhookText(record.branch), inline: true },
+        { name: "Status", value: webhookText(record.status || "Pending Approval"), inline: true },
+      ], profile)] }).catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `New inventory PO ${record.id || key}: ${error.message}` })));
+    } else if (row.module_name === "paymentRequests" && record.invoice && record.requestStatus === "Pending") {
+      posts.push(sendDiscordWebhook(env, { embeds: [discordEventEmbed("New Collection Approval", 0x22c55e, [
+        { name: "Request", value: webhookText(record.cvNo || record.id || key), inline: true },
+        { name: "Invoice", value: webhookText(record.invoice), inline: true },
+        { name: "Amount", value: money(record.total || record.amount), inline: true },
+        { name: "Employee", value: webhookText(record.employee || record.requestedBy), inline: true },
+        { name: "Status", value: webhookText(record.requestStatus), inline: true },
+      ], profile)] }).catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `New collection approval ${record.cvNo || record.id || key}: ${error.message}` })));
+    } else if (row.module_name === "pendingTransfers" && !/received|cancelled/i.test(record.status || "")) {
+      posts.push(sendDiscordWebhook(env, { embeds: [discordEventEmbed("New Pending Transfer", 0x8b5cf6, [
+        { name: "Transfer", value: webhookText(record.id || key), inline: true },
+        { name: "Item", value: webhookText(record.item || record.code || "Items"), inline: true },
+        { name: "Quantity", value: webhookText(record.qty || record.quantity), inline: true },
+        { name: "Route", value: `${webhookText(record.from)} -> ${webhookText(record.to)}`, inline: false },
+        { name: "Status", value: webhookText(record.status || "Pending"), inline: true },
+      ], profile)] }).catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `New pending transfer ${record.id || key}: ${error.message}` })));
+    }
+  }
+  if (posts.length) await Promise.allSettled(posts);
+}
+
 async function trackNewOccurrences(env, moduleName, currentIds) {
   const stateKey = appStateKey(env);
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=eq.state&select=data`);
@@ -1668,9 +1749,7 @@ async function runWeeklyDigest(env) {
 export default {
   async scheduled(event, env, ctx) {
     if (env.ENVIRONMENT !== "production") return;
-    if (event.cron === FIVE_MINUTE_MONITOR_CRON) {
-      ctx.waitUntil(runFiveMinuteScheduledTasks(event, env).catch((error) => console.error(JSON.stringify({ message: "Five-minute scheduled tasks failed", error: error.message }))));
-    }
+    ctx.waitUntil(runFiveMinuteScheduledTasks(event, env).catch((error) => console.error(JSON.stringify({ message: "Scheduled tasks failed", cron: event.cron || FIVE_MINUTE_MONITOR_CRON, error: error.message }))));
   },
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1904,7 +1983,8 @@ export default {
             // real data (the exact bug that previously erased the database), not
             // an intentional bulk delete — refuse it and log full context instead
             // of silently applying it.
-            const beforeRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name,record_key`);
+            const eventModules = presentKeys.filter((key) => ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].includes(key));
+            const beforeRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name,record_key${eventModules.length ? ",data" : ""}`);
             const beforeCounts = {};
             const beforeKeysByModule = {};
             for (const row of beforeRows) {
@@ -1980,6 +2060,7 @@ export default {
                 record: changedSummary,
               }, authUser.id, auditContext);
             }
+            await postNewRecordEventsToDiscord(env, profile, beforeRows, rows);
           }
           return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
         }
@@ -2062,12 +2143,15 @@ export default {
           if (!Array.isArray(value)) throw new Error(`Per-record saves require an array for ${key}`);
           value.forEach((record, index) => rows.push({ state_key: stateKey, module_name: key, record_key: String(recordKeys[key]?.[index] || recordKeyFor(key, record, index)), data: record, updated_by: authUser.id }));
         }
+        const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].includes(key)))];
+        const beforeRows = eventModules.length ? await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`) : [];
         if (rows.length) {
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
             method: "POST",
             headers: { prefer: "resolution=merge-duplicates,return=minimal" },
             body: JSON.stringify(rows),
           });
+          await postNewRecordEventsToDiscord(env, profile, beforeRows, rows);
         }
         return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
       }
