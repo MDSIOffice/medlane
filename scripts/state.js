@@ -330,10 +330,37 @@ function normalizeData(next) {
   return next;
 }
 
+// Mirrors the server's recordKeyFor() (src/worker.js) so arrays can be de-duplicated by the
+// same identity the database uses, before they're ever sent. Two records that would resolve
+// to the same key in a single upsert make Postgres reject the whole batch with "ON CONFLICT
+// DO UPDATE command cannot affect row a second time" — this stops that from ever reaching the
+// server, and self-heals any already-duplicated local data on the very next save.
+function saveRecordKeyFor(key, value, index) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (key === "inventory") return [value.code || value.item || "stock", value.branch || "branch", value.lot || value.serial || "lot"].map((part) => String(part).trim() || "-").join("|");
+  if (key === "transferHistory") return String(value.id || [value.transferId, value.date, value.action].filter(Boolean).join("|") || `${key}-${index}`);
+  if (key === "warranties") return String(value.serial || value.id || `${value.client || "client"}|${value.equipment || "equipment"}|${value.warrantyEnd || index}`);
+  if (key === "imports") return String(value.id || [value.date, value.module, value.file].filter(Boolean).join("|") || `${key}-${index}`);
+  if (key === "reconHistory") return String(value.id || [value.date, value.range, value.period].filter(Boolean).join("|") || `${key}-${index}`);
+  return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
+}
+
+function dedupeRecordsForSave(key, records, explicitKeys) {
+  if (!Array.isArray(records)) return records;
+  const seen = new Map();
+  const order = [];
+  records.forEach((record, index) => {
+    const recordKey = (explicitKeys && explicitKeys[index]) || saveRecordKeyFor(key, record, index) || `__no-key-${index}`;
+    if (!seen.has(recordKey)) order.push(recordKey);
+    seen.set(recordKey, record);
+  });
+  return order.map((recordKey) => seen.get(recordKey));
+}
+
 function savePayloadForKeys(keys) {
   const payload = {};
   [...new Set(keys)].forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(data || {}, key)) payload[key] = data[key];
+    if (Object.prototype.hasOwnProperty.call(data || {}, key)) payload[key] = Array.isArray(data[key]) ? dedupeRecordsForSave(key, data[key]) : data[key];
   });
   return payload;
 }
@@ -388,11 +415,11 @@ function saveData(keys = null) {
   clearTimeout(pendingServerSave);
   setGlobalSaveStatus("saving", "Saving...");
   pendingServerSave = setTimeout(() => {
-    const queuedPayload = readPendingSaveQueue();
     if (!navigator.onLine) {
       setGlobalSaveStatus("error", "Offline - pending save");
       return;
     }
+    const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
     MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
       if (result?.revision) {
         serverRevision = Number(result.revision);
@@ -421,7 +448,7 @@ function flushPendingSaveQueue() {
   if (!hasPendingSaveQueue() || !currentUser || !MedlaneAPI?.session()?.access_token || !navigator.onLine) return;
   clearTimeout(pendingServerSave);
   setGlobalSaveStatus("saving", "Saving pending changes...");
-  const queuedPayload = readPendingSaveQueue();
+  const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
   MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
     if (result?.revision) serverRevision = Number(result.revision);
     writePendingSaveQueue({});
@@ -434,7 +461,7 @@ function flushPendingSaveQueue() {
 
 async function persistRecords(records, recordKeys = {}) {
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return null;
-  const filtered = Object.fromEntries(Object.entries(records || {}).filter(([, value]) => Array.isArray(value) && value.length));
+  const filtered = Object.fromEntries(Object.entries(records || {}).filter(([, value]) => Array.isArray(value) && value.length).map(([key, value]) => [key, dedupeRecordsForSave(key, value, recordKeys?.[key])]));
   if (!Object.keys(filtered).length) return null;
   setGlobalSaveStatus("saving", "Saving...");
   try {
