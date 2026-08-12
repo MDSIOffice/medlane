@@ -51,6 +51,7 @@
       <div class="landing-scroll-progress" aria-hidden="true"><span></span></div>
       <div class="landing-mesh" aria-hidden="true"><span></span><span></span><span></span></div>
       <div class="landing-ambient" aria-hidden="true"><span></span><i></i><b></b></div>
+      <div class="landing-flow-field" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
       <div class="landing-particles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
       <div class="landing-orbits" aria-hidden="true"><span></span><span></span><span></span></div>
       <button class="landing-back-to-top" id="landing-back-to-top" type="button" aria-label="Back to top">↑</button>
@@ -72,6 +73,7 @@
         </section>
         <section class="landing-diagnostic-card" aria-label="Medlane diagnostics profile">
           <div class="hero-photo" role="img" aria-label="Medlane field installation team">
+            <div class="hero-live-panel" aria-hidden="true"><span class="live-dot"></span><strong>Live field sync</strong><small>Installations · Stock · Service</small></div>
             <div class="hero-float-card hero-float-card--top"><span class="hero-float-kicker">Est. 1997</span><strong>Licensed Distributor</strong><small>Equipment, reagents &amp; supplies</small></div>
             <div class="hero-float-card hero-float-card--bottom"><strong>Two branches, one standard</strong><small>Las Piñas HQ · Naga City</small></div>
           </div>
@@ -87,6 +89,12 @@
       <section class="landing-photo-story">
         <div class="photo-story-image"></div>
         <div class="landing-section-copy" data-icon="HQ"><p class="landing-kicker">Company Profile</p><h2>Diagnostic distribution with a relationship-first operating style.</h2><p>Medlane supports laboratories with equipment, reagents, consumables, service coordination, and branch coverage built around lasting customer relationships.</p></div>
+      </section>
+      <section class="landing-live-ops" aria-label="Collaborative operations animation">
+        <div class="landing-section-copy" data-icon="RT"><p class="landing-kicker">Real-Time Operations</p><h2>Branch teams, sales, warehouse, and service moving in one shared rhythm.</h2></div>
+        <div class="live-ops-board" aria-hidden="true">
+          <span class="ops-node ops-node-a">HQ</span><span class="ops-node ops-node-b">Sales</span><span class="ops-node ops-node-c">Stock</span><span class="ops-node ops-node-d">Service</span><span class="ops-pulse ops-pulse-a"></span><span class="ops-pulse ops-pulse-b"></span><span class="ops-pulse ops-pulse-c"></span>
+        </div>
       </section>
       <section class="landing-gallery" aria-label="Medlane installation highlights">
         <div class="landing-section-copy" data-icon="FS"><p class="landing-kicker">Field Work</p><h2>Installations, training, and on-site laboratory support.</h2></div>
@@ -215,11 +223,13 @@
     </aside>
 
     <main class="app-shell">
+      <div class="app-ambient-grid" aria-hidden="true"><span></span><span></span><span></span></div>
       <header class="topbar">
         <div>
           <p class="eyebrow">Medlane Diagnostic Solutions</p>
           <h1 id="page-title">Dashboard</h1>
           <p class="page-description" id="page-description">Executive overview of sales, collections, receivables, stock alerts, and urgent operational actions.</p>
+          <div class="collab-presence" aria-label="Workspace activity"><span><i></i>Live workspace</span><span>Sales</span><span>Warehouse</span><span>Accounting</span></div>
         </div>
         <div class="topbar-actions">
           <div class="save-status-indicator" id="save-status-indicator" title="Save status">

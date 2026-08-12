@@ -5,7 +5,7 @@
   const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // Scrollytelling: reveal sections as they enter the viewport instead of all-at-once on load.
-  const revealTargets = page.querySelectorAll(".landing-values, .landing-capabilities, .landing-photo-story, .landing-gallery, .landing-locations, .landing-footer");
+  const revealTargets = page.querySelectorAll(".landing-values, .landing-capabilities, .landing-photo-story, .landing-live-ops, .landing-gallery, .landing-locations, .landing-footer");
   if ("IntersectionObserver" in window) {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
@@ -29,6 +29,7 @@
     const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
     const progress = Math.min(1, Math.max(0, scrollTop / maxScroll));
     if (progressBar) progressBar.style.transform = `scaleX(${progress})`;
+    page.style.setProperty("--landing-scroll", progress.toFixed(3));
     if (backToTop) backToTop.classList.toggle("visible", scrollTop > 480);
   }
   function onScroll() {
@@ -74,5 +75,14 @@
         link.style.transform = "";
       });
     });
+
+    const flowField = page.querySelector(".landing-flow-field");
+    window.addEventListener("pointermove", (event) => {
+      const px = (event.clientX / Math.max(window.innerWidth, 1) - 0.5).toFixed(3);
+      const py = (event.clientY / Math.max(window.innerHeight, 1) - 0.5).toFixed(3);
+      page.style.setProperty("--pointer-x", px);
+      page.style.setProperty("--pointer-y", py);
+      if (flowField) flowField.style.transform = `translate3d(${px * -18}px, ${py * -12}px, 0)`;
+    }, { passive: true });
   }
 })();
