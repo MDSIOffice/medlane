@@ -187,7 +187,7 @@ body.app-route .landing-page { display: none !important; }
 .landing-ambient i::before { top: 56px; }
 .landing-ambient i::after { top: 108px; }
 .landing-ambient b { right: 17%; bottom: 18%; width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, rgba(224,122,56,.2), transparent 68%); animation: loginFloat 9s ease-in-out infinite -3s; }
-.landing-mesh { position: absolute; inset: -12%; z-index: 0; overflow: hidden; pointer-events: none; filter: blur(64px) saturate(1.2); opacity: .5; }
+.landing-mesh { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; filter: blur(64px) saturate(1.2); opacity: .5; }
 .landing-mesh span { position: absolute; border-radius: 50%; mix-blend-mode: screen; }
 .landing-mesh span:nth-child(1) { width: 46vw; height: 46vw; max-width: 640px; max-height: 640px; left: -8%; top: -8%; background: radial-gradient(circle, rgba(61,179,205,.55), transparent 70%); animation: meshDrift 22s ease-in-out infinite; }
 .landing-mesh span:nth-child(2) { width: 40vw; height: 40vw; max-width: 560px; max-height: 560px; right: -8%; top: 10%; background: radial-gradient(circle, rgba(224,122,56,.46), transparent 70%); animation: meshDrift 27s ease-in-out infinite -9s reverse; }
