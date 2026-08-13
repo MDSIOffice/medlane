@@ -1,6 +1,7 @@
 let data;
 let modalType = null;
 let editContext = null;
+let modalReadOnly = false;
 let currentUser = JSON.parse(localStorage.getItem("medlane-session") || "null");
 function applyThemePreference(theme) {
   document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
@@ -29,6 +30,10 @@ let collectionMapZoom = 1;
 let inventoryBranchTab = "Las Pinas";
 let inventoryWorkflowTab = "receiving";
 let inventoryCompactView = false;
+let poViewMode = "table";
+let clientHistoryTab = "invoices";
+let purchaseHistoryVisibleCounts = {};
+let itemForecastMonths = 3;
 let payablesWorkflowTab = "all";
 let replenishmentsWorkflowTab = "all";
 let transferRowUid = 0;
@@ -76,6 +81,7 @@ const frontendModuleRecordKeys = {
   masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders"],
   "purchase-orders": ["purchaseOrders"],
+  "item-forecast": [],
   sales: ["sales"],
   invoicing: ["sales"],
   collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
@@ -112,13 +118,13 @@ const clientCoordinates = {
 };
 
 const accounts = {
-  Superadmin: { name: "Superadmin", role: "Superadmin", branch: "all", email: "superadmin@medlane.local", phone: "+63 900 000 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
-  Admin: { name: "Admin User", role: "Admin", branch: "all", email: "admin@medlane.local", phone: "+63 917 100 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
-  CEO: { name: "CEO", role: "CEO", branch: "all", email: "ceo@medlane.local", phone: "+63 917 200 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
+  Superadmin: { name: "Superadmin", role: "Superadmin", branch: "all", email: "superadmin@medlane.local", phone: "+63 900 000 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
+  Admin: { name: "Admin User", role: "Admin", branch: "all", email: "admin@medlane.local", phone: "+63 917 100 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
+  CEO: { name: "CEO", role: "CEO", branch: "all", email: "ceo@medlane.local", phone: "+63 917 200 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
   Accounting: { name: "Joy Santos", role: "Accounting", branch: "all", email: "joy@medlane.local", phone: "+63 917 300 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"] },
-  Sales: { name: "Ana Cruz", role: "Sales", branch: "Region IV-A", email: "ana@medlane.local", phone: "+63 917 400 0000", modules: ["dashboard", "calendar", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"] },
-  Logistics: { name: "Ramon Dela Cruz", role: "Logistics", branch: "all", email: "ramon@medlane.local", phone: "+63 917 500 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
-  "Product Specialist": { name: "Product Specialist", role: "Product Specialist", branch: "all", email: "product.specialist@medlane.local", phone: "+63 917 700 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
+  Sales: { name: "Ana Cruz", role: "Sales", branch: "Region IV-A", email: "ana@medlane.local", phone: "+63 917 400 0000", modules: ["dashboard", "calendar", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"] },
+  Logistics: { name: "Ramon Dela Cruz", role: "Logistics", branch: "all", email: "ramon@medlane.local", phone: "+63 917 500 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"] },
+  "Product Specialist": { name: "Product Specialist", role: "Product Specialist", branch: "all", email: "product.specialist@medlane.local", phone: "+63 917 700 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"] },
   Engineering: { name: "Service Engineer", role: "Engineering", branch: "all", email: "engineering@medlane.local", phone: "+63 917 800 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
   HR: { name: "HR User", role: "HR", branch: "all", email: "hr@medlane.local", phone: "+63 917 600 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"] },
 };

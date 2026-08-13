@@ -4,13 +4,13 @@ const jsonHeaders = {
 };
 
 const roleModules = {
-  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
-  CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
-  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   Accounting: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"],
-  Sales: ["dashboard", "masterlists", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
-  Logistics: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
-  "Product Specialist": ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
+  Sales: ["dashboard", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
+  Logistics: ["dashboard", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"],
+  "Product Specialist": ["dashboard", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"],
   Engineering: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
   HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
 };

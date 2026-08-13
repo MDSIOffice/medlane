@@ -28,6 +28,24 @@ function paymentStatusForSale(sale) {
   if (Number(sale.paid || 0) > 0) return "Partially Paid";
   return "Unpaid";
 }
+function confirmCloseDialog() {
+  return confirmDetailsModal({
+    eyebrow: "Unsaved Changes",
+    title: "Close this window?",
+    note: "Anything you entered here will be lost if you close without saving.",
+    confirmLabel: "Close Without Saving",
+    danger: true,
+  });
+}
+async function guardedDialogClose(closeFn) {
+  if (await confirmCloseDialog()) closeFn();
+}
+function guardDialogEscape(dialog) {
+  dialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    guardedDialogClose(() => dialog.close());
+  });
+}
 function downloadCsv(filename, rows) {
   const escapeCsv = (value) => {
     const text = String(value ?? "");

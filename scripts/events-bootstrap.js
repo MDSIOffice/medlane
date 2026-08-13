@@ -99,6 +99,7 @@ async function submitModal(event) {
     catch (error) { return toast(error.message); }
     if (modalType === "client") { next.creditLimit = Number(next.creditLimit); next.terms = Number(next.terms || 30); }
     if (modalType === "employee" && canManageEmployeeSalary()) next.salary = Number(next.salary || 0);
+    if (modalType === "employee") next.targetSales = Number(next.targetSales || 0);
     const moduleKey = masterlistModuleKey(modalType);
     const previousKey = masterlistRecordKey(modalType, previous);
     editContext.list[editContext.index] = next;
@@ -118,7 +119,7 @@ async function submitModal(event) {
   }
   if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) {
     const record = modalType === "client" ? { ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" }
-      : modalType === "employee" ? { ...values, salary: canManageEmployeeSalary() ? Number(values.salary || 0) : 0 }
+      : modalType === "employee" ? { ...values, salary: canManageEmployeeSalary() ? Number(values.salary || 0) : 0, targetSales: Number(values.targetSales || 0) }
       : values;
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const moduleKey = masterlistModuleKey(modalType);
@@ -290,11 +291,12 @@ async function submitModal(event) {
     toast(`${modalConfigs[modalType].title} saved.`);
     return;
   }
-  if (modalType === "productIssue") {
+  if (["productIssue", "instrumentalServiceReport"].includes(modalType)) {
     if (!values.companyName?.trim()) return toast("Company name is required.");
     if (values.status === "Resolved" && !values.resolvedBy) return toast("Select who resolved this report.");
-    values.id = values.id?.trim() || nextProductIssueId();
+    values.id = values.id?.trim() || nextProductIssueId(modalType);
     if (data.productIssues.some((report) => report.id === values.id)) return toast("Duplicate document number detected.");
+    values.reportType = modalType === "instrumentalServiceReport" ? "instrumental" : "technical";
     values.performedBy = currentUser?.name || "System User";
     values.qcParameters = collectProductIssueParameters();
     values.resolvedAt = values.status === "Resolved" ? fmtDate(today) : "";
@@ -303,7 +305,7 @@ async function submitModal(event) {
     values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: values.actionsTaken?.trim() ? `Report started: ${values.actionsTaken.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
     data.productIssues.push(values);
     await persistRecords({ productIssues: [values] });
-    log("Created support report", "Support Tracker", `${values.id} · ${values.companyName}`, { save: false });
+    log(`Created ${modalConfigs[modalType].title.toLowerCase()}`, "Support Tracker", `${values.id} · ${values.companyName}`, { save: false });
     notify("Support Report", `${values.id} started for ${values.companyName}.`, "product-issues", values.id);
     saveData(["notifications"]);
     qs("#demo-modal").close();
@@ -542,9 +544,10 @@ qs("#open-password-modal").addEventListener("click", () => {
   qs("#password-form").reset();
   qs("#password-modal").showModal();
 });
-qs("#password-close").addEventListener("click", () => qs("#password-modal").close());
+qs("#password-close").addEventListener("click", () => guardedDialogClose(() => qs("#password-modal").close()));
 qs("#password-cancel").addEventListener("click", () => qs("#password-modal").close());
-qs("#password-modal").addEventListener("click", (event) => { if (event.target.id === "password-modal") qs("#password-modal").close(); });
+qs("#password-modal").addEventListener("click", (event) => { if (event.target.id === "password-modal") guardedDialogClose(() => qs("#password-modal").close()); });
+guardDialogEscape(qs("#password-modal"));
 qs("#password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = formObject(event.currentTarget);
@@ -586,13 +589,13 @@ document.body.addEventListener("click", (event) => {
   const closeDocs = event.target.closest("[data-close-client-docs]");
   if (closeDocs) return qs("#client-docs-modal")?.close();
   const closeMemoCompose = event.target.closest("[data-close-memo-compose]");
-  if (closeMemoCompose) return qs("#memo-compose-modal")?.close();
+  if (closeMemoCompose) return guardedDialogClose(() => qs("#memo-compose-modal")?.close());
   const submitMemo = event.target.closest("#submit-memo-compose");
   if (submitMemo) return submitMemoCompose();
 });
 document.addEventListener("click", (event) => {
   if (event.target.id === "client-docs-modal") qs("#client-docs-modal")?.close();
-  if (event.target.id === "memo-compose-modal") qs("#memo-compose-modal")?.close();
+  if (event.target.id === "memo-compose-modal") guardedDialogClose(() => qs("#memo-compose-modal")?.close());
 });
 document.addEventListener("change", (event) => {
   if (event.target.id === "memo-audience-all") qs("#memo-audience-grid").hidden = event.target.checked;
@@ -741,6 +744,16 @@ document.addEventListener("click", (event) => {
   if (uploadCopyButton) uploadCopyButton.parentElement.querySelector(".physical-copy-input")?.click();
   const viewFileButton = event.target.closest("[data-view-file]");
   if (viewFileButton) MedlaneAPI.viewFile(viewFileButton.dataset.viewFile).catch((error) => toast(error.message || "Unable to open file."));
+  const viewCollectionHistory = event.target.closest("[data-view-collection-history]");
+  if (viewCollectionHistory) openCollectionHistoryModal(viewCollectionHistory.dataset.viewCollectionHistory);
+  const clientHistoryTabButton = event.target.closest("[data-client-history-tab]");
+  if (clientHistoryTabButton) { clientHistoryTab = clientHistoryTabButton.dataset.clientHistoryTab; renderClientHistoryTabs(currentClientView || data.sales[0]?.client); }
+  const purchaseHistoryMoreButton = event.target.closest("[data-purchase-history-more]");
+  if (purchaseHistoryMoreButton) {
+    const agent = purchaseHistoryMoreButton.dataset.purchaseHistoryMore;
+    purchaseHistoryVisibleCounts[agent] = (purchaseHistoryVisibleCounts[agent] || purchaseHistoryDefaultLimit(agent)) + purchaseHistoryDefaultLimit(agent);
+    renderPurchaseHistory();
+  }
 });
 document.addEventListener("change", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
@@ -749,6 +762,7 @@ document.addEventListener("change", (event) => {
     const { recordType, recordId, rerender, docName, clientName } = event.target.dataset;
     const onDone = rerender === "payment-request-detail" ? () => renderPaymentRequestDetail(recordId)
       : rerender === "client-docs-modal" ? () => refreshClientDocsModal(clientName)
+      : rerender === "service-report-modal" ? () => renderServiceReportUploadSlot(recordType, recordId)
       : rerender && sectionRenderers[rerender] ? sectionRenderers[rerender] : null;
     uploadPhysicalCopy(file, recordType, recordId, docName || "Physical copy", onDone);
     event.target.value = "";
@@ -842,14 +856,33 @@ qs("#replenishments-workflow-tabs").addEventListener("click", (event) => {
   renderReplenishments();
 });
 qs("#inventory-compact-toggle").addEventListener("click", () => { inventoryCompactView = !inventoryCompactView; renderInventory(); });
+qs("#po-view-toggle").addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-po-view]");
+  if (!btn) return;
+  poViewMode = btn.dataset.poView;
+  renderPurchaseOrders();
+});
+qs("#item-forecast-preset-toggle")?.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-forecast-months]");
+  if (!btn) return;
+  itemForecastMonths = Number(btn.dataset.forecastMonths);
+  renderItemForecast();
+});
+qs("#item-forecast-custom-months")?.addEventListener("change", (event) => {
+  const value = Math.max(1, Math.min(24, Number(event.target.value) || 1));
+  itemForecastMonths = value;
+  renderItemForecast();
+});
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });
 qs("#open-transfer-history").addEventListener("click", () => { renderInventory(); qs("#transfer-history-modal").showModal(); });
-qs("#stock-sheet-close").addEventListener("click", () => qs("#stock-sheet-modal").close());
+qs("#stock-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#stock-sheet-modal").close()));
 qs("#stock-sheet-cancel").addEventListener("click", () => qs("#stock-sheet-modal").close());
+guardDialogEscape(qs("#stock-sheet-modal"));
 qs("#add-stock-sheet-row").addEventListener("click", addStockSheetRow);
-qs("#transfer-sheet-close").addEventListener("click", () => qs("#transfer-sheet-modal").close());
+qs("#transfer-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#transfer-sheet-modal").close()));
 qs("#transfer-sheet-cancel").addEventListener("click", () => qs("#transfer-sheet-modal").close());
+guardDialogEscape(qs("#transfer-sheet-modal"));
 qs("#transfer-history-close").addEventListener("click", () => qs("#transfer-history-modal").close());
 qs("#transfer-history-cancel").addEventListener("click", () => qs("#transfer-history-modal").close());
 qs("#open-followup-history").addEventListener("click", () => { renderCollectionContactMap(); qs("#followup-history-modal").showModal(); });
@@ -877,7 +910,7 @@ qs("#transfer-history-table").addEventListener("click", (event) => {
 });
 document.body.addEventListener("click", (event) => {
   const closeReview = event.target.closest("[data-close-transfer-review]");
-  if (closeReview) return qs("#transfer-review-modal")?.close();
+  if (closeReview) return guardedDialogClose(() => qs("#transfer-review-modal")?.close());
   const confirmDispatch = event.target.closest("#confirm-transfer-dispatch");
   if (confirmDispatch) return confirmTransferDispatch();
   const confirmReceive = event.target.closest("#confirm-transfer-receive");
@@ -1006,7 +1039,7 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
   if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
-  if (event.target.id === "companyName" && modalType === "productIssue") syncProductIssueClientAddress();
+  if (event.target.id === "companyName" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) syncProductIssueClientAddress();
   if (event.target.id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
   if (event.target.id === "role" && modalType === "user") syncInviteUserPermissions();
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
@@ -1027,7 +1060,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (event.target.name === "benefitsSelected") syncEmployeeBenefitsHidden();
   if (event.target.classList.contains("dept-contact-input")) syncClientDepartmentContactsHidden();
   if (event.target.name?.endsWith("Selected") && !["docsSelected", "benefitsSelected"].includes(event.target.name)) syncCheckboxGroupHidden(event.target.name.replace(/Selected$/, ""));
-  if (event.target.id === "status" && modalType === "productIssue") toggleProductIssueResolvedByField();
+  if (event.target.id === "status" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) toggleProductIssueResolvedByField();
   if (event.target.id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
   if (event.target.id === "type") updateDocumentLabel();
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
@@ -1051,8 +1084,16 @@ qs("#modal-fields").addEventListener("change", (event) => {
 qs("#modal-fields").addEventListener("blur", (event) => {
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
 }, true);
-qs("#modal-close").addEventListener("click", () => { editContext = null; qs("#demo-modal").close(); });
+qs("#modal-close").addEventListener("click", () => {
+  if (modalReadOnly) { editContext = null; qs("#demo-modal").close(); return; }
+  guardedDialogClose(() => { editContext = null; qs("#demo-modal").close(); });
+});
 qs("#modal-cancel").addEventListener("click", () => { editContext = null; qs("#demo-modal").close(); });
+qs("#demo-modal").addEventListener("cancel", (event) => {
+  if (modalReadOnly) return;
+  event.preventDefault();
+  guardedDialogClose(() => { editContext = null; qs("#demo-modal").close(); });
+});
 qs("#report-preview-close").addEventListener("click", closeReportPreview);
 qs("#report-preview-cancel").addEventListener("click", closeReportPreview);
 qs("#report-preview-print").addEventListener("click", printReportPreview);
@@ -1061,7 +1102,11 @@ qs("#report-preview-template")?.addEventListener("change", (e) => changeReportPr
 qs("#payment-request-preview-close").addEventListener("click", () => qs("#payment-request-preview-modal").close());
 qs("#payment-request-preview-cancel").addEventListener("click", () => qs("#payment-request-preview-modal").close());
 qs("#payment-request-preview-print").addEventListener("click", () => window.print());
-qs("#demo-modal").addEventListener("click", (event) => { if (event.target.id === "demo-modal") { editContext = null; qs("#demo-modal").close(); } });
+qs("#demo-modal").addEventListener("click", (event) => {
+  if (event.target.id !== "demo-modal") return;
+  if (modalReadOnly) { editContext = null; qs("#demo-modal").close(); return; }
+  guardedDialogClose(() => { editContext = null; qs("#demo-modal").close(); });
+});
 qs("#report-preview-modal").addEventListener("click", (event) => { if (event.target.id === "report-preview-modal") closeReportPreview(); });
 qs("#payment-request-preview-modal").addEventListener("click", (event) => { if (event.target.id === "payment-request-preview-modal") qs("#payment-request-preview-modal").close(); });
 qs("#transfer-history-modal").addEventListener("click", (event) => { if (event.target.id === "transfer-history-modal") qs("#transfer-history-modal").close(); });
@@ -1076,6 +1121,9 @@ qs("#dashboard-date-from").addEventListener("change", renderDashboard);
 qs("#dashboard-date-to").addEventListener("change", renderDashboard);
 qs("#clear-dashboard-dates").addEventListener("click", () => { qs("#dashboard-date-from").value = ""; qs("#dashboard-date-to").value = ""; renderDashboard(); toast("Dashboard date filter cleared."); });
 qs("#dashboard-export-csv").addEventListener("click", exportDashboardCsv);
+qs("#invoicing-export-csv")?.addEventListener("click", exportInvoicingCsv);
+qs("#invoicing-export-itemized-csv")?.addEventListener("click", exportItemizedInvoicingCsv);
+qs("#replenishments-export-csv")?.addEventListener("click", exportReplenishmentsCsv);
 qs("#dashboard-export-pdf").addEventListener("click", printDashboardReport);
 qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
 qs("#po-date-to").addEventListener("change", renderPurchaseOrders);

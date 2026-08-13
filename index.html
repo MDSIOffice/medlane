@@ -200,6 +200,7 @@
         <a href="/dashboard?section=analytics" class="nav-item" data-section="analytics" data-title="Analytics" title="Analytics" data-description="Visual charts for branch sales, AR status, top products, collection efficiency, inventory health, and recommendations."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V10"/><path d="M10 17V4"/><path d="M16 17v-7"/><path d="M2.5 17h15"/></svg></span><span>Analytics</span></a>
         <a href="/dashboard?section=masterlists" class="nav-item" data-section="masterlists" data-title="Masterlists" title="Masterlists" data-description="Central source records for clients, reagents/items, suppliers, and employees used throughout the system."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.2c0-.7.6-1.2 1.3-1.2h3.4l1.6 1.8h6.4c.7 0 1.3.5 1.3 1.2v7.3c0 .7-.6 1.2-1.3 1.2H4.3c-.7 0-1.3-.5-1.3-1.2z"/></svg></span><span>Masterlists</span></a>
         <a href="/dashboard?section=inventory" class="nav-item" data-section="inventory" data-title="Inventory" title="Inventory" data-description="Track branch stocks by item, lot number, serial number, expiry date, quantity, minimum level, and transfer status."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 3 6.5 10 10l7-3.5z"/><path d="M3 6.5v7L10 17l7-3.5v-7"/><path d="M10 10v7"/></svg></span><span>Inventory</span></a>
+        <a href="/dashboard?section=item-forecast" class="nav-item" data-section="item-forecast" data-title="Item Forecast" title="Item Forecast" data-description="Project restock needs from recent sales velocity and a configurable forward allocation window."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5 8 10l3.2 3 5.3-6.5"/><path d="M13 6h3.5v3.5"/></svg></span><span>Item Forecast</span></a>
         <a href="/dashboard?section=purchase-orders" class="nav-item" data-section="purchase-orders" data-title="Purchase Orders" title="Purchase Orders" data-description="Create and monitor purchase orders before inventory is served or invoiced."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3h2l1.6 9.6a1.4 1.4 0 0 0 1.4 1.2h6.6a1.4 1.4 0 0 0 1.4-1.1l1.2-6.1H5.3"/><circle cx="8" cy="17" r="1.1"/><circle cx="14.2" cy="17" r="1.1"/></svg></span><span>Purchase Orders</span></a>
         <a href="/dashboard?section=sales" class="nav-item" data-section="sales" data-title="Sales" title="Sales" data-description="Review SI and TS sales by client, area, salesperson, amount, terms, and payment status."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 14 8 8.5l3 3L17.5 5"/><path d="M12.5 5H17.5v5"/></svg></span><span>Sales</span></a>
         <a href="/dashboard?section=invoicing" class="nav-item" data-section="invoicing" data-title="Invoicing" title="Invoicing" data-description="Create SI, TS, and DR documents from pending purchase orders with lot/expiry stock deduction."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h5.5L15.5 6.5V17.5H6z"/><path d="M11 2.5v4h4"/><path d="M8 11h4M8 14h4"/></svg></span><span>Invoicing</span></a>
@@ -417,8 +418,25 @@
         <div class="section-header"><div><p class="eyebrow">Sales Review</p><h2>SI and TS by client, area, sales person, and payment status</h2></div></div>
         <div class="near-expiry-banner" id="near-expiry-sales-alert"></div>
         <div class="toolbar"><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select></div>
+        <div id="sales-target-panel"></div>
         <div class="table-card"><table id="sales-table"></table></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="sales-summary-grid"></div></article>
+      </section>
+
+      <section class="section" id="item-forecast">
+        <div class="section-header"><div><p class="eyebrow">Restock Planning</p><h2>Item Forecast</h2></div></div>
+        <p class="page-description">Based on each item's average monthly sales over the last 3 months, projected across the allocation window below, minus current stock on hand.</p>
+        <div class="toolbar">
+          <div class="view-toggle" id="item-forecast-preset-toggle" role="group" aria-label="Forward allocation months">
+            <button class="view-toggle-btn" data-forecast-months="2" type="button">+2 mo</button>
+            <button class="view-toggle-btn" data-forecast-months="3" type="button">+3 mo</button>
+            <button class="view-toggle-btn" data-forecast-months="4" type="button">+4 mo</button>
+            <button class="view-toggle-btn" data-forecast-months="5" type="button">+5 mo</button>
+          </div>
+          <div class="field"><label for="item-forecast-custom-months">Custom Months</label><input id="item-forecast-custom-months" type="number" min="1" max="24" step="1" /></div>
+        </div>
+        <div class="visual-grid" id="item-forecast-visuals"></div>
+        <div class="table-card"><table id="item-forecast-table"></table></div>
       </section>
 
       <section class="section" id="purchase-orders">
@@ -427,8 +445,13 @@
           <div class="field"><label for="po-date-from">PO from</label><input id="po-date-from" type="date" /></div>
           <div class="field"><label for="po-date-to">PO to</label><input id="po-date-to" type="date" /></div>
           <button class="ghost-button" id="clear-po-dates" type="button">All Dates</button>
+          <div class="view-toggle" id="po-view-toggle" role="group" aria-label="Purchase order view">
+            <button class="view-toggle-btn" data-po-view="table" type="button" aria-label="Table view" title="Table view"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M7.3 3.5v13"/></svg></button>
+            <button class="view-toggle-btn" data-po-view="card" type="button" aria-label="Card view" title="Card view"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="6.3" height="6.3" rx="1.2"/><rect x="11.2" y="2.5" width="6.3" height="6.3" rx="1.2"/><rect x="2.5" y="11.2" width="6.3" height="6.3" rx="1.2"/><rect x="11.2" y="11.2" width="6.3" height="6.3" rx="1.2"/></svg></button>
+          </div>
         </div>
         <div class="visual-grid" id="purchase-order-visuals"></div>
+        <div class="table-card" id="purchase-order-table-view"><table id="purchase-order-table"></table></div>
         <div class="invoice-grid" id="purchase-order-grid"></div>
       </section>
 
@@ -443,6 +466,7 @@
             <div class="modal-actions full"><button class="primary-button" type="submit">Save Invoice Names</button></div>
           </form>
         </article>
+        <div class="toolbar"><button class="ghost-button" id="invoicing-export-csv" type="button">Export CSV</button><button class="ghost-button" id="invoicing-export-itemized-csv" type="button">Export Itemized CSV</button></div>
         <div class="invoice-grid" id="invoice-grid"></div>
       </section>
 
@@ -487,24 +511,33 @@
 
       <section class="section" id="client-invoices">
         <div class="section-header"><div><p class="eyebrow">Client Invoice Timeline</p><h2 id="client-invoices-title">Client invoices</h2></div><button class="ghost-button" data-go-section="receivables-tracker">Back to AR Tracker</button></div>
-        <div class="toolbar client-invoices-toolbar">
-          <div class="field">
-            <label for="client-invoices-status-filter">Payment Status</label>
-            <select id="client-invoices-status-filter">
-              <option value="all">All Invoices</option>
-              <option value="Paid">Paid</option>
-              <option value="Partially Paid">Partially Paid</option>
-              <option value="Unpaid">Unpaid</option>
-            </select>
-          </div>
-          <div class="field"><label for="client-invoices-from">From</label><input type="date" id="client-invoices-from" /></div>
-          <div class="field"><label for="client-invoices-to">To</label><input type="date" id="client-invoices-to" /></div>
-          <button class="ghost-button" id="client-invoices-reset-filters" type="button">Reset</button>
-          <button class="ghost-button" id="client-invoices-export-csv" type="button">Export CSV</button>
-          <button class="ghost-button" id="client-invoices-export-pdf" type="button">Print / Export PDF</button>
+        <div class="order-status-tabs" id="client-history-tabs">
+          <button class="order-status-tab" data-client-history-tab="invoices" type="button">Invoices</button>
+          <button class="order-status-tab" data-client-history-tab="support" type="button">Support History</button>
         </div>
-        <div class="client-invoices-filtered-total" id="client-invoices-filtered-total"></div>
-        <div class="tracker-grid" id="client-invoices-grid"></div>
+        <div id="client-history-invoices-panel">
+          <div class="toolbar client-invoices-toolbar">
+            <div class="field">
+              <label for="client-invoices-status-filter">Payment Status</label>
+              <select id="client-invoices-status-filter">
+                <option value="all">All Invoices</option>
+                <option value="Paid">Paid</option>
+                <option value="Partially Paid">Partially Paid</option>
+                <option value="Unpaid">Unpaid</option>
+              </select>
+            </div>
+            <div class="field"><label for="client-invoices-from">From</label><input type="date" id="client-invoices-from" /></div>
+            <div class="field"><label for="client-invoices-to">To</label><input type="date" id="client-invoices-to" /></div>
+            <button class="ghost-button" id="client-invoices-reset-filters" type="button">Reset</button>
+            <button class="ghost-button" id="client-invoices-export-csv" type="button">Export CSV</button>
+            <button class="ghost-button" id="client-invoices-export-pdf" type="button">Print / Export PDF</button>
+          </div>
+          <div class="client-invoices-filtered-total" id="client-invoices-filtered-total"></div>
+          <div class="tracker-grid" id="client-invoices-grid"></div>
+        </div>
+        <div id="client-history-support-panel" hidden>
+          <div class="tracker-grid" id="client-support-history-grid"></div>
+        </div>
       </section>
 
       <section class="section" id="invoice-flow-detail">
@@ -519,7 +552,7 @@
       </section>
 
       <section class="section" id="product-issues">
-        <div class="section-header"><div><p class="eyebrow">Support Tracker</p><h2>Technical support / service reports</h2></div><button class="primary-button" data-action="open-modal" data-type="productIssue">New Support Report</button></div>
+        <div class="section-header"><div><p class="eyebrow">Support Tracker</p><h2>Technical support / service reports</h2></div><div class="inline-actions"><button class="primary-button" data-action="open-modal" data-type="productIssue">Technical Service Report</button><button class="primary-button" data-action="open-modal" data-type="instrumentalServiceReport">Instrumental Service Report</button></div></div>
         <div class="toolbar"><select id="product-issue-status"><option value="all">All Status</option><option>Open</option><option>In Progress</option><option>Pass to Product Specialist</option><option>Pass to Engineering</option><option>Resolved</option></select></div>
         <div class="visual-grid" id="product-issue-visuals"></div>
         <div class="table-card"><table id="product-issues-table"></table></div>
@@ -577,6 +610,7 @@
       <section class="section" id="replenishments">
         <div class="section-header"><div><p class="eyebrow">Expenses</p><h2>Petty Cash, Per Diem, And Operating Expenses</h2></div><button class="primary-button" data-action="open-modal" data-type="replenishment">Expense Request</button></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="expenses-summary-grid"></div></article>
+        <div class="toolbar"><button class="ghost-button" id="replenishments-export-csv" type="button">Export CSV</button></div>
         <div class="tabs workflow-tabs" id="replenishments-workflow-tabs"><button class="tab" data-replenishments-workflow="requests">Requests</button><button class="tab" data-replenishments-workflow="payment">For Payment</button><button class="tab active" data-replenishments-workflow="all">All Expenses</button></div>
         <div class="workflow-panel active" data-replenishments-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Expense Requests</p><h2>For approval</h2></div></div><div class="table-card compact-table"><table id="expense-requests-table"></table></div></article></div>
         <div class="workflow-panel" data-replenishments-panel="payment"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Confirmed Expenses</p><h2>Approved and ready for payment confirmation</h2></div></div><div class="table-card compact-table"><table id="confirmed-expenses-table"></table></div></article></div>
