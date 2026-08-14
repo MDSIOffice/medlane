@@ -5338,8 +5338,8 @@ const modalConfigs = {
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
-  productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model", "datalist", () => data.items.map((item) => item.name)], ["serialNo", "Serial No./ Lot No."], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks", "textarea-optional"], ["actionsTaken", "Update / Actions Taken", "textarea-optional"], ["status", "Resolution Status", "select", ["Open", "In Progress", "Resolved", "Pass to Engineering", "Pass to Product Specialist"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"], ["attachment", "Upload File", "file-slot"]] },
-  instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["contactPerson", "Contact Person"], ["typeOfSupport", "Type of Support", "checkbox-group", supportTypeOptions], ["topicsDiscussed", "Topics Discussed", "checkbox-group", supportTopicOptions], ["equipment", "Equipment / Model", "datalist", () => data.items.map((item) => item.name)], ["serialNo", "Serial No./ Lot No."], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks", "textarea-optional"], ["actionsTaken", "Update / Actions Taken", "textarea-optional"], ["status", "Resolution Status", "select", ["Open", "In Progress", "Resolved", "Pass to Engineering", "Pass to Product Specialist"]], ["resolvedBy", "Resolved By", "select", ["", "Product Specialist", "Service Engineer"]], ["performedBy", "Performed By (started the report)", "readonly"], ["conforme", "Conforme (Client Representative)"], ["attachment", "Upload File", "file-slot"]] },
+  productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["remarks", "Remarks", "textarea"], ["attachment", "Upload File", "file-slot"]] },
+  instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["remarks", "Remarks", "textarea"], ["attachment", "Upload File", "file-slot"]] },
 };
 
 function openModal(type, edit = null) {
@@ -5387,7 +5387,6 @@ function openModal(type, edit = null) {
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false }));
   if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
   if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false, allowDiscount: true }));
-  if (type === "productIssue") qs("#modal-fields").insertAdjacentHTML("beforeend", renderProductIssueParameterTable(edit?.record?.qcParameters?.length ? edit.record.qcParameters : [{}], edit?.record || {}));
   if (type === "purchaseOrder") qs("#date").value = fmtDate(today);
   if (type === "inventoryPurchaseOrder") qs("#date").value = fmtDate(today);
   if (type === "invoice") {
@@ -5430,8 +5429,8 @@ function openModal(type, edit = null) {
   if (["productIssue", "instrumentalServiceReport"].includes(type) && !edit) {
     qs("#id").value = nextProductIssueId(type);
     qs("#startDate").value = fmtDate(today);
-    qs("#performedBy").value = currentUser?.name || "System User";
-    qs("#status").value = "Open";
+    if (qs("#performedBy")) qs("#performedBy").value = currentUser?.name || "System User";
+    if (qs("#status")) qs("#status").value = "Open";
     toggleProductIssueResolvedByField();
     ensureUploadedFilesLoaded(() => renderServiceReportUploadSlot(type, qs("#id").value));
     renderServiceReportUploadSlot(type, qs("#id").value);

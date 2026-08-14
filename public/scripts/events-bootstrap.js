@@ -297,12 +297,13 @@ async function submitModal(event) {
     values.id = values.id?.trim() || nextProductIssueId(modalType);
     if (data.productIssues.some((report) => report.id === values.id)) return toast("Duplicate document number detected.");
     values.reportType = modalType === "instrumentalServiceReport" ? "instrumental" : "technical";
+    values.status = values.status || "Open";
     values.performedBy = currentUser?.name || "System User";
-    values.qcParameters = collectProductIssueParameters();
+    values.qcParameters = collectProductIssueParameters?.() || [];
     values.resolvedAt = values.status === "Resolved" ? fmtDate(today) : "";
     values.originRole = productIssueOriginRole(currentUser?.role);
     values.currentActor = values.originRole;
-    values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: values.actionsTaken?.trim() ? `Report started: ${values.actionsTaken.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
+    values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: values.remarks?.trim() ? `Report started: ${values.remarks.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
     data.productIssues.push(values);
     await persistRecords({ productIssues: [values] });
     log(`Created ${modalConfigs[modalType].title.toLowerCase()}`, "Support Tracker", `${values.id} · ${values.companyName}`, { save: false });
