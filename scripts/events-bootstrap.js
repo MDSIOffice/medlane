@@ -1717,6 +1717,18 @@ async function initializeRoute() {
   const loginRoute = isLoginRoute();
   const dashboardRoute = isDashboardRoute();
   if (!loginRoute && !dashboardRoute) {
+    if (currentUser || MedlaneAPI?.session()?.access_token) {
+      try {
+        await hydrateAuthenticatedSession();
+        showAuthenticatedApp();
+        setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 650);
+        return;
+      } catch {
+        currentUser = null;
+        localStorage.removeItem("medlane-session");
+        MedlaneAPI?.setSession(null);
+      }
+    }
     currentUser = null;
     document.body.classList.add("public-landing");
     document.body.classList.remove("login-route", "app-route");
