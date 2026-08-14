@@ -439,13 +439,16 @@
           </div>
           <div class="field"><label for="item-forecast-custom-months">Custom Months</label><input id="item-forecast-custom-months" type="number" min="1" max="24" step="1" /></div>
         </div>
-        <div class="toolbar forecast-filter-toolbar">
-          <select id="item-forecast-brand"><option value="">All Brands</option></select>
-          <select id="item-forecast-client"><option value="">All Clients</option></select>
-          <select id="item-forecast-item"><option value="">All Items</option></select>
-          <select id="item-forecast-division"><option value="">All Divisions</option></select>
-          <select id="item-forecast-region"><option value="">All Regions</option></select>
-          <select id="item-forecast-classification"><option value="">All Classifications</option></select>
+        <div class="forecast-filter-panel">
+          <div class="forecast-filter-head"><div><p class="eyebrow">Filter Scope</p><h3>Refine Forecast</h3></div><div class="inline-actions"><span class="badge" id="item-forecast-filter-summary">All items</span><button class="ghost-button" id="item-forecast-clear-filters" type="button">Clear Filters</button></div></div>
+          <div class="forecast-filter-toolbar">
+            <div class="field"><label for="item-forecast-brand">Brand</label><select id="item-forecast-brand"><option value="">All Brands</option></select></div>
+            <div class="field"><label for="item-forecast-client">Client</label><select id="item-forecast-client"><option value="">All Clients</option></select></div>
+            <div class="field"><label for="item-forecast-item">Item</label><input id="item-forecast-item" list="item-forecast-item-options" placeholder="Search item code or name" /><datalist id="item-forecast-item-options"></datalist></div>
+            <div class="field"><label for="item-forecast-division">Division</label><select id="item-forecast-division"><option value="">All Divisions</option></select></div>
+            <div class="field"><label for="item-forecast-region">Region</label><select id="item-forecast-region"><option value="">All Regions</option></select></div>
+            <div class="field"><label for="item-forecast-classification">Classification</label><select id="item-forecast-classification"><option value="">All Classifications</option></select></div>
+          </div>
         </div>
         <div class="visual-grid" id="item-forecast-visuals"></div>
         <div class="table-card"><table id="item-forecast-table"></table></div>

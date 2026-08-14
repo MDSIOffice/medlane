@@ -3906,7 +3906,13 @@ function itemForecastRows(allocationMonths) {
       const client = data.clients.find((entry) => entry.name === sale.client) || {};
       if (forecastFilters.brand && (line.brand || item.brand || sale.brand) !== forecastFilters.brand) return;
       if (forecastFilters.client && sale.client !== forecastFilters.client) return;
-      if (forecastFilters.item && line.code !== forecastFilters.item && line.item !== forecastFilters.item) return;
+      if (forecastFilters.item) {
+        const itemQuery = String(forecastFilters.item).trim().toLowerCase();
+        const itemCode = String(line.code || item.code || "").toLowerCase();
+        const itemName = String(line.item || item.name || "").toLowerCase();
+        const itemLabel = `${itemCode} · ${itemName}`;
+        if (!itemCode.includes(itemQuery) && !itemName.includes(itemQuery) && !itemLabel.includes(itemQuery)) return;
+      }
       if (forecastFilters.division && (sale.division || client.division || sale.area || client.area || "") !== forecastFilters.division) return;
       if (forecastFilters.region && (sale.area || client.area || "") !== forecastFilters.region) return;
       if (forecastFilters.classification && (item.classification || item.category || "") !== forecastFilters.classification) return;
@@ -3934,13 +3940,22 @@ function setForecastSelectOptions(selector, values, allLabel) {
   select.value = unique.includes(current) ? current : "";
 }
 
+function setForecastDatalistOptions(selector, values) {
+  const datalist = qs(selector);
+  if (!datalist) return;
+  const unique = [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
+  datalist.innerHTML = unique.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
+}
+
 function renderItemForecastFilters() {
   setForecastSelectOptions("#item-forecast-brand", data.items.map((item) => item.brand), "All Brands");
   setForecastSelectOptions("#item-forecast-client", data.clients.map((client) => client.name), "All Clients");
-  setForecastSelectOptions("#item-forecast-item", data.items.map((item) => item.code), "All Items");
+  setForecastDatalistOptions("#item-forecast-item-options", data.items.flatMap((item) => [item.code, item.name, item.code && item.name ? `${item.code} · ${item.name}` : ""]));
   setForecastSelectOptions("#item-forecast-division", [...data.clients.map((client) => client.division), ...data.sales.map((sale) => sale.division)].filter(Boolean), "All Divisions");
   setForecastSelectOptions("#item-forecast-region", [...data.clients.map((client) => client.area), ...data.sales.map((sale) => sale.area)], "All Regions");
   setForecastSelectOptions("#item-forecast-classification", data.items.map((item) => item.classification || item.category), "All Classifications");
+  const activeCount = Object.values(itemForecastFilters || {}).filter(Boolean).length;
+  if (qs("#item-forecast-filter-summary")) qs("#item-forecast-filter-summary").textContent = activeCount ? `${activeCount} active filter${activeCount === 1 ? "" : "s"}` : "All items";
 }
 
 function renderItemForecast() {

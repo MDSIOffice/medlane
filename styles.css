@@ -1634,11 +1634,11 @@ button.calendar-cell:hover { background: var(--tint); }
 .legend .green::before { background: var(--green); }
 .legend .orange::before { background: var(--orange); }
 .legend .red::before { background: var(--red); }
-.collection-efficiency-card { display: grid; grid-template-columns: minmax(220px, 0.9fr) minmax(220px, 1fr); align-items: center; gap: 18px; }
+.collection-efficiency-card { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr); align-items: center; gap: 18px; min-width: 0; }
 .collection-efficiency-card > div:first-child { min-width: 0; }
-.collection-efficiency-card .big-number { line-height: .9; white-space: nowrap; }
-.collection-efficiency-card p { max-width: 360px; overflow-wrap: normal; word-break: normal; line-height: 1.45; }
-.compact-donut { display: grid; justify-items: center; gap: 10px; min-width: 220px; }
+.collection-efficiency-card .big-number { font-size: clamp(32px, 4vw, 46px); line-height: .95; white-space: normal; overflow-wrap: anywhere; }
+.collection-efficiency-card p { max-width: 360px; overflow-wrap: anywhere; word-break: normal; line-height: 1.45; }
+.compact-donut { display: grid; justify-items: center; gap: 10px; min-width: 0; max-width: 100%; }
 .compact-donut .legend { justify-content: center; }
 .compact-donut .graph-note { max-width: 360px; text-align: center; }
 .compact-donut { margin-top: 0; justify-items: center; }
@@ -1647,6 +1647,13 @@ button.calendar-cell:hover { background: var(--tint); }
 .compact-donut .legend { max-width: 210px; font-size: 12px; }
 .big-number { font-size: 46px; font-weight: 900; letter-spacing: -0.06em; }
 .analytics-grid .panel { min-height: 0; align-self: start; }
+.forecast-filter-panel { margin: 12px 0 16px; padding: 16px; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(135deg, var(--panel-solid), var(--chip-blue-bg)); box-shadow: var(--shadow-soft); }
+.forecast-filter-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.forecast-filter-head h3 { margin: 0; color: var(--ink); font-size: 18px; }
+.forecast-filter-head .inline-actions { flex-wrap: wrap; justify-content: flex-end; }
+.forecast-filter-toolbar { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 12px; }
+.forecast-filter-toolbar .field { margin: 0; }
+.forecast-filter-toolbar select { width: 100%; min-width: 0; }
 
 .modal { width: min(760px, calc(100vw - 28px)); border: 0; border-radius: 28px; padding: 0; box-shadow: 0 30px 100px rgba(15, 23, 42, 0.28); scrollbar-gutter: stable both-edges; background: var(--panel-solid); color: var(--ink); }
 .modal[open] { max-height: min(92dvh, 920px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
@@ -2186,6 +2193,9 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .master-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .invoice-workbench > .panel { grid-column: 1 / -1; }
   .chart-wide { grid-column: 1 / -1; }
+  .collection-efficiency-card { grid-template-columns: 1fr; justify-items: start; }
+  .compact-donut { justify-items: start; }
+  .forecast-filter-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .topbar { align-items: flex-start; flex-direction: column; }
   .topbar-actions { justify-content: flex-start; width: 100%; }
 }
@@ -2329,6 +2339,13 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 @media (max-width: 640px) {
   .collection-efficiency-card { grid-template-columns: 1fr; }
   .compact-donut { justify-items: start; }
+  .compact-donut .donut { width: 128px; height: 128px; }
+  .compact-donut .donut::after { width: 80px; height: 80px; }
+  .compact-donut .legend { justify-content: flex-start; max-width: 100%; }
+  .forecast-filter-panel { padding: 12px; border-radius: 18px; }
+  .forecast-filter-head { align-items: flex-start; flex-direction: column; }
+  .forecast-filter-head .inline-actions { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .forecast-filter-toolbar { grid-template-columns: 1fr; }
   .table-card { overflow: visible; border: 0; background: transparent; box-shadow: none; }
   .table-card table:not(#parameter-qc-table) { min-width: 0; width: 100%; border-collapse: separate; border-spacing: 0 12px; }
   .table-card table:not(#parameter-qc-table) thead { display: none; }
