@@ -259,8 +259,8 @@ function findItemByCodeOrName(value) {
     || data.items.find((entry) => entry.code.toLowerCase().includes(query) || entry.name.toLowerCase().includes(query));
 }
 function findItemForSheetRow(row, changedInput = null, allowPartial = false) {
-  const code = row.querySelector(".stock-code, .transfer-code")?.value.trim().toLowerCase() || "";
-  const name = row.querySelector(".stock-item, .transfer-item")?.value.trim().toLowerCase() || "";
+  const code = row.querySelector(".stock-code, .transfer-code, .demo-line-code")?.value.trim().toLowerCase() || "";
+  const name = row.querySelector(".stock-item, .transfer-item, .demo-line-item")?.value.trim().toLowerCase() || "";
   const changedValue = String(changedInput?.value || "").trim().toLowerCase();
   const exact = data.items.find((entry) => entry.code.toLowerCase() === code)
     || data.items.find((entry) => entry.name.toLowerCase() === name)
@@ -1444,15 +1444,23 @@ function renderAnalytics() {
   const stockCounts = ["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((status) => [status, visibleInventory.filter((item) => inventoryStatus(item) === status).length]);
   qs("#analytics-stock-health").innerHTML = barRows(stockCounts, (value) => `${value} records`, ["green", "orange", "red", "red", "red"]) + graphNote("Computed from inventory records using quantity vs minimum and expiry date rules. Expired lots are marked for disposal.");
   const visibleExpenses = byBranch(data.replenishments, "office");
-  const expenseByClassification = Object.entries(sumBy(visibleExpenses, "type", (expense) => Number(expense.amount || 0))).sort((a, b) => b[1] - a[1]);
-  qs("#analytics-expense-classification").innerHTML = barRows(expenseByClassification, (value) => peso.format(value), ["orange", "red", "", "green"]) + graphNote("Computed from expense requests grouped by expense type/classification.");
-  const totalExpenses = visibleExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  qs("#analytics-revenue-expenses").innerHTML = barRows([["Revenue", totalSales], ["Expenses", totalExpenses], ["Net", totalSales - totalExpenses]], (value) => peso.format(value), ["green", "red", ""]) + graphNote("Computed as invoice revenue compared with expense request totals in the selected view.");
+  const visiblePayables = data.payables || [];
+  const combinedExpenses = [
+    ...visibleExpenses.map((expense) => ({ label: expense.type || "Employee Expense", amount: Number(expense.amount || expense.total || 0), source: "Expense" })),
+    ...visiblePayables.map((payable) => ({ label: payable.supplier ? `Payable: ${payable.supplier}` : "Supplier Payable", amount: Number(payable.amount || payable.total || 0), source: "Payable" })),
+  ];
+  const expenseByClassification = Object.entries(combinedExpenses.reduce((acc, expense) => { acc[expense.label] = (acc[expense.label] || 0) + expense.amount; return acc; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const expenseBySource = Object.entries(combinedExpenses.reduce((acc, expense) => { acc[expense.source] = (acc[expense.source] || 0) + expense.amount; return acc; }, {}));
+  qs("#analytics-expense-classification").innerHTML = barRows(expenseByClassification, (value) => peso.format(value), ["orange", "red", "", "green"]) + graphNote("Computed from employee expenses plus supplier payables, grouped by expense type or supplier.");
+  const totalExpenses = combinedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  qs("#analytics-revenue-expenses").innerHTML = barRows([["Revenue", totalSales], ...expenseBySource, ["Net", totalSales - totalExpenses]], (value) => peso.format(value), ["green", "orange", "red", ""]) + graphNote("Computed as invoice revenue compared with all business expenses: supplier payables plus employee expense requests.");
 
   const issueCounts = ["Open", "In Progress", "Pass to Product Specialist", "Pass to Engineering", "Resolved"].map((status) => [status, data.productIssues.filter((report) => report.status === status).length]);
   const resolvedIssues = data.productIssues.filter((report) => report.status === "Resolved");
   const avgIssueTurnaround = resolvedIssues.length ? Math.round(resolvedIssues.reduce((sum, report) => sum + (productIssueTurnaroundDays(report) || 0), 0) / resolvedIssues.length) : null;
   qs("#analytics-product-issues").innerHTML = barRows(issueCounts, (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "purple", "orange", "orange", "green"]) + graphNote(`Computed from support report status across all logged cases.${avgIssueTurnaround === null ? "" : ` Average turnaround: ${avgIssueTurnaround} day${avgIssueTurnaround === 1 ? "" : "s"}.`}`);
+  const demoCounts = ["For Sales Approval", "For Management Approval", "Approved", "Returned", "To Sales"].map((status) => [status, (data.inventoryDemoRequests || []).filter((request) => request.status === status).length]);
+  qs("#analytics-demo-requests").innerHTML = barRows(demoCounts, (value) => `${value} demo${value === 1 ? "" : "s"}`, ["orange", "red", "green", "", "green"]) + graphNote("Computed from inventory demo service orders, including approval, returned, and routed-to-sales outcomes.");
 
   const overdue = visibleSales.filter((sale) => statusForSale(sale) === "Overdue");
   const lowStock = visibleInventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
@@ -1465,6 +1473,7 @@ function renderAnalytics() {
     lowStock.length ? `${lowStock.length} inventory record/s are low or critical. Reorder or transfer stock.` : "No low or critical stock records in the selected view.",
     forDisposal.length ? `${forDisposal.length} expired inventory lot/s are for disposal and blocked from invoicing.` : nearExpiry.length ? `${nearExpiry.length} reagent/item record/s are near expiry. Prioritize selling or replacement.` : "No near-expiry stock in the selected view.",
     openIssues ? `${openIssues} open support report/s need action.` : "No open support reports.",
+    totalExpenses ? `Total business expenses include payables plus employee expenses: ${peso.format(totalExpenses)}.` : "No payables or expense requests recorded.",
     topClient ? `Top client by sales: ${topClient[0]} at ${peso.format(topClient[1])}.` : "No sales data available.",
   ];
   qs("#analytics-insights").innerHTML = insights.map((text) => `<li><span>${escapeHtml(text)}</span></li>`).join("");
@@ -1574,6 +1583,35 @@ function inventoryItemLabel(item) {
   return `${item.item} · Lot ${item.lot || "-"} · Exp ${item.expiry || "N/A"}`;
 }
 
+function demoRequestLineSummary(request) {
+  return itemizedSummary((request.lines || []).map((line) => ({ particulars: `${line.type}: ${line.item || line.code || "Item"} (${line.qty || 0})${line.lot ? ` Lot ${line.lot}` : ""}${line.notes ? ` · ${line.notes}` : ""}`, amount: Number(line.qty || 0) })));
+}
+
+function canApproveDemoSales(request) {
+  return request.status === "For Sales Approval" && ["Sales", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
+}
+
+function canApproveDemoManagement(request) {
+  return request.status === "For Management Approval" && ["Superadmin", "CEO"].includes(currentUser?.role);
+}
+
+function canCloseDemoRequest(request) {
+  return request.status === "Approved" && ["Sales", "Admin", "Superadmin", "CEO", "Logistics"].includes(currentUser?.role);
+}
+
+function demoRequestActions(request) {
+  const actions = [];
+  if (canApproveDemoSales(request)) actions.push(`<button class="mini-button" data-demo-sales-approve="${escapeHtml(request.id)}">Sales Approve</button>`);
+  if (canApproveDemoManagement(request)) actions.push(`<button class="mini-button" data-demo-management-approve="${escapeHtml(request.id)}">Mgmt Approve</button>`);
+  if (canCloseDemoRequest(request)) actions.push(`<button class="mini-button" data-demo-returned="${escapeHtml(request.id)}">Returned</button><button class="mini-button" data-demo-to-sales="${escapeHtml(request.id)}">To Sales</button>`);
+  return actions.join("") || "Waiting";
+}
+
+function demoRequestHistoryCard(request) {
+  const closedLabel = request.status === "To Sales" ? "Routed to Sales" : request.status;
+  return `<article class="panel" data-focus-record="${escapeHtml(request.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.demoDate || request.date || "-")}</p><h2>${escapeHtml(request.id)} · ${escapeHtml(closedLabel || "Demo")}</h2></div><span class="pill ${statusClass(request.status)}">${escapeHtml(request.status || "-")}</span></div><p><strong>Sales Agent:</strong> ${escapeHtml(request.salesAgent || request.requestedBy || "-")}</p><p><strong>Expected Return:</strong> ${escapeHtml(request.returnDate || "-")}</p><p><strong>Purpose:</strong> ${escapeHtml(request.purpose || "-")}</p><div class="table-card compact-table"><table><thead><tr><th>Type</th><th>Item</th><th>Qty</th><th>Lot / Notes</th></tr></thead><tbody>${(request.lines || []).map((line) => `<tr><td>${escapeHtml(line.type || "Item")}</td><td>${escapeHtml(line.item || line.code || "-")}<small>${escapeHtml(line.brand || "")}</small></td><td>${Number(line.qty || 0)}</td><td>${escapeHtml([line.lot, line.notes].filter(Boolean).join(" · ") || "-")}</td></tr>`).join("") || `<tr><td colspan="4">No itemized demo lines.</td></tr>`}</tbody></table></div></article>`;
+}
+
 function renderInventory() {
   const status = qs("#inventory-status").value;
   renderInventoryWorkflowTabs();
@@ -1601,6 +1639,11 @@ function renderInventory() {
   table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
   table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, (transfer.lines || []).reduce((sum, line) => sum + transferLineQty(line), 0), (transfer.lines || []).map((line) => `${escapeHtml(transferLineLot(line))}<small>${escapeHtml(transferLineExpiry(line))}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View Details</button><button class="mini-button" data-transfer-print="${escapeHtml(transfer.id)}">Print</button>`] })));
+  const demoRequests = data.inventoryDemoRequests || [];
+  const activeDemos = demoRequests.filter((request) => !["Returned", "To Sales", "Cancelled"].includes(request.status));
+  const closedDemos = demoRequests.filter((request) => ["Returned", "To Sales", "Cancelled"].includes(request.status));
+  table("#demo-request-table", ["Request", "Client", "Demo Date", "Items", "Status", "Approvals", "Actions"], activeDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, `Sales: ${escapeHtml(request.salesApprovedBy || "Pending")}<small>Mgmt: ${escapeHtml(request.managementApprovedBy || "Pending")}</small>`, demoRequestActions(request)] })));
+  table("#demo-history-table", ["Request", "Client", "Demo Date", "Items", "Closed As", "Closed By"], closedDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, escapeHtml(request.closedBy || "-")] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
 }
 
@@ -1648,9 +1691,10 @@ function renderInventoryWorkflowTabs() {
     receiving: (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).length,
     completed: (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).length,
     transfers: (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status)).length,
+    demos: (data.inventoryDemoRequests || []).filter((request) => !["Returned", "To Sales", "Cancelled"].includes(request.status)).length,
     stocks: (data.inventory || []).filter((item) => item.branch === inventoryBranchTab).length,
   };
-  const labels = { receiving: "Receiving POs", completed: "Completed POs", transfers: "Transfers", stocks: "Stocks" };
+  const labels = { receiving: "Receiving POs", completed: "Completed POs", transfers: "Transfers", demos: "Demo Requests", stocks: "Stocks" };
   tabs.querySelectorAll("[data-inventory-workflow]").forEach((button) => {
     const tab = button.dataset.inventoryWorkflow;
     button.classList.toggle("active", tab === inventoryWorkflowTab);
@@ -1735,6 +1779,90 @@ function addTransferSheetRow() {
   if (!body) return;
   body.insertAdjacentHTML("beforeend", transferSheetRow());
   qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true));
+}
+
+function demoRequestLineRow() {
+  return `<tr><td><select class="demo-line-type"><option>Machine</option><option>Spare Part</option><option>Consumable</option></select></td><td><input class="demo-line-code" list="inventory-code-options" /></td><td><input class="demo-line-item" list="inventory-item-options" /></td><td><input class="demo-line-brand" list="inventory-brand-options" /></td><td><input class="demo-line-lot" /></td><td><input class="demo-line-qty" type="number" min="1" value="1" /></td><td><input class="demo-line-notes" placeholder="Serial, setup, remarks" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+}
+
+function renderDemoRequestSheet() {
+  ensureInventoryDatalists();
+  if (!qs("#client-options")) qs("#inventory").insertAdjacentHTML("beforeend", `<datalist id="client-options"></datalist>`);
+  qs("#client-options").innerHTML = data.clients.map((client) => `<option value="${escapeHtml(client.name)}">${escapeHtml(client.area || "")}</option>`).join("");
+  qs("#demo-client").value = "";
+  qs("#demo-sales-agent").value = currentUser?.name || "";
+  qs("#demo-date").value = fmtDate(today);
+  qs("#demo-return-date").value = fmtDate(addDays(today, 7));
+  ["#demo-location", "#demo-contact-person", "#demo-contact-number", "#demo-purpose"].forEach((selector) => { if (qs(selector)) qs(selector).value = ""; });
+  qs("#demo-request-lines-table").innerHTML = `<thead><tr><th>Type</th><th>Code</th><th>Item</th><th>Brand</th><th>Lot / Serial</th><th>Qty</th><th>Notes</th><th>Action</th></tr></thead><tbody>${demoRequestLineRow()}</tbody>`;
+}
+
+function addDemoRequestLine() {
+  qs("#demo-request-lines-table tbody")?.insertAdjacentHTML("beforeend", demoRequestLineRow());
+}
+
+function syncDemoRequestLine(input) {
+  const row = input.closest("tr");
+  const match = findItemForSheetRow(row, input, true);
+  if (!row || !match) return;
+  row.querySelector(".demo-line-code").value = match.code;
+  row.querySelector(".demo-line-item").value = match.name;
+  row.querySelector(".demo-line-brand").value = match.brand || "";
+}
+
+async function saveDemoRequest() {
+  const lines = qsa("#demo-request-lines-table tbody tr").map((row) => {
+    const code = row.querySelector(".demo-line-code")?.value.trim();
+    const itemName = row.querySelector(".demo-line-item")?.value.trim();
+    const item = findItemByCodeOrName(code || itemName);
+    const qty = Number(row.querySelector(".demo-line-qty")?.value || 0);
+    if (!code && !itemName && !qty) return null;
+    return { type: row.querySelector(".demo-line-type")?.value || "Machine", code: item?.code || code, item: item?.name || itemName, brand: row.querySelector(".demo-line-brand")?.value.trim() || item?.brand || "", lot: row.querySelector(".demo-line-lot")?.value.trim(), qty, notes: row.querySelector(".demo-line-notes")?.value.trim() };
+  }).filter(Boolean);
+  const client = qs("#demo-client")?.value.trim();
+  if (!client) return toast("Client is required for a demo request.");
+  if (!qs("#demo-sales-agent")?.value.trim()) return toast("Sales agent is required.");
+  if (!qs("#demo-date")?.value || !qs("#demo-return-date")?.value) return toast("Demo date and expected return date are required.");
+  if (!lines.length || lines.some((line) => !line.item || line.qty <= 0)) return toast("Add at least one complete machine or spare part line.");
+  const request = { id: nextId(data.inventoryDemoRequests || [], "DEMO"), date: fmtDate(today), requestedBy: currentUser?.name || "System User", client, salesAgent: qs("#demo-sales-agent").value.trim(), demoDate: qs("#demo-date").value, returnDate: qs("#demo-return-date").value, purpose: qs("#demo-purpose")?.value.trim(), location: qs("#demo-location")?.value.trim(), contactPerson: qs("#demo-contact-person")?.value.trim(), contactNumber: qs("#demo-contact-number")?.value.trim(), status: "For Sales Approval", history: [{ date: fmtDate(today), status: "Requested", by: currentUser?.name || "System User", note: `${lines.length} itemized demo line(s) requested.` }], lines };
+  data.inventoryDemoRequests ||= [];
+  data.inventoryDemoRequests.push(request);
+  notify("Demo Request", `${request.id} needs sales approval for ${client}.`, "inventory", request.id);
+  await persistRecords({ inventoryDemoRequests: [request] });
+  log("Created demo request", "Inventory", `${request.id}: ${client}`, { save: false });
+  saveData(["notifications"]);
+  qs("#demo-request-modal")?.close();
+  inventoryWorkflowTab = "demos";
+  renderAll();
+  toast(`${request.id} submitted for sales approval.`);
+}
+
+async function updateDemoRequestStatus(id, status) {
+  const request = (data.inventoryDemoRequests || []).find((entry) => entry.id === id);
+  if (!request) return toast("Demo request not found.");
+  const user = currentUser?.name || "System User";
+  if (status === "For Management Approval") {
+    if (!canApproveDemoSales(request)) return toast("Sales approval is required first.");
+    request.salesApprovedBy = user;
+    notify("Demo Request", `${request.id} sales-approved. Superadmin or CEO approval needed.`, "inventory", request.id);
+  } else if (status === "Approved") {
+    if (!canApproveDemoManagement(request)) return toast("Only Superadmin or CEO can approve demo release.");
+    request.managementApprovedBy = user;
+    notify("Demo Request", `${request.id} approved for release to ${request.client}.`, "inventory", request.id);
+  } else if (["Returned", "To Sales"].includes(status)) {
+    if (!canCloseDemoRequest(request)) return toast("This request is not ready for return/sales closing.");
+    request.closedBy = user;
+    notify("Demo Request", `${request.id} marked ${status}.`, "inventory", request.id);
+  }
+  request.status = status;
+  request.history ||= [];
+  request.history.push({ date: fmtDate(today), status, by: user, note: status === "To Sales" ? "Client may buy the demo-used items; route to sales." : "Workflow status updated." });
+  await persistRecords({ inventoryDemoRequests: [request] });
+  log("Updated demo request", "Inventory", `${request.id}: ${status}`, { save: false });
+  saveData(["notifications"]);
+  renderInventory();
+  renderNotifications();
+  toast(`${request.id} marked ${status}.`);
 }
 
 function renderTransferSheet() {
@@ -3387,7 +3515,7 @@ function trackerCard(sale, detailed = false) {
     if (sale.cancelledFrom) steps.unshift(["×", "Cancelled Source", sale.cancelledFrom, "This document replaced a cancelled source invoice", sale.date, "done", "invoicing"]);
     const summaryCards = [["Salesperson", sale.salesperson], ["Client Area", sale.area], ["PO", sale.po || "-"], ["Balance", peso.format(balance)]];
     const collectionHistoryButton = saleLinkedPaymentRequests(sale).length ? `<button class="ghost-button" data-view-collection-history="${escapeHtml(sale.id)}" type="button">View Collection</button>` : "";
-    if (!detailed) return `<article class="tracker-card compact-order-card" data-focus-record="${escapeHtml(sale.documentNo || sale.id)}"><div class="panel-header tracker-card-header"><div><p class="eyebrow">${escapeHtml(sale.documentNo || sale.id)}</p><h2><span class="invoice-type-badge type-${escapeHtml(sale.type)}"><span>${invoiceTypeIcon(sale.type)}</span>${invoiceTypeLabel(sale.type)}</span> ${peso.format(sale.net)}</h2><p class="tracker-item-summary">${escapeHtml(sale.client)} · ${escapeHtml(sale.salesperson)} · Due ${due}</p></div><span class="pill ${statusClass(status)}">${status}</span></div><div class="tracker-flow order-flow compact-flow">${steps.slice(0, 5).map(([icon, title, note, detail, date, state, section, focus]) => `<button class="tracker-step ${state}" data-go-section="${section}" data-focus-record="${escapeHtml(focus || note)}"><i>${escapeHtml(icon)}</i><strong>${escapeHtml(title)}</strong><span>${escapeHtml(note)}</span><small>${escapeHtml(date)}</small></button>`).join("")}</div><div class="modal-actions"><button class="primary-button" data-invoice-flow="${escapeHtml(sale.id)}">View Details</button>${collectionHistoryButton}</div></article>`;
+    if (!detailed) return `<article class="tracker-card compact-order-card" data-focus-record="${escapeHtml(sale.documentNo || sale.id)}"><div class="panel-header tracker-card-header"><div><p class="eyebrow">${escapeHtml(sale.documentNo || sale.id)}</p><h2><span class="invoice-type-badge type-${escapeHtml(sale.type)}"><span>${invoiceTypeIcon(sale.type)}</span>${invoiceTypeLabel(sale.type)}</span> ${peso.format(sale.net)}</h2><p class="tracker-item-summary">${escapeHtml(sale.client)} · ${escapeHtml(sale.salesperson)} · Due ${due}</p></div><span class="pill ${statusClass(status)}">${status}</span></div><div class="modal-actions"><button class="primary-button" data-invoice-flow="${escapeHtml(sale.id)}">View Details</button>${collectionHistoryButton}</div></article>`;
     return `<article class="tracker-card" data-focus-record="${escapeHtml(sale.documentNo || sale.id)}"><div class="panel-header tracker-card-header"><div><p class="eyebrow">${escapeHtml(sale.documentNo || sale.id)}</p><h2><span class="invoice-type-badge type-${escapeHtml(sale.type)}"><span>${invoiceTypeIcon(sale.type)}</span>${invoiceTypeLabel(sale.type)}</span> ${peso.format(sale.net)}</h2><p class="tracker-item-summary">${escapeHtml(saleSummary(sale))}</p></div><span class="pill ${statusClass(status)}">${status}</span></div><div class="order-detail-layout"><aside class="delivery-address"><h3>Delivery Address</h3><strong>${escapeHtml(sale.client)}</strong><span>${escapeHtml(client.contact || "No contact recorded")}</span><small>${escapeHtml(client.address || sale.area)}</small><small>Salesperson: ${escapeHtml(sale.salesperson)}</small></aside><div><div class="report-preview-grid invoice-mini-grid">${summaryCards.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>${sale.cancelReason ? `<p><strong>Cancel reason:</strong> ${escapeHtml(sale.cancelReason)}</p>` : ""}${collectionHistoryButton ? `<div class="modal-actions">${collectionHistoryButton}</div>` : ""}<div class="tracker-flow order-flow">${steps.map(([icon, title, note, detail, date, state, section, focus]) => `<button class="tracker-step ${state}" data-go-section="${section}" data-focus-record="${escapeHtml(focus || note)}"><i>${escapeHtml(icon)}</i><strong>${escapeHtml(title)}</strong><span>${escapeHtml(note)}</span><small>${escapeHtml(date)}</small><em>${escapeHtml(detail)}</em></button>`).join("")}</div><details class="full-event-details" open><summary>Full order timeline</summary><div class="event-timeline">${steps.map(([icon, title, note, detail, date, state]) => `<div class="event-item ${state}"><span>${escapeHtml(icon)}</span><time>${escapeHtml(date)}</time><div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p><small>${escapeHtml(note)}</small></div></div>`).join("")}</div></details></div></div></article>`;
 }
 
@@ -3428,9 +3556,15 @@ function renderClientHistoryTabs(client) {
   qsa("#client-history-tabs .order-status-tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.clientHistoryTab === clientHistoryTab));
   qs("#client-history-invoices-panel").hidden = clientHistoryTab !== "invoices";
   qs("#client-history-support-panel").hidden = clientHistoryTab !== "support";
-  if (clientHistoryTab !== "support") return;
-  const reports = data.productIssues.filter((report) => report.companyName === client).slice().reverse();
-  qs("#client-support-history-grid").innerHTML = reports.length ? reports.map(clientSupportHistoryCard).join("") : `<article class="panel"><p>No support reports found for this client.</p></article>`;
+  qs("#client-history-demo-panel").hidden = clientHistoryTab !== "demos";
+  if (clientHistoryTab === "support") {
+    const reports = data.productIssues.filter((report) => report.companyName === client).slice().reverse();
+    qs("#client-support-history-grid").innerHTML = reports.length ? reports.map(clientSupportHistoryCard).join("") : `<article class="panel"><p>No support reports found for this client.</p></article>`;
+  }
+  if (clientHistoryTab === "demos") {
+    const demos = (data.inventoryDemoRequests || []).filter((request) => request.client === client).slice().reverse();
+    qs("#client-demo-history-grid").innerHTML = demos.length ? demos.map(demoRequestHistoryCard).join("") : `<article class="panel"><p>No demo requests found for this client.</p></article>`;
+  }
 }
 
 function renderClientInvoices() {
@@ -3733,9 +3867,18 @@ function itemForecastRows(allocationMonths) {
   const fromDate = fmtDate(addMonthsToDate(today, -3));
   const toDate = fmtDate(today);
   const qtyByCode = {};
+  const forecastFilters = itemForecastFilters || {};
   data.sales.filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, fromDate, toDate)).forEach((sale) => {
     (sale.lines?.length ? sale.lines : [{ code: sale.code, qty: sale.qty }]).forEach((line) => {
       if (!line.code) return;
+      const item = data.items.find((entry) => entry.code === line.code || entry.name === line.item) || {};
+      const client = data.clients.find((entry) => entry.name === sale.client) || {};
+      if (forecastFilters.brand && (line.brand || item.brand || sale.brand) !== forecastFilters.brand) return;
+      if (forecastFilters.client && sale.client !== forecastFilters.client) return;
+      if (forecastFilters.item && line.code !== forecastFilters.item && line.item !== forecastFilters.item) return;
+      if (forecastFilters.division && (sale.division || client.division || sale.area || client.area || "") !== forecastFilters.division) return;
+      if (forecastFilters.region && (sale.area || client.area || "") !== forecastFilters.region) return;
+      if (forecastFilters.classification && (item.classification || item.category || "") !== forecastFilters.classification) return;
       qtyByCode[line.code] = (qtyByCode[line.code] || 0) + Number(line.qty || 0);
     });
   });
@@ -3751,7 +3894,26 @@ function itemForecastRows(allocationMonths) {
   }).sort((a, b) => b.suggestedRestock - a.suggestedRestock);
 }
 
+function setForecastSelectOptions(selector, values, allLabel) {
+  const select = qs(selector);
+  if (!select) return;
+  const current = select.value;
+  const unique = [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
+  select.innerHTML = `<option value="">${escapeHtml(allLabel)}</option>${unique.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
+  select.value = unique.includes(current) ? current : "";
+}
+
+function renderItemForecastFilters() {
+  setForecastSelectOptions("#item-forecast-brand", data.items.map((item) => item.brand), "All Brands");
+  setForecastSelectOptions("#item-forecast-client", data.clients.map((client) => client.name), "All Clients");
+  setForecastSelectOptions("#item-forecast-item", data.items.map((item) => item.code), "All Items");
+  setForecastSelectOptions("#item-forecast-division", [...data.clients.map((client) => client.division), ...data.sales.map((sale) => sale.division)].filter(Boolean), "All Divisions");
+  setForecastSelectOptions("#item-forecast-region", [...data.clients.map((client) => client.area), ...data.sales.map((sale) => sale.area)], "All Regions");
+  setForecastSelectOptions("#item-forecast-classification", data.items.map((item) => item.classification || item.category), "All Classifications");
+}
+
 function renderItemForecast() {
+  renderItemForecastFilters();
   const rows = itemForecastRows(itemForecastMonths);
   qsa("#item-forecast-preset-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", Number(btn.dataset.forecastMonths) === itemForecastMonths));
   if (qs("#item-forecast-custom-months") && document.activeElement !== qs("#item-forecast-custom-months")) qs("#item-forecast-custom-months").value = itemForecastMonths;
@@ -4241,7 +4403,7 @@ function renderReplenishments() {
   ]);
   table("#expense-requests-table", ["ID", "Type", "Employee", "Requester", "Items", "Amount", "Status", "Actions"], requests.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, itemizedSummary(r.items), peso.format(r.amount), `<span class="pill ${statusClass(r.requestStatus)}">${r.requestStatus}</span>`, requestActions("expense", data.replenishments.indexOf(r), r)] })));
   table("#confirmed-expenses-table", ["ID", "Type", "Employee", "Requester", "Amount", "Status", "Payment"], approved.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, peso.format(r.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("expense", data.replenishments.indexOf(r))] })));
-  table("#replenishments-table", ["ID", "Expense Type", "Employee", "Requester", "Office", "Amount", "Receipt/File", "Status", "Payment"], rows.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.office, peso.format(r.amount), r.file, `<span class="pill ${statusClass(r.requestStatus || r.status)}">${r.requestStatus || r.status}</span>`, r.paymentConfirmed ? `${escapeHtml(r.method)}<small>${escapeHtml(r.bank || r.cheque || "")}</small>` : "-"] })));
+  table("#replenishments-table", ["ID", "Expense Type", "Employee", "Requester", "Office", "Amount", "Receipt/File", "Status", "Payment"], rows.map((r) => ({ focus: r.id, attrs: { "data-expense-detail": r.id }, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.office, peso.format(r.amount), r.file, `<span class="pill ${statusClass(r.requestStatus || r.status)}">${r.requestStatus || r.status}</span>`, r.paymentConfirmed ? `${escapeHtml(r.method)}<small>${escapeHtml(r.bank || r.cheque || "")}</small>` : "-"] })));
 }
 
 function renderReplenishmentsWorkflowTabs() {
@@ -4261,6 +4423,19 @@ function renderReplenishmentsWorkflowTabs() {
 }
 
 function itemizedSummary(items = []) { return items.map((item) => `${escapeHtml(item.particulars || item.item || "Item")}<small>${peso.format(item.amount || 0)}</small>`).join("") || "-"; }
+
+function showExpenseDetail(id) {
+  const expense = data.replenishments.find((item) => item.id === id);
+  if (!expense) return toast("Expense not found.");
+  const rows = (expense.items || []).map((item) => `<tr><td>${escapeHtml(item.particulars || item.item || "Expense")}</td><td>${Number(item.qty || 1)}</td><td>${escapeHtml(item.uom || "unit")}</td><td>${peso.format(item.amount || 0)}</td></tr>`).join("");
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal audit-detail-modal";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Itemized Expense</p><h2>${escapeHtml(expense.id)} · ${escapeHtml(expense.type || "Expense")}</h2></div><button class="icon-button" type="button" data-close-expense-detail aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Requester</small><strong>${escapeHtml(expense.requester || "-")}</strong></div><div class="report-preview-card"><small>Employee</small><strong>${escapeHtml(expense.employeeName || "-")}</strong></div><div class="report-preview-card"><small>Office</small><strong>${escapeHtml(expense.office || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(expense.amount || 0)}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Particulars</th><th>Qty</th><th>UOM</th><th>Amount</th></tr></thead><tbody>${rows || `<tr><td colspan="4">No itemized expenses recorded.</td></tr>`}</tbody></table></div><p class="page-description"><strong>Status:</strong> ${escapeHtml(expense.requestStatus || expense.status || "-")} · <strong>Payment:</strong> ${expense.paymentConfirmed ? escapeHtml(`${expense.method || "Paid"} ${expense.bank || expense.cheque || ""}`) : "Not yet confirmed"}</p>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-close-expense-detail]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
 
 function employeeBenefitsSummary(employee) {
   const benefitIds = { SSS: employee.sssNo, PhilHealth: employee.philHealthNo, "Pag-IBIG": employee.pagIbigNo };

@@ -34,6 +34,7 @@ let poViewMode = "table";
 let clientHistoryTab = "invoices";
 let purchaseHistoryVisibleCounts = {};
 let itemForecastMonths = 3;
+let itemForecastFilters = { brand: "", client: "", item: "", division: "", region: "", classification: "" };
 let payablesWorkflowTab = "all";
 let replenishmentsWorkflowTab = "all";
 let transferRowUid = 0;
@@ -79,7 +80,7 @@ const frontendModuleRecordKeys = {
   dashboard: [],
   analytics: [],
   masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
-  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders"],
+  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests"],
   "purchase-orders": ["purchaseOrders"],
   "item-forecast": [],
   sales: ["sales"],
@@ -87,7 +88,7 @@ const frontendModuleRecordKeys = {
   collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
   "payment-request-detail": ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
   "receivables-tracker": ["sales", "payments", "collectionContacts", "collectionContactHistory"],
-  "client-invoices": ["sales", "payments", "paymentRequests"],
+  "client-invoices": ["sales", "payments", "paymentRequests", "inventoryDemoRequests"],
   "sale-detail": ["sales", "payments", "paymentRequests"],
   warranty: ["warranties"],
   "purchase-history": ["sales", "purchaseOrders", "payments"],
@@ -205,6 +206,7 @@ function emptyProductionData() {
     sales: [],
     purchaseOrders: [],
     inventoryPurchaseOrders: [],
+    inventoryDemoRequests: [],
     payments: [],
     payables: [],
     replenishments: [],
@@ -276,6 +278,7 @@ function normalizeData(next) {
   next.banks ||= [];
   next.paymentRequests ||= [];
   next.inventoryPurchaseOrders ||= [];
+  next.inventoryDemoRequests ||= [];
   next.productIssues = (next.productIssues || []).map((report) => ({ status: "Open", history: [], ...report }));
   next.clients = next.clients.map((client, index) => {
     const { terms, ...clientWithoutTerms } = client;
@@ -321,6 +324,7 @@ function normalizeData(next) {
   });
   const legacyPoStatus = { "Purchase Receiving": "Pending Approval", "For Receiving": "Pending Approval", Received: "Fully Received" };
   next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ id: po.id, supplier: po.supplier, branch: po.branch || "", date: po.date || fmtDate(today), terms: po.terms || 30, status: legacyPoStatus[po.status] || po.status || "Pending Approval", approvedBy: po.approvedBy || "", approvedAt: po.approvedAt || "", cancelledBy: po.cancelledBy || "", cancelledAt: po.cancelledAt || "", receivedBy: po.receivedBy || "", receivedAt: po.receivedAt || "", history: po.history || [], lines: (po.lines || []).map((line) => ({ ...line, receivedQty: Number(line.receivedQty || 0) })) }));
+  next.inventoryDemoRequests = next.inventoryDemoRequests.map((request, index) => ({ id: request.id || `DEMO-${String(index + 1).padStart(3, "0")}`, date: request.date || fmtDate(today), requestedBy: request.requestedBy || "System User", client: request.client || "", salesAgent: request.salesAgent || request.requestedBy || "", demoDate: request.demoDate || "", returnDate: request.returnDate || "", purpose: request.purpose || "", location: request.location || "", contactPerson: request.contactPerson || "", contactNumber: request.contactNumber || "", status: request.status || "For Sales Approval", salesApprovedBy: request.salesApprovedBy || "", managementApprovedBy: request.managementApprovedBy || "", closedBy: request.closedBy || "", history: request.history || [], lines: (request.lines || []).map((line) => ({ type: line.type || "Machine", code: line.code || "", item: line.item || "", brand: line.brand || "", qty: Number(line.qty || 0), lot: line.lot || "", notes: line.notes || "" })), ...request }));
   const clientsWithBalance = new Set(next.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
   next.collectionContacts = next.clients.filter((client) => clientsWithBalance.has(client.name)).map((client) => {
     const existing = next.collectionContacts.find((contact) => contact.client === client.name || contact.area === client.area) || {};

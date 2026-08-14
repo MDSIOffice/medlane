@@ -855,6 +855,10 @@ qs("#replenishments-workflow-tabs").addEventListener("click", (event) => {
   replenishmentsWorkflowTab = button.dataset.replenishmentsWorkflow;
   renderReplenishments();
 });
+qs("#replenishments-table")?.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-expense-detail]");
+  if (row) showExpenseDetail(row.dataset.expenseDetail);
+});
 qs("#inventory-compact-toggle").addEventListener("click", () => { inventoryCompactView = !inventoryCompactView; renderInventory(); });
 qs("#po-view-toggle").addEventListener("click", (event) => {
   const btn = event.target.closest("[data-po-view]");
@@ -873,8 +877,20 @@ qs("#item-forecast-custom-months")?.addEventListener("change", (event) => {
   itemForecastMonths = value;
   renderItemForecast();
 });
+qsa("#item-forecast-brand, #item-forecast-client, #item-forecast-item, #item-forecast-division, #item-forecast-region, #item-forecast-classification").forEach((select) => select.addEventListener("change", () => {
+  itemForecastFilters = {
+    brand: qs("#item-forecast-brand")?.value || "",
+    client: qs("#item-forecast-client")?.value || "",
+    item: qs("#item-forecast-item")?.value || "",
+    division: qs("#item-forecast-division")?.value || "",
+    region: qs("#item-forecast-region")?.value || "",
+    classification: qs("#item-forecast-classification")?.value || "",
+  };
+  renderItemForecast();
+}));
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });
+qs("#open-demo-request")?.addEventListener("click", () => { renderDemoRequestSheet(); qs("#demo-request-modal").showModal(); });
 qs("#open-transfer-history").addEventListener("click", () => { renderInventory(); qs("#transfer-history-modal").showModal(); });
 qs("#stock-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#stock-sheet-modal").close()));
 qs("#stock-sheet-cancel").addEventListener("click", () => qs("#stock-sheet-modal").close());
@@ -889,11 +905,27 @@ qs("#open-followup-history").addEventListener("click", () => { renderCollectionC
 qs("#followup-history-close").addEventListener("click", () => qs("#followup-history-modal").close());
 qs("#followup-history-cancel").addEventListener("click", () => qs("#followup-history-modal").close());
 qs("#add-transfer-sheet-row").addEventListener("click", addTransferSheetRow);
+qs("#add-demo-line")?.addEventListener("click", addDemoRequestLine);
 qs("#transfer-sheet-from")?.addEventListener("change", () => { preventSameTransferBranch("from"); qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true)); });
 qs("#transfer-sheet-to")?.addEventListener("change", () => preventSameTransferBranch("to"));
 qs("#save-stock-sheet").addEventListener("click", saveStockSheet);
+qs("#save-demo-request")?.addEventListener("click", saveDemoRequest);
+qs("#demo-request-close")?.addEventListener("click", () => guardedDialogClose(() => qs("#demo-request-modal")?.close()));
+qs("#demo-request-cancel")?.addEventListener("click", () => qs("#demo-request-modal")?.close());
+guardDialogEscape(qs("#demo-request-modal"));
 qs("#stock-sheet-modal").addEventListener("change", (event) => { if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value); });
 qs("#save-transfer-sheet").addEventListener("click", saveTransferSheet);
+qs("#demo-request-modal")?.addEventListener("input", (event) => { if (event.target.matches(".demo-line-code, .demo-line-item")) syncDemoRequestLine(event.target); });
+qs("#demo-request-table")?.addEventListener("click", (event) => {
+  const salesApprove = event.target.closest("[data-demo-sales-approve]");
+  if (salesApprove) return updateDemoRequestStatus(salesApprove.dataset.demoSalesApprove, "For Management Approval");
+  const managementApprove = event.target.closest("[data-demo-management-approve]");
+  if (managementApprove) return updateDemoRequestStatus(managementApprove.dataset.demoManagementApprove, "Approved");
+  const returned = event.target.closest("[data-demo-returned]");
+  if (returned) return updateDemoRequestStatus(returned.dataset.demoReturned, "Returned");
+  const toSales = event.target.closest("[data-demo-to-sales]");
+  if (toSales) return updateDemoRequestStatus(toSales.dataset.demoToSales, "To Sales");
+});
 qs("#transfer-table").addEventListener("click", (event) => {
   const dispatch = event.target.closest("[data-dispatch-transfer]");
   if (dispatch) return openTransferDispatchModal(Number(dispatch.dataset.dispatchTransfer));
@@ -1361,9 +1393,31 @@ qs("#run-import").addEventListener("click", async () => {
 window.addEventListener("afterprint", clearPrintTarget);
 window.addEventListener("resize", updateTableScrollHints);
 document.addEventListener("scroll", (event) => { if (event.target?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
+let loginAutofillSubmitTimer = null;
+function scheduleAutofillLoginSubmit() {
+  const form = qs("#login-form");
+  const email = qs("#login-email");
+  const password = qs("#login-password");
+  if (!form || !email || !password || form.dataset.submitting === "true") return;
+  clearTimeout(loginAutofillSubmitTimer);
+  loginAutofillSubmitTimer = setTimeout(() => {
+    const filled = String(email.value || "").trim() && String(password.value || "");
+    const autofilled = [email, password].some((input) => {
+      try { return input.matches(":-webkit-autofill"); } catch { return false; }
+    });
+    if (filled && autofilled && form.dataset.submitting !== "true") form.requestSubmit();
+  }, 650);
+}
+window.addEventListener("pageshow", () => setTimeout(scheduleAutofillLoginSubmit, 350));
+qsa("#login-email, #login-password").forEach((input) => {
+  input.addEventListener("change", scheduleAutofillLoginSubmit);
+  input.addEventListener("animationstart", scheduleAutofillLoginSubmit);
+});
 qs("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const loginForm = qs("#login-form");
+  if (loginForm?.dataset.submitting === "true") return;
+  if (loginForm) loginForm.dataset.submitting = "true";
   const loginButton = loginForm?.querySelector("button[type='submit']");
   const originalLabel = loginButton?.textContent || "Login";
   if (loginButton) {
@@ -1382,6 +1436,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
       loginButton.classList.remove("is-loading");
       loginButton.textContent = originalLabel;
     }
+    if (loginForm) loginForm.dataset.submitting = "";
     return toast(error.message || "Invalid email or password.");
   }
   currentUser = payload.user;
@@ -1405,6 +1460,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
       loginButton.classList.remove("is-loading");
       loginButton.textContent = originalLabel;
     }
+    if (loginForm) loginForm.dataset.submitting = "";
     if (location.protocol !== "file:") history.replaceState(null, "", "/dashboard");
     document.body.classList.add("app-route");
     document.body.classList.remove("login-route", "public-landing");

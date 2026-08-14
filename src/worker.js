@@ -41,7 +41,7 @@ const digestRoleMentions = {
 const moduleRecordKeys = {
   users: ["users"],
   masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals", "masterTab"],
-  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders"],
+  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests"],
   "purchase-orders": ["purchaseOrders"],
   invoicing: ["sales"],
   sales: ["sales"],
@@ -1183,6 +1183,8 @@ const DIGEST_ROLE_RECIPIENTS = {
   approvalPo: ["Superadmin"],
   approvalPaymentRequest: ["Superadmin", "CEO"],
   approvalPayable: ["Superadmin", "CEO"],
+  approvalDemoSales: ["Sales"],
+  approvalDemoManagement: ["Superadmin", "CEO"],
   approvalProductIssue: ["Engineering"],
   digestBusiness: ["Accounting", "CEO", "Superadmin"],
   digestAuditLog: ["Superadmin", "CEO"],
@@ -1238,7 +1240,7 @@ function salesPoStatusServer(po, sales) {
   return linkedSales.some((sale) => sale.type === "SI") ? "Sales Invoice" : "Transmittal Slip";
 }
 
-const digestStateModules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "purchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues", "payments", "imports", "reconHistory"];
+const digestStateModules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "inventoryDemoRequests", "pendingTransfers", "collectionContacts", "purchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues", "payments", "imports", "reconHistory"];
 
 async function loadDigestState(env, modules = digestStateModules) {
   const stateKey = appStateKey(env);
@@ -1314,6 +1316,12 @@ function detectThresholdsAndApprovals(state) {
   const financialPending = [...payablesPending.map((p) => `Payable — ${p.supplier}, ${money(p.amount)}`), ...replenishmentsPending.map((r) => `Expense — ${r.type}, ${money(r.amount)}`)];
   if (financialPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPayable, "Payables / Expenses Awaiting Approval", financialPending);
 
+  const demoRequests = state.inventoryDemoRequests || [];
+  const demoSalesApproval = demoRequests.filter((request) => request.status === "For Sales Approval");
+  const demoManagementApproval = demoRequests.filter((request) => request.status === "For Management Approval");
+  if (demoSalesApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoSales, "Demo Requests Awaiting Sales Approval", demoSalesApproval.map((request) => `${request.id} — ${request.client}, ${request.lines?.length || 0} item(s)`));
+  if (demoManagementApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoManagement, "Demo Requests Awaiting Management Approval", demoManagementApproval.map((request) => `${request.id} — ${request.client}, sales-approved by ${request.salesApprovedBy || "-"}`));
+
   const productIssues = state.productIssues || [];
   const passedIssues = productIssues.filter((report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status));
   if (passedIssues.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalProductIssue, "Support Reports Awaiting Handoff", passedIssues.map((report) => `${report.id} — ${report.companyName} (${report.status})`));
@@ -1325,8 +1333,12 @@ function buildBusinessSummaryLines(state) {
   const sales = (state.sales || []).filter((sale) => sale.status !== "Cancelled");
   const payments = state.payments || [];
   const inventory = state.inventory || [];
+  const payables = state.payables || [];
+  const replenishments = state.replenishments || [];
+  const demoRequests = state.inventoryDemoRequests || [];
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
   const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const totalExpenses = [...payables, ...replenishments].reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0);
   const overdueCount = sales.filter((sale) => digestSaleStatus(sale) === "Overdue").length;
   const pendingDeposit = payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
   const bounced = payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
@@ -1336,10 +1348,12 @@ function buildBusinessSummaryLines(state) {
     `Total invoiced: ${money(totalSales)}`,
     `Total collected: ${money(totalCollected)}`,
     `Open receivables: ${money(Math.max(totalSales - totalCollected, 0))}`,
+    `Total business expenses (payables + expenses): ${money(totalExpenses)}`,
     `Overdue invoices: ${overdueCount}`,
     `Collections pending deposit: ${pendingDeposit}`,
     `Bounced payments: ${bounced}`,
     `Low / critical inventory: ${lowStock}`,
+    `Active demo requests: ${demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || "")).length}`,
   ];
 }
 
@@ -1350,18 +1364,24 @@ function financialDigestLines(state, sinceIso) {
   const inventoryPurchaseOrders = state.inventoryPurchaseOrders || [];
   const payables = state.payables || [];
   const replenishments = state.replenishments || [];
+  const demoRequests = state.inventoryDemoRequests || [];
   const openClientPos = purchaseOrders.filter((po) => !/completed|cancelled|invoice/i.test(po.status || ""));
   const newClientPos = purchaseOrders.filter((po) => inPeriod(po.date));
   const openInventoryPos = inventoryPurchaseOrders.filter((po) => !/completed|cancelled|received/i.test(po.status || ""));
   const inventoryPoTotal = openInventoryPos.reduce((sum, po) => sum + (po.lines || []).reduce((lineSum, line) => lineSum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0), 0);
   const openPayables = payables.filter((payable) => !/paid|cancelled|rejected/i.test(payable.requestStatus || payable.status || ""));
   const pendingExpenses = replenishments.filter((expense) => !/paid|liquidated|cancelled|rejected/i.test(expense.requestStatus || expense.status || ""));
+  const combinedExpenses = [...payables, ...replenishments];
+  const activeDemos = demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
+  const newDemos = demoRequests.filter((request) => inPeriod(request.date || request.demoDate));
   return [
     `Client purchase orders open: ${openClientPos.length}`,
     `Client purchase orders created: ${newClientPos.length}`,
     `Inventory purchase orders open: ${openInventoryPos.length} (${money(inventoryPoTotal)})`,
     `Payables open/for approval: ${openPayables.length} (${money(openPayables.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
     `Expenses pending/for approval: ${pendingExpenses.length} (${money(pendingExpenses.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
+    `All expenses booked (payables + expenses): ${combinedExpenses.length} (${money(combinedExpenses.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
+    `Demo requests active/created: ${activeDemos.length} active / ${newDemos.length} created`,
   ];
 }
 
@@ -1385,6 +1405,7 @@ function dashboardAnalyticsFields(state, monthKey) {
   const inventory = state.inventory || [];
   const payables = state.payables || [];
   const replenishments = state.replenishments || [];
+  const demoRequests = state.inventoryDemoRequests || [];
   const monthSales = sales.filter((sale) => recordMonthKey(sale.date) === monthKey);
   const monthPayments = payments.filter((payment) => recordMonthKey(payment.dateRecorded || payment.date || payment.postedDate) === monthKey);
   const monthPayables = payables.filter((payable) => recordMonthKey(payable.date) === monthKey);
@@ -1396,11 +1417,13 @@ function dashboardAnalyticsFields(state, monthKey) {
   const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item)));
   const pendingPayables = monthPayables.filter((payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
   const pendingExpenses = monthExpenses.filter((expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
+  const monthExpenseTotal = [...monthPayables, ...monthExpenses].reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0);
+  const activeDemos = demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
   return [
     { name: "💰 Sales", value: [`**Invoices this month:** ${monthSales.length}`, `**Month invoiced:** ${money(totalSales)}`, `**Open AR total:** ${money(openReceivables)}`].join("\n"), inline: true },
     { name: "🏦 Collections", value: [`**Collected this month:** ${money(totalCollected)}`, `**Deposits pending:** ${payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`, `**Overdue invoices:** ${overdue.length}`].join("\n"), inline: true },
-    { name: "📦 Operations", value: [`**Low / critical stock:** ${lowStock.length}`, `**Payables this month:** ${monthPayables.length}`, `**Expenses this month:** ${monthExpenses.length}`].join("\n"), inline: true },
-    { name: "⚠️ Attention", value: [`**Payables/expenses pending:** ${pendingPayables.length + pendingExpenses.length}`, `**Bounced payments:** ${payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length}`, `**Inventory records:** ${inventory.length}`].join("\n"), inline: true },
+    { name: "📦 Operations", value: [`**Low / critical stock:** ${lowStock.length}`, `**Business expenses this month:** ${monthPayables.length + monthExpenses.length}`, `**Expense amount:** ${money(monthExpenseTotal)}`].join("\n"), inline: true },
+    { name: "⚠️ Attention", value: [`**Payables/expenses pending:** ${pendingPayables.length + pendingExpenses.length}`, `**Active demo requests:** ${activeDemos.length}`, `**Bounced payments:** ${payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length}`].join("\n"), inline: true },
   ];
 }
 
@@ -1631,8 +1654,17 @@ async function auditLogDigestRows(env, sinceIso) {
 
 async function emailsForRoles(env, roles) {
   if (!roles.length) return [];
-  const rows = await supabaseFetch(env, `/rest/v1/profiles?role=in.${encodeURIComponent(postgrestIn(roles))}&select=email`);
-  return rows.map((row) => row.email).filter(Boolean);
+  const wanted = new Set(roles);
+  const emails = new Set();
+  const profiles = await supabaseFetch(env, "/rest/v1/profiles?select=email,role").catch(() => []);
+  profiles.forEach((row) => { if (wanted.has(row.role) && row.email) emails.add(row.email); });
+  const stateKey = appStateKey(env);
+  const appUsers = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.users&select=data`).catch(() => []);
+  appUsers.forEach((row) => {
+    const user = row.data || {};
+    if (wanted.has(user.role) && user.email) emails.add(user.email);
+  });
+  return [...emails];
 }
 
 function digestSectionHtml(sections) {
@@ -1699,12 +1731,15 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   const payments = state.payments || [];
   const imports = state.imports || [];
   const reconHistory = state.reconHistory || [];
+  const demoRequests = state.inventoryDemoRequests || [];
 
   const bouncedCheques = payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
   const pendingDeposits = payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
   const largeSales = sales.filter((sale) => sale.status !== "Cancelled" && Number(sale.net || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(sale.date) >= new Date(auditSinceIso));
   const largePayments = payments.filter((payment) => Number(payment.amount || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(payment.dateRecorded || payment.dateCollected || 0) >= new Date(auditSinceIso));
   const blockedImports = imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status || ""));
+  const activeDemos = demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
+  const closedDemos = demoRequests.filter((request) => /[Rr]eturned|To Sales/.test(request.status || "") && new Date(request.history?.at(-1)?.date || request.date || 0) >= new Date(auditSinceIso));
   const latestRecon = reconHistory[0];
 
   // These two "what's new since last digest" lookups are a nice-to-have, not core to the
@@ -1732,6 +1767,7 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   if (bouncedCheques.length) fields.push({ name: "Bounced Cheques", value: discordFieldValue(bouncedCheques.map((p) => `${p.receiptNo} — ${p.client}, ${money(p.amount)}`), 300) });
   fields.push({ name: "Backup Status", value: discordFieldValue(backupDigestLines(auditRows), 300) });
   if (largeSales.length || largePayments.length) fields.push({ name: `Large Transactions (≥ ${money(LARGE_TRANSACTION_THRESHOLD)})`, value: discordFieldValue([...largeSales.map((s) => `Invoice ${s.documentNo || s.id} — ${s.client}, ${money(s.net)}`), ...largePayments.map((p) => `Payment ${p.receiptNo} — ${p.client}, ${money(p.amount)}`)], 300) });
+  if (activeDemos.length || closedDemos.length) fields.push({ name: "Demo Requests", value: discordFieldValue([...activeDemos.slice(0, 6).map((request) => `${request.id} — ${request.client} (${request.status})`), ...closedDemos.slice(0, 4).map((request) => `${request.id} — ${request.client} closed as ${request.status}`)], 300) });
   if (newlyPaidPos.length) fields.push({ name: "Purchase Orders Fully Paid", value: discordFieldValue(newlyPaidPos.map((po) => `${po.id} — ${po.client}`), 300) });
   if (newClientNames.length) fields.push({ name: "New Clients Onboarded", value: discordFieldValue(newClientNames, 300) });
   if (blockedImports.length) fields.push({ name: "Import Issues", value: discordFieldValue(blockedImports.map((item) => `${item.date} ${item.module} ${item.file} — ${item.status}`), 300) });

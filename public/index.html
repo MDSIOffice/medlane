@@ -355,6 +355,7 @@
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Collections</p><h2>Collection Efficiency</h2></div></div><div class="collection-efficiency-card"><div><div class="big-number" id="analytics-collection-rate">0%</div><p id="analytics-collection-note"></p></div><div class="donut-wrap compact-donut" id="analytics-collection-pie"></div></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Inventory Risk</p><h2>Stock Health</h2></div></div><div class="chart-bars compact-chart" id="analytics-stock-health"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Support</p><h2>Support Tracker</h2></div></div><div class="chart-bars compact-chart" id="analytics-product-issues"></div></article>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Demo Pipeline</p><h2>Inventory Demo Requests</h2></div></div><div class="chart-bars compact-chart" id="analytics-demo-requests"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Expenses</p><h2>Expense per Classification</h2></div></div><div class="chart-bars compact-chart" id="analytics-expense-classification"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Profitability</p><h2>Revenue vs Expenses</h2></div></div><div class="chart-bars compact-chart" id="analytics-revenue-expenses"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Management Notes</p><h2>Recommended Actions</h2></div></div><ul class="compact-list" id="analytics-insights"></ul></article>
@@ -400,17 +401,20 @@
           <button class="ghost-button" data-action="open-modal" data-type="inventoryPurchaseOrder">Inventory PO</button>
           <button class="primary-button" id="open-stock-sheet" type="button">Receive Stock</button>
           <button class="primary-button" id="open-transfer-sheet" type="button">Stock Transfer</button>
+          <button class="primary-button" id="open-demo-request" type="button">Request Demo</button>
           <button class="ghost-button" id="open-transfer-history" type="button">Transfer History</button>
         </div>
         <div class="tabs workflow-tabs" id="inventory-workflow-tabs">
           <button class="tab active" data-inventory-workflow="receiving">Receiving POs</button>
           <button class="tab" data-inventory-workflow="completed">Completed POs</button>
           <button class="tab" data-inventory-workflow="transfers">Transfers</button>
+          <button class="tab" data-inventory-workflow="demos">Demo Requests</button>
           <button class="tab" data-inventory-workflow="stocks">Stocks</button>
         </div>
         <div class="inventory-workflow-panel active" data-inventory-panel="receiving"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="completed"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="transfers"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div></article></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="demos"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo Service Orders</p><h2>Sales and management approval</h2></div></div><div class="table-card compact-table"><table id="demo-request-table"></table></div></article><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo History</p><h2>Returned or converted to sales</h2></div></div><div class="table-card compact-table"><table id="demo-history-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="stocks"><div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div><div class="table-card"><table id="inventory-table"></table></div></div>
       </section>
 
@@ -434,6 +438,14 @@
             <button class="view-toggle-btn" data-forecast-months="5" type="button">+5 mo</button>
           </div>
           <div class="field"><label for="item-forecast-custom-months">Custom Months</label><input id="item-forecast-custom-months" type="number" min="1" max="24" step="1" /></div>
+        </div>
+        <div class="toolbar forecast-filter-toolbar">
+          <select id="item-forecast-brand"><option value="">All Brands</option></select>
+          <select id="item-forecast-client"><option value="">All Clients</option></select>
+          <select id="item-forecast-item"><option value="">All Items</option></select>
+          <select id="item-forecast-division"><option value="">All Divisions</option></select>
+          <select id="item-forecast-region"><option value="">All Regions</option></select>
+          <select id="item-forecast-classification"><option value="">All Classifications</option></select>
         </div>
         <div class="visual-grid" id="item-forecast-visuals"></div>
         <div class="table-card"><table id="item-forecast-table"></table></div>
@@ -514,6 +526,7 @@
         <div class="order-status-tabs" id="client-history-tabs">
           <button class="order-status-tab" data-client-history-tab="invoices" type="button">Invoices</button>
           <button class="order-status-tab" data-client-history-tab="support" type="button">Support History</button>
+          <button class="order-status-tab" data-client-history-tab="demos" type="button">Demo History</button>
         </div>
         <div id="client-history-invoices-panel">
           <div class="toolbar client-invoices-toolbar">
@@ -537,6 +550,9 @@
         </div>
         <div id="client-history-support-panel" hidden>
           <div class="tracker-grid" id="client-support-history-grid"></div>
+        </div>
+        <div id="client-history-demo-panel" hidden>
+          <div class="tracker-grid" id="client-demo-history-grid"></div>
         </div>
       </section>
 
@@ -816,6 +832,25 @@
         </div>
         <div class="table-card compact-table sheet-table-card"><table id="transfer-sheet-table"></table></div>
         <div class="sheet-modal-actions"><button class="ghost-button" id="add-transfer-sheet-row" type="button">Add Item</button><div class="modal-actions"><button class="ghost-button" id="transfer-sheet-cancel" type="button">Cancel</button><button class="primary-button" id="save-transfer-sheet" type="button">Create Transfer</button></div></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal sheet-modal" id="demo-request-modal">
+      <div class="sheet-modal-body">
+        <div class="modal-header"><div><p class="eyebrow">Inventory Demo</p><h2>Request Service Order</h2></div><button class="icon-button" id="demo-request-close" type="button" aria-label="Close">x</button></div>
+        <p class="page-description">Request machines and spare parts for a client demo. Sales must approve first, then Superadmin or CEO approves release.</p>
+        <div class="form-grid">
+          <div class="field"><label for="demo-client">Client</label><input id="demo-client" list="client-options" required /></div>
+          <div class="field"><label for="demo-sales-agent">Sales Agent</label><input id="demo-sales-agent" required /></div>
+          <div class="field"><label for="demo-date">Demo Date</label><input id="demo-date" type="date" required /></div>
+          <div class="field"><label for="demo-return-date">Expected Return Date</label><input id="demo-return-date" type="date" required /></div>
+          <div class="field"><label for="demo-location">Demo Location</label><input id="demo-location" /></div>
+          <div class="field"><label for="demo-contact-person">Contact Person</label><input id="demo-contact-person" /></div>
+          <div class="field"><label for="demo-contact-number">Contact Number</label><input id="demo-contact-number" /></div>
+          <div class="field full"><label for="demo-purpose">Purpose / Notes</label><textarea id="demo-purpose" rows="3" placeholder="Machine, spare parts, client objective, setup requirements, risks"></textarea></div>
+        </div>
+        <div class="table-card compact-table sheet-table-card"><table id="demo-request-lines-table"></table></div>
+        <div class="sheet-modal-actions"><button class="ghost-button" id="add-demo-line" type="button">Add Item</button><div class="modal-actions"><button class="ghost-button" id="demo-request-cancel" type="button">Cancel</button><button class="primary-button" id="save-demo-request" type="button">Submit Request</button></div></div>
       </div>
     </dialog>
 
