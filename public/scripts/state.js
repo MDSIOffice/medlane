@@ -31,6 +31,7 @@ let inventoryBranchTab = "Las Pinas";
 let inventoryWorkflowTab = "receiving";
 let inventoryCompactView = false;
 let poViewMode = "table";
+let invoiceViewMode = "table";
 let clientHistoryTab = "invoices";
 let purchaseHistoryVisibleCounts = {};
 let itemForecastMonths = 3;

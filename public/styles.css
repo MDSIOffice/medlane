@@ -1716,6 +1716,11 @@ button.calendar-cell:hover { background: var(--tint); }
    mode instead of turning near-black text on a dark-navy panel background. */
 .payment-request-print { max-width: 980px; margin: 0 auto; border: 2px solid #111827; background: #ffffff; color: #111827; font-family: Arial, sans-serif; }
 .payment-request-print header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #111827; padding: 16px 18px; font-size: 18px; }
+.payment-request-print .print-brand-header { align-items: center; justify-content: flex-start; }
+.print-brand-header img { width: 150px; max-height: 56px; object-fit: contain; }
+.print-brand-header div { display: grid; gap: 4px; }
+.print-brand-header span { color: #334155; font-size: 13px; font-weight: 800; }
+.print-company-footer { border-top: 1px solid #111827; padding: 10px 18px; color: #111827; font-size: 12px; line-height: 1.35; text-align: center; }
 .payment-request-print .pr-meta, .payment-request-print .pr-checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; border-bottom: 1px solid #111827; padding: 12px 18px; }
 .payment-request-print .pr-checks { grid-template-columns: 1.1fr repeat(3, 1fr); }
 .payment-request-print table { width: 100%; min-width: 640px; border-collapse: collapse; }
@@ -1833,6 +1838,8 @@ button.calendar-cell:hover { background: var(--tint); }
    regardless of site theme — background and text colors here are intentionally hardcoded,
    not theme variables, so it stays legible in dark mode instead of turning near-black-on-navy. */
 .template-overlay { position: relative; margin: 0 auto; background: #ffffff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.12; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12); }
+.template-print-logo { position: absolute; top: .22in; left: .34in; width: 1.55in; max-height: .55in; object-fit: contain; z-index: 0; }
+.template-print-footer { position: absolute; left: .35in; right: .35in; bottom: .18in; color: #111827; font-size: 10px; line-height: 1.25; text-align: center; z-index: 0; }
 .template-overlay::before { content: "Data-only print overlay. Use with pre-printed form."; position: absolute; inset: 12px auto auto 12px; color: #94a3b8; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
 .template-overlay .field { position: absolute; display: block; white-space: nowrap; overflow: hidden; color: #111827; font-weight: 700; }
 .template-overlay small { display: block; margin-top: 4px; color: #111827; font-size: 11px; font-weight: 700; }

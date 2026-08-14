@@ -478,8 +478,9 @@
             <div class="modal-actions full"><button class="primary-button" type="submit">Save Invoice Names</button></div>
           </form>
         </article>
-        <div class="toolbar"><button class="ghost-button" id="invoicing-export-csv" type="button">Export CSV</button><button class="ghost-button" id="invoicing-export-itemized-csv" type="button">Export Itemized CSV</button></div>
-        <div class="invoice-grid" id="invoice-grid"></div>
+        <div class="toolbar"><button class="ghost-button" id="invoicing-export-csv" type="button">Export CSV</button><button class="ghost-button" id="invoicing-export-itemized-csv" type="button">Export Itemized CSV</button><div class="view-toggle" id="invoice-view-toggle" role="group" aria-label="Invoice view"><button class="view-toggle-btn active" data-invoice-view="table" type="button">Table View</button><button class="view-toggle-btn" data-invoice-view="card" type="button">Card View</button></div></div>
+        <div class="table-card" id="invoice-table-view"><table id="invoice-table"></table></div>
+        <div class="invoice-grid" id="invoice-grid" hidden></div>
       </section>
 
       <section class="section" id="collections">

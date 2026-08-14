@@ -866,6 +866,12 @@ qs("#po-view-toggle").addEventListener("click", (event) => {
   poViewMode = btn.dataset.poView;
   renderPurchaseOrders();
 });
+qs("#invoice-view-toggle")?.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-invoice-view]");
+  if (!btn) return;
+  invoiceViewMode = btn.dataset.invoiceView;
+  renderInvoicing();
+});
 qs("#item-forecast-preset-toggle")?.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-forecast-months]");
   if (!btn) return;
@@ -977,7 +983,26 @@ qs("#invoice-grid").addEventListener("click", (event) => {
   if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
   if (cancelButton) openCancelReplaceModal(cancelButton.dataset.cancelReplace);
 });
+qs("#invoice-table")?.addEventListener("click", (event) => {
+  const printButton = event.target.closest("[data-print-invoice]");
+  const detailButton = event.target.closest("[data-sale-detail]");
+  const cancelButton = event.target.closest("[data-cancel-replace]");
+  if (printButton) printInvoice(printButton.dataset.printInvoice);
+  if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
+  if (cancelButton) openCancelReplaceModal(cancelButton.dataset.cancelReplace);
+});
 qs("#invoice-grid").addEventListener("change", (event) => {
+  const select = event.target.closest(".delivery-status-select");
+  if (!select) return;
+  if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
+  const sale = data.sales.find((entry) => entry.id === select.dataset.saleId);
+  if (!sale) return;
+  sale.deliveryStatus = select.value;
+  log("Updated invoice delivery status", "Invoicing", `${sale.documentNo || sale.id}: ${select.value}`);
+  saveData();
+  toast(`${sale.documentNo || sale.id} marked ${select.value}.`);
+});
+qs("#invoice-table")?.addEventListener("change", (event) => {
   const select = event.target.closest(".delivery-status-select");
   if (!select) return;
   if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
