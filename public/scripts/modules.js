@@ -1288,7 +1288,7 @@ function renderDashboard() {
   const chequeAvailableAlerts = data.collectionContacts.filter((contact) => contact.status === "Cheque Available").map((contact) => ({ color: "green", title: "Cheque available", text: `${contact.client} has a cheque ready${contact.chequeInvoice ? ` for ${contact.chequeInvoice}` : ""}.`, section: "collections", record: contact.client }));
   const salesAlerts = visibleSales.filter((sale) => ["Overdue", "Near Due"].includes(statusForSale(sale))).map((sale) => ({ color: statusForSale(sale) === "Overdue" ? "red" : "orange", title: `${statusForSale(sale)} invoice`, text: `${sale.id} for ${sale.client} has ${peso.format(sale.net - sale.paid)} balance.`, section: "receivables-tracker", record: sale.id }));
   const stockAlerts = invAlerts.map((item) => ({ color: ["Critical", "For Disposal"].includes(inventoryStatus(item)) ? "red" : "orange", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot }));
-  const backupAlert = data.backupStatus?.stale ? [{ color: "red", title: "Backup overdue", text: "No successful backup has been recorded in the last 24 hours.", section: "backup", record: data.backupStatus?.latest?.id || "backup" }] : [];
+  const backupAlert = data.backupStatus?.stale ? [{ color: "red", title: "Backup overdue", text: "No successful backup has been recorded in the last 7 days.", section: "backup", record: data.backupStatus?.latest?.id || "backup" }] : [];
   const alerts = [...backupAlert, ...chequeAvailableAlerts, ...salesAlerts, ...stockAlerts, ...creditAlerts, ...transferAlerts].slice(0, 8);
   qs("#urgent-count").textContent = `${alerts.length} urgent${dashboardRange.from || dashboardRange.to ? " in range" : ""}`;
   qs("#alerts-list").innerHTML = alerts.map((a) => `<div class="alert-item clickable" data-go-section="${a.section}" data-focus-record="${escapeHtml(a.record || "")}"><span class="alert-dot ${a.color}"></span><div><strong>${escapeHtml(a.title)}</strong><span>${escapeHtml(a.text)}</span></div></div>`).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>All clear</strong><span>No urgent records for this area.</span></div></div>`;
@@ -1797,7 +1797,9 @@ function renderDemoRequestSheet() {
   qs("#demo-request-lines-table").innerHTML = `<thead><tr><th>Type</th><th>Code</th><th>Item</th><th>Brand</th><th>Lot / Serial</th><th>Qty</th><th>Notes</th><th>Action</th></tr></thead><tbody>${demoRequestLineRow()}</tbody>`;
 }
 
-function addDemoRequestLine() { qs("#demo-request-lines-table tbody")?.insertAdjacentHTML("beforeend", demoRequestLineRow()); }
+function addDemoRequestLine() {
+  qs("#demo-request-lines-table tbody")?.insertAdjacentHTML("beforeend", demoRequestLineRow());
+}
 
 function syncDemoRequestLine(input) {
   const row = input.closest("tr");
@@ -1839,9 +1841,19 @@ async function updateDemoRequestStatus(id, status) {
   const request = (data.inventoryDemoRequests || []).find((entry) => entry.id === id);
   if (!request) return toast("Demo request not found.");
   const user = currentUser?.name || "System User";
-  if (status === "For Management Approval") { if (!canApproveDemoSales(request)) return toast("Sales approval is required first."); request.salesApprovedBy = user; notify("Demo Request", `${request.id} sales-approved. Superadmin or CEO approval needed.`, "inventory", request.id); }
-  else if (status === "Approved") { if (!canApproveDemoManagement(request)) return toast("Only Superadmin or CEO can approve demo release."); request.managementApprovedBy = user; notify("Demo Request", `${request.id} approved for release to ${request.client}.`, "inventory", request.id); }
-  else if (["Returned", "To Sales"].includes(status)) { if (!canCloseDemoRequest(request)) return toast("This request is not ready for return/sales closing."); request.closedBy = user; notify("Demo Request", `${request.id} marked ${status}.`, "inventory", request.id); }
+  if (status === "For Management Approval") {
+    if (!canApproveDemoSales(request)) return toast("Sales approval is required first.");
+    request.salesApprovedBy = user;
+    notify("Demo Request", `${request.id} sales-approved. Superadmin or CEO approval needed.`, "inventory", request.id);
+  } else if (status === "Approved") {
+    if (!canApproveDemoManagement(request)) return toast("Only Superadmin or CEO can approve demo release.");
+    request.managementApprovedBy = user;
+    notify("Demo Request", `${request.id} approved for release to ${request.client}.`, "inventory", request.id);
+  } else if (["Returned", "To Sales"].includes(status)) {
+    if (!canCloseDemoRequest(request)) return toast("This request is not ready for return/sales closing.");
+    request.closedBy = user;
+    notify("Demo Request", `${request.id} marked ${status}.`, "inventory", request.id);
+  }
   request.status = status;
   request.history ||= [];
   request.history.push({ date: fmtDate(today), status, by: user, note: status === "To Sales" ? "Client may buy the demo-used items; route to sales." : "Workflow status updated." });
