@@ -1636,8 +1636,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // fired — this internal hour check is what has always driven the real sends.
   if (scheduled.minute === "00" && scheduled.hour === "18") {
     tasks.push(runDailyDigest(env));
-    if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env));
-    if (scheduled.weekday === "Sun") tasks.push(createBackup(env, "weekly", null));
+    if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env), createBackup(env, "weekly", null));
     if (scheduled.day === "01") tasks.push(createBackup(env, "monthly", null));
     if (scheduled.month === "01" && scheduled.day === "01") tasks.push(createBackup(env, "yearly", null));
   }
