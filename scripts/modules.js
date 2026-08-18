@@ -4493,7 +4493,7 @@ function payableWithholdingSummary(payable) {
 }
 
 // BIR Form 2307 (Certificate of Creditable Tax Withheld at Source) generation.
-// The blank template (public/forms/bir-2307-blank.pdf) has no fillable AcroForm fields —
+// The blank template (public/assets/bir-2307-blank.pdf) has no fillable AcroForm fields —
 // it's a flat, printed form — so coordinates below were reverse-engineered by diffing a
 // manually-filled sample copy against the blank one and reading each entry's exact
 // PDF-point position. Page is 612x936pt (Folio/8.5x13in), origin bottom-left.
@@ -4582,10 +4582,11 @@ async function generateBir2307Pdf(payable) {
   const rows = bir2307Rows(payable, supplier);
   if (!rows.length) throw new Error("This payable has no withholding tax applied — nothing to certify on a 2307.");
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
-  const templateBytes = await fetch("/forms/bir-2307-blank.pdf").then((response) => {
-    if (!response.ok) throw new Error("Could not load the 2307 template.");
-    return response.arrayBuffer();
+  const templateResponse = await fetch("/assets/bir-2307-blank.pdf").catch(() => {
+    throw new Error("Could not reach the 2307 template file. If you have an ad blocker or privacy extension enabled, try disabling it for this site and retry.");
   });
+  if (!templateResponse.ok) throw new Error(`Could not load the 2307 template (server returned ${templateResponse.status}).`);
+  const templateBytes = await templateResponse.arrayBuffer();
   const pdfDoc = await PDFDocument.load(templateBytes);
   const page = pdfDoc.getPages()[0];
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -4641,6 +4642,7 @@ async function downloadBir2307(payableId) {
   if ((payable.requestStatus || payable.status) !== "Approved") return toast("Only approved payables can generate a 2307.");
   const supplier = data.suppliers.find((entry) => entry.name === payable.supplier);
   if (!supplier?.tin) return toast("Cannot generate 2307 — this supplier has no TIN on file. Add the supplier's TIN first.");
+  beginSaveOperation("Generating PDF…");
   try {
     const bytes = await generateBir2307Pdf(payable);
     const blob = new Blob([bytes], { type: "application/pdf" });
@@ -4656,6 +4658,8 @@ async function downloadBir2307(payableId) {
     toast("2307 generated.");
   } catch (error) {
     toast(error.message || "Unable to generate 2307.");
+  } finally {
+    endSaveOperation();
   }
 }
 

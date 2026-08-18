@@ -461,8 +461,10 @@ function updateSaveGuardOverlay() {
   if (busy && !dialog.open) dialog.showModal();
   if (!busy && dialog.open) dialog.close();
 }
-function beginSaveOperation() {
+function beginSaveOperation(text = "Saving…") {
   activeSaveCount += 1;
+  const label = typeof qs === "function" ? qs("#save-guard-text") : null;
+  if (label) label.textContent = text;
   updateSaveGuardOverlay();
   // Safety valve: fetch() has no built-in timeout, so a hung connection could
   // otherwise leave the blocking overlay (and beforeunload guard) stuck forever
