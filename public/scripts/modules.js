@@ -1182,6 +1182,11 @@ function replacePoRecord(po) {
   const index = data.inventoryPurchaseOrders.findIndex((entry) => entry.id === po.id);
   if (index >= 0) data.inventoryPurchaseOrders[index] = po;
   else data.inventoryPurchaseOrders.push(po);
+  // This action just wrote a newer version straight to the server via its own
+  // dedicated endpoint — any older "inventoryPurchaseOrders" snapshot still sitting
+  // in the pending-save queue is now stale and must not be allowed to overwrite
+  // (or get re-pushed over) this on the next reload.
+  clearPendingSaveQueueKeys(["inventoryPurchaseOrders"]);
 }
 
 async function approvePurchaseOrder(index) {
@@ -1959,6 +1964,7 @@ async function saveStockSheet() {
       if (existing) existing.qty += qty;
       else data.inventory.push({ code: item.code, item: item.name, brand, branch, lot, serial: lot, expiry, qty, min: 10 });
     });
+    clearPendingSaveQueueKeys(["inventory"]);
     notify("Purchase Order", `${po.id} ${result.po.status === "Fully Received" ? "fully received" : "partially received"}.`, "inventory", po.id);
     log("Received stock from purchase order", "Inventory", `${po.id}: ${rows.length} row(s)`);
   } else {

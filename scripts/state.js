@@ -391,6 +391,20 @@ function mergePendingSaveQueue(payload) {
   writePendingSaveQueue({ ...readPendingSaveQueue(), ...(payload || {}) });
 }
 
+// A queued module snapshot only reflects state as of whenever it was queued. If a
+// granular persistRecords() save for that same module succeeds afterward (e.g. an
+// approval), the queued snapshot is now stale and — left in place — would later
+// overwrite (and even re-push to the server) the newer data on the next reload.
+// Drop it once the module has a confirmed newer save.
+function clearPendingSaveQueueKeys(keys) {
+  const pending = readPendingSaveQueue();
+  let changed = false;
+  keys.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(pending, key)) { delete pending[key]; changed = true; }
+  });
+  if (changed) writePendingSaveQueue(pending);
+}
+
 function hasPendingSaveQueue() {
   return Object.keys(readPendingSaveQueue()).length > 0;
 }
@@ -478,6 +492,7 @@ async function persistRecords(records, recordKeys = {}) {
   try {
     const result = await MedlaneAPI.saveRecords(filtered, recordKeys);
     if (result?.revision) serverRevision = Number(result.revision);
+    clearPendingSaveQueueKeys(Object.keys(filtered));
     setGlobalSaveStatus("saved", "Saved");
     return result;
   } catch (error) {
