@@ -4432,6 +4432,8 @@ function payableAttachmentCell(payable) {
 
 function payable2307Cell(payable) {
   if ((payable.requestStatus || payable.status) !== "Approved") return "-";
+  const supplier = data.suppliers.find((entry) => entry.name === payable.supplier);
+  if (!supplier?.tin) return `<small class="field-error-message">Missing supplier TIN</small>`;
   return `<button class="ghost-button" data-generate2307="${escapeHtml(payable.id)}" type="button">Generate 2307</button>`;
 }
 
@@ -4486,15 +4488,22 @@ const BIR_2307_ROW_TOP_Y = 559;
 const BIR_2307_ROW_HEIGHT = 34;
 const BIR_2307_TOTALS_Y = 421;
 const BIR_2307_MONTH_X = [232, 305, 393];
+const BIR_2307_TIN_SIZE = 10;
+const BIR_2307_TIN_DIGIT_PITCH = 12;
+const BIR_2307_TIN_GROUP_PITCH = 51.3; // tied to the template's fixed dash positions — do not scale with font size
+const BIR_2307_ZIP_SIZE = 10;
+const BIR_2307_ZIP_DIGIT_PITCH = 10;
+const BIR_2307_PERIOD_SIZE = 10;
+const BIR_2307_PERIOD_DIGIT_PITCH = 12;
+const BIR_2307_PERIOD_Y = 819;
 
 function bir2307SpacedDigits(value) { return String(value || "").split("").join(" "); }
+function bir2307DrawDigits(draw, value, x, y, font, size, pitch) {
+  String(value || "").split("").forEach((digit, index) => draw(digit, x + index * pitch, y, { font, size }));
+}
 function bir2307DrawTin(draw, tin, x, y, font) {
   const groups = String(tin || "").split(/[^0-9]+/).filter(Boolean);
-  const groupPitch = 51.3;
-  const digitPitch = 9.6;
-  groups.forEach((group, groupIndex) => {
-    group.split("").forEach((digit, digitIndex) => draw(digit, x + groupIndex * groupPitch + digitIndex * digitPitch, y, { font, size: 8 }));
-  });
+  groups.forEach((group, groupIndex) => bir2307DrawDigits(draw, group, x + groupIndex * BIR_2307_TIN_GROUP_PITCH, y, font, BIR_2307_TIN_SIZE, BIR_2307_TIN_DIGIT_PITCH));
 }
 function bir2307MMDDYYYY(date) { return `${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}${date.getFullYear()}`; }
 function bir2307QuarterRange(dateValue) {
@@ -4542,35 +4551,35 @@ async function generateBir2307Pdf(payable) {
   const draw = (text, x, y, options = {}) => { if (text) page.drawText(String(text), { x, y, size: options.size || 8, font: options.font || font, color: black }); };
 
   const { from, to, monthIndex } = bir2307QuarterRange(payable.date);
-  draw(bir2307SpacedDigits(bir2307MMDDYYYY(from)), 158, 817, { font: mono, size: 7.5 });
-  draw(bir2307SpacedDigits(bir2307MMDDYYYY(to)), 406, 818, { font: mono, size: 7.5 });
+  bir2307DrawDigits(draw, bir2307MMDDYYYY(from), 166, BIR_2307_PERIOD_Y, mono, BIR_2307_PERIOD_SIZE, BIR_2307_PERIOD_DIGIT_PITCH);
+  bir2307DrawDigits(draw, bir2307MMDDYYYY(to), 408, BIR_2307_PERIOD_Y, mono, BIR_2307_PERIOD_SIZE, BIR_2307_PERIOD_DIGIT_PITCH);
 
-  bir2307DrawTin(draw, supplier?.tin, 213, 788, mono);
+  bir2307DrawTin(draw, supplier?.tin, 213, 787, mono);
   draw(payable.supplier || "", 40, 759, { size: 8 });
   draw(supplier?.address || "", 38, 731, { size: 7.5 });
-  draw(bir2307SpacedDigits(supplier?.zip), 545, 731, { font: mono, size: 8 });
+  bir2307DrawDigits(draw, supplier?.zip, 546, 731, mono, BIR_2307_ZIP_SIZE, BIR_2307_ZIP_DIGIT_PITCH);
 
-  bir2307DrawTin(draw, BIR_2307_PAYOR.tin, 213, 671, mono);
+  bir2307DrawTin(draw, BIR_2307_PAYOR.tin, 213, 671.5, mono);
   draw(BIR_2307_PAYOR.name, 40, 644, { size: 8 });
   draw(BIR_2307_PAYOR.address, 41, 615, { size: 7.5 });
-  draw(bir2307SpacedDigits(BIR_2307_PAYOR.zip), 547, 616, { font: mono, size: 8 });
+  bir2307DrawDigits(draw, BIR_2307_PAYOR.zip, 548, 616, mono, BIR_2307_ZIP_SIZE, BIR_2307_ZIP_DIGIT_PITCH);
 
   const monthX = BIR_2307_MONTH_X[monthIndex - 1] ?? BIR_2307_MONTH_X[0];
   let totalAmount = 0;
   let totalTax = 0;
   rows.slice(0, 3).forEach((row, index) => {
     const rowTop = BIR_2307_ROW_TOP_Y - index * BIR_2307_ROW_HEIGHT;
-    draw(row.atc, 187, rowTop, { size: 7.5 });
-    bir2307WrapText(row.desc, 45).slice(0, 4).forEach((line, lineIndex) => draw(line, 23, rowTop - lineIndex * 10, { size: 6.8 }));
-    draw(bir2307Money(row.amount), monthX, rowTop, { size: 7.5 });
-    draw(bir2307Money(row.amount), 461, rowTop, { size: 7.5 });
-    draw(bir2307Money(row.tax), 553, rowTop, { size: 7.5 });
+    draw(row.atc, 187, rowTop, { size: 9 });
+    if (index === 0) bir2307WrapText(row.desc, 45).slice(0, 4).forEach((line, lineIndex) => draw(line, 23, rowTop - lineIndex * 10, { size: 6.8 }));
+    draw(bir2307Money(row.amount), monthX, rowTop, { size: 9 });
+    draw(bir2307Money(row.amount), 461, rowTop, { size: 9 });
+    draw(bir2307Money(row.tax), 520, rowTop, { size: 9 });
     totalAmount += row.amount;
     totalTax += row.tax;
   });
-  draw(bir2307Money(totalAmount), monthX, BIR_2307_TOTALS_Y, { size: 7.5 });
-  draw(bir2307Money(totalAmount), 461, BIR_2307_TOTALS_Y, { size: 7.5 });
-  draw(bir2307Money(totalTax), 553, BIR_2307_TOTALS_Y, { size: 7.5 });
+  draw(bir2307Money(totalAmount), monthX, BIR_2307_TOTALS_Y, { size: 9 });
+  draw(bir2307Money(totalAmount), 461, BIR_2307_TOTALS_Y, { size: 9 });
+  draw(bir2307Money(totalTax), 520, BIR_2307_TOTALS_Y, { size: 9 });
 
   return pdfDoc.save();
 }
@@ -4580,7 +4589,7 @@ async function downloadBir2307(payableId) {
   if (!payable) return toast("Payable not found.");
   if ((payable.requestStatus || payable.status) !== "Approved") return toast("Only approved payables can generate a 2307.");
   const supplier = data.suppliers.find((entry) => entry.name === payable.supplier);
-  if (!supplier?.tin) toast("Supplier has no TIN on file — the TIN box will be left blank on the form.");
+  if (!supplier?.tin) return toast("Cannot generate 2307 — this supplier has no TIN on file. Add the supplier's TIN first.");
   try {
     const bytes = await generateBir2307Pdf(payable);
     const blob = new Blob([bytes], { type: "application/pdf" });
