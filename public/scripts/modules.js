@@ -1543,7 +1543,7 @@ function renderMasterlists() {
     return { focus: c.name, cells: [c.code || "-", c.name, c.area, c.dealer, c.salesperson || "Unassigned", `${c.terms || 30} days`, c.contact, c.tin, c.status || "Active", peso.format(c.creditLimit), `<span class="${creditClass}">${peso.format(used)}</span>`, docUploadButtons(c), masterEditAction("client", data.clients.indexOf(c))] };
   }));
   if (data.masterTab === "items") table("#master-table", ["Code", "Item", "Brand", "UOM", "Supplier", "Classification", "Actions"], data.items.filter((i) => includesSearch(Object.values(i))).map((i) => ({ focus: i.code, cells: [i.code, i.name, i.brand, i.uom, i.supplier, i.classification || i.category, masterEditAction("item", data.items.indexOf(i))] })));
-  if (data.masterTab === "suppliers") table("#master-table", ["Code", "Supplier", "Classification", "TIN", "Address", "Contact", "Status", "Actions"], data.suppliers.filter((s) => includesSearch(Object.values(s))).map((s) => ({ focus: s.name, cells: [s.code || "-", s.name, s.classification || s.brand || "Multiple", s.tin || "-", s.address, s.contact, s.status || "Active", masterEditAction("supplier", data.suppliers.indexOf(s))] })));
+  if (data.masterTab === "suppliers") table("#master-table", ["Code", "Supplier", "Classification", "TIN", "Address", "ZIP", "Contact", "Status", "Actions"], data.suppliers.filter((s) => includesSearch(Object.values(s))).map((s) => ({ focus: s.name, cells: [s.code || "-", s.name, s.classification || s.brand || "Multiple", s.tin || "-", s.address, s.zip || "-", s.contact, s.status || "Active", masterEditAction("supplier", data.suppliers.indexOf(s))] })));
   if (data.masterTab === "branches") table("#master-table", ["Branch", "Address", "Status", "Actions"], platformBranches().map((branch) => {
     const locked = data.inventory.some((item) => item.branch === branch) || data.pendingTransfers.some((transfer) => transfer.from === branch || transfer.to === branch);
     return { focus: branch, cells: [branch, branchAddresses()[branch] || "No address set", locked ? "Used by records" : "Unused", canEditModule("masterlists") ? `<button class="mini-button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${locked ? "" : `<button class="mini-button danger-button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}` : "Approval required"] };
@@ -2471,6 +2471,7 @@ async function submitMemoCompose() {
       await uploadPhysicalCopy(file, "memo", memo.id, file.name, null).catch(() => null);
     }
     data.memos.unshift(memo);
+    clearPendingSaveQueueKeys(["memos"]);
     notify("Memo", `New memo posted: ${title}`, "memos", memo.id, audience === "all" ? null : audience);
     saveData(["notifications"]);
     log("Posted memo", "Memos", `${memo.id}: ${title}`, { save: false });
@@ -2492,6 +2493,7 @@ async function acknowledgeMemo(id) {
     const result = await MedlaneAPI.acknowledgeMemo(id);
     const index = data.memos.findIndex((entry) => entry.id === id);
     if (index >= 0) data.memos[index] = result.memo;
+    clearPendingSaveQueueKeys(["memos"]);
     log("Acknowledged memo", "Memos", id, { save: false });
     renderMemos();
     toast("Memo acknowledged.");
@@ -4502,7 +4504,6 @@ const BIR_2307_MONTH_X = [232, 305, 393];
 const BIR_2307_TIN_SIZE = 10;
 const BIR_2307_TIN_DIGIT_PITCH = 12;
 const BIR_2307_TIN_GROUP_PITCH = 51.3; // tied to the template's fixed dash positions — do not scale with font size
-const BIR_2307_TIN_LAST_GROUP_LEFT = 366; // just clear of the 3rd dash
 const BIR_2307_TIN_LAST_GROUP_RIGHT = 435.5; // measured box right edge (both TIN rows)
 const BIR_2307_ZIP_SIZE = 10;
 const BIR_2307_PERIOD_SIZE = 10;
@@ -4518,13 +4519,20 @@ function bir2307DrawBoxedDigits(draw, value, boxLeft, boxRight, y, font, size) {
   const cellWidth = (boxRight - boxLeft) / digits.length;
   digits.forEach((digit, index) => draw(digit, boxLeft + index * cellWidth + (cellWidth - BIR_2307_GLYPH_WIDTH) / 2, y, { font, size }));
 }
+function bir2307DrawTinLastGroup(draw, group, y, font) {
+  // Support both 3- and 5-digit branch codes: right-align the group against the
+  // template's measured box edge, but keep the SAME digit pitch as groups 1-3
+  // (stretching to fill the box instead made a 3-digit code's spacing nearly
+  // double the rest of the row, which read as broken rather than aligned).
+  const digits = group.split("");
+  const margin = 6;
+  const lastDigitX = BIR_2307_TIN_LAST_GROUP_RIGHT - margin - BIR_2307_GLYPH_WIDTH;
+  digits.forEach((digit, index) => draw(digit, lastDigitX - (digits.length - 1 - index) * BIR_2307_TIN_DIGIT_PITCH, y, { font, size: BIR_2307_TIN_SIZE }));
+}
 function bir2307DrawTin(draw, tin, x, y, font) {
   const groups = String(tin || "").split(/[^0-9]+/).filter(Boolean);
   groups.forEach((group, groupIndex) => {
-    // The final (branch code) group varies in length and, left-anchored at a flat
-    // pitch, either crowds the preceding dash or overflows the box — so it's
-    // right-boxed against the template's measured right edge instead.
-    if (groupIndex === groups.length - 1) bir2307DrawBoxedDigits(draw, group, BIR_2307_TIN_LAST_GROUP_LEFT, BIR_2307_TIN_LAST_GROUP_RIGHT, y, font, BIR_2307_TIN_SIZE);
+    if (groupIndex === groups.length - 1) bir2307DrawTinLastGroup(draw, group, y, font);
     else bir2307DrawDigits(draw, group, x + groupIndex * BIR_2307_TIN_GROUP_PITCH, y, font, BIR_2307_TIN_SIZE, BIR_2307_TIN_DIGIT_PITCH);
   });
 }

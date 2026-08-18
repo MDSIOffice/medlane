@@ -112,7 +112,7 @@ async function submitModal(event) {
     toast("Masterlist record updated.");
     return;
   }
-  if (["client", "item", "bank"].includes(modalType)) {
+  if (["client", "item", "bank", "supplier"].includes(modalType)) {
     if (modalType === "item" && values.classification) values.category = importedCategory(values.classification);
     try { validateMasterRecord(modalType, values); }
     catch (error) { return toast(error.message); }
@@ -1354,6 +1354,7 @@ async function restoreBackupFromRef(ref) {
     await syncBackendUsers().catch(() => null);
     const fresh = await MedlaneAPI.loadAppState().catch(() => null);
     if (fresh?.data) data = normalizeData({ ...emptyProductionData(), ...fresh.data });
+    writePendingSaveQueue({}); // a restore just replaced the underlying data wholesale — any queued snapshot from before it is now meaningless and must not be reapplied later
     renderAll();
     setBackupStatus("Restore completed", `${result.restore?.restoredRecords || 0} records were restored safely by upsert. The prior data was saved as a Safety Snapshot backup in case you need to revert.`, 100, "success");
     clearBackupStatus(5000);
