@@ -2980,7 +2980,8 @@ const EXPENSE_CLASSIFICATION_OPTIONS = ["Accommodation", "Advertising & Marketin
 function financialLineTemplate(line = {}, options = {}) {
   const vendorField = options.vendor === false ? "" : `<div class="field"><label>Vendor</label><input class="payment-request-vendor" list="financial-vendor-options" value="${escapeHtml(line.vendor || "")}" /></div>`;
   const classificationField = options.classification ? `<div class="field"><label>Classification</label><input class="payment-request-classification" list="expense-classification-options" value="${escapeHtml(line.classification || "")}" autocomplete="off" required /></div>` : "";
-  return `<div class="payment-request-line-row financial-line-row">${vendorField}<div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div>${classificationField}<div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
+  const rowClass = options.classification ? "payment-request-line-row financial-line-row financial-line-row-expense" : "payment-request-line-row financial-line-row";
+  return `<div class="${rowClass}">${vendorField}<div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div>${classificationField}<div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
 }
 
 function renderFinancialRequestEditor(lines = [{}]) {
@@ -5551,7 +5552,7 @@ function openModal(type, edit = null) {
   modalReadOnly = Boolean(edit?.readOnly);
   editContext = edit?.record && !modalReadOnly ? edit : null;
   const config = modalConfigs[type];
-  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue", "instrumentalServiceReport", "paymentRequest"].includes(type));
+  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue", "instrumentalServiceReport", "paymentRequest", "payable", "replenishment"].includes(type));
   qs("#demo-modal").classList.toggle("inventory-po-modal", type === "inventoryPurchaseOrder");
   const isEditRecord = Boolean(edit?.record);
   qs("#modal-title").textContent = modalReadOnly ? "Collection History" : isEditRecord ? config.title.replace("Add", "Edit") : config.title;
