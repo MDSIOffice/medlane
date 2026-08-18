@@ -160,7 +160,7 @@ function medlaneLogoUrl(origin = "https://medlane.tofllorin.workers.dev") {
 
 function brandedEmailHtml({ title, eyebrow = "Medlane Diagnostic Solutions", intro = "", bodyHtml = "", origin = "https://medlane.tofllorin.workers.dev" }) {
   const year = new Date().getFullYear();
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:#eaf7ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#dff4ff 0%,#f7fcff 55%,#fff7ec 100%);padding:34px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:720px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #bfe7fb;box-shadow:0 24px 70px rgba(0,46,93,.16);"><tr><td style="background:linear-gradient(135deg,#003f73 0%,#0077bd 58%,#f59e0b 100%);padding:26px 30px;color:#fff;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="width:62px;vertical-align:top;"><img src="${escapeHtml(medlaneLogoUrl(origin))}" width="52" height="52" alt="Medlane" style="display:block;border-radius:16px;background:#fff;padding:5px;box-shadow:0 10px 28px rgba(0,0,0,.18);"></td><td style="vertical-align:top;padding-left:14px;"><div style="font-size:12px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#ffe8b0;">${escapeHtml(eyebrow)}</div><h1 style="margin:8px 0 0;font-size:30px;line-height:1.08;letter-spacing:-.02em;color:#ffffff;">${escapeHtml(title)}</h1>${intro ? `<p style="margin:10px 0 0;font-size:15px;line-height:1.55;color:#eaf7ff;">${escapeHtml(intro)}</p>` : ""}</td></tr></table></td></tr><tr><td style="padding:28px 30px;font-size:14px;line-height:1.65;border-top:5px solid #f59e0b;">${bodyHtml || "<p>Nothing to report.</p>"}</td></tr><tr><td style="padding:18px 30px;background:#f3fbff;border-top:1px solid #d8eef9;color:#4f6b86;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. Automated system email - do not reply.</td></tr></table></td></tr></table></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:#eaf7ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#dff4ff 0%,#f7fcff 55%,#fff7ec 100%);padding:34px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:720px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #bfe7fb;box-shadow:0 24px 70px rgba(0,46,93,.16);"><tr><td style="background:linear-gradient(120deg,#0b2f52 0%,#1d6fa5 100%);padding:28px 30px;color:#fff;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="width:62px;vertical-align:top;"><img src="${escapeHtml(medlaneLogoUrl(origin))}" width="52" height="52" alt="Medlane" style="display:block;border-radius:16px;background:#fff;padding:5px;box-shadow:0 10px 28px rgba(0,0,0,.18);"></td><td style="vertical-align:top;padding-left:14px;"><div style="font-size:12px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#e8c684;">${escapeHtml(eyebrow)}</div><h1 style="margin:8px 0 0;font-size:30px;line-height:1.08;letter-spacing:-.02em;color:#ffffff;">${escapeHtml(title)}</h1>${intro ? `<p style="margin:10px 0 0;font-size:15px;line-height:1.55;color:#dcedf9;">${escapeHtml(intro)}</p>` : ""}</td></tr></table></td></tr><tr><td style="padding:28px 30px;font-size:14px;line-height:1.65;border-top:4px solid #c98a1f;">${bodyHtml || "<p>Nothing to report.</p>"}</td></tr><tr><td style="padding:18px 30px;background:#f3fbff;border-top:1px solid #d8eef9;color:#4f6b86;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. Automated system email - do not reply.</td></tr></table></td></tr></table></body></html>`;
 }
 
 function brandedInviteEmailHtml({ fullName, email, role, actionLink, origin }) {
@@ -1340,7 +1340,7 @@ function detectThresholdsAndApprovals(state) {
   return sections;
 }
 
-function buildBusinessSummaryLines(state) {
+function computeBusinessMetrics(state) {
   const sales = (state.sales || []).filter((sale) => sale.status !== "Cancelled");
   const payments = state.payments || [];
   const inventory = state.inventory || [];
@@ -1354,17 +1354,34 @@ function buildBusinessSummaryLines(state) {
   const pendingDeposit = payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
   const bounced = payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
   const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).length;
+  const activeDemos = demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || "")).length;
+  return {
+    salesCount: sales.length,
+    totalSales,
+    totalCollected,
+    openReceivables: Math.max(totalSales - totalCollected, 0),
+    totalExpenses,
+    overdueCount,
+    pendingDeposit,
+    bounced,
+    lowStock,
+    activeDemos,
+  };
+}
+
+function buildBusinessSummaryLines(state) {
+  const m = computeBusinessMetrics(state);
   return [
-    `New/active invoices tracked: ${sales.length}`,
-    `Total invoiced: ${money(totalSales)}`,
-    `Total collected: ${money(totalCollected)}`,
-    `Open receivables: ${money(Math.max(totalSales - totalCollected, 0))}`,
-    `Total business expenses (payables + expenses): ${money(totalExpenses)}`,
-    `Overdue invoices: ${overdueCount}`,
-    `Collections pending deposit: ${pendingDeposit}`,
-    `Bounced payments: ${bounced}`,
-    `Low / critical inventory: ${lowStock}`,
-    `Active demo requests: ${demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || "")).length}`,
+    `New/active invoices tracked: ${m.salesCount}`,
+    `Total invoiced: ${money(m.totalSales)}`,
+    `Total collected: ${money(m.totalCollected)}`,
+    `Open receivables: ${money(m.openReceivables)}`,
+    `Total business expenses (payables + expenses): ${money(m.totalExpenses)}`,
+    `Overdue invoices: ${m.overdueCount}`,
+    `Collections pending deposit: ${m.pendingDeposit}`,
+    `Bounced payments: ${m.bounced}`,
+    `Low / critical inventory: ${m.lowStock}`,
+    `Active demo requests: ${m.activeDemos}`,
   ];
 }
 
@@ -1677,23 +1694,130 @@ async function emailsForRoles(env, roles) {
   return [...emails];
 }
 
+const DIGEST_COLORS = {
+  navy: "#0b2f52",
+  blue: "#1d6fa5",
+  blueSoft: "#eaf4fb",
+  blueBorder: "#c9e2f3",
+  gold: "#c98a1f",
+  success: "#157a3c",
+  successSoft: "#e8f7ee",
+  successBorder: "#bfe6cd",
+  warn: "#b45309",
+  warnSoft: "#fdf1e0",
+  warnBorder: "#f3d9ac",
+  critical: "#b91c1c",
+  criticalSoft: "#fbe9e9",
+  criticalBorder: "#f0c1c1",
+  surface: "#f8fafc",
+  card: "#ffffff",
+  border: "#e1e8f2",
+  muted: "#5b6b85",
+  text: "#16233d",
+};
+
+function digestToneColors(tone) {
+  switch (tone) {
+    case "good": return { fg: DIGEST_COLORS.success, bg: DIGEST_COLORS.successSoft, border: DIGEST_COLORS.successBorder };
+    case "warn": return { fg: DIGEST_COLORS.warn, bg: DIGEST_COLORS.warnSoft, border: DIGEST_COLORS.warnBorder };
+    case "critical": return { fg: DIGEST_COLORS.critical, bg: DIGEST_COLORS.criticalSoft, border: DIGEST_COLORS.criticalBorder };
+    case "neutral": return { fg: DIGEST_COLORS.muted, bg: DIGEST_COLORS.surface, border: DIGEST_COLORS.border };
+    default: return { fg: DIGEST_COLORS.blue, bg: DIGEST_COLORS.blueSoft, border: DIGEST_COLORS.blueBorder };
+  }
+}
+
+function digestDeltaBadge(current, previous, { invert = false } = {}) {
+  if (typeof previous !== "number" || Number.isNaN(previous)) {
+    const colors = digestToneColors("neutral");
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;background:${colors.bg};color:${colors.fg};border:1px solid ${colors.border};">NEW</span>`;
+  }
+  const diff = current - previous;
+  const pct = previous !== 0 ? (diff / Math.abs(previous)) * 100 : diff === 0 ? 0 : 100;
+  const flat = Math.abs(diff) < 0.005 || Math.abs(pct) < 0.5;
+  const dir = flat ? "flat" : diff > 0 ? "up" : "down";
+  const good = flat ? null : invert ? dir === "down" : dir === "up";
+  const tone = flat ? "neutral" : good ? "good" : "critical";
+  const colors = digestToneColors(tone);
+  const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "→";
+  const label = flat ? "flat vs last period" : `${arrow} ${Math.abs(pct).toFixed(1)}% vs last period`;
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;background:${colors.bg};color:${colors.fg};border:1px solid ${colors.border};">${escapeHtml(label)}</span>`;
+}
+
+const DIGEST_METRIC_CARDS = [
+  { key: "salesCount", label: "Invoices Tracked", format: (v) => String(v) },
+  { key: "totalSales", label: "Total Invoiced", format: money, trend: true },
+  { key: "totalCollected", label: "Total Collected", format: money, trend: true },
+  { key: "openReceivables", label: "Open Receivables", format: money, trend: true, invert: true },
+  { key: "totalExpenses", label: "Business Expenses", format: money, trend: true, invert: true },
+  { key: "overdueCount", label: "Overdue Invoices", format: (v) => String(v), tone: (v) => (v > 0 ? "critical" : "good") },
+  { key: "bounced", label: "Bounced Payments", format: (v) => String(v), tone: (v) => (v > 0 ? "critical" : "good") },
+  { key: "lowStock", label: "Low / Critical Stock", format: (v) => String(v), tone: (v) => (v > 0 ? "warn" : "good") },
+  { key: "pendingDeposit", label: "Pending Deposit", format: (v) => String(v), tone: (v) => (v > 0 ? "warn" : "good") },
+  { key: "activeDemos", label: "Active Demo Requests", format: (v) => String(v) },
+];
+
+function digestStatCardsHtml(metrics, previous) {
+  const cells = DIGEST_METRIC_CARDS.map(({ key, label, format, trend, invert, tone }) => {
+    const value = metrics[key] ?? 0;
+    const colors = digestToneColors(tone ? tone(value) : "default");
+    const delta = trend ? digestDeltaBadge(value, previous?.[key], { invert }) : "";
+    return `<td width="50%" valign="top" style="padding:6px;"><div style="border:1px solid ${DIGEST_COLORS.border};border-left:4px solid ${colors.fg};border-radius:14px;padding:14px 16px;background:${DIGEST_COLORS.card};"><span style="display:block;color:${DIGEST_COLORS.muted};font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">${escapeHtml(label)}</span><strong style="display:block;margin-top:6px;color:${DIGEST_COLORS.text};font-size:20px;line-height:1.2;">${escapeHtml(format(value))}</strong>${delta ? `<div style="margin-top:6px;">${delta}</div>` : ""}</div></td>`;
+  });
+  const rows = [];
+  for (let i = 0; i < cells.length; i += 2) rows.push(`<tr>${cells.slice(i, i + 2).join("")}</tr>`);
+  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">${rows.join("")}</table>`;
+}
+
+function digestAttentionBannerHtml(metrics, taskFailures) {
+  const items = [
+    { count: metrics.overdueCount, label: (n) => `${n} overdue invoice${n === 1 ? "" : "s"} need follow-up` },
+    { count: metrics.bounced, label: (n) => `${n} bounced payment${n === 1 ? "" : "s"} to resolve` },
+    { count: metrics.lowStock, label: (n) => `${n} item${n === 1 ? "" : "s"} at low/critical stock` },
+    { count: taskFailures, label: (n) => `${n} scheduled task${n === 1 ? "" : "s"} failed in this period` },
+  ].filter((item) => item.count > 0);
+  if (!items.length) return `<div style="border:1px solid ${DIGEST_COLORS.successBorder};border-left:5px solid ${DIGEST_COLORS.success};border-radius:16px;padding:14px 18px;margin:0 0 22px;background:${DIGEST_COLORS.successSoft};color:${DIGEST_COLORS.success};font-weight:800;font-size:13.5px;">✅ No overdue invoices, bounced payments, stock shortages, or task failures this period.</div>`;
+  const rows = items.map((item) => `<li style="margin:0 0 4px;">${escapeHtml(item.label(item.count))}</li>`).join("");
+  return `<div style="border:1px solid ${DIGEST_COLORS.criticalBorder};border-left:5px solid ${DIGEST_COLORS.critical};border-radius:16px;padding:14px 18px 12px;margin:0 0 22px;background:${DIGEST_COLORS.criticalSoft};"><strong style="display:block;color:${DIGEST_COLORS.critical};font-size:14px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">⚠ Needs Attention</strong><ul style="margin:0;padding-left:18px;color:#7a1f1f;font-size:13.5px;line-height:1.6;">${rows}</ul></div>`;
+}
+
+const DIGEST_SECTION_STYLE = {
+  "Low / Critical Stock": "warn",
+  "Near-Expiry Stock": "warn",
+  "Overdue Invoices": "critical",
+  "Credit Limit Breach": "critical",
+  "Warranty Ending Soon": "warn",
+  "Warranty Expired": "critical",
+};
+
 function digestSectionHtml(sections) {
-  return sections.map((section) => `<h3 style="margin:18px 0 8px;color:#005a9c;">${escapeHtml(section.title)}</h3><ul style="margin:0 0 12px;padding-left:18px;">${section.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`).join("");
+  return sections.map((section) => {
+    const colors = digestToneColors(DIGEST_SECTION_STYLE[section.title] || "default");
+    const rows = section.lines.map((line) => `<li style="margin:0 0 4px;">${escapeHtml(line)}</li>`).join("");
+    return `<div style="border:1px solid ${colors.border};border-left:4px solid ${colors.fg};border-radius:14px;padding:12px 16px;margin:0 0 14px;background:${DIGEST_COLORS.card};"><strong style="display:block;color:${colors.fg};font-size:13.5px;margin-bottom:6px;">${escapeHtml(section.title)} <span style="color:${DIGEST_COLORS.muted};font-weight:700;">(${section.lines.length})</span></strong><ul style="margin:0;padding-left:18px;color:${DIGEST_COLORS.text};font-size:13.5px;line-height:1.6;">${rows}</ul></div>`;
+  }).join("");
 }
 
 function auditLogTableHtml(rows) {
-  if (!rows.length) return `<div style="border:1px solid #d8ebfb;border-radius:16px;padding:16px;background:#f7fbff;color:#60738f;">No recorded actions in this period.</div>`;
+  if (!rows.length) return `<div style="border:1px solid ${DIGEST_COLORS.border};border-radius:16px;padding:16px;background:${DIGEST_COLORS.surface};color:${DIGEST_COLORS.muted};">No recorded actions in this period.</div>`;
   const truncated = rows.length >= 200;
   const byModule = rows.reduce((acc, entry) => { const key = entry.module || "Other"; acc[key] = (acc[key] || 0) + 1; return acc; }, {});
   const byAction = rows.reduce((acc, entry) => { const key = entry.action || "Action"; acc[key] = (acc[key] || 0) + 1; return acc; }, {});
-  const moduleCards = Object.entries(byModule).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([module, count]) => `<td style="padding:10px;border:1px solid #d8ebfb;border-radius:14px;background:#f7fbff;"><span style="display:block;color:#60738f;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">${escapeHtml(module)}</span><strong style="display:block;margin-top:4px;color:#005a9c;font-size:22px;">${count}</strong></td>`).join("");
-  const topActions = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([action, count]) => `<li><strong>${escapeHtml(action)}</strong> - ${count} time${count === 1 ? "" : "s"}</li>`).join("");
-  const recent = rows.slice(0, 12).map((entry) => `<div style="border:1px solid #d8ebfb;border-radius:14px;padding:12px 14px;margin:8px 0;background:#fff;"><div style="color:#60738f;font-size:12px;font-weight:800;">${escapeHtml(entry.date || "-")} · ${escapeHtml(entry.user || "System")} · ${escapeHtml(entry.role || "-")}</div><strong style="display:block;margin-top:5px;color:#10213d;">${escapeHtml(entry.action || "Action")}</strong><div style="margin-top:4px;color:#005a9c;font-weight:800;">${escapeHtml(entry.module || "-")}</div>${entry.record ? `<div style="margin-top:4px;color:#334155;">${escapeHtml(String(entry.record).slice(0, 180))}</div>` : ""}</div>`).join("");
-  return `<div style="margin-bottom:14px;"><strong style="display:block;color:#005a9c;font-size:16px;margin-bottom:8px;">Audit Summary</strong><p style="margin:0 0 12px;color:#60738f;">${rows.length} action${rows.length === 1 ? "" : "s"} recorded. Grouped below so the important activity is easier to scan.</p><table role="presentation" width="100%" cellspacing="6" cellpadding="0"><tr>${moduleCards}</tr></table><ul style="margin:12px 0 0;padding-left:20px;">${topActions}</ul></div><div><strong style="display:block;color:#005a9c;font-size:16px;margin:18px 0 8px;">Recent Activity Highlights</strong>${recent}</div>${truncated ? "<p style=\"color:#60738f;\">Showing summary from the first 200 actions - see Audit Logs in Medlane OS for full history.</p>" : ""}`;
+  const moduleCards = Object.entries(byModule).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([module, count]) => `<td width="33%" valign="top" style="padding:5px;"><div style="padding:10px;border:1px solid ${DIGEST_COLORS.border};border-radius:14px;background:${DIGEST_COLORS.surface};"><span style="display:block;color:${DIGEST_COLORS.muted};font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">${escapeHtml(module)}</span><strong style="display:block;margin-top:4px;color:${DIGEST_COLORS.blue};font-size:22px;">${count}</strong></div></td>`).join("");
+  const topActions = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([action, count]) => { const failed = /fail|error/i.test(action); return `<li style="${failed ? `color:${DIGEST_COLORS.critical};` : ""}"><strong>${escapeHtml(action)}</strong> - ${count} time${count === 1 ? "" : "s"}${failed ? " ⚠" : ""}</li>`; }).join("");
+  const recent = rows.slice(0, 12).map((entry) => { const failed = /fail|error/i.test(`${entry.action || ""}`); const accent = failed ? DIGEST_COLORS.critical : DIGEST_COLORS.border; return `<div style="border:1px solid ${DIGEST_COLORS.border};border-left:3px solid ${accent};border-radius:14px;padding:12px 14px;margin:8px 0;background:${DIGEST_COLORS.card};"><div style="color:${DIGEST_COLORS.muted};font-size:12px;font-weight:800;">${escapeHtml(entry.date || "-")} · ${escapeHtml(entry.user || "System")} · ${escapeHtml(entry.role || "-")}</div><strong style="display:block;margin-top:5px;color:${failed ? DIGEST_COLORS.critical : DIGEST_COLORS.text};">${escapeHtml(entry.action || "Action")}</strong><div style="margin-top:4px;color:${DIGEST_COLORS.blue};font-weight:800;">${escapeHtml(entry.module || "-")}</div>${entry.record ? `<div style="margin-top:4px;color:#334155;">${escapeHtml(String(entry.record).slice(0, 180))}</div>` : ""}</div>`; }).join("");
+  return `<div style="margin-bottom:14px;"><strong style="display:block;color:${DIGEST_COLORS.blue};font-size:16px;margin-bottom:8px;">Audit Summary</strong><p style="margin:0 0 12px;color:${DIGEST_COLORS.muted};">${rows.length} action${rows.length === 1 ? "" : "s"} recorded. Grouped below so the important activity is easier to scan.</p><table role="presentation" width="100%" cellspacing="6" cellpadding="0"><tr>${moduleCards}</tr></table><ul style="margin:12px 0 0;padding-left:20px;">${topActions}</ul></div><div><strong style="display:block;color:${DIGEST_COLORS.blue};font-size:16px;margin:18px 0 8px;">Recent Activity Highlights</strong>${recent}</div>${truncated ? `<p style="color:${DIGEST_COLORS.muted};">Showing summary from the first 200 actions - see Audit Logs in Medlane OS for full history.</p>` : ""}`;
 }
 
 function digestEmailHtml({ title, bodyHtml }) {
   return brandedEmailHtml({ title, intro: "Operational summary, approvals, finance, and audit highlights from Medlane OS.", bodyHtml: bodyHtml || "<p>Nothing to report for this period.</p>" });
+}
+
+async function loadDigestSnapshot(env, periodLabel) {
+  return monitoringState(env, `digest-snapshot-${periodLabel.toLowerCase()}`).catch(() => ({}));
+}
+
+async function saveDigestSnapshot(env, periodLabel, metrics) {
+  await saveMonitoringState(env, `digest-snapshot-${periodLabel.toLowerCase()}`, { ...metrics, capturedAt: new Date().toISOString() }).catch((error) => recordSystemLog(env, { action: "Digest snapshot save failed", module: "Email", record: error.message }));
 }
 
 async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimitLabel }) {
@@ -1703,14 +1827,29 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   const businessSummary = buildBusinessSummaryLines(state);
   const financialSummary = financialDigestLines(state, auditSinceIso);
   const auditRows = await auditLogDigestRows(env, auditSinceIso);
+
+  const metrics = computeBusinessMetrics(state);
+  const previousSnapshot = await loadDigestSnapshot(env, periodLabel);
+  const taskFailures = auditRows.filter((entry) => entry.action === "Scheduled task failed").length;
+  const attentionHtml = digestAttentionBannerHtml(metrics, taskFailures);
+  const statCardsHtml = digestStatCardsHtml(metrics, previousSnapshot);
+  const operationalHtml = digestSectionHtml([{ title: `${periodLabel} Purchase Orders, Expenses & Backups`, lines: [...financialSummary, ...backupDigestLines(auditRows)] }]);
+  await saveDigestSnapshot(env, periodLabel, metrics);
+  const ctaHtml = `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 4px;"><tr><td style="border-radius:999px;background:${DIGEST_COLORS.navy};"><a href="https://medlane.tofllorin.workers.dev/dashboard" style="display:inline-block;padding:13px 24px;color:#fff;text-decoration:none;font-weight:800;font-size:13.5px;border-radius:999px;">Open Medlane OS →</a></td></tr></table>`;
+
   const sends = [];
   for (const role of allRoles) {
     try {
       const parts = [];
       if (sections[role]?.length) parts.push(digestSectionHtml(sections[role]));
-      if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) parts.push(digestSectionHtml([{ title: `${periodLabel} Business Summary`, lines: [...businessSummary, ...financialSummary, ...backupDigestLines(auditRows)] }]));
-      if (DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role)) parts.push(`<h3 style="margin:18px 0 8px;color:#005a9c;">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
+      if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) {
+        parts.push(attentionHtml);
+        parts.push(`<h3 style="margin:18px 0 8px;color:${DIGEST_COLORS.navy};">${escapeHtml(`${periodLabel} Business Summary`)}</h3>${statCardsHtml}`);
+        parts.push(operationalHtml);
+      }
+      if (DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role)) parts.push(`<h3 style="margin:18px 0 8px;color:${DIGEST_COLORS.navy};">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
       if (!parts.length) continue;
+      parts.push(ctaHtml);
       const emails = await emailsForRoles(env, [role]);
       const html = digestEmailHtml({ title: `${periodLabel} Digest`, bodyHtml: parts.join("") });
       for (const email of emails) {
