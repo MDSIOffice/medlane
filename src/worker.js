@@ -129,6 +129,27 @@ async function supabaseFetch(env, path, init = {}) {
   return payload;
 }
 
+// PostgREST caps how many rows a single request can return (the project's "Max Rows" API
+// setting) and silently returns only that many with a normal 200 — there is no error to
+// catch. A plain supabaseFetch() on a table that has grown past that cap quietly returns a
+// partial result. For queries ordered oldest-first, that means the newest rows — anything
+// just written — are exactly what gets cut off. Page through with offset/limit until a page
+// comes back smaller than requested, so a read is never silently incomplete.
+async function supabaseFetchAll(env, path, init = {}) {
+  const pageSize = 1000;
+  const separator = path.includes("?") ? "&" : "?";
+  let offset = 0;
+  let all = [];
+  while (true) {
+    const page = await supabaseFetch(env, `${path}${separator}limit=${pageSize}&offset=${offset}`, init);
+    if (!Array.isArray(page)) return page;
+    all = all.concat(page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
 async function supabaseAuthAdminFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
   const response = await fetch(`${supabaseBaseUrl(env)}${path}`, {
@@ -669,7 +690,7 @@ async function userDeleteBlockers(env, { id, email, name }) {
   if (!needles.length) return blockers;
   const sessions = id ? await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(id)}&revoked_at=is.null&select=id`) .catch(() => []) : [];
   if (sessions.length) blockers.push(`${sessions.length} active device session${sessions.length === 1 ? "" : "s"}`);
-  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data`);
+  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data`);
   const ignored = new Set(["users", "logs", "notifications"]);
   for (const row of rows) {
     if (ignored.has(row.module_name)) continue;
@@ -1139,7 +1160,7 @@ async function createBackup(env, backupType = "manual", actor = null) {
   if (env.ENVIRONMENT !== "production") throw new Error("Backups are disabled outside production");
   if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
   const stateKey = appStateKey(env);
-  const records = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+  const records = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
   const createdAt = new Date().toISOString();
   const payload = { app: "medlane", stateKey, backupType, mode: "compressed-full", sinceAt: null, createdAt, records };
   const bytes = await gzipBytes(JSON.stringify(payload));
@@ -1266,7 +1287,7 @@ async function loadDigestState(env, modules = digestStateModules) {
   const stateKey = appStateKey(env);
   const chunks = [];
   for (let index = 0; index < modules.length; index += 5) chunks.push(modules.slice(index, index + 5));
-  const results = await Promise.all(chunks.map((chunk) => supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(chunk))}&select=module_name,record_key,data`)));
+  const results = await Promise.all(chunks.map((chunk) => supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(chunk))}&select=module_name,record_key,data`)));
   return stateFromRecords(results.flat());
 }
 
@@ -2199,7 +2220,7 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         const stateKey = appStateKey(env);
         if (request.method === "GET") {
-          const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=neq.logs&select=module_name,record_key,data&order=updated_at.asc`);
+          const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=neq.logs&select=module_name,record_key,data&order=updated_at.asc`);
           return json({ data: stateFromRecords(filterRecordsForProfile(rows, profile, "view")), revision: Date.now() });
         }
         if (request.method === "PUT") {
@@ -2388,7 +2409,7 @@ export default {
         }
         rows = dedupeRowsByRecordKey(rows);
         const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].includes(key)))];
-        const beforeRows = eventModules.length ? await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`) : [];
+        const beforeRows = eventModules.length ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`) : [];
         if (rows.length) {
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
             method: "POST",
@@ -2488,7 +2509,7 @@ export default {
         const { profile } = await authenticatedProfile(request, env);
         if (request.method !== "GET") return methodNotAllowed();
         if (!profile.customPermissions?.view?.includes("reports") && !["Superadmin", "CEO"].includes(profile.role)) throw new Error("You do not have permission to view reports");
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(filterRecordsForProfile(rows, profile, "view"));
         return json({ reports: generateReportsFromState(state, url.searchParams.get("branch") || "all") });
       }
@@ -2499,7 +2520,7 @@ export default {
         if (!canAccessKey(profile, "sales", "view")) throw new Error("You do not have permission to print invoices");
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Invoice ID is required" }, { status: 400 });
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=in.${encodeURIComponent(postgrestIn(["sales", "clients", "invoiceApprovals", "printTemplates"]))}&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=in.${encodeURIComponent(postgrestIn(["sales", "clients", "invoiceApprovals", "printTemplates"]))}&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(rows);
         const sale = (state.sales || []).find((item) => item.id === id || item.documentNo === id);
         if (!sale || !printableBranchAllowed(profile, sale)) return json({ error: "Invoice not found" }, { status: 404 });
@@ -2523,7 +2544,7 @@ export default {
         if (!canAccessKey(profile, "paymentRequests", "view")) throw new Error("You do not have permission to print payment requests");
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Payment request ID is required" }, { status: 400 });
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.paymentRequests&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.paymentRequests&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(rows);
         const requestRecord = (state.paymentRequests || []).find((item) => item.cvNo === id || item.id === id);
         if (!requestRecord) return json({ error: "Payment request not found" }, { status: 404 });
@@ -2536,7 +2557,7 @@ export default {
         if (!canAccessKey(profile, "pendingTransfers", "view")) throw new Error("You do not have permission to print transfer requests");
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Transfer ID is required" }, { status: 400 });
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.pendingTransfers&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.pendingTransfers&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(rows);
         const transfer = (state.pendingTransfers || []).find((item) => item.id === id);
         if (!transfer) return json({ error: "Transfer request not found" }, { status: 404 });
@@ -2549,7 +2570,7 @@ export default {
         if (!canAccessKey(profile, "inventoryPurchaseOrders", "view")) throw new Error("You do not have permission to print inventory purchase orders");
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Inventory PO ID is required" }, { status: 400 });
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.inventoryPurchaseOrders&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.inventoryPurchaseOrders&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(rows);
         const po = (state.inventoryPurchaseOrders || []).find((item) => item.id === id);
         if (!po) return json({ error: "Inventory PO not found" }, { status: 404 });
@@ -2562,7 +2583,7 @@ export default {
         if (!canAccessKey(profile, "productIssues", "view")) throw new Error("You do not have permission to print support reports");
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Report ID is required" }, { status: 400 });
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.productIssues&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.productIssues&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(rows);
         const report = (state.productIssues || []).find((item) => item.id === id);
         if (!report) return json({ error: "Support report not found" }, { status: 404 });
@@ -2578,7 +2599,7 @@ export default {
         if (!canAccessKey(profile, key, "view")) throw new Error("You do not have permission to print this request");
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Request ID is required" }, { status: 400 });
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.${encodeURIComponent(key)}&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.${encodeURIComponent(key)}&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(rows);
         const record = (state[key] || []).find((item) => item.id === id);
         if (!record) return json({ error: "Request not found" }, { status: 404 });
