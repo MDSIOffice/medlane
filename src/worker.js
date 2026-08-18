@@ -2155,6 +2155,7 @@ export default {
         const roleFilter = url.searchParams.get("role") || "";
         const moduleFilter = url.searchParams.get("module") || "";
         const userFilter = (url.searchParams.get("user") || "").trim().toLowerCase();
+        const before = url.searchParams.get("before") || "";
         const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
         const modules = moduleFilter ? moduleFilter.split(",").map((m) => m.trim()).filter(Boolean) : null;
         const matchesFilters = (entry) => (!roleFilter || entry.role === roleFilter) && (!modules || modules.includes(entry.module)) && (!userFilter || String(entry.user || "").trim().toLowerCase() === userFilter);
