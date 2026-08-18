@@ -4484,27 +4484,45 @@ const BIR_2307_PAYOR = {
   zip: "1740",
   tin: "009-754-868-0000",
 };
-const BIR_2307_ROW_TOP_Y = 559;
-const BIR_2307_ROW_HEIGHT = 34;
-const BIR_2307_TOTALS_Y = 421;
+// Row/box geometry below was measured directly off the rendered template (grid line
+// and border pixel positions), not estimated — see the "for period / TIN / zip
+// alignment" fix pass. Values are in PDF points, page is 612x936 (Folio), origin
+// bottom-left.
+const BIR_2307_GRID_TOP = 570.19; // top border of the first Part III item row
+const BIR_2307_ROW_PITCH = 13.682; // measured item-row grid spacing
+const BIR_2307_ROW_BASELINE_DROP = 9; // baseline distance below a row's top border
+const BIR_2307_TOTALS_ROW_TOP = 433.37;
 const BIR_2307_MONTH_X = [232, 305, 393];
 const BIR_2307_TIN_SIZE = 10;
 const BIR_2307_TIN_DIGIT_PITCH = 12;
 const BIR_2307_TIN_GROUP_PITCH = 51.3; // tied to the template's fixed dash positions — do not scale with font size
+const BIR_2307_TIN_LAST_GROUP_LEFT = 366; // just clear of the 3rd dash
+const BIR_2307_TIN_LAST_GROUP_RIGHT = 435.5; // measured box right edge (both TIN rows)
 const BIR_2307_ZIP_SIZE = 10;
-const BIR_2307_ZIP_DIGIT_PITCH = 10;
 const BIR_2307_PERIOD_SIZE = 10;
-const BIR_2307_PERIOD_DIGIT_PITCH = 12;
 const BIR_2307_PERIOD_Y = 819;
+const BIR_2307_GLYPH_WIDTH = 6; // Courier digit advance at size 10
 
-function bir2307SpacedDigits(value) { return String(value || "").split("").join(" "); }
 function bir2307DrawDigits(draw, value, x, y, font, size, pitch) {
   String(value || "").split("").forEach((digit, index) => draw(digit, x + index * pitch, y, { font, size }));
 }
+function bir2307DrawBoxedDigits(draw, value, boxLeft, boxRight, y, font, size) {
+  const digits = String(value || "").split("");
+  if (!digits.length) return;
+  const cellWidth = (boxRight - boxLeft) / digits.length;
+  digits.forEach((digit, index) => draw(digit, boxLeft + index * cellWidth + (cellWidth - BIR_2307_GLYPH_WIDTH) / 2, y, { font, size }));
+}
 function bir2307DrawTin(draw, tin, x, y, font) {
   const groups = String(tin || "").split(/[^0-9]+/).filter(Boolean);
-  groups.forEach((group, groupIndex) => bir2307DrawDigits(draw, group, x + groupIndex * BIR_2307_TIN_GROUP_PITCH, y, font, BIR_2307_TIN_SIZE, BIR_2307_TIN_DIGIT_PITCH));
+  groups.forEach((group, groupIndex) => {
+    // The final (branch code) group varies in length and, left-anchored at a flat
+    // pitch, either crowds the preceding dash or overflows the box — so it's
+    // right-boxed against the template's measured right edge instead.
+    if (groupIndex === groups.length - 1) bir2307DrawBoxedDigits(draw, group, BIR_2307_TIN_LAST_GROUP_LEFT, BIR_2307_TIN_LAST_GROUP_RIGHT, y, font, BIR_2307_TIN_SIZE);
+    else bir2307DrawDigits(draw, group, x + groupIndex * BIR_2307_TIN_GROUP_PITCH, y, font, BIR_2307_TIN_SIZE, BIR_2307_TIN_DIGIT_PITCH);
+  });
 }
+function bir2307RowBaseline(gridRowIndex) { return BIR_2307_GRID_TOP - gridRowIndex * BIR_2307_ROW_PITCH - BIR_2307_ROW_BASELINE_DROP; }
 function bir2307MMDDYYYY(date) { return `${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}${date.getFullYear()}`; }
 function bir2307QuarterRange(dateValue) {
   const date = dateValue ? new Date(dateValue) : new Date();
@@ -4551,35 +4569,43 @@ async function generateBir2307Pdf(payable) {
   const draw = (text, x, y, options = {}) => { if (text) page.drawText(String(text), { x, y, size: options.size || 8, font: options.font || font, color: black }); };
 
   const { from, to, monthIndex } = bir2307QuarterRange(payable.date);
-  bir2307DrawDigits(draw, bir2307MMDDYYYY(from), 166, BIR_2307_PERIOD_Y, mono, BIR_2307_PERIOD_SIZE, BIR_2307_PERIOD_DIGIT_PITCH);
-  bir2307DrawDigits(draw, bir2307MMDDYYYY(to), 408, BIR_2307_PERIOD_Y, mono, BIR_2307_PERIOD_SIZE, BIR_2307_PERIOD_DIGIT_PITCH);
+  bir2307DrawBoxedDigits(draw, bir2307MMDDYYYY(from), 151.3, 256.54, BIR_2307_PERIOD_Y, mono, BIR_2307_PERIOD_SIZE);
+  bir2307DrawBoxedDigits(draw, bir2307MMDDYYYY(to), 398.85, 504.23, BIR_2307_PERIOD_Y, mono, BIR_2307_PERIOD_SIZE);
 
-  bir2307DrawTin(draw, supplier?.tin, 213, 787, mono);
+  bir2307DrawTin(draw, supplier?.tin, 213, 788.2, mono);
   draw(payable.supplier || "", 40, 759, { size: 8 });
   draw(supplier?.address || "", 38, 731, { size: 7.5 });
-  bir2307DrawDigits(draw, supplier?.zip, 546, 731, mono, BIR_2307_ZIP_SIZE, BIR_2307_ZIP_DIGIT_PITCH);
+  bir2307DrawBoxedDigits(draw, supplier?.zip, 541.54, 591.54, 732.2, mono, BIR_2307_ZIP_SIZE);
 
-  bir2307DrawTin(draw, BIR_2307_PAYOR.tin, 213, 671.5, mono);
+  bir2307DrawTin(draw, BIR_2307_PAYOR.tin, 213, 672.7, mono);
   draw(BIR_2307_PAYOR.name, 40, 644, { size: 8 });
   draw(BIR_2307_PAYOR.address, 41, 615, { size: 7.5 });
-  bir2307DrawDigits(draw, BIR_2307_PAYOR.zip, 548, 616, mono, BIR_2307_ZIP_SIZE, BIR_2307_ZIP_DIGIT_PITCH);
+  bir2307DrawBoxedDigits(draw, BIR_2307_PAYOR.zip, 541.54, 591.54, 617.2, mono, BIR_2307_ZIP_SIZE);
 
   const monthX = BIR_2307_MONTH_X[monthIndex - 1] ?? BIR_2307_MONTH_X[0];
   let totalAmount = 0;
   let totalTax = 0;
+  let gridRowCursor = 0;
   rows.slice(0, 3).forEach((row, index) => {
-    const rowTop = BIR_2307_ROW_TOP_Y - index * BIR_2307_ROW_HEIGHT;
-    draw(row.atc, 187, rowTop, { size: 9 });
-    if (index === 0) bir2307WrapText(row.desc, 45).slice(0, 4).forEach((line, lineIndex) => draw(line, 23, rowTop - lineIndex * 10, { size: 6.8 }));
-    draw(bir2307Money(row.amount), monthX, rowTop, { size: 9 });
-    draw(bir2307Money(row.amount), 461, rowTop, { size: 9 });
-    draw(bir2307Money(row.tax), 520, rowTop, { size: 9 });
+    const baseline = bir2307RowBaseline(gridRowCursor);
+    draw(row.atc, 187, baseline, { size: 9 });
+    if (index === 0) {
+      const lines = bir2307WrapText(row.desc, 45).slice(0, 4);
+      lines.forEach((line, lineIndex) => draw(line, 23, baseline - lineIndex * BIR_2307_ROW_PITCH, { size: 6.8 }));
+      gridRowCursor += lines.length;
+    } else {
+      gridRowCursor += 1;
+    }
+    draw(bir2307Money(row.amount), monthX, baseline, { size: 9 });
+    draw(bir2307Money(row.amount), 461, baseline, { size: 9 });
+    draw(bir2307Money(row.tax), 520, baseline, { size: 9 });
     totalAmount += row.amount;
     totalTax += row.tax;
   });
-  draw(bir2307Money(totalAmount), monthX, BIR_2307_TOTALS_Y, { size: 9 });
-  draw(bir2307Money(totalAmount), 461, BIR_2307_TOTALS_Y, { size: 9 });
-  draw(bir2307Money(totalTax), 520, BIR_2307_TOTALS_Y, { size: 9 });
+  const totalsBaseline = BIR_2307_TOTALS_ROW_TOP - BIR_2307_ROW_BASELINE_DROP;
+  draw(bir2307Money(totalAmount), monthX, totalsBaseline, { size: 9 });
+  draw(bir2307Money(totalAmount), 461, totalsBaseline, { size: 9 });
+  draw(bir2307Money(totalTax), 520, totalsBaseline, { size: 9 });
 
   return pdfDoc.save();
 }
@@ -5541,7 +5567,7 @@ const modalConfigs = {
   client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
   item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...data.items.map((item) => item.brand), ...data.suppliers.map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => data.suppliers.map((supplier) => supplier.name)]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea-optional"]] },
-  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code", "optional"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
+  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
@@ -5894,6 +5920,7 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
     const tin = values.tin?.trim();
     if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
     if (tin && data.suppliers.some((supplier, index) => index !== exceptIndex && supplier.tin === tin)) throw new Error("Duplicate supplier TIN detected.");
+    if (!values.zip?.trim()) throw new Error("ZIP Code is required.");
   }
   if (type === "item") {
     const code = values.code?.trim().toLowerCase();

@@ -264,7 +264,7 @@ async function editDiscordWebhookMessage(webhookUrl, messageId, { content = "", 
   return { edited: true };
 }
 
-function discordFieldValue(lines, limit = 900) {
+function discordFieldValue(lines, limit = 900, totalCount = lines.length) {
   if (!lines.length) return "None";
   let value = "";
   let shown = 0;
@@ -274,7 +274,8 @@ function discordFieldValue(lines, limit = 900) {
     value = candidate;
     shown += 1;
   }
-  if (shown < lines.length) value += `\n…+${lines.length - shown} more`;
+  const hidden = totalCount - shown;
+  if (hidden > 0) value += `\n*…+${hidden} more — open the app to review.*`;
   return value || "None";
 }
 
@@ -1268,19 +1269,27 @@ function pendingSummaryFields(state) {
   const inventoryPoApproval = inventoryPurchaseOrders.filter((po) => po.status === "Pending Approval");
   const transfers = (state.pendingTransfers || []).filter((transfer) => !/received|cancelled/i.test(transfer.status || ""));
   const collectionContacts = (state.collectionContacts || []).filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status));
+  // Payment requests awaiting approval are surfaced once, under "Pending Approvals" —
+  // repeating them under "Collections" as well just duplicates the same rows and was
+  // a big part of why this digest read as noisy.
   const collectionApprovals = (state.paymentRequests || []).filter((request) => request.invoice && request.requestStatus === "Pending");
   const payables = (state.payables || []).filter((payable) => (payable.requestStatus || payable.status) === "For Approval");
   const expenses = (state.replenishments || []).filter((expense) => (expense.requestStatus || expense.status) === "For Approval");
-  const field = (name, rows, mapper) => ({ name: `${name} (${rows.length})`, value: rows.length ? discordFieldValue(rows.slice(0, 8).map(mapper), 850) : "No pending items.", inline: false });
+  const PREVIEW_ROWS = 6;
+  const field = (emoji, name, rows, mapper) => {
+    if (!rows.length) return null;
+    const preview = rows.slice(0, PREVIEW_ROWS).map((row) => `▸ ${mapper(row)}`);
+    return { name: `${emoji} ${name} (${rows.length})`, value: discordFieldValue(preview, 900, rows.length), inline: false };
+  };
   return [
-    field("Sales Purchase Orders", salesPurchaseOrders, (po) => `${po.id} — ${po.client || "No client"} (${salesPoStatusServer(po, sales)})`),
-    field("Inventory Purchase Orders", inventoryPurchaseOrders, (po) => `${po.id} — ${po.supplier || "No supplier"} (${po.status || "Pending"})`),
-    field("Pending Approvals", [...inventoryPoApproval, ...collectionApprovals], (item) => item.supplier ? `Inventory PO ${item.id} — ${item.supplier}` : `Collection ${item.cvNo || item.id || "Request"} — ${item.employee || item.invoice}`),
-    field("Transfers", transfers, (transfer) => `${transfer.id} — ${transfer.item || "Items"}, ${transfer.from || "-"} -> ${transfer.to || "-"} (${transfer.status || "Pending"})`),
-    field("Collections", [...collectionContacts, ...collectionApprovals], (item) => item.client ? `${item.client} — ${item.status}${item.chequeInvoice ? ` (${item.chequeInvoice})` : ""}` : `${item.cvNo || item.id || "Collection"} — ${item.employee || item.invoice} (${item.requestStatus || "Pending"})`),
-    field("Payables", payables, (payable) => `${payable.id || payable.supplier} — ${payable.supplier || "Vendor"}, ${money(payable.amount || payable.total || 0)} (${payable.requestStatus || payable.status})`),
-    field("Expenses", expenses, (expense) => `${expense.id || expense.type} — ${expense.type || "Expense"}, ${money(expense.amount || expense.total || 0)} (${expense.requestStatus || expense.status})`),
-  ];
+    field("📄", "Sales Purchase Orders", salesPurchaseOrders, (po) => `\`${po.id}\` — **${po.client || "No client"}** · ${salesPoStatusServer(po, sales)}`),
+    field("📦", "Inventory Purchase Orders", inventoryPurchaseOrders, (po) => `\`${po.id}\` — **${po.supplier || "No supplier"}** · ${po.status || "Pending"}`),
+    field("✅", "Pending Approvals", [...inventoryPoApproval, ...collectionApprovals], (item) => item.supplier ? `Inventory PO \`${item.id}\` — **${item.supplier}**` : `Collection \`${item.cvNo || item.id || "Request"}\` — **${item.employee || item.invoice}**`),
+    field("🚚", "Transfers", transfers, (transfer) => `\`${transfer.id}\` — **${transfer.item || "Items"}**, ${transfer.from || "-"} → ${transfer.to || "-"} · ${transfer.status || "Pending"}`),
+    field("💰", "Collections", collectionContacts, (contact) => `**${contact.client || "Client"}** — ${contact.status}${contact.chequeInvoice ? ` (${contact.chequeInvoice})` : ""}`),
+    field("💸", "Payables", payables, (payable) => `\`${payable.id || "Payable"}\` — **${payable.supplier || "Vendor"}**, ${money(payable.amount || payable.total || 0)} · ${payable.requestStatus || payable.status}`),
+    field("🧾", "Expenses", expenses, (expense) => `\`${expense.id || "Expense"}\` — **${expense.type || "Expense"}**, ${money(expense.amount || expense.total || 0)} · ${expense.requestStatus || expense.status}`),
+  ].filter(Boolean);
 }
 
 function detectThresholdsAndApprovals(state) {
@@ -1618,7 +1627,10 @@ async function runPendingItemsMonitor(env) {
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const fields = pendingSummaryFields(state);
   const totalPending = fields.reduce((sum, field) => sum + Number(field.name.match(/\((\d+)\)/)?.[1] || 0), 0);
-  const embed = { title: "📌 Medlane Pending Items", color: totalPending ? 0xf59e0b : 0x22c55e, description: `Items needing approval, receiving, collection follow-up, or action.\n🕒 **Latest update:** ${updatedAt} PHT\n📋 **Total pending buckets:** ${totalPending}`, fields, timestamp: new Date().toISOString() };
+  const description = totalPending
+    ? `Items needing approval, receiving, collection follow-up, or action.\n🕒 **Latest update:** ${updatedAt} PHT\n📋 **${totalPending} pending item${totalPending === 1 ? "" : "s"}** across **${fields.length} categor${fields.length === 1 ? "y" : "ies"}**`
+    : `✨ Nothing pending — all clear.\n🕒 **Latest update:** ${updatedAt} PHT`;
+  const embed = { title: "📌 Medlane Pending Items", color: totalPending ? 0xf59e0b : 0x22c55e, description, fields, timestamp: new Date().toISOString() };
   const stored = await monitoringState(env, "discord-pending").catch(() => ({}));
   if (stored.messageId) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_PENDING_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
