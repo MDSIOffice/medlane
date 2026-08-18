@@ -554,8 +554,15 @@ function flushPendingSaveQueue() {
     writePendingSaveQueue({});
     setGlobalSaveStatus("saved", "Saved");
   }).catch((error) => {
-    setGlobalSaveStatus("error", "Pending save failed");
-    if (typeof toast === "function") toast(`Pending save still needs retry: ${error.message}`);
+    // Silent by design: this is an automatic background retry the user never asked
+    // for and has no way to know is even running. A toast() here can (and did)
+    // land on top of — and hide — the actual result of whatever the user was just
+    // doing, e.g. triggering a file download can shift window focus enough to fire
+    // this via the focus/visibilitychange listeners, right as an unrelated toast is
+    // showing. The status indicator still reflects the failure; it'll retry on the
+    // next focus/online/reconnect.
+    setGlobalSaveStatus("error", "Pending save failed — will retry");
+    console.warn("Pending save queue flush failed, will retry:", error.message);
   });
 }
 
