@@ -153,7 +153,14 @@ function passwordKey(role = currentUser?.role) { return `medlane-password-${role
 function savedPassword() { return ""; }
 function emailPasswordKey(email) { return `medlane-password-email-${String(email || "").trim().toLowerCase()}`; }
 function savedLoginPassword() { return ""; }
-function platformAreas() { return data?.platformAreas?.length ? data.platformAreas : initialData.platformAreas; }
+function platformAreas() {
+  // Union, not replace: data.platformAreas only ever grows via import-migration pushes of
+  // extra custom areas. Falling back to the 7 built-in defaults purely on emptiness would
+  // permanently hide them the moment even one custom area got pushed onto an otherwise-empty
+  // array (bug: an account whose only pushed area was "Visayas Dealer" showed ONLY that option).
+  const custom = Array.isArray(data?.platformAreas) ? data.platformAreas : [];
+  return [...new Set([...initialData.platformAreas, ...custom])];
+}
 function platformBranches() { return data?.platformBranches?.length ? data.platformBranches : initialData.platformBranches; }
 function branchAddresses() { return data?.branchAddresses || {}; }
 function invoiceApprovals() { return data?.invoiceApprovals || { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" }; }
@@ -503,6 +510,14 @@ function inferredSaveKeys() {
 }
 
 function saveData(keys = null) {
+  // Deliberately NOT wrapped in beginSaveOperation()/the blocking overlay — this is
+  // a debounced, best-effort background sync used for a huge variety of low-stakes
+  // state (which masterlist tab is active, filters, etc.) as well as real edits, and
+  // fires from many places that have nothing to do with the user actively waiting on
+  // a save (e.g. a validation-error catch block, or just switching tabs). The
+  // blocking "Saving..." overlay is reserved for persistRecords()'s explicit,
+  // single-record actions (approve, create, confirm payment) that the user is
+  // directly waiting on — this only updates the small status indicator.
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return;
   if (typeof syncGeneratedNotifications === "function") syncGeneratedNotifications();
   const payload = savePayloadForKeys(keys || inferredSaveKeys());
@@ -516,7 +531,6 @@ function saveData(keys = null) {
       return;
     }
     const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
-    beginSaveOperation();
     MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
       if (result?.revision) {
         serverRevision = Number(result.revision);
@@ -537,7 +551,7 @@ function saveData(keys = null) {
       }
       setGlobalSaveStatus("error", "Save failed");
       if (typeof toast === "function") toast(`Server save failed: ${error.message}`);
-    }).finally(() => endSaveOperation());
+    });
   }, 450);
 }
 

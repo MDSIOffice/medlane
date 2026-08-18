@@ -156,12 +156,32 @@ async function submitModal(event) {
     catch (error) { notify("Validation", error.message, "sales", values.documentNo || values.client || ""); saveData(); return toast(error.message); }
   }
   if (modalType === "purchaseOrder") {
-    try { data.purchaseOrders.push(buildPurchaseOrder(values)); }
+    let po;
+    try { po = buildPurchaseOrder(values); }
     catch (error) { notify("Validation", error.message, "purchase-orders", values.client || ""); saveData(); return toast(error.message); }
+    data.purchaseOrders.push(po);
+    const saveResult = await persistRecords({ purchaseOrders: [po] });
+    if (!saveResult?.ok) return;
+    log(`Saved ${modalType}`, modalConfigs[modalType].title, po.id || po.client, { save: false });
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    toast(`${modalConfigs[modalType].title} saved.`);
+    return;
   }
   if (modalType === "inventoryPurchaseOrder") {
-    try { data.inventoryPurchaseOrders.push(buildInventoryPurchaseOrder(values)); }
+    let po;
+    try { po = buildInventoryPurchaseOrder(values); }
     catch (error) { notify("Validation", error.message, "inventory", values.supplier || ""); saveData(); return toast(error.message); }
+    data.inventoryPurchaseOrders.push(po);
+    const saveResult = await persistRecords({ inventoryPurchaseOrders: [po] });
+    if (!saveResult?.ok) return;
+    log(`Saved ${modalType}`, modalConfigs[modalType].title, po.id || po.supplier, { save: false });
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    toast(`${modalConfigs[modalType].title} saved.`);
+    return;
   }
   if (modalType === "cancelReplace") {
     const oldSale = data.sales.find((sale) => sale.id === values.oldInvoice);
@@ -237,7 +257,7 @@ async function submitModal(event) {
     }
     const isCollection = linkedSales.length > 0;
     const nowStamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
-    data.paymentRequests.unshift({
+    const paymentRequest = {
       ...values,
       items,
       particulars: items.map((item) => item.particulars).join("; "),
@@ -256,9 +276,19 @@ async function submitModal(event) {
       status: isCollection ? "Pending" : "Prepared",
       history: [{ date: nowStamp, status: isCollection ? "Pending" : "Prepared", note: isCollection ? `Collection created for ${linkedSales.map((sale) => sale.documentNo || sale.id).join(", ")}.` : "CV voucher created.", by: currentUser?.name || "System User" }],
       createdAt: fmtDate(today),
-    });
-    log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`);
+    };
+    data.paymentRequests.unshift(paymentRequest);
+    const saveResult = await persistRecords({ paymentRequests: [paymentRequest] });
+    if (!saveResult?.ok) return;
+    log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`, { save: false });
     notify("Payment Received", `${values.cvNo} ${isCollection ? "pending approval" : "prepared"} for ${values.employee}.`, "collections", values.cvNo);
+    saveData(["notifications"]);
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    previewPaymentRequest(0);
+    toast(`${modalConfigs[modalType].title} saved.`);
+    return;
   }
   if (modalType === "payable") {
     const items = collectFinancialLines();
@@ -345,13 +375,6 @@ async function submitModal(event) {
     handleUserInvite(values, view, edit);
     return;
   }
-  log(`Saved ${modalType}`, modalConfigs[modalType].title, Object.values(values)[0]);
-    saveData();
-    qs("#demo-modal").close();
-  form.reset();
-  renderAll();
-  if (modalType === "paymentRequest") previewPaymentRequest(0);
-  toast(`${modalConfigs[modalType].title} saved.`);
 }
 
 qsa(".nav-item").forEach((button) => button.addEventListener("click", (event) => {
