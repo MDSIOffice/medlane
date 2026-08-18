@@ -1673,10 +1673,15 @@ function backupDigestLines(auditRows) {
   return [`Backups completed/logged: ${completed}`, `Backups failed/logged: ${failed}`];
 }
 
+// High-frequency housekeeping actions that dominate raw counts (dozens of times per digest
+// period) without carrying any operational signal — dropped so the digest's audit section
+// reflects actions someone would actually want to scan.
+const DIGEST_AUDIT_NOISE_ACTIONS = new Set(["Saved app state (record count changed)", "Ignored destructive save cleanup", "Discord post sent"]);
+
 async function auditLogDigestRows(env, sinceIso) {
   const stateKey = appStateKey(env);
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(sinceIso)}&select=data&order=updated_at.desc&limit=200`);
-  return rows.map((row) => row.data);
+  return rows.map((row) => row.data).filter((entry) => !DIGEST_AUDIT_NOISE_ACTIONS.has(entry.action));
 }
 
 async function emailsForRoles(env, roles) {
