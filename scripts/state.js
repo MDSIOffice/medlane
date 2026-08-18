@@ -431,6 +431,8 @@ function setGlobalSaveStatus(status, text) {
 // write. activeSaveCount tracks that exact window so both the beforeunload guard and
 // a full-screen blocking overlay can cover it too.
 let activeSaveCount = 0;
+let saveGuardWatchdog = null;
+const SAVE_GUARD_TIMEOUT_MS = 15000;
 function updateSaveGuardOverlay() {
   const dialog = typeof qs === "function" ? qs("#save-guard-dialog") : null;
   if (!dialog) return;
@@ -441,9 +443,29 @@ function updateSaveGuardOverlay() {
 function beginSaveOperation() {
   activeSaveCount += 1;
   updateSaveGuardOverlay();
+  // Safety valve: fetch() has no built-in timeout, so a hung connection could
+  // otherwise leave the blocking overlay (and beforeunload guard) stuck forever
+  // with no way out. Never trap the page for longer than this regardless of why
+  // the underlying request didn't settle — the change is either already queued
+  // for retry or may still complete quietly in the background.
+  if (!saveGuardWatchdog) {
+    saveGuardWatchdog = setTimeout(() => {
+      saveGuardWatchdog = null;
+      if (activeSaveCount > 0) {
+        activeSaveCount = 0;
+        updateSaveGuardOverlay();
+        setGlobalSaveStatus("error", "Save is taking longer than expected");
+        if (typeof toast === "function") toast("Saving is taking longer than expected — you can keep working. We'll keep retrying in the background.");
+      }
+    }, SAVE_GUARD_TIMEOUT_MS);
+  }
 }
 function endSaveOperation() {
   activeSaveCount = Math.max(0, activeSaveCount - 1);
+  if (activeSaveCount === 0 && saveGuardWatchdog) {
+    clearTimeout(saveGuardWatchdog);
+    saveGuardWatchdog = null;
+  }
   updateSaveGuardOverlay();
 }
 function isSaveInFlight() {
@@ -497,11 +519,15 @@ function saveData(keys = null) {
 }
 
 function flushPendingSaveQueue() {
+  // This runs automatically on load/focus/reconnect, not from a user action — it
+  // must never show the blocking "Saving your changes" overlay (that's reserved
+  // for saves the user is actively waiting on) or it can look like the page is
+  // stuck loading every time it's opened, especially if this request is slow or
+  // hangs.
   if (!hasPendingSaveQueue() || !currentUser || !MedlaneAPI?.session()?.access_token || !navigator.onLine) return;
   clearTimeout(pendingServerSave);
   setGlobalSaveStatus("saving", "Saving pending changes...");
   const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
-  beginSaveOperation();
   MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
     if (result?.revision) serverRevision = Number(result.revision);
     writePendingSaveQueue({});
@@ -509,7 +535,7 @@ function flushPendingSaveQueue() {
   }).catch((error) => {
     setGlobalSaveStatus("error", "Pending save failed");
     if (typeof toast === "function") toast(`Pending save still needs retry: ${error.message}`);
-  }).finally(() => endSaveOperation());
+  });
 }
 
 async function persistRecords(records, recordKeys = {}) {
