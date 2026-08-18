@@ -377,7 +377,7 @@ document.body.addEventListener("click", (event) => {
   if (requestApprove) { const [type, index] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, Number(index)); }
   const requestCancel = event.target.closest("[data-request-cancel]");
   if (requestCancel) { const [type, index] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, Number(index)); }
-  const generate2307 = event.target.closest("[data-generate-2307]");
+  const generate2307 = event.target.closest("[data-generate2307]");
   if (generate2307) return downloadBir2307(generate2307.dataset.generate2307);
   const viewUserSessions = event.target.closest("[data-view-user-sessions]");
   if (viewUserSessions) return openUserSessions(Number(viewUserSessions.dataset.viewUserSessions));

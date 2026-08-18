@@ -4432,7 +4432,7 @@ function payableAttachmentCell(payable) {
 
 function payable2307Cell(payable) {
   if ((payable.requestStatus || payable.status) !== "Approved") return "-";
-  return `<button class="ghost-button" data-generate-2307="${escapeHtml(payable.id)}" type="button">Generate 2307</button>`;
+  return `<button class="ghost-button" data-generate2307="${escapeHtml(payable.id)}" type="button">Generate 2307</button>`;
 }
 
 function renderPayables() {
