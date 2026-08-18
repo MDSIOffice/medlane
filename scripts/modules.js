@@ -392,7 +392,8 @@ async function approvePaymentRequest(cvNo) {
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
   request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updates only after deposit.`, by });
-  await persistRecords({ paymentRequests: [request], payments: newPayments });
+  const saveResult = await persistRecords({ paymentRequests: [request], payments: newPayments });
+  if (!saveResult?.ok) return;
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
   notify("Payment Received", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
   if (request.createdByUser) notify("Payment Received", `Your payment request ${request.cvNo} was approved.`, "notifications", request.cvNo, null, request.createdByUser);
@@ -437,7 +438,8 @@ async function cancelPaymentRequest(cvNo) {
   request.cancelReason = reason;
   request.history = paymentRequestHistory(request);
   request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Cancelled", note: `Cancelled by ${by}. Reason: ${reason}`, by });
-  await persistRecords({ paymentRequests: [request], payments: payment ? [payment] : [], sales: sale ? [sale] : [] });
+  const saveResult = await persistRecords({ paymentRequests: [request], payments: payment ? [payment] : [], sales: sale ? [sale] : [] });
+  if (!saveResult?.ok) return;
   log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`, { save: false });
   notify("Payment Received", `${request.cvNo} cancelled.`, "collections", request.cvNo);
   if (request.createdByUser) notify("Payment Received", `Your payment request ${request.cvNo} was cancelled.`, "notifications", request.cvNo, null, request.createdByUser);
@@ -1119,7 +1121,8 @@ async function savePrintTemplate(silent = false) {
   const list = data.printTemplates || (data.printTemplates = []);
   const idx = list.findIndex((t) => t.type === ptActiveType);
   if (idx >= 0) list[idx] = record; else list.push(record);
-  await persistRecords({ printTemplates: [record] }, { printTemplates: [record.id] });
+  const saveResult = await persistRecords({ printTemplates: [record] }, { printTemplates: [record.id] });
+  if (!saveResult?.ok) return;
   log(`Saved ${ptActiveType} print template`, "Settings", `Custom print layout updated for ${ptActiveType}`, { save: false });
   if (!silent) toast(`${ptActiveType} print template saved.`);
 }
@@ -1839,7 +1842,8 @@ async function saveDemoRequest() {
   data.inventoryDemoRequests ||= [];
   data.inventoryDemoRequests.push(request);
   notify("Demo Request", `${request.id} needs sales approval for ${client}.`, "inventory", request.id);
-  await persistRecords({ inventoryDemoRequests: [request] });
+  const saveResult = await persistRecords({ inventoryDemoRequests: [request] });
+  if (!saveResult?.ok) return;
   log("Created demo request", "Inventory", `${request.id}: ${client}`, { save: false });
   saveData(["notifications"]);
   qs("#demo-request-modal")?.close();
@@ -1868,7 +1872,8 @@ async function updateDemoRequestStatus(id, status) {
   request.status = status;
   request.history ||= [];
   request.history.push({ date: fmtDate(today), status, by: user, note: status === "To Sales" ? "Client may buy the demo-used items; route to sales." : "Workflow status updated." });
-  await persistRecords({ inventoryDemoRequests: [request] });
+  const saveResult = await persistRecords({ inventoryDemoRequests: [request] });
+  if (!saveResult?.ok) return;
   log("Updated demo request", "Inventory", `${request.id}: ${status}`, { save: false });
   saveData(["notifications"]);
   renderInventory();
@@ -2012,7 +2017,8 @@ async function saveTransferSheet() {
   data.pendingTransfers.push(transfer);
   const historyEntry = recordTransferHistory(transfer, "Created", `Transfer request opened with ${rows.length} item(s), awaiting admin approval.`);
   notify("Transfer", `${transfer.id} awaiting admin approval for dispatch from ${from} to ${to}.`, "inventory", transfer.id);
-  await persistRecords({ pendingTransfers: [transfer], transferHistory: [historyEntry] });
+  const saveResult = await persistRecords({ pendingTransfers: [transfer], transferHistory: [historyEntry] });
+  if (!saveResult?.ok) return;
   log("Created stock transfer", "Inventory", `${transfer.id}: ${rows.length} item(s), ${from} -> ${to}`, { save: false });
   saveData(["notifications"]);
   qs("#transfer-sheet-modal")?.close();
@@ -2096,7 +2102,8 @@ async function confirmTransferDispatch() {
   transfer.dispatchedBy = currentUser?.name || "System User";
   transfer.dispatchedAt = fmtDate(today);
   const historyEntry = recordTransferHistory(transfer, "Marked In Transit", `Dispatched ${updates.length} item(s) from ${transfer.from} to ${transfer.to}.`);
-  await persistRecords({ pendingTransfers: [transfer], inventory: touchedInventory, transferHistory: [historyEntry] });
+  const saveResult = await persistRecords({ pendingTransfers: [transfer], inventory: touchedInventory, transferHistory: [historyEntry] });
+  if (!saveResult?.ok) return;
   log("Marked stock transfer in transit", "Inventory", `${transfer.id} ${transfer.from} to ${transfer.to}`, { save: false });
   dialog.close();
   renderAll();
@@ -2155,7 +2162,8 @@ async function confirmTransferReceive() {
   transfer.receivedAt = fmtDate(today);
   const totalReceived = updates.reduce((sum, u) => sum + u.qty, 0);
   const historyEntry = recordTransferHistory(transfer, allComplete ? "Confirmed Received" : "Partially Received", `Received ${totalReceived} unit(s) at ${transfer.to} across ${updates.filter((u) => u.qty > 0).length} item(s). ${allComplete ? "Transfer complete." : "Some items still short."}`);
-  await persistRecords({ pendingTransfers: [transfer], inventory: touchedInventory, transferHistory: [historyEntry] });
+  const saveResult = await persistRecords({ pendingTransfers: [transfer], inventory: touchedInventory, transferHistory: [historyEntry] });
+  if (!saveResult?.ok) return;
   log("Confirmed stock transfer received", "Inventory", `${transfer.id}: ${totalReceived} received${allComplete ? "" : " (partial)"}`, { save: false });
   notify("Transfer", `${transfer.id} ${allComplete ? "fully received" : "partially received"} at ${transfer.to}.`, "inventory", transfer.id);
   saveData(["notifications"]);
@@ -2852,7 +2860,8 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
     }
   }
   const affectedSales = [...new Map(payments.map((payment) => saleForPayment(payment)).filter(Boolean).map((sale) => [sale.documentNo || sale.id, sale])).values()];
-  await persistRecords({ payments, paymentRequests: request ? [request] : [], sales: affectedSales });
+  const saveResult = await persistRecords({ payments, paymentRequests: request ? [request] : [], sales: affectedSales });
+  if (!saveResult?.ok) return;
   log("Changed collection status", "Collections", `${receiptNo}: ${status}`, { save: false });
   saveData(["notifications"]);
   renderAll();
@@ -3908,7 +3917,8 @@ async function updateProductIssueStatus(id, status) {
     const tag = `Action: ${actingRole} — ${note}`;
     report.actionsTaken = report.actionsTaken ? `${report.actionsTaken}\n${tag}` : tag;
   }
-  await persistRecords({ productIssues: [report] });
+  const saveResult = await persistRecords({ productIssues: [report] });
+  if (!saveResult?.ok) return;
   log("Updated support report status", "Support Tracker", `${id}: ${status}`, { save: false });
   notify("Support Report", `${id} marked ${status}.`, "product-issues", id);
   saveData(["notifications"]);
@@ -4427,7 +4437,8 @@ async function revertImportBatch(index) {
   entry.reverted = true;
   entry.revertedAt = fmtDate(today);
   entry.revertedBy = currentUser?.name || "System User";
-  await persistRecords({ imports: [entry] });
+  const saveResult = await persistRecords({ imports: [entry] });
+  if (!saveResult?.ok) return;
   log("Reverted migration import", "Imports", `${entry.module}: ${entry.records} record(s)`, { save: false });
   renderAll();
   toast(`${entry.module} import reverted.`);
@@ -4777,7 +4788,8 @@ async function approveFinancialRequest(type, index) {
   const ok = await confirmDetailsModal({ eyebrow: "Confirm Approval", title: `Approve ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Approve" });
   if (!ok) return;
   record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "System User"; record.approvedAt = fmtDate(today);
-  await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  const saveResult = await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  if (!saveResult?.ok) return;
   log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id, { save: false });
   notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments", record.id);
   if (record.createdByUser) notify(type === "payable" ? "Payable" : "Expense", `Your ${type === "payable" ? "payable" : "expense"} ${record.id} was approved.`, "notifications", record.id, null, record.createdByUser);
@@ -4790,7 +4802,8 @@ async function cancelFinancialRequest(type, index) {
   const ok = await confirmDetailsModal({ eyebrow: "Confirm Cancellation", title: `Cancel ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Cancel Request", danger: true });
   if (!ok) return;
   record.requestStatus = "Cancelled"; record.status = "Cancelled"; record.cancelledBy = currentUser?.name || "System User"; record.cancelledAt = fmtDate(today);
-  await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  const saveResult = await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  if (!saveResult?.ok) return;
   log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id, { save: false });
   notify(type === "payable" ? "Payable" : "Expense", `${record.id} cancelled.`, type === "payable" ? "payables" : "replenishments", record.id);
   if (record.createdByUser) notify(type === "payable" ? "Payable" : "Expense", `Your ${type === "payable" ? "payable" : "expense"} ${record.id} was cancelled.`, "notifications", record.id, null, record.createdByUser);
@@ -4831,7 +4844,8 @@ async function confirmFinancialPayment(type, index, method) {
   record.cheque = result.cheque;
   record.chequeDate = result.chequeDate;
   record.paid = record.amount; record.paymentConfirmed = true; record.status = "Paid";
-  await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  const saveResult = await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
+  if (!saveResult?.ok) return;
   log(`Confirmed ${type} payment`, type === "payable" ? "Payables" : "Expenses", `${record.id} · ${method} · ${peso.format(record.amount)}`, { save: false });
   notify(type === "payable" ? "Payable" : "Expense", `${record.id} paid via ${method}.`, type === "payable" ? "payables" : "replenishments", record.id);
   saveData(["notifications"]); renderAll(); toast(`${record.id} marked paid by ${method}.`);
@@ -4851,7 +4865,8 @@ async function approveExpense(index, nextStatus) {
   expense.status = nextStatus;
   expense.approvedBy = currentUser?.name || "System User";
   expense.approvedAt = fmtDate(today);
-  await persistRecords({ replenishments: [expense] });
+  const saveResult = await persistRecords({ replenishments: [expense] });
+  if (!saveResult?.ok) return;
   notify("Expense", `${expense.id} ${nextStatus} by ${expense.approvedBy}.`, "replenishments", expense.id);
   log("Approved expense", "Expenses", `${expense.id}: ${nextStatus}`, { save: false });
   saveData(["notifications"]);
@@ -5493,7 +5508,8 @@ async function runReconciliationWorkflow() {
   const totalChecks = scope.sales.length * 5 + scope.payments.length * 3 + scope.clients.length * requiredClientDocs.length + scope.transfers.length;
   const passRate = totalChecks ? Math.round((Math.max(totalChecks - findings.length, 0) / totalChecks) * 100) : 100;
   const run = recordReconciliationRun(findings, passRate, scope);
-  await persistRecords({ reconHistory: [run] });
+  const saveResult = await persistRecords({ reconHistory: [run] });
+  if (!saveResult?.ok) return;
   renderReconciliation();
   renderWorkflowAssist("reconciliation");
   log("Ran reconciliation", "Reconciliation", `${scope.range.label} · ${findings.length} findings`, { save: false });

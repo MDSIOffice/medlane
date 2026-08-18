@@ -104,7 +104,10 @@ async function submitModal(event) {
     const moduleKey = masterlistModuleKey(modalType);
     const previousKey = masterlistRecordKey(modalType, previous);
     editContext.list[editContext.index] = next;
-    if (moduleKey) await persistRecords({ [moduleKey]: [next] }, { [moduleKey]: [previousKey] });
+    if (moduleKey) {
+      const saveResult = await persistRecords({ [moduleKey]: [next] }, { [moduleKey]: [previousKey] });
+      if (!saveResult?.ok) return;
+    }
     log("Edited masterlist record", "Masterlists", `Edited ${modalType}: ${recordLabel(modalType, previous)}`, { save: false });
     editContext = null;
     qs("#demo-modal").close();
@@ -125,7 +128,10 @@ async function submitModal(event) {
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const moduleKey = masterlistModuleKey(modalType);
     listByType[modalType].push(record);
-    if (moduleKey) await persistRecords({ [moduleKey]: [record] });
+    if (moduleKey) {
+      const saveResult = await persistRecords({ [moduleKey]: [record] });
+      if (!saveResult?.ok) return;
+    }
     log(`Saved ${modalType}`, modalConfigs[modalType].title, Object.values(values)[0], { save: false });
     qs("#demo-modal").close();
     form.reset();
@@ -137,7 +143,8 @@ async function submitModal(event) {
     try {
       const sale = buildSale(values);
       data.sales.push(sale);
-      await persistRecords({ sales: [sale], inventory: inventoryTouchedBySale(sale), purchaseOrders: purchaseOrdersTouchedBySales([sale]) });
+      const saveResult = await persistRecords({ sales: [sale], inventory: inventoryTouchedBySale(sale), purchaseOrders: purchaseOrdersTouchedBySales([sale]) });
+      if (!saveResult?.ok) return;
       log("Created invoice", "Invoicing", `${sale.documentNo} · ${sale.type} · ${sale.client}`, { save: false });
       saveData(["notifications"]);
       qs("#demo-modal").close();
@@ -167,7 +174,8 @@ async function submitModal(event) {
       oldSale.replacementId = replacement.documentNo;
       oldSale.cancelledBy = currentUser?.name || "System User";
       data.sales.push(replacement);
-      await persistRecords({ sales: [oldSale, replacement], inventory: [...inventoryTouchedBySale(oldSale), ...inventoryTouchedBySale(replacement)], purchaseOrders: purchaseOrdersTouchedBySales([oldSale, replacement]) });
+      const saveResult = await persistRecords({ sales: [oldSale, replacement], inventory: [...inventoryTouchedBySale(oldSale), ...inventoryTouchedBySale(replacement)], purchaseOrders: purchaseOrdersTouchedBySales([oldSale, replacement]) });
+      if (!saveResult?.ok) return;
       log("Cancelled and replaced invoice", "Invoicing", `${oldSale.documentNo || oldSale.id} -> ${replacement.documentNo}`, { save: false });
       notify("Cancellation", `${oldSale.documentNo || oldSale.id} cancelled and replaced by ${replacement.documentNo}.`, "receivables-tracker", replacement.documentNo || replacement.id);
       saveData(["notifications"]);
@@ -259,7 +267,8 @@ async function submitModal(event) {
     if (!items.length || deductions.total <= 0) return toast("Add at least one payable item with amount.");
     const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, grossAmount: deductions.grossAmount, withholdingTax1: deductions.withholdingTax1, withholdingTax2: deductions.withholdingTax2, amount: deductions.total, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, createdByUser: currentUser?.email || "" };
     data.payables.push(payable);
-    await persistRecords({ payables: [payable] });
+    const saveResult = await persistRecords({ payables: [payable] });
+    if (!saveResult?.ok) return;
     log("Created payable", "Payables", `${payable.id} · ${payable.supplier || "Supplier"}`, { save: false });
     qs("#demo-modal").close();
     form.reset();
@@ -276,7 +285,8 @@ async function submitModal(event) {
     if (!["Per Diem", "Revolving Fund"].includes(values.type)) values.employeeName = "";
     const replenishment = { id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "", createdByUser: currentUser?.email || "" };
     data.replenishments.push(replenishment);
-    await persistRecords({ replenishments: [replenishment] });
+    const saveResult = await persistRecords({ replenishments: [replenishment] });
+    if (!saveResult?.ok) return;
     log("Created replenishment", "Expenses", `${replenishment.id} · ${replenishment.requester || "Requester"}`, { save: false });
     qs("#demo-modal").close();
     form.reset();
@@ -286,7 +296,8 @@ async function submitModal(event) {
   }
   if (modalType === "warranty") {
     data.warranties.push(values);
-    await persistRecords({ warranties: [values] });
+    const saveResult = await persistRecords({ warranties: [values] });
+    if (!saveResult?.ok) return;
     log("Created warranty record", "Add Warranty Record", `${values.serial || values.equipment || values.client}`, { save: false });
     qs("#demo-modal").close();
     form.reset();
@@ -308,7 +319,8 @@ async function submitModal(event) {
     values.currentActor = values.originRole;
     values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: values.remarks?.trim() ? `Report started: ${values.remarks.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
     data.productIssues.push(values);
-    await persistRecords({ productIssues: [values] });
+    const saveResult = await persistRecords({ productIssues: [values] });
+    if (!saveResult?.ok) return;
     log(`Created ${modalConfigs[modalType].title.toLowerCase()}`, "Support Tracker", `${values.id} · ${values.companyName}`, { save: false });
     notify("Support Report", `${values.id} started for ${values.companyName}.`, "product-issues", values.id);
     saveData(["notifications"]);
@@ -1431,7 +1443,8 @@ qs("#run-import").addEventListener("click", async () => {
     const importEntry = { id: `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" };
     data.imports.unshift(importEntry);
     if (progressLabel) progressLabel.textContent = "Saving to server...";
-    await persistRecords({ ...(result.createdRecords || {}), imports: [importEntry] });
+    const saveResult = await persistRecords({ ...(result.createdRecords || {}), imports: [importEntry] });
+    if (!saveResult?.ok) return;
     log("Imported confirmed CSV/TSV rows", "Imports", `${result.records} ${result.module} records · ${result.skipped || 0} skipped`, { save: false });
     renderAll();
     toast(`${result.records} ${result.module} record/s imported; ${result.skipped || 0} skipped.`);
