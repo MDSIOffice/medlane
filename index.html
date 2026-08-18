@@ -438,6 +438,7 @@
             <button class="view-toggle-btn" data-forecast-months="5" type="button">+5 mo</button>
           </div>
           <div class="field"><label for="item-forecast-custom-months">Custom Months</label><input id="item-forecast-custom-months" type="number" min="1" max="24" step="1" /></div>
+          <button class="ghost-button" id="item-forecast-print" type="button">Print Forecast</button>
         </div>
         <div class="forecast-filter-panel">
           <div class="forecast-filter-head"><div><p class="eyebrow">Filter Scope</p><h3>Refine Forecast</h3></div><div class="inline-actions"><span class="badge" id="item-forecast-filter-summary">All items</span><button class="ghost-button" id="item-forecast-clear-filters" type="button">Clear Filters</button></div></div>
@@ -930,6 +931,7 @@
     </dialog>
 
     <div class="toast" id="toast"></div>
+    <script src="scripts/vendor/pdf-lib.min.js"></script>
     <script src="scripts/config-data.js"></script>
     <script src="scripts/api-client.js"></script>
     <script src="scripts/state.js"></script>

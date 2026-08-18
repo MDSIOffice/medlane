@@ -270,6 +270,7 @@ async function submitModal(event) {
     const items = collectFinancialLines();
     const amount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     if (!items.length || amount <= 0) return toast("Add at least one expense item with amount.");
+    if (items.some((item) => !EXPENSE_CLASSIFICATION_OPTIONS.includes(item.classification))) return toast("Select a classification (from the list) for every expense item.");
     if (["Per Diem", "Revolving Fund"].includes(values.type) && !String(values.employeeName || "").trim()) return toast("Employee Name is required for Per Diem or Revolving Fund expenses.");
     if (!["Per Diem", "Revolving Fund"].includes(values.type)) values.employeeName = "";
     const replenishment = { id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "", createdByUser: currentUser?.email || "" };
@@ -376,6 +377,8 @@ document.body.addEventListener("click", (event) => {
   if (requestApprove) { const [type, index] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, Number(index)); }
   const requestCancel = event.target.closest("[data-request-cancel]");
   if (requestCancel) { const [type, index] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, Number(index)); }
+  const generate2307 = event.target.closest("[data-generate-2307]");
+  if (generate2307) return downloadBir2307(generate2307.dataset.generate2307);
   const viewUserSessions = event.target.closest("[data-view-user-sessions]");
   if (viewUserSessions) return openUserSessions(Number(viewUserSessions.dataset.viewUserSessions));
   const revokeSession = event.target.closest("[data-revoke-session]");
@@ -914,6 +917,7 @@ qs("#item-forecast-clear-filters")?.addEventListener("click", () => {
   qsa("#item-forecast-brand, #item-forecast-client, #item-forecast-item, #item-forecast-division, #item-forecast-region, #item-forecast-classification").forEach((select) => { select.value = ""; });
   renderItemForecast();
 });
+qs("#item-forecast-print")?.addEventListener("click", () => printItemForecast());
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });
 qs("#open-demo-request")?.addEventListener("click", () => { renderDemoRequestSheet(); qs("#demo-request-modal").showModal(); });
@@ -1077,7 +1081,7 @@ qsa("#analytics-tabs .tab").forEach((button) => button.addEventListener("click",
 qs("#modal-form").addEventListener("submit", submitModal);
 qs("#modal-fields").addEventListener("click", (event) => {
   if (event.target.closest("#add-payment-request-line")) {
-    const lineHtml = ["payable", "replenishment"].includes(modalType) ? financialLineTemplate({}, { vendor: modalType !== "payable" }) : paymentRequestLineTemplate();
+    const lineHtml = ["payable", "replenishment"].includes(modalType) ? financialLineTemplate({}, { vendor: modalType !== "payable", classification: modalType === "replenishment" }) : paymentRequestLineTemplate();
     qs("#payment-request-line-list").insertAdjacentHTML("beforeend", lineHtml);
     syncPaymentRequestTotal();
     syncFinancialRequestTotal();
@@ -1160,6 +1164,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
 });
 qs("#modal-fields").addEventListener("blur", (event) => {
   if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
+  if (event.target.classList.contains("payment-request-classification")) enforceExpenseClassification(event.target);
 }, true);
 qs("#modal-close").addEventListener("click", () => {
   if (modalReadOnly) { editContext = null; qs("#demo-modal").close(); return; }

@@ -44,8 +44,8 @@ const initialData = {
     { code: "EQP-018", name: "Centrifuge 12-Slot", brand: "Eppendorf", source: "Client", supplier: "Client Pullout", category: "Equipment", uom: "unit", terms: 30, cost: 28000, price: 42000, lot: "CN-1200", expiry: "2028-03-31" },
   ],
   suppliers: [
-    { name: "MedSource PH", address: "Makati City", contact: "procurement@medsource.ph / 028-555-1000", docs: "DTI, BIR, Product Certs", items: "Reagents, vacutainers, consumables" },
-    { name: "BioLab Imports", address: "Pasay City", contact: "sales@biolabimports.ph", docs: "SEC, BIR, FDA docs", items: "Chemistry controls, calibrators" },
+    { name: "MedSource PH", address: "Makati City", contact: "procurement@medsource.ph / 028-555-1000", docs: "DTI, BIR, Product Certs", items: "Reagents, vacutainers, consumables", entityType: "Corporation" },
+    { name: "BioLab Imports", address: "Pasay City", contact: "sales@biolabimports.ph", docs: "SEC, BIR, FDA docs", items: "Chemistry controls, calibrators", entityType: "Corporation" },
   ],
   employees: [
     { name: "Admin User", role: "Admin", contact: "admin@medlane.local", benefits: "SSS, PhilHealth, Pag-IBIG", salary: "Confidential" },

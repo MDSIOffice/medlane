@@ -2533,7 +2533,7 @@ function renderInvoicing() {
   ensureUploadedFilesLoaded(renderInvoicing);
   const rows = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).reverse();
   const deliveryControl = (s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
-  const actionCell = (s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button><button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button><button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
+  const actionCell = (s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button><button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button><button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
   qsa("#invoice-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.invoiceView === invoiceViewMode));
   qs("#invoice-table-view").hidden = invoiceViewMode !== "table";
   qs("#invoice-grid").hidden = invoiceViewMode !== "card";
@@ -2975,23 +2975,43 @@ function paymentRequestNetAmountExceeded(rows, netAmount) {
   return netAmount > 0 && rows.reduce((sum, row) => sum + Number(row.amount || 0), 0) > netAmount;
 }
 
+const EXPENSE_CLASSIFICATION_OPTIONS = ["Accommodation", "Advertising & Marketing", "Bidding Expenses", "Delivery Fee", "Fixed Assets", "Freight/Importation"];
+
 function financialLineTemplate(line = {}, options = {}) {
   const vendorField = options.vendor === false ? "" : `<div class="field"><label>Vendor</label><input class="payment-request-vendor" list="financial-vendor-options" value="${escapeHtml(line.vendor || "")}" /></div>`;
-  return `<div class="payment-request-line-row financial-line-row">${vendorField}<div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div><div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
+  const classificationField = options.classification ? `<div class="field"><label>Classification</label><input class="payment-request-classification" list="expense-classification-options" value="${escapeHtml(line.classification || "")}" autocomplete="off" required /></div>` : "";
+  return `<div class="payment-request-line-row financial-line-row">${vendorField}<div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div>${classificationField}<div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
 }
 
 function renderFinancialRequestEditor(lines = [{}]) {
   const vendorOptions = [...new Set(data.suppliers.map((s) => s.name))].map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
-  const lineOptions = { vendor: modalType !== "payable" };
-  return `<div class="field full payment-request-editor"><label>Itemized Particulars</label><datalist id="financial-vendor-options">${vendorOptions}</datalist><div id="payment-request-line-list">${lines.map((line) => financialLineTemplate(line, lineOptions)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="amount">Net Total</label><input id="amount" name="amount" readonly value="0.00" /></div></div><div id="financial-request-tax-preview" class="invoice-compute-preview payment-deduction-preview"></div></div>`;
+  const lineOptions = { vendor: modalType !== "payable", classification: modalType === "replenishment" };
+  const classificationDatalist = lineOptions.classification ? `<datalist id="expense-classification-options">${EXPENSE_CLASSIFICATION_OPTIONS.map((option) => `<option value="${escapeHtml(option)}"></option>`).join("")}</datalist>` : "";
+  return `<div class="field full payment-request-editor"><label>Itemized Particulars</label><datalist id="financial-vendor-options">${vendorOptions}</datalist>${classificationDatalist}<div id="payment-request-line-list">${lines.map((line) => financialLineTemplate(line, lineOptions)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="amount">Net Total</label><input id="amount" name="amount" readonly value="0.00" /></div></div><div id="financial-request-tax-preview" class="invoice-compute-preview payment-deduction-preview"></div></div>`;
+}
+
+function enforceExpenseClassification(input) {
+  const value = input.value.trim();
+  if (value && !EXPENSE_CLASSIFICATION_OPTIONS.includes(value)) {
+    toast("Select a classification from the list — custom entries aren't allowed.");
+    input.value = "";
+  }
 }
 
 function collectFinancialLines() {
-  return qsa(".financial-line-row").map((row) => ({
-    vendor: row.querySelector(".payment-request-vendor")?.value.trim() || "",
-    particulars: row.querySelector(".payment-request-particulars")?.value.trim() || "",
-    amount: Number(row.querySelector(".payment-request-amount")?.value || 0),
-  })).filter((line) => line.vendor || line.particulars || line.amount);
+  return qsa(".financial-line-row").map((row) => {
+    const line = {
+      vendor: row.querySelector(".payment-request-vendor")?.value.trim() || "",
+      particulars: row.querySelector(".payment-request-particulars")?.value.trim() || "",
+      amount: Number(row.querySelector(".payment-request-amount")?.value || 0),
+    };
+    const classificationInput = row.querySelector(".payment-request-classification");
+    if (classificationInput) {
+      const value = classificationInput.value.trim();
+      line.classification = EXPENSE_CLASSIFICATION_OPTIONS.includes(value) ? value : "";
+    }
+    return line;
+  }).filter((line) => line.vendor || line.particulars || line.amount);
 }
 
 function syncFinancialRequestTotal() {
@@ -3900,12 +3920,18 @@ function addMonthsToDate(date, months) {
   return d;
 }
 
+function itemForecastMonthKeys() { return [2, 1, 0].map((offset) => fmtDate(addMonthsToDate(today, -offset)).slice(0, 7)); }
+function itemForecastMonthLabels() { return [2, 1, 0].map((offset) => addMonthsToDate(today, -offset).toLocaleString("en-US", { month: "short" })); }
+
 function itemForecastRows(allocationMonths) {
   const fromDate = fmtDate(addMonthsToDate(today, -3));
   const toDate = fmtDate(today);
+  const monthKeys = itemForecastMonthKeys();
   const qtyByCode = {};
+  const monthlyQtyByCode = {};
   const forecastFilters = itemForecastFilters || {};
   data.sales.filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, fromDate, toDate)).forEach((sale) => {
+    const monthKey = String(sale.date || "").slice(0, 7);
     (sale.lines?.length ? sale.lines : [{ code: sale.code, qty: sale.qty }]).forEach((line) => {
       if (!line.code) return;
       const item = data.items.find((entry) => entry.code === line.code || entry.name === line.item) || {};
@@ -3923,6 +3949,10 @@ function itemForecastRows(allocationMonths) {
       if (forecastFilters.region && (sale.area || client.area || "") !== forecastFilters.region) return;
       if (forecastFilters.classification && (item.classification || item.category || "") !== forecastFilters.classification) return;
       qtyByCode[line.code] = (qtyByCode[line.code] || 0) + Number(line.qty || 0);
+      if (monthKeys.includes(monthKey)) {
+        monthlyQtyByCode[line.code] ||= {};
+        monthlyQtyByCode[line.code][monthKey] = (monthlyQtyByCode[line.code][monthKey] || 0) + Number(line.qty || 0);
+      }
     });
   });
   const stockByCode = {};
@@ -3930,10 +3960,11 @@ function itemForecastRows(allocationMonths) {
   return data.items.filter((item) => qtyByCode[item.code] || stockByCode[item.code]).map((item) => {
     const totalQty = qtyByCode[item.code] || 0;
     const avgMonthlyQty = totalQty / 3;
+    const monthlyQty = monthKeys.map((key) => Math.round(monthlyQtyByCode[item.code]?.[key] || 0));
     const projectedDemand = avgMonthlyQty * allocationMonths;
     const currentStock = stockByCode[item.code] || 0;
     const suggestedRestock = Math.max(0, Math.round(projectedDemand - currentStock));
-    return { item, totalQty, avgMonthlyQty, projectedDemand, currentStock, suggestedRestock };
+    return { item, totalQty, avgMonthlyQty, monthlyQty, projectedDemand, currentStock, suggestedRestock };
   }).sort((a, b) => b.suggestedRestock - a.suggestedRestock);
 }
 
@@ -3976,7 +4007,24 @@ function renderItemForecast() {
     visualCard("₱", "Projected Demand Value", peso.format(totalProjectedValue), `<p>Estimated sales value for the selected +${itemForecastMonths}-month allocation window, at current item price.</p>`, "info", "Computed as projected demand quantity × item price, summed across all tracked items."),
     visualCard("▤", "Tracked Items", `${rows.length} item${rows.length === 1 ? "" : "s"}`, `<p>Items with sales in the last 3 months or current stock on hand.</p>`, "info", "Items with zero recent sales and zero stock are excluded from this view."),
   ].join("");
-  table("#item-forecast-table", ["Item Code", "Item Name", "Brand", "Avg Monthly Sales (3mo)", "Projected Demand", "Current Stock", "Suggested Restock"], rows.map((row) => ({ focus: row.item.code, cells: [row.item.code, row.item.name, row.item.brand || "-", row.avgMonthlyQty.toFixed(1), Math.round(row.projectedDemand), row.currentStock, row.suggestedRestock > 0 ? `<span class="pill red">${row.suggestedRestock}</span>` : `<span class="pill green">0</span>`] })));
+  const monthLabels = itemForecastMonthLabels();
+  table("#item-forecast-table", ["Item Code", "Item Name", "Brand", `${monthLabels[0]} Sales`, `${monthLabels[1]} Sales`, `${monthLabels[2]} Sales`, "Avg Monthly Sales (3mo)", "Projected Demand", "Current Stock", "Suggested Restock"], rows.map((row) => ({ focus: row.item.code, cells: [row.item.code, row.item.name, row.item.brand || "-", row.monthlyQty[0], row.monthlyQty[1], row.monthlyQty[2], row.avgMonthlyQty.toFixed(1), Math.round(row.projectedDemand), row.currentStock, row.suggestedRestock > 0 ? `<span class="pill red">${row.suggestedRestock}</span>` : `<span class="pill green">0</span>`] })));
+}
+
+function itemForecastReportHtml(rows, monthLabels, allocationMonths) {
+  const generatedAt = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return `<section class="payment-request-print">${printableBrandHeaderHtml("Item Forecast")}<div class="pr-meta"><span>Allocation Window: <strong>+${allocationMonths} month${allocationMonths === 1 ? "" : "s"}</strong></span><span>Generated: <strong>${escapeHtml(generatedAt)}</strong></span><span>Items: <strong>${rows.length}</strong></span></div><table><thead><tr><th>Item Code</th><th>Item Name</th><th>Brand</th><th>${escapeHtml(monthLabels[0])} Sales</th><th>${escapeHtml(monthLabels[1])} Sales</th><th>${escapeHtml(monthLabels[2])} Sales</th><th>Avg Monthly (3mo)</th><th>Projected Demand</th><th>Current Stock</th><th>Suggested Restock</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.item.code)}</td><td>${escapeHtml(row.item.name)}</td><td>${escapeHtml(row.item.brand || "-")}</td><td>${row.monthlyQty[0]}</td><td>${row.monthlyQty[1]}</td><td>${row.monthlyQty[2]}</td><td>${row.avgMonthlyQty.toFixed(1)}</td><td>${Math.round(row.projectedDemand)}</td><td>${row.currentStock}</td><td>${row.suggestedRestock}</td></tr>`).join("") || `<tr><td colspan="10">No items to report for the current filters.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
+}
+
+function printItemForecast() {
+  clearPrintTarget();
+  currentReportSaleId = null;
+  const rows = itemForecastRows(itemForecastMonths);
+  const monthLabels = itemForecastMonthLabels();
+  qs("#report-preview-title").textContent = "Item Forecast";
+  qs("#report-preview-description").textContent = `Restock projection for the +${itemForecastMonths}-month allocation window.`;
+  qs("#report-preview-content").innerHTML = itemForecastReportHtml(rows, monthLabels, itemForecastMonths);
+  qs("#report-preview-modal").showModal();
 }
 
 function purchaseHistoryDefaultLimit(agent) { return agent === "Unassigned" ? 20 : 5; }
@@ -4381,6 +4429,11 @@ function payableAttachmentCell(payable) {
   return `${attachedFilesHtml("payable", payable.id)}<button class="ghost-button" data-upload-copy="${escapeHtml(payable.id)}" type="button">${attachedFilesFor("payable", payable.id).length ? "Replace Upload" : "Upload File"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="payable" data-record-id="${escapeHtml(payable.id)}" data-rerender="payables" hidden />`;
 }
 
+function payable2307Cell(payable) {
+  if ((payable.requestStatus || payable.status) !== "Approved") return "-";
+  return `<button class="ghost-button" data-generate-2307="${escapeHtml(payable.id)}" type="button">Generate 2307</button>`;
+}
+
 function renderPayables() {
   ensureUploadedFilesLoaded(renderPayables);
   renderPayablesWorkflowTabs();
@@ -4406,8 +4459,8 @@ function renderPayables() {
     { title: "Payment Risk", kind: "pairs", items: [{ label: "Balance", value: peso.format(balance) }, { label: "Cheques", value: chequeCount }] },
   ]);
   table("#payable-requests-table", ["ID", "Supplier", "Items", "Gross", "Withholding", "Net Total", "Status", "Actions"], requests.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, itemizedSummary(p.items), peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill ${statusClass(p.requestStatus)}">${p.requestStatus}</span>`, requestActions("payable", data.payables.indexOf(p), p)] })));
-  table("#final-payables-table", ["ID", "Supplier", "Gross", "Withholding", "Net Total", "Status", "Attachment", "Set payment type"], approved.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill success">Approved</span>`, payableAttachmentCell(p), paymentConfirmActions("payable", data.payables.indexOf(p))] })));
-  table("#payables-table", ["ID", "Supplier", "Contact", "Items/Service", "Method", "Gross", "Withholding", "Net Total", "Paid", "Balance", "Cheque Details", "Tag", "Attachment"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.contact, itemizedSummary(p.items), p.method || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`, payableAttachmentCell(p)] })));
+  table("#final-payables-table", ["ID", "Supplier", "Gross", "Withholding", "Net Total", "Status", "Attachment", "2307", "Set payment type"], approved.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill success">Approved</span>`, payableAttachmentCell(p), payable2307Cell(p), paymentConfirmActions("payable", data.payables.indexOf(p))] })));
+  table("#payables-table", ["ID", "Supplier", "Contact", "Items/Service", "Method", "Gross", "Withholding", "Net Total", "Paid", "Balance", "Cheque Details", "Tag", "Attachment", "2307"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.contact, itemizedSummary(p.items), p.method || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`, payableAttachmentCell(p), payable2307Cell(p)] })));
 }
 
 function payableWithholdingSummary(payable) {
@@ -4415,6 +4468,134 @@ function payableWithholdingSummary(payable) {
   if (Number(payable.withholdingTax1 || 0)) items.push(`1% ${withholdingMoney(payable.withholdingTax1)}`);
   if (Number(payable.withholdingTax2 || 0)) items.push(`2% ${withholdingMoney(payable.withholdingTax2)}`);
   return items.length ? items.map((item) => `<small>${escapeHtml(item)}</small>`).join("") : "-";
+}
+
+// BIR Form 2307 (Certificate of Creditable Tax Withheld at Source) generation.
+// The blank template (public/forms/bir-2307-blank.pdf) has no fillable AcroForm fields —
+// it's a flat, printed form — so coordinates below were reverse-engineered by diffing a
+// manually-filled sample copy against the blank one and reading each entry's exact
+// PDF-point position. Page is 612x936pt (Folio/8.5x13in), origin bottom-left.
+const BIR_2307_PAYOR = {
+  name: "MEDLANE DIAGNOSTIC SOLUTIONS, INC.",
+  address: "13 Gumamela St. Pilar Village, Las Piñas City",
+  zip: "1740",
+  tin: "009-754-868-0000",
+};
+const BIR_2307_ROW_TOP_Y = 559;
+const BIR_2307_ROW_HEIGHT = 34;
+const BIR_2307_TOTALS_Y = 421;
+const BIR_2307_MONTH_X = [232, 305, 393];
+
+function bir2307SpacedDigits(value) { return String(value || "").split("").join(" "); }
+function bir2307DrawTin(draw, tin, x, y, font) {
+  const groups = String(tin || "").split(/[^0-9]+/).filter(Boolean);
+  const groupPitch = 51.3;
+  const digitPitch = 9.6;
+  groups.forEach((group, groupIndex) => {
+    group.split("").forEach((digit, digitIndex) => draw(digit, x + groupIndex * groupPitch + digitIndex * digitPitch, y, { font, size: 8 }));
+  });
+}
+function bir2307MMDDYYYY(date) { return `${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}${date.getFullYear()}`; }
+function bir2307QuarterRange(dateValue) {
+  const date = dateValue ? new Date(dateValue) : new Date();
+  const month = date.getMonth();
+  const year = date.getFullYear();
+  const quarterStartMonth = Math.floor(month / 3) * 3;
+  return { from: new Date(year, quarterStartMonth, 1), to: new Date(year, quarterStartMonth + 3, 0), monthIndex: month - quarterStartMonth + 1 };
+}
+function bir2307Money(value) { return Number(value || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function bir2307WrapText(text, maxChars) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) { lines.push(current); current = word; } else current = next;
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+function bir2307Rows(payable, supplier) {
+  const taxBase = withholdingTaxBase(Number(payable.grossAmount || payable.amount || 0));
+  const isIndividual = supplier?.entityType === "Individual";
+  const rows = [];
+  if (Number(payable.withholdingTax1 || 0) > 0) rows.push({ atc: isIndividual ? "WI158" : "WC158", desc: "Income payment made by top withholding agents to their local/resident supplier of goods other than those covered by other rates of withholding tax", amount: taxBase, tax: Number(payable.withholdingTax1) });
+  if (Number(payable.withholdingTax2 || 0) > 0) rows.push({ atc: isIndividual ? "WI157" : "WC157", desc: "Income payment made by top withholding agents to their local/resident supplier of services other than those covered by other rates of withholding tax", amount: taxBase, tax: Number(payable.withholdingTax2) });
+  return rows;
+}
+
+async function generateBir2307Pdf(payable) {
+  const supplier = data.suppliers.find((entry) => entry.name === payable.supplier);
+  const rows = bir2307Rows(payable, supplier);
+  if (!rows.length) throw new Error("This payable has no withholding tax applied — nothing to certify on a 2307.");
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const templateBytes = await fetch("/forms/bir-2307-blank.pdf").then((response) => {
+    if (!response.ok) throw new Error("Could not load the 2307 template.");
+    return response.arrayBuffer();
+  });
+  const pdfDoc = await PDFDocument.load(templateBytes);
+  const page = pdfDoc.getPages()[0];
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const mono = await pdfDoc.embedFont(StandardFonts.Courier);
+  const black = rgb(0, 0, 0);
+  const draw = (text, x, y, options = {}) => { if (text) page.drawText(String(text), { x, y, size: options.size || 8, font: options.font || font, color: black }); };
+
+  const { from, to, monthIndex } = bir2307QuarterRange(payable.date);
+  draw(bir2307SpacedDigits(bir2307MMDDYYYY(from)), 158, 817, { font: mono, size: 7.5 });
+  draw(bir2307SpacedDigits(bir2307MMDDYYYY(to)), 406, 818, { font: mono, size: 7.5 });
+
+  bir2307DrawTin(draw, supplier?.tin, 213, 788, mono);
+  draw(payable.supplier || "", 40, 759, { size: 8 });
+  draw(supplier?.address || "", 38, 731, { size: 7.5 });
+  draw(bir2307SpacedDigits(supplier?.zip), 545, 731, { font: mono, size: 8 });
+
+  bir2307DrawTin(draw, BIR_2307_PAYOR.tin, 213, 671, mono);
+  draw(BIR_2307_PAYOR.name, 40, 644, { size: 8 });
+  draw(BIR_2307_PAYOR.address, 41, 615, { size: 7.5 });
+  draw(bir2307SpacedDigits(BIR_2307_PAYOR.zip), 547, 616, { font: mono, size: 8 });
+
+  const monthX = BIR_2307_MONTH_X[monthIndex - 1] ?? BIR_2307_MONTH_X[0];
+  let totalAmount = 0;
+  let totalTax = 0;
+  rows.slice(0, 3).forEach((row, index) => {
+    const rowTop = BIR_2307_ROW_TOP_Y - index * BIR_2307_ROW_HEIGHT;
+    draw(row.atc, 187, rowTop, { size: 7.5 });
+    bir2307WrapText(row.desc, 45).slice(0, 4).forEach((line, lineIndex) => draw(line, 23, rowTop - lineIndex * 10, { size: 6.8 }));
+    draw(bir2307Money(row.amount), monthX, rowTop, { size: 7.5 });
+    draw(bir2307Money(row.amount), 461, rowTop, { size: 7.5 });
+    draw(bir2307Money(row.tax), 553, rowTop, { size: 7.5 });
+    totalAmount += row.amount;
+    totalTax += row.tax;
+  });
+  draw(bir2307Money(totalAmount), monthX, BIR_2307_TOTALS_Y, { size: 7.5 });
+  draw(bir2307Money(totalAmount), 461, BIR_2307_TOTALS_Y, { size: 7.5 });
+  draw(bir2307Money(totalTax), 553, BIR_2307_TOTALS_Y, { size: 7.5 });
+
+  return pdfDoc.save();
+}
+
+async function downloadBir2307(payableId) {
+  const payable = data.payables.find((entry) => entry.id === payableId);
+  if (!payable) return toast("Payable not found.");
+  if ((payable.requestStatus || payable.status) !== "Approved") return toast("Only approved payables can generate a 2307.");
+  const supplier = data.suppliers.find((entry) => entry.name === payable.supplier);
+  if (!supplier?.tin) toast("Supplier has no TIN on file — the TIN box will be left blank on the form.");
+  try {
+    const bytes = await generateBir2307Pdf(payable);
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `2307-${payable.id}-${(payable.supplier || "supplier").replace(/[^a-z0-9]+/gi, "-")}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    log("Generated BIR Form 2307", "Payables", payable.id, { save: false });
+    toast("2307 generated.");
+  } catch (error) {
+    toast(error.message || "Unable to generate 2307.");
+  }
 }
 
 function renderPayablesWorkflowTabs() {
@@ -4474,7 +4655,7 @@ function renderReplenishmentsWorkflowTabs() {
   qsa("[data-replenishments-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.replenishmentsPanel === replenishmentsWorkflowTab));
 }
 
-function itemizedSummary(items = []) { return items.map((item) => `${escapeHtml(item.particulars || item.item || "Item")}<small>${peso.format(item.amount || 0)}</small>`).join("") || "-"; }
+function itemizedSummary(items = []) { return items.map((item) => `${escapeHtml(item.particulars || item.item || "Item")}${item.classification ? ` <em>(${escapeHtml(item.classification)})</em>` : ""}<small>${peso.format(item.amount || 0)}</small>`).join("") || "-"; }
 
 function showExpenseDetail(id) {
   const expense = data.replenishments.find((item) => item.id === id);
@@ -5350,7 +5531,7 @@ const modalConfigs = {
   client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
   item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...data.items.map((item) => item.brand), ...data.suppliers.map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => data.suppliers.map((supplier) => supplier.name)]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea-optional"]] },
-  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"]] },
+  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code", "optional"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
@@ -5658,6 +5839,8 @@ function openMasterEditModal(type, index) {
 }
 
 function openCancelReplaceModal(invoiceId) {
+  const sale = data.sales.find((entry) => entry.id === invoiceId);
+  if (Number(sale?.paid || 0) > 0) return toast("This invoice already has a payment recorded — it can no longer be cancelled or replaced.");
   openModal("cancelReplace", { oldInvoice: invoiceId });
 }
 
