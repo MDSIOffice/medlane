@@ -424,6 +424,32 @@ function setGlobalSaveStatus(status, text) {
   label.textContent = text;
 }
 
+// A refresh/close while a save request is actually in flight has no warning today —
+// hasPendingSaveQueue() only covers the debounced/queued/failed cases, not the
+// window while persistRecords/saveAppState's own fetch is awaiting a response. The
+// browser can cancel that request mid-flight with zero signal, genuinely losing the
+// write. activeSaveCount tracks that exact window so both the beforeunload guard and
+// a full-screen blocking overlay can cover it too.
+let activeSaveCount = 0;
+function updateSaveGuardOverlay() {
+  const dialog = typeof qs === "function" ? qs("#save-guard-dialog") : null;
+  if (!dialog) return;
+  const busy = activeSaveCount > 0;
+  if (busy && !dialog.open) dialog.showModal();
+  if (!busy && dialog.open) dialog.close();
+}
+function beginSaveOperation() {
+  activeSaveCount += 1;
+  updateSaveGuardOverlay();
+}
+function endSaveOperation() {
+  activeSaveCount = Math.max(0, activeSaveCount - 1);
+  updateSaveGuardOverlay();
+}
+function isSaveInFlight() {
+  return activeSaveCount > 0;
+}
+
 function inferredSaveKeys() {
   const activeSection = document.body.dataset.activeSection || qs(".section.active")?.id || "dashboard";
   const keys = [...(frontendModuleRecordKeys[activeSection] || [])];
@@ -445,6 +471,7 @@ function saveData(keys = null) {
       return;
     }
     const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
+    beginSaveOperation();
     MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
       if (result?.revision) {
         serverRevision = Number(result.revision);
@@ -465,7 +492,7 @@ function saveData(keys = null) {
       }
       setGlobalSaveStatus("error", "Save failed");
       if (typeof toast === "function") toast(`Server save failed: ${error.message}`);
-    });
+    }).finally(() => endSaveOperation());
   }, 450);
 }
 
@@ -474,6 +501,7 @@ function flushPendingSaveQueue() {
   clearTimeout(pendingServerSave);
   setGlobalSaveStatus("saving", "Saving pending changes...");
   const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
+  beginSaveOperation();
   MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
     if (result?.revision) serverRevision = Number(result.revision);
     writePendingSaveQueue({});
@@ -481,7 +509,7 @@ function flushPendingSaveQueue() {
   }).catch((error) => {
     setGlobalSaveStatus("error", "Pending save failed");
     if (typeof toast === "function") toast(`Pending save still needs retry: ${error.message}`);
-  });
+  }).finally(() => endSaveOperation());
 }
 
 async function persistRecords(records, recordKeys = {}) {
@@ -489,6 +517,7 @@ async function persistRecords(records, recordKeys = {}) {
   const filtered = Object.fromEntries(Object.entries(records || {}).filter(([, value]) => Array.isArray(value) && value.length).map(([key, value]) => [key, dedupeRecordsForSave(key, value, recordKeys?.[key])]));
   if (!Object.keys(filtered).length) return null;
   setGlobalSaveStatus("saving", "Saving...");
+  beginSaveOperation();
   try {
     const result = await MedlaneAPI.saveRecords(filtered, recordKeys);
     if (result?.revision) serverRevision = Number(result.revision);
@@ -500,6 +529,8 @@ async function persistRecords(records, recordKeys = {}) {
     setGlobalSaveStatus("error", "Save failed");
     if (typeof toast === "function") toast(`Server save failed; queued for retry: ${error.message}`);
     return { ok: false, queued: true, error: error.message };
+  } finally {
+    endSaveOperation();
   }
 }
 function nextId(items, prefix) {

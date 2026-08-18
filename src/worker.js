@@ -2155,20 +2155,35 @@ export default {
         const roleFilter = url.searchParams.get("role") || "";
         const moduleFilter = url.searchParams.get("module") || "";
         const userFilter = (url.searchParams.get("user") || "").trim().toLowerCase();
-        const before = url.searchParams.get("before") || "";
         const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
-        let query = `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(dateFrom)}&updated_at=lte.${encodeURIComponent(dateTo)}`;
-        if (before) query += `&updated_at=lt.${encodeURIComponent(before)}`;
-        query += `&select=data,updated_at&order=updated_at.desc&limit=${limit * 4}`;
-        const rows = await supabaseFetch(env, query);
-        let entries = rows.map((row) => ({ ...row.data, updatedAt: row.updated_at }));
-        if (roleFilter) entries = entries.filter((entry) => entry.role === roleFilter);
-        if (moduleFilter) { const modules = moduleFilter.split(",").map((m) => m.trim()).filter(Boolean); entries = entries.filter((entry) => modules.includes(entry.module)); }
-        if (userFilter) entries = entries.filter((entry) => String(entry.user || "").trim().toLowerCase() === userFilter);
-        const hasMoreRawRows = rows.length === limit * 4;
-        entries = entries.slice(0, limit);
-        const nextCursor = entries.length === limit || hasMoreRawRows ? rows[rows.length - 1]?.updated_at || null : null;
-        return json({ entries, nextCursor });
+        const modules = moduleFilter ? moduleFilter.split(",").map((m) => m.trim()).filter(Boolean) : null;
+        const matchesFilters = (entry) => (!roleFilter || entry.role === roleFilter) && (!modules || modules.includes(entry.module)) && (!userFilter || String(entry.user || "").trim().toLowerCase() === userFilter);
+        // A narrow filter (e.g. one module) can match only a small fraction of raw
+        // audit rows in any given window. Fetching one flat batch and filtering it
+        // in-memory could yield an empty page — with matches only a few windows
+        // further back — while still reporting a nextCursor from the raw rows, so
+        // "no records" would flip to populated results on the very next Load More.
+        // Keep expanding the raw-row window until the page is full or the range
+        // (or a sane iteration cap) is exhausted, so a page is only ever empty when
+        // there's genuinely nothing left to show.
+        const entries = [];
+        let cursor = before || dateTo;
+        let exhausted = false;
+        for (let iteration = 0; iteration < 10 && entries.length < limit; iteration++) {
+          const batchSize = limit * 4;
+          let query = `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(dateFrom)}&updated_at=lt.${encodeURIComponent(cursor)}`;
+          query += `&select=data,updated_at&order=updated_at.desc&limit=${batchSize}`;
+          const rows = await supabaseFetch(env, query);
+          if (!rows.length) { exhausted = true; break; }
+          for (const row of rows) {
+            const entry = { ...row.data, updatedAt: row.updated_at };
+            if (matchesFilters(entry)) entries.push(entry);
+          }
+          cursor = rows[rows.length - 1].updated_at;
+          if (rows.length < batchSize) { exhausted = true; break; }
+        }
+        const nextCursor = exhausted ? null : cursor;
+        return json({ entries: entries.slice(0, limit), nextCursor });
       }
 
       if (url.pathname === "/api/modules/state") {

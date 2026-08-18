@@ -5,10 +5,11 @@ window.addEventListener("online", () => flushPendingSaveQueue());
 window.addEventListener("focus", () => flushPendingSaveQueue());
 document.addEventListener("visibilitychange", () => { if (!document.hidden) flushPendingSaveQueue(); });
 window.addEventListener("beforeunload", (event) => {
-  if (!hasPendingSaveQueue()) return;
+  if (!hasPendingSaveQueue() && !isSaveInFlight()) return;
   event.preventDefault();
   event.returnValue = "";
 });
+qs("#save-guard-dialog")?.addEventListener("cancel", (event) => event.preventDefault());
 
 function mergeUsersFromBackend(users = []) {
   const byEmail = new Map(data.users.map((user) => [String(user.email || "").trim().toLowerCase(), user]));
