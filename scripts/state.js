@@ -261,6 +261,27 @@ function normalizePayableWithholding(payable) {
   return { ...payable, grossAmount, withholdingTax1, withholdingTax2, amount, paid };
 }
 
+// Records that were never assigned an explicit id (e.g. hand-authored seed/legacy data)
+// used to get one invented purely from their position in the array (`${prefix}-${index+1}`).
+// That position isn't stable — it depends on server read order, which can shift between
+// loads — so the same fabricated id could land on a different record next time, or worse,
+// collide with a real record's genuine id elsewhere in the array. When that happens, both
+// records save under the same key and one silently overwrites the other. Assign fallback
+// ids only from numbers not already taken by a real id in this array, so a fabricated id
+// can never collide with one someone actually owns.
+function withStableFallbackIds(records, prefix) {
+  const used = new Set(records.map((record) => record.id).filter(Boolean));
+  let next = 1;
+  return records.map((record) => {
+    if (record.id) return record;
+    let candidate = `${prefix}-${String(next).padStart(3, "0")}`;
+    while (used.has(candidate)) { next += 1; candidate = `${prefix}-${String(next).padStart(3, "0")}`; }
+    used.add(candidate);
+    next += 1;
+    return { ...record, id: candidate };
+  });
+}
+
 function normalizeData(next) {
   next.printTemplates ||= [];
   next.memos ||= [];
@@ -312,8 +333,8 @@ function normalizeData(next) {
     return { po: sale.po || `PO-${sale.id}`, documentNo: sale.documentNo || sale.id, dealer: sale.dealer || client?.dealer || "Direct", brand: sale.brand || item?.brand || "Medlane", area: client?.area || sale.area, status: sale.status || "Active", lines: (sale.lines || [line]).map((entry) => ({ lot: stock.lot || "Manual", expiry: stock.expiry || "N/A", ...entry })), discount: manualDiscount, discountReason: sale.discountReason || "", withholdingTax, expandedWithholdingTax, autoTaxRate: 0, withholdingDiscount: 0, expandedWithholdingDiscount: 0, taxTreatment: sale.taxTreatment || [withholdingTax ? "Withholding Tax 5%" : "", expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), ...sale };
   });
   next.paymentRequests = next.paymentRequests.map(normalizePaymentRequestWithholding);
-  next.payables = next.payables.map((payable, index) => normalizePayableWithholding({ id: payable.id || `PAY-${String(index + 1).padStart(3, "0")}`, requestStatus: payable.requestStatus || (payable.status === "Cancelled" ? "Cancelled" : payable.status === "Approved" ? "Approved" : "For Approval"), paymentConfirmed: Boolean(payable.paymentConfirmed), items: payable.items || [{ particulars: payable.item || "Payable", qty: Number(payable.qty || 1), uom: payable.uom || "unit", amount: Number(payable.amount || 0) }], method: payable.method || (payable.cheque ? "Cheque" : "Cash"), bank: payable.bank || "", cheque: payable.cheque || "", chequeDate: payable.chequeDate || "", uom: payable.uom || "unit", qty: Number(payable.qty || 1), ...payable }));
-  next.replenishments = next.replenishments.map((expense, index) => ({ id: expense.id || `REP-${String(index + 1).padStart(3, "0")}`, requestStatus: expense.requestStatus || (["Approved", "Approved by HR"].includes(expense.status) ? "Approved" : expense.status === "Cancelled" ? "Cancelled" : "For Approval"), paymentConfirmed: Boolean(expense.paymentConfirmed), method: expense.method || "Cash", bank: expense.bank || "", cheque: expense.cheque || "", chequeDate: expense.chequeDate || "", items: expense.items || [{ particulars: expense.file || expense.type || "Expense", amount: Number(expense.amount || 0) }], ...expense }));
+  next.payables = withStableFallbackIds(next.payables, "PAY").map((payable) => normalizePayableWithholding({ id: payable.id, requestStatus: payable.requestStatus || (payable.status === "Cancelled" ? "Cancelled" : payable.status === "Approved" ? "Approved" : "For Approval"), paymentConfirmed: Boolean(payable.paymentConfirmed), items: payable.items || [{ particulars: payable.item || "Payable", qty: Number(payable.qty || 1), uom: payable.uom || "unit", amount: Number(payable.amount || 0) }], method: payable.method || (payable.cheque ? "Cheque" : "Cash"), bank: payable.bank || "", cheque: payable.cheque || "", chequeDate: payable.chequeDate || "", uom: payable.uom || "unit", qty: Number(payable.qty || 1), ...payable }));
+  next.replenishments = withStableFallbackIds(next.replenishments, "REP").map((expense) => ({ id: expense.id, requestStatus: expense.requestStatus || (["Approved", "Approved by HR"].includes(expense.status) ? "Approved" : expense.status === "Cancelled" ? "Cancelled" : "For Approval"), paymentConfirmed: Boolean(expense.paymentConfirmed), method: expense.method || "Cash", bank: expense.bank || "", cheque: expense.cheque || "", chequeDate: expense.chequeDate || "", items: expense.items || [{ particulars: expense.file || expense.type || "Expense", amount: Number(expense.amount || 0) }], ...expense }));
   next.payments = next.payments.map((payment) => ({ receiptNo: payment.receiptNo || payment.reference || "Manual", tag: payment.tag || (String(payment.invoice).startsWith("TS") ? "TS-PR" : "SI-CR"), dateRecorded: payment.dateRecorded || fmtDate(today), bank: payment.bank || "", chequeDate: payment.chequeDate || "", collectionStatus: payment.collectionStatus || "For Deposition", postedDate: payment.postedDate || "", cheques: payment.cheques || [], statusHistory: payment.statusHistory || [{ date: payment.dateRecorded || fmtDate(today), status: payment.collectionStatus || "For Deposition", user: payment.client || "Imported" }], ...payment }));
   next.purchaseOrders = next.purchaseOrders.map((po) => {
     const client = next.clients.find((item) => item.name === po.client);
@@ -325,7 +346,7 @@ function normalizeData(next) {
   });
   const legacyPoStatus = { "Purchase Receiving": "Pending Approval", "For Receiving": "Pending Approval", Received: "Fully Received" };
   next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ id: po.id, supplier: po.supplier, branch: po.branch || "", date: po.date || fmtDate(today), terms: po.terms || 30, status: legacyPoStatus[po.status] || po.status || "Pending Approval", approvedBy: po.approvedBy || "", approvedAt: po.approvedAt || "", cancelledBy: po.cancelledBy || "", cancelledAt: po.cancelledAt || "", receivedBy: po.receivedBy || "", receivedAt: po.receivedAt || "", history: po.history || [], lines: (po.lines || []).map((line) => ({ ...line, receivedQty: Number(line.receivedQty || 0) })) }));
-  next.inventoryDemoRequests = next.inventoryDemoRequests.map((request, index) => ({ id: request.id || `DEMO-${String(index + 1).padStart(3, "0")}`, date: request.date || fmtDate(today), requestedBy: request.requestedBy || "System User", client: request.client || "", salesAgent: request.salesAgent || request.requestedBy || "", demoDate: request.demoDate || "", returnDate: request.returnDate || "", purpose: request.purpose || "", location: request.location || "", contactPerson: request.contactPerson || "", contactNumber: request.contactNumber || "", status: request.status || "For Sales Approval", salesApprovedBy: request.salesApprovedBy || "", managementApprovedBy: request.managementApprovedBy || "", closedBy: request.closedBy || "", history: request.history || [], lines: (request.lines || []).map((line) => ({ type: line.type || "Machine", code: line.code || "", item: line.item || "", brand: line.brand || "", qty: Number(line.qty || 0), lot: line.lot || "", notes: line.notes || "" })), ...request }));
+  next.inventoryDemoRequests = withStableFallbackIds(next.inventoryDemoRequests, "DEMO").map((request) => ({ id: request.id, date: request.date || fmtDate(today), requestedBy: request.requestedBy || "System User", client: request.client || "", salesAgent: request.salesAgent || request.requestedBy || "", demoDate: request.demoDate || "", returnDate: request.returnDate || "", purpose: request.purpose || "", location: request.location || "", contactPerson: request.contactPerson || "", contactNumber: request.contactNumber || "", status: request.status || "For Sales Approval", salesApprovedBy: request.salesApprovedBy || "", managementApprovedBy: request.managementApprovedBy || "", closedBy: request.closedBy || "", history: request.history || [], lines: (request.lines || []).map((line) => ({ type: line.type || "Machine", code: line.code || "", item: line.item || "", brand: line.brand || "", qty: Number(line.qty || 0), lot: line.lot || "", notes: line.notes || "" })), ...request }));
   const clientsWithBalance = new Set(next.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
   next.collectionContacts = next.clients.filter((client) => clientsWithBalance.has(client.name)).map((client) => {
     const existing = next.collectionContacts.find((contact) => contact.client === client.name || contact.area === client.area) || {};

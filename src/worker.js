@@ -739,7 +739,15 @@ function stateFromRecords(records) {
     if (["branch", "masterTab", "branchAddresses", "invoiceApprovals"].includes(key)) next[key] = row.data?.value;
     else {
       keyedArrays[key] ||= new Map();
-      keyedArrays[key].set(recordKeyFor(key, row.data, keyedArrays[key].size), row.data);
+      // Use the row's own stored record_key, not a freshly recomputed one. Recomputing
+      // from row.data (as this used to) is not stable for records that fall back to a
+      // positional key (no id/code/name to key on): that fallback depends on how many
+      // rows of this module have been seen so far in `records`, which is sorted by
+      // updated_at and reshuffles every time any row in the module is saved. Two
+      // unrelated records could recompute to the same key and silently overwrite each
+      // other here. record_key is already the exact, stable identity Postgres used to
+      // upsert this row — trust it instead of guessing again.
+      keyedArrays[key].set(String(row.record_key), row.data);
     }
   }
   for (const [key, map] of Object.entries(keyedArrays)) next[key] = [...map.values()];
