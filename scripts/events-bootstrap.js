@@ -1436,18 +1436,21 @@ window.addEventListener("afterprint", clearPrintTarget);
 window.addEventListener("resize", updateTableScrollHints);
 document.addEventListener("scroll", (event) => { if (event.target?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
 let loginAutofillSubmitTimer = null;
+function isAuthenticatedRoute() {
+  return Boolean(currentUser) || document.body.classList.contains("app-route");
+}
 function scheduleAutofillLoginSubmit() {
   const form = qs("#login-form");
   const email = qs("#login-email");
   const password = qs("#login-password");
-  if (!form || !email || !password || form.dataset.submitting === "true") return;
+  if (!form || !email || !password || form.dataset.submitting === "true" || isAuthenticatedRoute()) return;
   clearTimeout(loginAutofillSubmitTimer);
   loginAutofillSubmitTimer = setTimeout(() => {
     const filled = String(email.value || "").trim() && String(password.value || "");
     const autofilled = [email, password].some((input) => {
       try { return input.matches(":-webkit-autofill"); } catch { return false; }
     });
-    if (filled && autofilled && form.dataset.submitting !== "true") form.requestSubmit();
+    if (filled && autofilled && form.dataset.submitting !== "true" && !isAuthenticatedRoute()) form.requestSubmit();
   }, 650);
 }
 window.addEventListener("pageshow", () => setTimeout(scheduleAutofillLoginSubmit, 350));
