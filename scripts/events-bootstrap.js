@@ -237,6 +237,7 @@ async function submitModal(event) {
       instructions: paymentRequestInstructions,
       preparedBy: currentUser?.name || "System User",
       preparedRole: currentUser?.role || "Accounting",
+      createdByUser: currentUser?.email || "",
       invoice: linkedSales.map((sale) => sale.documentNo || sale.id).join(", "),
       invoices: linkedSales.map((sale) => sale.documentNo || sale.id),
       invoiceClient: linkedSales[0]?.client || "",
@@ -255,7 +256,7 @@ async function submitModal(event) {
     const gross = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const deductions = financialRequestDeductions(gross);
     if (!items.length || deductions.total <= 0) return toast("Add at least one payable item with amount.");
-    const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, grossAmount: deductions.grossAmount, withholdingTax1: deductions.withholdingTax1, withholdingTax2: deductions.withholdingTax2, amount: deductions.total, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false };
+    const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, grossAmount: deductions.grossAmount, withholdingTax1: deductions.withholdingTax1, withholdingTax2: deductions.withholdingTax2, amount: deductions.total, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, createdByUser: currentUser?.email || "" };
     data.payables.push(payable);
     await persistRecords({ payables: [payable] });
     log("Created payable", "Payables", `${payable.id} · ${payable.supplier || "Supplier"}`, { save: false });
@@ -271,7 +272,7 @@ async function submitModal(event) {
     if (!items.length || amount <= 0) return toast("Add at least one expense item with amount.");
     if (["Per Diem", "Revolving Fund"].includes(values.type) && !String(values.employeeName || "").trim()) return toast("Employee Name is required for Per Diem or Revolving Fund expenses.");
     if (!["Per Diem", "Revolving Fund"].includes(values.type)) values.employeeName = "";
-    const replenishment = { id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "" };
+    const replenishment = { id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "", createdByUser: currentUser?.email || "" };
     data.replenishments.push(replenishment);
     await persistRecords({ replenishments: [replenishment] });
     log("Created replenishment", "Expenses", `${replenishment.id} · ${replenishment.requester || "Requester"}`, { save: false });
@@ -564,6 +565,8 @@ qs("#password-form").addEventListener("submit", async (event) => {
   if (currentUser) { currentUser.passwordKycDue = false; localStorage.setItem("medlane-session", JSON.stringify(currentUser)); }
   log("Changed password", "User Settings", currentUser?.role || "User");
   notify("Password", `${currentUser?.name || "A user"} changed password.`, "logs", currentUser?.role || "User");
+  if (currentUser?.email) notify("Security", "Your password was changed.", "notifications", "", null, currentUser.email);
+  saveData(["notifications"]);
   toast("Password updated.");
 });
 qs("#platform-branch-form").addEventListener("submit", (event) => {
@@ -1498,6 +1501,8 @@ qs("#login-form").addEventListener("submit", async (event) => {
   }
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   log("Logged in", "Authentication", currentUser.role);
+  if (currentUser?.email) notify("Security", `New sign-in to your account (${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}).`, "notifications", "", null, currentUser.email);
+  saveData(["notifications"]);
   playLoginSuccessSound();
   showWelcomeTransition(currentUser.name || currentUser.role, () => {
     if (loginButton) {

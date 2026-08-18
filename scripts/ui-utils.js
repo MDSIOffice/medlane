@@ -163,13 +163,18 @@ function log(action, module, record, options = {}) {
   MedlaneAPI.recordLog({ action, module, record: String(record ?? "") }).catch(() => {});
   if (options.save !== false) saveData();
 }
-function notify(type, message, section = "notifications", record = "", audience = null) {
+function notify(type, message, section = "notifications", record = "", audience = null, targetUser = null) {
   const entry = { date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), type, message, section, record, status: "Unread" };
   if (Array.isArray(audience)) entry.audience = audience;
+  if (targetUser) entry.targetUser = targetUser;
   data.notifications.unshift(entry);
   data.notifications = data.notifications.slice(0, 80);
 }
 function canSeeNotification(notice) {
+  // A notice with targetUser is private to that one account — it bypasses every other rule
+  // (including the Superadmin/CEO see-everything rule and the security-keyword blackout below)
+  // since it's addressed to a specific person, not broadcast by role or module.
+  if (notice?.targetUser) return notice.targetUser === currentUser?.email;
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
   const section = notice?.section || "notifications";
   if (["users", "settings", "backup", "security", "logs"].includes(section)) return false;

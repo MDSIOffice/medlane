@@ -395,6 +395,7 @@ async function approvePaymentRequest(cvNo) {
   await persistRecords({ paymentRequests: [request], payments: newPayments });
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
   notify("Payment Received", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
+  if (request.createdByUser) notify("Payment Received", `Your payment request ${request.cvNo} was approved.`, "notifications", request.cvNo, null, request.createdByUser);
   saveData(["notifications"]);
   renderAll();
   toast(`${request.cvNo} approved and queued for deposition.`);
@@ -439,6 +440,7 @@ async function cancelPaymentRequest(cvNo) {
   await persistRecords({ paymentRequests: [request], payments: payment ? [payment] : [], sales: sale ? [sale] : [] });
   log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`, { save: false });
   notify("Payment Received", `${request.cvNo} cancelled.`, "collections", request.cvNo);
+  if (request.createdByUser) notify("Payment Received", `Your payment request ${request.cvNo} was cancelled.`, "notifications", request.cvNo, null, request.createdByUser);
   saveData(["notifications"]);
   renderAll();
   toast(`${request.cvNo} cancelled.`);
@@ -1192,6 +1194,8 @@ async function approvePurchaseOrder(index) {
   replacePoRecord(result.po);
   log("Approved purchase order", "Inventory", po.id);
   notify("Purchase Order", `${po.id} approved.`, "inventory", po.id);
+  if (result.po.createdByUser) notify("Purchase Order", `Your purchase order ${po.id} was approved.`, "notifications", po.id, null, result.po.createdByUser);
+  saveData(["notifications"]);
   renderAll();
   toast(`${po.id} approved.`);
 }
@@ -1222,6 +1226,8 @@ async function cancelPurchaseOrder(index) {
   replacePoRecord(result.po);
   log("Cancelled purchase order", "Inventory", po.id);
   notify("Purchase Order", `${po.id} cancelled.`, "inventory", po.id);
+  if (result.po.createdByUser) notify("Purchase Order", `Your purchase order ${po.id} was cancelled.`, "notifications", po.id, null, result.po.createdByUser);
+  saveData(["notifications"]);
   renderAll();
   toast(`${po.id} cancelled.`);
 }
@@ -4543,6 +4549,7 @@ async function approveFinancialRequest(type, index) {
   await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
   log(`Approved ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id, { save: false });
   notify(type === "payable" ? "Payable" : "Expense", `${record.id} approved.`, type === "payable" ? "payables" : "replenishments", record.id);
+  if (record.createdByUser) notify(type === "payable" ? "Payable" : "Expense", `Your ${type === "payable" ? "payable" : "expense"} ${record.id} was approved.`, "notifications", record.id, null, record.createdByUser);
   saveData(["notifications"]); renderAll(); toast(`${record.id} approved.`);
 }
 
@@ -4555,6 +4562,7 @@ async function cancelFinancialRequest(type, index) {
   await persistRecords(type === "payable" ? { payables: [record] } : { replenishments: [record] });
   log(`Cancelled ${type} request`, type === "payable" ? "Payables" : "Expenses", record.id, { save: false });
   notify(type === "payable" ? "Payable" : "Expense", `${record.id} cancelled.`, type === "payable" ? "payables" : "replenishments", record.id);
+  if (record.createdByUser) notify(type === "payable" ? "Payable" : "Expense", `Your ${type === "payable" ? "payable" : "expense"} ${record.id} was cancelled.`, "notifications", record.id, null, record.createdByUser);
   saveData(["notifications"]); renderAll(); toast(`${record.id} cancelled.`);
 }
 
@@ -5721,7 +5729,7 @@ function buildInventoryPurchaseOrder(values) {
   const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false }).map((line) => ({ ...line, receivedQty: 0 }));
   if (!lines.length) throw new Error("At least one inventory PO line is required.");
   const by = currentUser?.name || "System User";
-  return { id: nextInventoryPurchaseOrderId(), supplier: supplier.name, branch, date: values.date || fmtDate(today), terms: 30, status: "Pending Approval", approvedBy: "", approvedAt: "", cancelledBy: "", cancelledAt: "", history: [{ date: poHistoryTimestamp(), status: "Pending Approval", note: `Purchase order created for ${branch}.`, by }], lines };
+  return { id: nextInventoryPurchaseOrderId(), supplier: supplier.name, branch, date: values.date || fmtDate(today), terms: 30, status: "Pending Approval", approvedBy: "", approvedAt: "", cancelledBy: "", cancelledAt: "", history: [{ date: poHistoryTimestamp(), status: "Pending Approval", note: `Purchase order created for ${branch}.`, by }], lines, createdByUser: currentUser?.email || "" };
 }
 
 function poHistoryTimestamp() {
