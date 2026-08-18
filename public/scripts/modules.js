@@ -498,6 +498,20 @@ function invoiceRowLotOptionsHtml(item, branch) {
   return data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0).map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.branch)} · Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
 }
 
+function invoiceItemStockQty(item, branch) {
+  if (!item) return 0;
+  return data.inventory
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (entry.expiry === "N/A" || daysUntil(entry.expiry) >= 0))
+    .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
+}
+
+function invoiceRowStockHintHtml(item, branch) {
+  if (!item) return "";
+  const qty = invoiceItemStockQty(item, branch);
+  const uom = item.uom || "unit";
+  return `<small class="invoice-stock-hint${qty <= 0 ? " invoice-stock-hint-empty" : ""}" data-role="stock-hint">${qty > 0 ? `Stock available: ${qty} ${escapeHtml(uom)}${qty === 1 ? "" : "s"}${branch ? ` at ${escapeHtml(branch)}` : ""}` : `No stock available${branch ? ` at ${escapeHtml(branch)}` : ""}`}</small>`;
+}
+
 function invoiceLineTemplate(line = {}, options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
@@ -510,7 +524,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
   const uid = ++invoiceRowUid;
   return `<div class="invoice-line-row">
     <div class="invoice-line-fields">
-      <div class="field item-field"><label>Item</label><input class="invoice-item-input" list="item-master-options" value="${escapeHtml(line.item || item?.name || "")}" placeholder="Type item name or code" required /></div>
+      <div class="field item-field"><label>Item</label><input class="invoice-item-input" list="item-master-options" value="${escapeHtml(line.item || item?.name || "")}" placeholder="Type item name or code" required />${invoiceRowStockHintHtml(item, preferredBranch)}</div>
       <input class="invoice-source-branch-input" type="hidden" value="${escapeHtml(selectedInvoiceBranch)}" />
       <div class="field brand-field"><label>Brand</label><input class="invoice-brand-input" value="${escapeHtml(line.brand || item?.brand || "")}" readonly /></div>
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="1" value="${line.qty ? Number(line.qty) : ""}" required /></div>
@@ -609,6 +623,8 @@ function syncInvoiceRowItem(input) {
   const warehouse = qs("#sourceBranch")?.value || row.querySelector(".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
   const lotDatalist = row.querySelector("datalist[id^='invoice-lot-options-']");
   if (lotDatalist) lotDatalist.innerHTML = invoiceRowLotOptionsHtml(item, warehouse);
+  const stockHint = row.querySelector("[data-role='stock-hint']");
+  if (stockHint) stockHint.outerHTML = invoiceRowStockHintHtml(item, warehouse) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
   if (!item) return;
   row.querySelector(".invoice-brand-input").value = item.brand || "";
   row.querySelector(".invoice-uom-input").value = item.uom || "unit";
