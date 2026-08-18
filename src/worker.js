@@ -611,6 +611,75 @@ function requireMemoAdmin(profile) {
   if (!["Superadmin", "CEO", "HR"].includes(profile?.role)) throw new Error("Only Superadmin, CEO, or HR can post a memo");
 }
 
+// The client (buildSale in modules.js) computes invoice totals, stock deduction, and discount
+// authorization entirely in the browser before this whole-state save ever reaches the server.
+// Nothing here stopped a tampered client from submitting a fabricated price/qty/discount or
+// overselling stock. This re-checks those specific invariants server-side for newly created
+// invoices only — editing an already-saved sale (status/payment updates) is left alone, since
+// re-validating stock against a historical sale would fight the stock that sale already consumed.
+function saleStockLookupKey(code, branch, lot) {
+  return [code, branch, lot].map((part) => String(part || "").trim().toLowerCase()).join("|");
+}
+
+function daysUntilIso(value) {
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return Infinity;
+  return Math.floor((target.getTime() - Date.now()) / 86400000);
+}
+
+async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
+  const canAuthorizeDiscount = ["Superadmin", "CEO", "Admin"].includes(profile?.role);
+  let inventoryByKey = null;
+
+  for (const row of newSaleRows) {
+    const sale = row.data || {};
+    // Historical backfills from the Sales/Collections migration importer (buildMigratedSale in
+    // modules.js) carry their own net/tax formula and never touch live inventory — they aren't
+    // the live invoice-creation path this validation targets, so leave them alone.
+    if (sale.migrated) continue;
+    const label = sale.documentNo || row.record_key;
+    const lines = Array.isArray(sale.lines) && sale.lines.length
+      ? sale.lines
+      : [{ item: sale.item, code: sale.code, qty: sale.qty, price: sale.price, sourceBranch: sale.sourceBranch || sale.branch, branch: sale.sourceBranch || sale.branch, lot: sale.lot, expiry: sale.expiry }];
+
+    for (const line of lines) {
+      const qty = Number(line.qty);
+      const price = Number(line.price);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Invoice ${label}: invalid quantity for ${line.item || line.code || "a line item"}.`);
+      if (!Number.isFinite(price) || price < 0) throw new Error(`Invoice ${label}: invalid price for ${line.item || line.code || "a line item"}.`);
+      if (line.expiry && line.expiry !== "N/A" && daysUntilIso(line.expiry) < 0) throw new Error(`Invoice ${label}: expired lot blocked for ${line.item || line.code || "a line item"}.`);
+    }
+
+    if (sale.type !== "DR") {
+      const recomputedAmount = lines.reduce((sum, line) => sum + Math.max(0, Number(line.qty) * Number(line.price)), 0);
+      const submittedAmount = Number(sale.amount || 0);
+      if (Math.abs(recomputedAmount - submittedAmount) > 0.01) throw new Error(`Invoice ${label}: amount does not match its line items.`);
+
+      const discount = Number(sale.discount || 0);
+      if (!Number.isFinite(discount) || discount < 0) throw new Error(`Invoice ${label}: discount cannot be negative.`);
+      if (discount > submittedAmount) throw new Error(`Invoice ${label}: discount cannot exceed gross amount.`);
+      if (discount > 0 && !canAuthorizeDiscount) throw new Error(`Invoice ${label}: discounts require Admin/CEO/Superadmin authorization.`);
+
+      const submittedNet = Number(sale.net ?? sale.amount ?? 0);
+      if (Math.abs(submittedNet - (submittedAmount - discount)) > 0.01) throw new Error(`Invoice ${label}: net amount does not match amount minus discount.`);
+    }
+
+    if (!inventoryByKey) {
+      const invRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=data`);
+      inventoryByKey = new Map();
+      for (const invRow of invRows) {
+        const item = invRow.data || {};
+        inventoryByKey.set(saleStockLookupKey(item.code, item.branch, item.lot), Number(item.qty || 0));
+      }
+    }
+    for (const line of lines) {
+      const branch = line.sourceBranch || line.branch;
+      const available = inventoryByKey.get(saleStockLookupKey(line.code, branch, line.lot)) || 0;
+      if (Number(line.qty) > available) throw new Error(`Invoice ${label}: insufficient stock for ${line.item || line.code || "item"} in ${branch || "the selected branch"} (available ${available}, requested ${line.qty}).`);
+    }
+  }
+}
+
 async function postMemoToDiscord(env, memo) {
   if (!env.MEMO_DISCORD_WEBHOOK_URL) {
     await recordSystemLog(env, { action: "Memo Discord post skipped", module: "Discord", record: `${memo.id}: MEMO_DISCORD_WEBHOOK_URL not configured` });
@@ -717,6 +786,20 @@ function validEmail(email) {
 function validRole(role) {
   return Object.prototype.hasOwnProperty.call(roleModules, role);
 }
+
+// Maps the ad-hoc `recordType` strings the client tags uploads with (see uploadPhysicalCopy
+// in modules.js) to the persisted module key canAccessKey() understands, so a file attached to
+// a module a user can't see isn't downloadable just because they're logged in. Any recordType
+// not listed here (or missing) resolves to undefined, which canAccessKey denies for non-admins.
+const fileRecordTypeKey = {
+  memo: "memos",
+  "client-doc": "clients",
+  sale: "sales",
+  payable: "payables",
+  paymentRequest: "paymentRequests",
+  productIssue: "productIssues",
+  instrumentalServiceReport: "productIssues",
+};
 
 function moduleForKey(key) {
   return Object.entries(moduleRecordKeys).find(([, keys]) => keys.includes(key))?.[0] || "system";
@@ -2263,6 +2346,13 @@ export default {
               incomingKeysByModule[row.module_name] ||= new Set();
               incomingKeysByModule[row.module_name].add(row.record_key);
             }
+
+            if (presentKeys.includes("sales")) {
+              const existingSaleKeys = beforeKeysByModule.sales || new Set();
+              const newSaleRows = rows.filter((row) => row.module_name === "sales" && !existingSaleKeys.has(row.record_key));
+              if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
+            }
+
             const totalBefore = beforeRows.length;
             const totalAfter = rows.length;
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
@@ -2408,6 +2498,17 @@ export default {
           value.forEach((record, index) => rows.push({ state_key: stateKey, module_name: key, record_key: String(recordKeys[key]?.[index] || recordKeyFor(key, record, index)), data: record, updated_by: authUser.id }));
         }
         rows = dedupeRowsByRecordKey(rows);
+
+        // This is the real invoice-creation path (buildSale -> persistRecords -> here), not
+        // /api/modules/state's bulk PUT — so the new-sale integrity checks belong here.
+        const incomingSaleRows = rows.filter((row) => row.module_name === "sales");
+        if (incomingSaleRows.length) {
+          const existingSaleRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&record_key=in.${encodeURIComponent(postgrestIn(incomingSaleRows.map((row) => row.record_key)))}&select=record_key`);
+          const existingSaleKeys = new Set(existingSaleRows.map((row) => row.record_key));
+          const newSaleRows = incomingSaleRows.filter((row) => !existingSaleKeys.has(row.record_key));
+          if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
+        }
+
         const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].includes(key)))];
         const beforeRows = eventModules.length ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`) : [];
         if (rows.length) {
@@ -2948,7 +3049,8 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         if (request.method === "GET") {
           const rows = await supabaseFetch(env, "/rest/v1/file_objects?deleted_at=is.null&select=*&order=uploaded_at.desc");
-          return json({ files: rows });
+          const visible = rows.filter((row) => canAccessKey(profile, fileRecordTypeKey[row.record_type], "view"));
+          return json({ files: visible });
         }
         if (request.method !== "POST") return methodNotAllowed();
         requireWriteAccess(profile);
@@ -2983,10 +3085,11 @@ export default {
       }
 
       if (url.pathname.startsWith("/api/files/") && request.method === "GET") {
-        await authenticatedProfile(request, env);
+        const { profile } = await authenticatedProfile(request, env);
         const id = decodeURIComponent(url.pathname.split("/").pop() || "");
         const rows = await supabaseFetch(env, `/rest/v1/file_objects?id=eq.${encodeURIComponent(id)}&deleted_at=is.null&select=*`);
         if (!rows[0]) return json({ error: "File not found" }, { status: 404 });
+        if (!canAccessKey(profile, fileRecordTypeKey[rows[0].record_type], "view")) throw new Error("You do not have permission to access this file");
         const object = await env.DOCUMENTS_BUCKET.get(rows[0].object_key);
         if (!object) return json({ error: "R2 object not found" }, { status: 404 });
         return new Response(object.body, { headers: { "content-type": rows[0].mime_type, "content-disposition": `inline; filename="${safeFileName(rows[0].file_name)}"`, "cache-control": `private, max-age=${Number(env.DOWNLOAD_CACHE_SECONDS || 300)}` } });
