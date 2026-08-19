@@ -41,6 +41,11 @@ const digestRoleMentions = {
 const moduleRecordKeys = {
   users: ["users"],
   masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals", "masterTab"],
+  // Read-only baseline every role gets regardless of module_permissions — items/clients/suppliers are
+  // reference data other modules (receiving, transfers, demos, invoicing) autofill from, not just data
+  // the Masterlists admin screen shows. Never granted for "edit": editing the catalog still requires
+  // the "masterlists" permission itself.
+  "catalog-reference": ["items", "clients", "suppliers"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests"],
   "purchase-orders": ["purchaseOrders"],
   invoicing: ["sales"],
@@ -572,6 +577,11 @@ async function profileForUser(env, userId, email) {
   // this is a newer module that predates most existing users' explicit permission grants, and
   // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
   if (!view.includes("memos")) view.push("memos");
+  // Every role can read the items/clients/suppliers catalog regardless of module_permissions —
+  // it's reference data that receiving, transfers, demos, and invoicing autofill from, not just
+  // an admin-screen concern. Deliberately view-only and not overridable per-user: editing the
+  // catalog still requires the real "masterlists" permission.
+  if (!view.includes("catalog-reference")) view.push("catalog-reference");
   if (["Superadmin", "CEO"].includes(profile[0].role)) {
     if (!view.includes("backup")) view.push("backup");
     if (!edit.includes("backup")) edit.push("backup");
