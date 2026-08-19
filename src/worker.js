@@ -1947,6 +1947,34 @@ const DIGEST_SECTION_STYLE = {
   "Warranty Expired": "critical",
 };
 
+// Discord-only: emoji per section title, used to make the daily/weekly digest embed
+// scannable at a glance. Never applied to the email HTML (digestSectionHtml), which has
+// its own color-coded styling via DIGEST_SECTION_STYLE above.
+const DIGEST_SECTION_EMOJI = {
+  "Low / Critical Stock": "📦",
+  "Near-Expiry Stock": "⏳",
+  "Overdue Invoices": "⏰",
+  "Credit Limit Breach": "🚫",
+  "Warranty Ending Soon": "🛡️",
+  "Warranty Expired": "⚠️",
+  "Purchase Orders Awaiting Approval": "📋",
+  "Payments Received Awaiting Approval": "💳",
+  "Payables / Expenses Awaiting Approval": "💸",
+  "Demo Requests Awaiting Sales Approval": "🧪",
+  "Demo Requests Awaiting Management Approval": "🧪",
+  "Support Reports Awaiting Handoff": "🛠️",
+};
+
+// Discord-only formatting: bullets each line and, for the common "<lead> — <detail>"
+// shape most digest lines follow, bolds the lead so the record's identity pops out
+// when scanning a field with several rows. Pure presentation — never mutates the
+// source line, so the same lines array stays plain text for the email digest.
+function discordBullet(line) {
+  const dashIndex = line.indexOf(" — ");
+  if (dashIndex === -1) return `▸ ${line}`;
+  return `▸ **${line.slice(0, dashIndex)}** — ${line.slice(dashIndex + 3)}`;
+}
+
 function digestSectionHtml(sections) {
   return sections.map((section) => {
     const colors = digestToneColors(DIGEST_SECTION_STYLE[section.title] || "default");
@@ -2064,27 +2092,44 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
     return [];
   });
 
-  const fields = [];
+  // Every threshold/approval category is routed to 2-3 roles (DIGEST_ROLE_RECIPIENTS), and
+  // pushSection() pushes the same {title, lines} into each of those roles' lists — so without
+  // deduping here, the exact same "Low / Critical Stock" list would show up as 2-3 separate,
+  // identical fields. Collapse to one field per title, with all owning roles listed together.
   const mentionedRoleIds = new Set();
+  const sectionsByTitle = new Map();
   Object.entries(sections).forEach(([role, roleSections]) => {
     (digestRoleMentions[role] || []).forEach((id) => mentionedRoleIds.add(id));
-    roleSections.forEach((section) => fields.push({ name: `${section.title} (${role})`, value: discordFieldValue(section.lines, 300) }));
+    roleSections.forEach((section) => {
+      if (!sectionsByTitle.has(section.title)) sectionsByTitle.set(section.title, { section, roles: new Set() });
+      sectionsByTitle.get(section.title).roles.add(role);
+    });
   });
-  if (businessSummary.length) fields.push({ name: `${periodLabel} Business Summary`, value: discordFieldValue(businessSummary, 300) });
-  if (financialSummary.length) fields.push({ name: "Payables, Expenses & POs", value: discordFieldValue(financialSummary, 300) });
-  if (pendingDeposits.length) fields.push({ name: "Collections Pending Deposit", value: discordFieldValue(pendingDeposits.map((p) => `${p.receiptNo} — ${p.client}, ${money(p.amount)} (${p.collectionStatus})`), 300) });
-  if (bouncedCheques.length) fields.push({ name: "Bounced Cheques", value: discordFieldValue(bouncedCheques.map((p) => `${p.receiptNo} — ${p.client}, ${money(p.amount)}`), 300) });
-  fields.push({ name: "Backup Status", value: discordFieldValue(backupDigestLines(auditRows), 300) });
-  if (largeSales.length || largePayments.length) fields.push({ name: `Large Transactions (≥ ${money(LARGE_TRANSACTION_THRESHOLD)})`, value: discordFieldValue([...largeSales.map((s) => `Invoice ${s.documentNo || s.id} — ${s.client}, ${money(s.net)}`), ...largePayments.map((p) => `Payment ${p.receiptNo} — ${p.client}, ${money(p.amount)}`)], 300) });
-  if (activeDemos.length || closedDemos.length) fields.push({ name: "Demo Requests", value: discordFieldValue([...activeDemos.slice(0, 6).map((request) => `${request.id} — ${request.client} (${request.status})`), ...closedDemos.slice(0, 4).map((request) => `${request.id} — ${request.client} closed as ${request.status}`)], 300) });
-  if (newlyPaidPos.length) fields.push({ name: "Purchase Orders Fully Paid", value: discordFieldValue(newlyPaidPos.map((po) => `${po.id} — ${po.client}`), 300) });
-  if (newClientNames.length) fields.push({ name: "New Clients Onboarded", value: discordFieldValue(newClientNames, 300) });
-  if (blockedImports.length) fields.push({ name: "Import Issues", value: discordFieldValue(blockedImports.map((item) => `${item.date} ${item.module} ${item.file} — ${item.status}`), 300) });
-  if (latestRecon?.high > 0) fields.push({ name: "Reconciliation Risk", value: `${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"} (${latestRecon.date || "latest run"})` });
-  fields.push({ name: `Audit Log (${auditLimitLabel})`, value: `${auditRows.length} recorded action${auditRows.length === 1 ? "" : "s"} — see the Audit Logs page for details.` });
+
+  const fields = [];
+  let flaggedCount = 0;
+  sectionsByTitle.forEach(({ section, roles }) => {
+    flaggedCount += section.lines.length;
+    const emoji = DIGEST_SECTION_EMOJI[section.title] || "🔔";
+    fields.push({ name: `${emoji} ${section.title} (${section.lines.length}) · ${[...roles].join(", ")}`, value: discordFieldValue(section.lines.map(discordBullet), 300, section.lines.length) });
+  });
+  if (businessSummary.length) fields.push({ name: `📊 ${periodLabel} Business Summary`, value: discordFieldValue(businessSummary.map(discordBullet), 300) });
+  if (financialSummary.length) fields.push({ name: "💼 Payables, Expenses & POs", value: discordFieldValue(financialSummary.map(discordBullet), 300) });
+  if (pendingDeposits.length) fields.push({ name: `🏦 Collections Pending Deposit (${pendingDeposits.length})`, value: discordFieldValue(pendingDeposits.map((p) => discordBullet(`${p.receiptNo} — ${p.client}, ${money(p.amount)} (${p.collectionStatus})`)), 300, pendingDeposits.length) });
+  if (bouncedCheques.length) fields.push({ name: `🔴 Bounced Cheques (${bouncedCheques.length})`, value: discordFieldValue(bouncedCheques.map((p) => discordBullet(`${p.receiptNo} — ${p.client}, ${money(p.amount)}`)), 300, bouncedCheques.length) });
+  fields.push({ name: "🗄️ Backup Status", value: discordFieldValue(backupDigestLines(auditRows).map(discordBullet), 300) });
+  const largeTransactionLines = [...largeSales.map((s) => `Invoice ${s.documentNo || s.id} — ${s.client}, ${money(s.net)}`), ...largePayments.map((p) => `Payment ${p.receiptNo} — ${p.client}, ${money(p.amount)}`)];
+  if (largeTransactionLines.length) fields.push({ name: `💰 Large Transactions (≥ ${money(LARGE_TRANSACTION_THRESHOLD)}) (${largeTransactionLines.length})`, value: discordFieldValue(largeTransactionLines.map(discordBullet), 300, largeTransactionLines.length) });
+  const demoLines = [...activeDemos.slice(0, 6).map((request) => `${request.id} — ${request.client} (${request.status})`), ...closedDemos.slice(0, 4).map((request) => `${request.id} — ${request.client} closed as ${request.status}`)];
+  if (demoLines.length) fields.push({ name: `🧪 Demo Requests (${activeDemos.length + closedDemos.length})`, value: discordFieldValue(demoLines.map(discordBullet), 300, activeDemos.length + closedDemos.length) });
+  if (newlyPaidPos.length) fields.push({ name: `✅ Purchase Orders Fully Paid (${newlyPaidPos.length})`, value: discordFieldValue(newlyPaidPos.map((po) => discordBullet(`${po.id} — ${po.client}`)), 300, newlyPaidPos.length) });
+  if (newClientNames.length) fields.push({ name: `🆕 New Clients Onboarded (${newClientNames.length})`, value: discordFieldValue(newClientNames.map((name) => `▸ ${name}`), 300, newClientNames.length) });
+  if (blockedImports.length) fields.push({ name: `📥 Import Issues (${blockedImports.length})`, value: discordFieldValue(blockedImports.map((item) => discordBullet(`${item.date} ${item.module} ${item.file} — ${item.status}`)), 300, blockedImports.length) });
+  if (latestRecon?.high > 0) fields.push({ name: "🧭 Reconciliation Risk", value: `${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"} (${latestRecon.date || "latest run"})` });
+  fields.push({ name: `📜 Audit Log (${auditLimitLabel})`, value: `${auditRows.length} recorded action${auditRows.length === 1 ? "" : "s"} — see the Audit Logs page for details.` });
 
   if (!fields.length) return { sent: false, reason: "Nothing to report — no digest fields were generated" };
-  const color = latestRecon?.high > 0 || bouncedCheques.length ? 0xef4b4f : Object.keys(sections).length ? 0xf59e0b : 0x22c55e;
+  const color = latestRecon?.high > 0 || bouncedCheques.length ? 0xef4b4f : sectionsByTitle.size ? 0xf59e0b : 0x22c55e;
   // Discord caps a single embed at 6000 total characters and 25 fields; stay well under both.
   const budgetedFields = [];
   let charBudget = 5300;
@@ -2094,8 +2139,13 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
     budgetedFields.push(field);
     charBudget -= cost;
   }
+  const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const description = [
+    flaggedCount ? `⚠️ **${flaggedCount} item${flaggedCount === 1 ? "" : "s"}** flagged for attention across **${sectionsByTitle.size} categor${sectionsByTitle.size === 1 ? "y" : "ies"}**.` : "✨ Nothing flagged — all thresholds clear.",
+    `🕒 **${periodLabel} digest** · ${auditLimitLabel} · generated ${updatedAt} PHT`,
+  ].join("\n");
   const mentionContent = ["@everyone", ...[...mentionedRoleIds].map((id) => `<@&${id}>`)].join(" ");
-  return sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { parse: ["everyone"], roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
+  return sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { parse: ["everyone"], roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, description, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
 }
 
 async function runDailyDigest(env) {
