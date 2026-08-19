@@ -5242,7 +5242,7 @@ function renderUsers() {
     const statusAction = isSelf ? "" : `<button class="mini-button ${disabled ? "" : "danger-button"}" data-toggle-user-disabled="${index}">${disabled ? "Enable" : "Disable"}</button>`;
     const statusCell = `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>${u.disabledReason ? `<small>${escapeHtml(u.disabledReason)}</small>` : ""}`;
     const archiveAction = isSelf ? "" : `<button class="mini-button danger-button" data-archive-user="${index}">Archive User</button>`;
-    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button><button class="mini-button" data-copy-invite-link="${index}">Copy Invite Link</button><button class="mini-button" data-reset-user-password="${index}">Set Password</button>${resend}${statusAction}${archiveAction}</div></details>`;
+    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button>${resend}${statusAction}${archiveAction}</div></details>`;
     return { focus: email || name, cells: [escapeHtml(name), email || "-", `<span class="pill ${statusClass(u.role)}">${escapeHtml(u.role)}</span>`, statusCell, grantControl, escapeHtml(accessSummary), canManageUsers() ? actions : "Superadmin/CEO only"] };
   }));
 }

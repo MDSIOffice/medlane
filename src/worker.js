@@ -175,6 +175,21 @@ function resendFrom(env) {
   return env.RESEND_FROM || "Medlane OS <onboarding@resend.dev>";
 }
 
+function wrapAuthActionLink(actionLink, origin) {
+  // Supabase's raw action_link points at the Supabase project domain (rawjrrhskunlbffhdfxm.supabase.co),
+  // which never matches the Resend sending domain and gets flagged as a mismatched-URL spam signal.
+  // Route the visible email link through our own origin instead; /auth/continue below forwards it on.
+  try {
+    const parsed = new URL(actionLink);
+    const token = parsed.searchParams.get("token");
+    const type = parsed.searchParams.get("type");
+    if (!token || !type) return actionLink;
+    return `${origin}/auth/continue?token=${encodeURIComponent(token)}&type=${encodeURIComponent(type)}`;
+  } catch {
+    return actionLink;
+  }
+}
+
 function medlaneLogoUrl(origin = "https://medlane.tofllorin.workers.dev") {
   return `${String(origin || "https://medlane.tofllorin.workers.dev").replace(/\/$/, "")}/medlane.jpg`;
 }
@@ -2103,6 +2118,19 @@ export default {
         });
       }
 
+      if (url.pathname === "/auth/continue") {
+        if (request.method !== "GET") return methodNotAllowed();
+        requireEnv(env, ["SUPABASE_URL"]);
+        const token = url.searchParams.get("token") || "";
+        const type = url.searchParams.get("type") || "";
+        if (!token || !["invite", "recovery", "magiclink", "signup"].includes(type)) {
+          return new Response("This link is invalid or has expired.", { status: 400 });
+        }
+        const redirectTo = `${requestOrigin(request)}/?login=1`;
+        const target = `${supabaseBaseUrl(env)}/auth/v1/verify?token=${encodeURIComponent(token)}&type=${encodeURIComponent(type)}&redirect_to=${encodeURIComponent(redirectTo)}`;
+        return Response.redirect(target, 302);
+      }
+
       if (url.pathname === "/api/auth/login") {
         if (request.method !== "POST") return methodNotAllowed();
         requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
@@ -2789,7 +2817,7 @@ export default {
             body: JSON.stringify(view.map((moduleKey) => ({ user_id: authUser.id, module_key: moduleKey, can_view: true, can_edit: edit.includes(moduleKey) }))),
           });
         }
-        const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: brandedInviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message })) : { sent: false, reason: linkError ? `Invitation link could not be generated: ${linkError}` : "Invitation link could not be generated" };
+        const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: brandedInviteEmailHtml({ fullName, email, role, actionLink: wrapAuthActionLink(actionLink, requestOrigin(request)), origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message })) : { sent: false, reason: linkError ? `Invitation link could not be generated: ${linkError}` : "Invitation link could not be generated" };
         return json({ user: { id: authUser.id, name: fullName, email, role, branch, modules: view, customPermissions: { enabled: true, view, edit }, superadminPermissions: role === "Superadmin", access: `${role} with ${view.length} view / ${edit.length} edit modules`, inviteStatus: emailDelivery.sent ? "Invited" : "Email Not Sent" }, emailDelivery }, { status: 201 });
       }
 
@@ -2801,7 +2829,7 @@ export default {
         const email = cleanEmail(rawEmail);
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
         const { actionLink, fullName, role } = await resolveInviteLink(env, email, requestOrigin(request));
-        const emailDelivery = await sendResendEmail(env, { to: email, subject: "Your Medlane OS invitation link", html: brandedInviteEmailHtml({ fullName, email, role, actionLink, origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message }));
+        const emailDelivery = await sendResendEmail(env, { to: email, subject: "Your Medlane OS invitation link", html: brandedInviteEmailHtml({ fullName, email, role, actionLink: wrapAuthActionLink(actionLink, requestOrigin(request)), origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message }));
         return json({ ok: true, emailDelivery });
       }
 

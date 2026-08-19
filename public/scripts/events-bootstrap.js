@@ -1671,6 +1671,9 @@ function showSupabasePasswordSetup() {
   const accessToken = params.get("access_token");
   const type = params.get("type");
   if (!accessToken || !["invite", "recovery"].includes(type)) return false;
+  currentUser = null;
+  localStorage.removeItem("medlane-session");
+  MedlaneAPI?.setSession(null);
   const email = jwtEmail(accessToken) || "Invited account";
   openPasswordResetPage(email, `supabase:${accessToken}`);
   document.body.classList.add("login-route");
@@ -1706,6 +1709,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
   }
   currentUser = null;
   localStorage.removeItem("medlane-session");
+  MedlaneAPI?.setSession(null);
   qs("#reset-screen").classList.add("hidden");
   qs("#login-screen").classList.remove("hidden");
   qs("#login-email").value = values.email;
