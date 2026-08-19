@@ -1302,6 +1302,8 @@ qs("#user-devices-modal")?.addEventListener("click", (event) => { if (event.targ
 qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
 qs("#refresh-backups")?.addEventListener("click", () => { renderBackup(); toast("Backups refreshed."); });
 qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
+qs("#run-manual-digest-daily")?.addEventListener("click", () => runManualDigest("Daily"));
+qs("#run-manual-digest-weekly")?.addEventListener("click", () => runManualDigest("Weekly"));
 qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
 
 function setBackupStatus(title, detail = "", progress = 0, tone = "active") {
@@ -1345,6 +1347,26 @@ async function runManualBackup() {
     toast(error.message || "Backup failed.");
   } finally {
     if (button) { button.disabled = false; button.classList.remove("is-loading"); button.textContent = original; }
+  }
+}
+
+async function runManualDigest(periodLabel) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can send digests.");
+  const button = qs(periodLabel === "Weekly" ? "#run-manual-digest-weekly" : "#run-manual-digest-daily");
+  const original = button?.textContent || `Send ${periodLabel} Digest Now`;
+  if (button) { button.disabled = true; button.textContent = "Sending..."; }
+  try {
+    const result = await MedlaneAPI.runDigest(periodLabel);
+    if (result.discord?.sent) {
+      toast(`${periodLabel} digest posted to Discord.`);
+    } else {
+      toast(`${periodLabel} digest generated, but Discord did not post: ${result.discord?.reason || "Unknown reason"}`);
+    }
+    log(`Sent manual ${periodLabel.toLowerCase()} digest`, "Discord", result.discord?.sent ? "Posted to Discord" : `Not posted: ${result.discord?.reason || "Unknown reason"}`);
+  } catch (error) {
+    toast(error.message || "Digest failed.");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
   }
 }
 

@@ -731,6 +731,10 @@ function requireBackupAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage backups");
 }
 
+function requireDigestAdmin(profile) {
+  if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can send digests");
+}
+
 function requirePoApprover(profile) {
   if (profile?.role !== "Superadmin") throw new Error("Only Superadmin can approve purchase orders");
 }
@@ -1801,7 +1805,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
   // fired — this internal hour check is what has always driven the real sends.
   if (scheduled.minute === "00" && scheduled.hour === "18") {
-    tasks.push(runDailyDigest(env));
+    if (!["Sat", "Sun"].includes(scheduled.weekday)) tasks.push(runDailyDigest(env));
     if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env), createBackup(env, "weekly", null));
     if (scheduled.day === "01") tasks.push(createBackup(env, "monthly", null));
     if (scheduled.month === "01" && scheduled.day === "01") tasks.push(createBackup(env, "yearly", null));
@@ -2017,16 +2021,18 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
     }
   }
   await Promise.all(sends);
-  await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }).catch(async (error) => {
+  const discordResult = await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }).catch(async (error) => {
     console.error(JSON.stringify({ message: "Discord digest failed", error: error.message }));
     await recordSystemLog(env, { action: "Discord digest failed", module: "Discord", record: `${periodLabel}: ${error.message}` }).catch(() => null);
+    return { sent: false, reason: error.message };
   });
+  return { discord: discordResult };
 }
 
 async function sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }) {
   if (!env.DISCORD_WEBHOOK_URL) {
     await recordSystemLog(env, { action: "Discord digest skipped", module: "Discord", record: `${periodLabel}: DISCORD_WEBHOOK_URL not configured` });
-    return;
+    return { sent: false, reason: "DISCORD_WEBHOOK_URL is not configured" };
   }
   const sales = state.sales || [];
   const clients = state.clients || [];
@@ -2077,7 +2083,7 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   if (latestRecon?.high > 0) fields.push({ name: "Reconciliation Risk", value: `${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"} (${latestRecon.date || "latest run"})` });
   fields.push({ name: `Audit Log (${auditLimitLabel})`, value: `${auditRows.length} recorded action${auditRows.length === 1 ? "" : "s"} — see the Audit Logs page for details.` });
 
-  if (!fields.length) return;
+  if (!fields.length) return { sent: false, reason: "Nothing to report — no digest fields were generated" };
   const color = latestRecon?.high > 0 || bouncedCheques.length ? 0xef4b4f : Object.keys(sections).length ? 0xf59e0b : 0x22c55e;
   // Discord caps a single embed at 6000 total characters and 25 fields; stay well under both.
   const budgetedFields = [];
@@ -2089,17 +2095,17 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
     charBudget -= cost;
   }
   const mentionContent = ["@everyone", ...[...mentionedRoleIds].map((id) => `<@&${id}>`)].join(" ");
-  await sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { parse: ["everyone"], roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
+  return sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { parse: ["everyone"], roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
 }
 
 async function runDailyDigest(env) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  await composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: "last 24 hours" });
+  return composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: "last 24 hours" });
 }
 
 async function runWeeklyDigest(env) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  await composeAndSendDigest(env, { periodLabel: "Weekly", auditSinceIso: since, auditLimitLabel: "last 7 days" });
+  return composeAndSendDigest(env, { periodLabel: "Weekly", auditSinceIso: since, auditLimitLabel: "last 7 days" });
 }
 
 export default {
@@ -3014,6 +3020,15 @@ export default {
           return json({ backup }, { status: 201 });
         }
         return methodNotAllowed();
+      }
+
+      if (url.pathname === "/api/digest/run" && request.method === "POST") {
+        const { profile } = await authenticatedProfile(request, env);
+        requireDigestAdmin(profile);
+        const { periodLabel = "Daily" } = await request.json().catch(() => ({}));
+        if (!["Daily", "Weekly"].includes(periodLabel)) return json({ error: "Invalid periodLabel" }, { status: 400 });
+        const result = periodLabel === "Weekly" ? await runWeeklyDigest(env) : await runDailyDigest(env);
+        return json({ ok: true, discordConfigured: Boolean(env.DISCORD_WEBHOOK_URL), discord: result?.discord || { sent: false, reason: "Unknown" } });
       }
 
       if (url.pathname === "/api/backups/status" && request.method === "GET") {

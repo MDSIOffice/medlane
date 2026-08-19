@@ -1153,13 +1153,13 @@ function renderInventoryBranchTabs() {
 }
 
 function transferAuthorizationCell(transfer, index) {
-  if (transfer.status === "For Receiving") return canApproveInventoryChanges() ? `<div class="inline-actions"><button class="mini-button" data-dispatch-transfer="${index}">Review &amp; Dispatch</button></div>` : `<small>Awaiting Admin approval</small>`;
+  if (transfer.status === "For Receiving") return canApproveInventoryChanges() ? `<div class="inline-actions"><button class="mini-button" data-dispatch-transfer="${index}">Review &amp; Dispatch</button></div>` : `<div class="inline-actions"><small>Awaiting Admin approval</small></div>`;
   if (transfer.status === "In Transit") return `<div class="inline-actions"><button class="mini-button" data-receive-transfer="${index}">Confirm Received</button></div>`;
   if (transfer.status === "Incomplete") {
     const missing = (transfer.lines || []).reduce((sum, line) => sum + Math.max(Number(line.dispatchedQty ?? line.requestedQty ?? 0) - Number(line.receivedQty || 0), 0), 0);
     return `<div class="inline-actions"><button class="mini-button" data-receive-transfer="${index}">Receive Remainder</button><small>Missing ${missing}</small></div>`;
   }
-  return transfer.receivedBy || transfer.status;
+  return `<div class="inline-actions"><small>${escapeHtml(transfer.receivedBy || transfer.status)}</small></div>`;
 }
 
 function canApproveInventoryChanges() { return ["Admin", "Superadmin"].includes(currentUser?.role); }
