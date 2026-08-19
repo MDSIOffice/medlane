@@ -123,8 +123,7 @@ function requestOrigin(request) {
   return new URL(request.url).origin;
 }
 
-async function supabaseFetch(env, path, init = {}) {
-  requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+async function supabaseFetchOnce(env, path, init = {}) {
   const response = await fetch(`${supabaseBaseUrl(env)}${path}`, {
     ...init,
     headers: { ...supabaseHeaders(env), ...(init.headers || {}) },
@@ -132,6 +131,21 @@ async function supabaseFetch(env, path, init = {}) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(payload?.message || payload?.error || `Supabase request failed: ${response.status}`);
   return payload;
+}
+
+async function supabaseFetch(env, path, init = {}) {
+  requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+  try {
+    return await supabaseFetchOnce(env, path, init);
+  } catch (error) {
+    // Supabase occasionally rejects our service-role JWT for a moment when its clock and the
+    // Worker's clock drift apart ("JWT issued at future" / "nbf" / "not active") — never a
+    // real auth problem, just transient skew that clears itself within a second or two. Retry
+    // once instead of failing whatever scheduled task happened to be mid-request.
+    if (!isTransientJwtClockSkew(error)) throw error;
+    await sleep(1500);
+    return supabaseFetchOnce(env, path, init);
+  }
 }
 
 // PostgREST caps how many rows a single request can return (the project's "Max Rows" API
@@ -155,8 +169,7 @@ async function supabaseFetchAll(env, path, init = {}) {
   return all;
 }
 
-async function supabaseAuthAdminFetch(env, path, init = {}) {
-  requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+async function supabaseAuthAdminFetchOnce(env, path, init = {}) {
   const response = await fetch(`${supabaseBaseUrl(env)}${path}`, {
     ...init,
     headers: { ...supabaseHeaders(env), ...(init.headers || {}) },
@@ -164,6 +177,17 @@ async function supabaseAuthAdminFetch(env, path, init = {}) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(payload?.msg || payload?.message || payload?.error_description || payload?.error || `Supabase Auth request failed: ${response.status}`);
   return payload;
+}
+
+async function supabaseAuthAdminFetch(env, path, init = {}) {
+  requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+  try {
+    return await supabaseAuthAdminFetchOnce(env, path, init);
+  } catch (error) {
+    if (!isTransientJwtClockSkew(error)) throw error;
+    await sleep(1500);
+    return supabaseAuthAdminFetchOnce(env, path, init);
+  }
 }
 
 function passwordPolicyError(password) {
@@ -1615,17 +1639,12 @@ async function checkSupabaseAppRecordsHealth(env) {
   const query = `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name&limit=1`;
   try {
     requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+    // supabaseFetch() already retries once on transient JWT clock-skew — a second failure
+    // here means it isn't transient.
     await supabaseFetch(env, query);
     return { name: "Supabase app_records", ok: true };
   } catch (error) {
-    if (!isTransientJwtClockSkew(error)) return { name: "Supabase app_records", ok: false, error: error.message };
-    await sleep(1500);
-    try {
-      await supabaseFetch(env, query);
-      return { name: "Supabase app_records", ok: true, note: "Recovered after JWT clock-skew retry" };
-    } catch (retryError) {
-      return { name: "Supabase app_records", ok: false, error: `${retryError.message} (retried after JWT clock-skew)` };
-    }
+    return { name: "Supabase app_records", ok: false, error: error.message };
   }
 }
 
@@ -1829,7 +1848,7 @@ function backupDigestLines(auditRows) {
 // High-frequency housekeeping actions that dominate raw counts (dozens of times per digest
 // period) without carrying any operational signal — dropped so the digest's audit section
 // reflects actions someone would actually want to scan.
-const DIGEST_AUDIT_NOISE_ACTIONS = new Set(["Saved app state (record count changed)", "Ignored destructive save cleanup", "Discord post sent"]);
+const DIGEST_AUDIT_NOISE_ACTIONS = new Set(["Saved app state (record count changed)", "Ignored destructive save cleanup", "Discord post sent", "Email sent"]);
 
 async function auditLogDigestRows(env, sinceIso) {
   const stateKey = appStateKey(env);
@@ -2016,13 +2035,13 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
 
   const metrics = computeBusinessMetrics(state);
   const previousSnapshot = await loadDigestSnapshot(env, periodLabel);
+  await saveDigestSnapshot(env, periodLabel, metrics);
+
   const taskFailures = auditRows.filter((entry) => entry.action === "Scheduled task failed").length;
   const attentionHtml = digestAttentionBannerHtml(metrics, taskFailures);
   const statCardsHtml = digestStatCardsHtml(metrics, previousSnapshot);
   const operationalHtml = digestSectionHtml([{ title: `${periodLabel} Purchase Orders, Expenses & Backups`, lines: [...financialSummary, ...backupDigestLines(auditRows)] }]);
-  await saveDigestSnapshot(env, periodLabel, metrics);
   const ctaHtml = `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 4px;"><tr><td style="border-radius:999px;background:${DIGEST_COLORS.navy};"><a href="https://medlane.tofllorin.workers.dev/dashboard" style="display:inline-block;padding:13px 24px;color:#fff;text-decoration:none;font-weight:800;font-size:13.5px;border-radius:999px;">Open Medlane OS →</a></td></tr></table>`;
-
   const sends = [];
   for (const role of allRoles) {
     try {
