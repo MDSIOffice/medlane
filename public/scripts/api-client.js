@@ -168,8 +168,8 @@ const MedlaneAPI = (() => {
     return request(`/api/purchase-orders/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
   }
 
-  async function submitStockReceipt(poId, lines) {
-    return request("/api/stock-receipts", { method: "POST", body: JSON.stringify({ poId, lines }) });
+  async function submitStockReceipt(poId, lines, meta = {}) {
+    return request("/api/stock-receipts", { method: "POST", body: JSON.stringify({ poId, lines, ...meta }) });
   }
 
   async function approveStockReceipt(id) {
@@ -180,8 +180,8 @@ const MedlaneAPI = (() => {
     return request(`/api/stock-receipts/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
   }
 
-  async function editStockReceipt(id, lines) {
-    return request(`/api/stock-receipts/${encodeURIComponent(id)}/edit`, { method: "POST", body: JSON.stringify({ lines }) });
+  async function editStockReceipt(id, lines, meta = {}) {
+    return request(`/api/stock-receipts/${encodeURIComponent(id)}/edit`, { method: "POST", body: JSON.stringify({ lines, ...meta }) });
   }
 
   async function setUserPassword(email, password) {

@@ -964,6 +964,14 @@ qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); qs
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });
 qs("#open-demo-request")?.addEventListener("click", () => { renderDemoRequestSheet(); qs("#demo-request-modal").showModal(); });
 qs("#open-transfer-history").addEventListener("click", () => { renderInventory(); qs("#transfer-history-modal").showModal(); });
+qs("#open-stock-receipt-history")?.addEventListener("click", () => { renderStockReceiptHistory(); qs("#stock-receipt-history-modal").showModal(); });
+qs("#stock-receipt-history-close")?.addEventListener("click", () => qs("#stock-receipt-history-modal").close());
+qs("#stock-receipt-history-cancel")?.addEventListener("click", () => qs("#stock-receipt-history-modal").close());
+qs("#stock-receipt-history-table")?.addEventListener("click", (event) => {
+  const detail = event.target.closest("[data-stock-receipt-detail]");
+  if (detail) return showStockReceiptDetail(detail.dataset.stockReceiptDetail);
+});
+qs("#stock-receipt-history-modal")?.addEventListener("click", (event) => { if (event.target.id === "stock-receipt-history-modal") qs("#stock-receipt-history-modal").close(); });
 qs("#stock-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#stock-sheet-modal").close()));
 qs("#stock-sheet-cancel").addEventListener("click", () => qs("#stock-sheet-modal").close());
 guardDialogEscape(qs("#stock-sheet-modal"));
