@@ -31,3 +31,5 @@ Disallow: /
 User-agent: *
 Disallow: /dashboard
 Disallow: /api
+
+Sitemap: https://medlanesolutions.com/sitemap.xml
