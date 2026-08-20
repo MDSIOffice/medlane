@@ -409,12 +409,14 @@
         </div>
         <div class="tabs workflow-tabs" id="inventory-workflow-tabs">
           <button class="tab active" data-inventory-workflow="receiving">Receiving POs</button>
+          <button class="tab" data-inventory-workflow="receipts">Pending Receipts</button>
           <button class="tab" data-inventory-workflow="completed">Completed POs</button>
           <button class="tab" data-inventory-workflow="transfers">Transfers</button>
           <button class="tab" data-inventory-workflow="demos">Demo Requests</button>
           <button class="tab" data-inventory-workflow="stocks">Stocks</button>
         </div>
         <div class="inventory-workflow-panel active" data-inventory-panel="receiving"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div></article></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="receipts"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Stock Receiving</p><h2>Awaiting Superadmin/CEO approval</h2></div></div><div class="table-card compact-table"><table id="stock-receipt-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="completed"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="transfers"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="demos"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo Service Orders</p><h2>Sales and management approval</h2></div></div><div class="table-card compact-table"><table id="demo-request-table"></table></div></article><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo History</p><h2>Returned or converted to sales</h2></div></div><div class="table-card compact-table"><table id="demo-history-table"></table></div></article></div>
@@ -833,7 +835,7 @@
       <div class="sheet-modal-body">
         <div class="modal-header"><div><p class="eyebrow">Receive Stock</p><h2>Spreadsheet Entry</h2></div><button class="icon-button" id="stock-sheet-close" type="button" aria-label="Close">x</button></div>
         <div class="table-card compact-table sheet-table-card"><table id="stock-sheet-table"></table></div>
-        <div class="sheet-modal-actions"><button class="ghost-button" id="add-stock-sheet-row" type="button">Add Item</button><div class="modal-actions"><button class="ghost-button" id="stock-sheet-cancel" type="button">Cancel</button><button class="primary-button" id="save-stock-sheet" type="button">Save Received Stock</button></div></div>
+        <div class="sheet-modal-actions"><button class="ghost-button" id="add-stock-sheet-row" type="button">Add Item</button><div class="modal-actions"><button class="ghost-button" id="stock-sheet-cancel" type="button">Cancel</button><button class="primary-button" id="save-stock-sheet" type="button">Submit for Approval</button></div></div>
       </div>
     </dialog>
 

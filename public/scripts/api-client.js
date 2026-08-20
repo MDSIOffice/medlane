@@ -168,8 +168,20 @@ const MedlaneAPI = (() => {
     return request(`/api/purchase-orders/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
   }
 
-  async function receivePurchaseOrderStock(id, lines) {
-    return request(`/api/purchase-orders/${encodeURIComponent(id)}/receive`, { method: "POST", body: JSON.stringify({ lines }) });
+  async function submitStockReceipt(poId, lines) {
+    return request("/api/stock-receipts", { method: "POST", body: JSON.stringify({ poId, lines }) });
+  }
+
+  async function approveStockReceipt(id) {
+    return request(`/api/stock-receipts/${encodeURIComponent(id)}/approve`, { method: "POST" });
+  }
+
+  async function cancelStockReceipt(id, reason) {
+    return request(`/api/stock-receipts/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+  }
+
+  async function editStockReceipt(id, lines) {
+    return request(`/api/stock-receipts/${encodeURIComponent(id)}/edit`, { method: "POST", body: JSON.stringify({ lines }) });
   }
 
   async function setUserPassword(email, password) {
@@ -347,5 +359,5 @@ const MedlaneAPI = (() => {
     return request("/api/backups/restore", { method: "POST", body: JSON.stringify(ref) });
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, receivePurchaseOrderStock, createMemo, acknowledgeMemo };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo };
 })();
