@@ -1528,7 +1528,7 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .delivery-address h3 { margin-bottom: 12px; }
 .delivery-address strong, .delivery-address span, .delivery-address small { display: block; }
 .delivery-address span, .delivery-address small { margin-top: 8px; color: var(--muted); line-height: 1.45; }
-.invoice-mini-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
+.report-preview-grid.invoice-mini-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
 .event-timeline { position: relative; display: grid; gap: 0; margin-top: 16px; padding-left: 8px; }
 .event-timeline::before { content: ""; position: absolute; left: 20px; top: 14px; bottom: 14px; width: 2px; background: var(--line); }
 .event-item { position: relative; display: grid; grid-template-columns: 40px 120px minmax(0, 1fr); gap: 12px; padding: 11px 0; }
@@ -2199,7 +2199,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .visual-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .collection-map-layout, .order-detail-layout { grid-template-columns: 1fr; }
   .delivery-address { border-right: 0; border-bottom: 1px solid var(--line); padding-right: 0; padding-bottom: 14px; }
-  .invoice-mini-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-preview-grid.invoice-mini-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .master-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .invoice-workbench > .panel { grid-column: 1 / -1; }
   .chart-wide { grid-column: 1 / -1; }
