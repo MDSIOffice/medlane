@@ -81,7 +81,7 @@ const frontendModuleRecordKeys = {
   dashboard: [],
   analytics: [],
   masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
-  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests"],
+  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
   "purchase-orders": ["purchaseOrders"],
   "item-forecast": [],
   sales: ["sales"],
@@ -223,6 +223,7 @@ function emptyProductionData() {
     productIssues: [],
     imports: [],
     pendingTransfers: [],
+    stockReceipts: [],
     paymentRequests: [],
     transferHistory: [],
     notifications: [],
@@ -308,6 +309,7 @@ function normalizeData(next) {
   next.paymentRequests ||= [];
   next.inventoryPurchaseOrders ||= [];
   next.inventoryDemoRequests ||= [];
+  next.stockReceipts ||= [];
   next.productIssues = (next.productIssues || []).map((report) => ({ status: "Open", history: [], ...report }));
   next.clients = next.clients.map((client, index) => {
     const { terms, ...clientWithoutTerms } = client;

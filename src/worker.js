@@ -46,7 +46,7 @@ const moduleRecordKeys = {
   // the Masterlists admin screen shows. Never granted for "edit": editing the catalog still requires
   // the "masterlists" permission itself.
   "catalog-reference": ["items", "clients", "suppliers"],
-  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests"],
+  inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
   "purchase-orders": ["purchaseOrders"],
   invoicing: ["sales"],
   sales: ["sales"],
@@ -769,6 +769,56 @@ function requirePoReceiver(profile) {
 
 function requirePaymentRequestApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve payment requests");
+}
+
+function requireStockReceiptApprover(profile) {
+  if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve stock receipts");
+}
+
+function validateReceivingLines(po, submittedLines, items) {
+  if (!Array.isArray(submittedLines) || !submittedLines.length) throw new Error("No receiving lines provided");
+  return submittedLines.map((submitted) => {
+    const code = String(submitted.code || "").trim();
+    if (!code) throw new Error("Item code is required for every receiving line");
+    const item = items.find((entry) => entry.code === code);
+    if (!item) throw new Error(`Unknown item code: ${code}`);
+    const equipment = isEquipmentItem(item);
+    const qty = Number(submitted.qty || 0);
+    if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Invalid quantity for ${code}`);
+    const branch = String(submitted.branch || po?.branch || "").trim();
+    if (!branch) throw new Error(`Branch is required for ${code}`);
+    const lot = String(submitted.lot || "").trim();
+    const expiry = equipment ? "N/A" : String(submitted.expiry || "").trim();
+    if (!lot || (!equipment && !expiry)) throw new Error(`Lot and expiry are required for ${code}`);
+    let poLine = null;
+    if (po) {
+      poLine = (po.lines || []).find((entry) => entry.code === code && (!entry.lot || entry.lot === lot) && Number(entry.qty || 0) > Number(entry.receivedQty || 0));
+      if (!poLine) throw new Error(`Line not found on this purchase order: ${code} / ${lot}`);
+      const remaining = Number(poLine.qty || 0) - Number(poLine.receivedQty || 0);
+      if (qty > remaining) throw new Error(`Cannot receive ${qty} of ${code} — only ${remaining} remain on this order`);
+    }
+    return { code, item: poLine?.item || item.name, brand: poLine?.brand || item.brand || "Medlane", branch, lot, expiry, qty };
+  });
+}
+
+function applyReceivingLines(po, lines, inventory) {
+  let totalReceived = 0;
+  for (const entry of lines) {
+    if (po) {
+      const poLine = (po.lines || []).find((line) => line.code === entry.code && (!line.lot || line.lot === entry.lot) && Number(line.qty || 0) > Number(line.receivedQty || 0));
+      if (!poLine) throw new Error(`Line not found on this purchase order: ${entry.code} / ${entry.lot}`);
+      const remaining = Number(poLine.qty || 0) - Number(poLine.receivedQty || 0);
+      if (entry.qty > remaining) throw new Error(`Cannot receive ${entry.qty} of ${entry.code} — only ${remaining} remain on this order`);
+      poLine.lot = poLine.lot || entry.lot;
+      poLine.expiry = poLine.expiry || entry.expiry;
+      poLine.receivedQty = Number(poLine.receivedQty || 0) + entry.qty;
+    }
+    totalReceived += entry.qty;
+    const existing = inventory.find((inv) => inv.code === entry.code && inv.branch === entry.branch && inv.lot === entry.lot);
+    if (existing) existing.qty = Number(existing.qty || 0) + entry.qty;
+    else inventory.push({ code: entry.code, item: entry.item, brand: entry.brand, branch: entry.branch, lot: entry.lot, serial: entry.lot, expiry: entry.expiry, qty: entry.qty, min: 10 });
+  }
+  return totalReceived;
 }
 
 function userStatusFromAuth(authUser) {
@@ -2640,7 +2690,7 @@ export default {
         const poId = decodeURIComponent(segments[2] || "");
         const action = segments[3] || "";
         if (request.method !== "POST") return methodNotAllowed();
-        if (!poId || !["approve", "advance", "cancel", "receive"].includes(action)) return json({ error: "Unknown purchase order action" }, { status: 404 });
+        if (!poId || !["approve", "advance", "cancel"].includes(action)) return json({ error: "Unknown purchase order action" }, { status: 404 });
         const { authUser, profile } = await authenticatedProfile(request, env);
         const stateKey = appStateKey(env);
         const poRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}&select=data`);
@@ -2671,45 +2721,6 @@ export default {
           po.cancelledBy = by;
           po.cancelledAt = shortDate();
           po.history.push({ date: timestamp, status: "Cancelled", note: String(body.reason || "").trim() || "Order cancelled.", by });
-        } else if (action === "receive") {
-          requirePoReceiver(profile);
-          if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot receive stock for a purchase order with status "${po.status}"`);
-          const body = await request.json().catch(() => ({}));
-          const submittedLines = Array.isArray(body.lines) ? body.lines : [];
-          if (!submittedLines.length) throw new Error("No receiving lines provided");
-          const invRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=record_key,data`);
-          const inventory = invRows.map((row) => row.data);
-          const itemRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`);
-          const items = itemRows.map((row) => row.data);
-          let totalReceived = 0;
-          for (const submitted of submittedLines) {
-            const line = (po.lines || []).find((entry) => entry.code === submitted.code && (!entry.lot || entry.lot === submitted.lot) && Number(entry.qty || 0) > Number(entry.receivedQty || 0));
-            if (!line) throw new Error(`Line not found on this purchase order: ${submitted.code} / ${submitted.lot}`);
-            const item = items.find((entry) => entry.code === submitted.code || entry.name === line.item);
-            const equipment = isEquipmentItem(item || line);
-            const remaining = Number(line.qty || 0) - Number(line.receivedQty || 0);
-            const qty = Number(submitted.qty || 0);
-            if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Invalid quantity for ${submitted.code}`);
-            if (qty > remaining) throw new Error(`Cannot receive ${qty} of ${submitted.code} — only ${remaining} remain on this order`);
-            const branch = String(submitted.branch || po.branch || "").trim();
-            if (!branch) throw new Error(`Branch is required for ${submitted.code}`);
-            const lot = String(submitted.lot || "").trim();
-            const expiry = equipment ? "N/A" : String(submitted.expiry || line.expiry || "").trim();
-            if (!lot || (!equipment && !expiry)) throw new Error(`Lot and expiry are required for ${submitted.code}`);
-            line.lot = line.lot || lot;
-            line.expiry = line.expiry || expiry;
-            line.receivedQty = Number(line.receivedQty || 0) + qty;
-            totalReceived += qty;
-            const existing = inventory.find((entry) => entry.code === submitted.code && entry.branch === branch && entry.lot === lot);
-            if (existing) existing.qty = Number(existing.qty || 0) + qty;
-            else inventory.push({ code: submitted.code, item: line.item, brand: line.brand || "Medlane", branch, lot, serial: lot, expiry, qty, min: 10 });
-          }
-          const fullyReceived = (po.lines || []).every((line) => Number(line.receivedQty || 0) >= Number(line.qty || 0));
-          po.status = fullyReceived ? "Fully Received" : "Partially Received";
-          if (fullyReceived) { po.receivedBy = by; po.receivedAt = shortDate(); }
-          po.history.push({ date: timestamp, status: po.status, note: `Received ${totalReceived} unit(s) across ${submittedLines.length} line(s).`, by });
-          const invRecords = recordsFromState({ inventory }, authUser.id, stateKey, ["inventory"]);
-          if (invRecords.length) await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(invRecords) });
         }
 
         await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}`, {
@@ -2717,6 +2728,125 @@ export default {
           body: JSON.stringify({ data: po, updated_by: authUser.id }),
         });
         return json({ ok: true, po });
+      }
+
+      if (url.pathname === "/api/stock-receipts" || url.pathname.startsWith("/api/stock-receipts/")) {
+        const segments = url.pathname.split("/").filter(Boolean);
+        const receiptId = segments[2] ? decodeURIComponent(segments[2]) : "";
+        const action = segments[3] || "";
+        if (request.method !== "POST") return methodNotAllowed();
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const by = profile.name || profile.email || "System User";
+        const timestamp = poTimestamp();
+
+        if (!receiptId) {
+          requirePoReceiver(profile);
+          const body = await request.json().catch(() => ({}));
+          const poId = body.poId ? String(body.poId).trim() : "";
+          let po = null;
+          if (poId) {
+            const poRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}&select=data`);
+            po = poRows[0]?.data;
+            if (!po) return json({ error: "Purchase order not found" }, { status: 404 });
+            if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot receive stock for a purchase order with status "${po.status}"`);
+            const existingRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockReceipts&select=data`);
+            const openReceipt = existingRows.map((row) => row.data).find((entry) => entry.poId === poId && entry.status === "Pending Approval");
+            if (openReceipt) throw new Error(`${poId} already has a stock receipt (${openReceipt.id}) awaiting approval.`);
+          }
+          const itemRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`);
+          const items = itemRows.map((row) => row.data);
+          const lines = validateReceivingLines(po, Array.isArray(body.lines) ? body.lines : [], items);
+          const receipt = {
+            id: `SR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+            poId: po?.id || null,
+            supplier: po?.supplier || "",
+            status: "Pending Approval",
+            lines,
+            submittedBy: by,
+            submittedByUser: profile.email || "",
+            submittedAt: timestamp,
+            history: [{ date: timestamp, status: "Pending Approval", note: `Submitted for approval by ${by}.`, by }],
+          };
+          const receiptRecords = recordsFromState({ stockReceipts: [receipt] }, authUser.id, stateKey, ["stockReceipts"]);
+          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(receiptRecords) });
+          return json({ ok: true, receipt });
+        }
+
+        if (!["approve", "cancel", "edit"].includes(action)) return json({ error: "Unknown stock receipt action" }, { status: 404 });
+        const receiptRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockReceipts&record_key=eq.${encodeURIComponent(receiptId)}&select=data`);
+        const receipt = receiptRows[0]?.data;
+        if (!receipt) return json({ error: "Stock receipt not found" }, { status: 404 });
+        receipt.history = receipt.history || [];
+
+        if (action === "cancel") {
+          requireStockReceiptApprover(profile);
+          if (receipt.status !== "Pending Approval") throw new Error(`Cannot cancel a stock receipt with status "${receipt.status}"`);
+          const body = await request.json().catch(() => ({}));
+          const reason = String(body.reason || "").trim();
+          if (!reason) throw new Error("A cancellation reason is required");
+          receipt.status = "Cancelled";
+          receipt.cancelledBy = by;
+          receipt.cancelledAt = shortDate();
+          receipt.cancelReason = reason;
+          receipt.history.push({ date: timestamp, status: "Cancelled", note: reason, by });
+          const records = recordsFromState({ stockReceipts: [receipt] }, authUser.id, stateKey, ["stockReceipts"]);
+          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(records) });
+          return json({ ok: true, receipt });
+        }
+
+        if (action === "edit") {
+          requireStockReceiptApprover(profile);
+          if (receipt.status !== "Pending Approval") throw new Error(`Cannot edit a stock receipt with status "${receipt.status}"`);
+          const body = await request.json().catch(() => ({}));
+          let po = null;
+          if (receipt.poId) {
+            const poRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(receipt.poId)}&select=data`);
+            po = poRows[0]?.data;
+          }
+          const itemRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`);
+          const items = itemRows.map((row) => row.data);
+          receipt.lines = validateReceivingLines(po, Array.isArray(body.lines) ? body.lines : [], items);
+          receipt.history.push({ date: timestamp, status: "Pending Approval", note: `Edited by ${by}.`, by });
+          const records = recordsFromState({ stockReceipts: [receipt] }, authUser.id, stateKey, ["stockReceipts"]);
+          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(records) });
+          return json({ ok: true, receipt });
+        }
+
+        requireStockReceiptApprover(profile);
+        if (receipt.status !== "Pending Approval") throw new Error(`Cannot approve a stock receipt with status "${receipt.status}"`);
+        let po = null;
+        if (receipt.poId) {
+          const poRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(receipt.poId)}&select=data`);
+          po = poRows[0]?.data;
+          if (!po) return json({ error: "Purchase order not found" }, { status: 404 });
+          if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot approve this stock receipt: ${po.id} is no longer ready for receiving (status "${po.status}").`);
+          po.history = po.history || [];
+        }
+        const invRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=record_key,data`);
+        const inventory = invRows.map((row) => row.data);
+        const totalReceived = applyReceivingLines(po, receipt.lines, inventory);
+        receipt.status = "Approved";
+        receipt.approvedBy = by;
+        receipt.approvedAt = shortDate();
+        receipt.history.push({ date: timestamp, status: "Approved", note: `Approved by ${by}. Posted ${totalReceived} unit(s) across ${receipt.lines.length} line(s).`, by });
+        if (po) {
+          const fullyReceived = (po.lines || []).every((line) => Number(line.receivedQty || 0) >= Number(line.qty || 0));
+          po.status = fullyReceived ? "Fully Received" : "Partially Received";
+          if (fullyReceived) { po.receivedBy = by; po.receivedAt = shortDate(); }
+          po.history.push({ date: timestamp, status: po.status, note: `Received ${totalReceived} unit(s) across ${receipt.lines.length} line(s) via ${receipt.id}.`, by });
+        }
+        const invRecords = recordsFromState({ inventory }, authUser.id, stateKey, ["inventory"]);
+        if (invRecords.length) await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(invRecords) });
+        const receiptRecords = recordsFromState({ stockReceipts: [receipt] }, authUser.id, stateKey, ["stockReceipts"]);
+        await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(receiptRecords) });
+        if (po) {
+          await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(po.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ data: po, updated_by: authUser.id }),
+          });
+        }
+        return json({ ok: true, receipt, po });
       }
 
       if (url.pathname === "/api/reports") {

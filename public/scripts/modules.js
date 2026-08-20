@@ -1166,6 +1166,7 @@ function canApproveInventoryChanges() { return ["Admin", "Superadmin"].includes(
 function canApprovePurchaseOrders() { return currentUser?.role === "Superadmin"; }
 function canApprovePaymentRequests() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 function canManagePoReceiving() { return ["Superadmin", "Logistics"].includes(currentUser?.role); }
+function canApproveStockReceipts() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 function canApproveMigrations() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 
 const inventoryPoTerminalStatuses = ["Fully Received", "Cancelled"];
@@ -1254,6 +1255,98 @@ async function cancelPurchaseOrder(index) {
   saveData(["notifications"]);
   renderAll();
   toast(`${po.id} cancelled.`);
+}
+
+function stockReceiptActionsCell(receipt, index) {
+  if (receipt.status !== "Pending Approval") return `<small>${escapeHtml(receipt.status)}</small>`;
+  if (!canApproveStockReceipts()) return `<small>Awaiting Superadmin/CEO approval</small>`;
+  return `<div class="inline-actions"><button class="mini-button" data-stock-receipt-approve="${index}">Approve</button><button class="mini-button" data-stock-receipt-edit="${index}">Edit</button><button class="mini-button danger-button" data-stock-receipt-cancel="${index}">Cancel</button></div>`;
+}
+
+function renderStockReceipts() {
+  if (!qs("#stock-receipt-table")) return;
+  const receipts = (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval");
+  table("#stock-receipt-table", ["Receipt No.", "Purchase Order", "Lines", "Submitted", "Action"], receipts.slice().reverse().map((receipt) => {
+    const index = data.stockReceipts.indexOf(receipt);
+    const qty = (receipt.lines || []).reduce((sum, line) => sum + Number(line.qty || 0), 0);
+    return { focus: receipt.id, cells: [receipt.id, `${escapeHtml(receipt.poId || "Manual receive")}${receipt.supplier ? `<small>${escapeHtml(receipt.supplier)}</small>` : ""}`, `${(receipt.lines || []).length} line(s)<small>${qty} unit(s)</small>`, `${escapeHtml(receipt.submittedBy || "-")}<small>${escapeHtml(receipt.submittedAt || "-")}</small>`, stockReceiptActionsCell(receipt, index)] };
+  }));
+}
+
+function replaceStockReceiptRecord(receipt) {
+  const index = (data.stockReceipts || []).findIndex((entry) => entry.id === receipt.id);
+  if (index >= 0) data.stockReceipts[index] = receipt;
+  else data.stockReceipts.push(receipt);
+  clearPendingSaveQueueKeys(["stockReceipts"]);
+}
+
+async function approveStockReceipt(index) {
+  if (!canApproveStockReceipts()) return toast("Only Superadmin or CEO can approve stock receipts.");
+  const receipt = (data.stockReceipts || [])[index];
+  if (!receipt || receipt.status !== "Pending Approval") return toast("This stock receipt is not pending approval.");
+  if (!confirm(`Approve ${receipt.id} and post it to inventory?`)) return;
+  const result = await MedlaneAPI.approveStockReceipt(receipt.id).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to approve this stock receipt.");
+  replaceStockReceiptRecord(result.receipt);
+  if (result.po) replacePoRecord(result.po);
+  (result.receipt.lines || []).forEach(({ branch, code, item, brand, lot, expiry, qty }) => {
+    const existing = data.inventory.find((entry) => entry.code === code && entry.branch === branch && entry.lot === lot);
+    if (existing) existing.qty = Number(existing.qty || 0) + Number(qty || 0);
+    else data.inventory.push({ code, item, brand, branch, lot, serial: lot, expiry, qty, min: 10 });
+  });
+  clearPendingSaveQueueKeys(["inventory"]);
+  log("Approved stock receipt", "Inventory", `${receipt.id}: ${(result.receipt.lines || []).length} row(s)`);
+  notify("Stock Receipt", `${receipt.id} approved and posted to inventory.`, "inventory", receipt.id);
+  if (receipt.submittedByUser) notify("Stock Receipt", `Your stock receipt ${receipt.id} was approved.`, "notifications", receipt.id, null, receipt.submittedByUser);
+  saveData(["notifications"]);
+  renderAll();
+  toast(`${receipt.id} approved.`);
+}
+
+async function cancelStockReceipt(index) {
+  if (!canApproveStockReceipts()) return toast("Only Superadmin or CEO can cancel stock receipts.");
+  const receipt = (data.stockReceipts || [])[index];
+  if (!receipt || receipt.status !== "Pending Approval") return toast("This stock receipt is not pending approval.");
+  const { ok, reason } = await confirmDetailsModal({
+    eyebrow: "Confirm Cancellation",
+    title: `Cancel ${receipt.id}`,
+    fields: [["Purchase Order", receipt.poId || "Manual receive"], ["Lines", String((receipt.lines || []).length)], ["Submitted By", receipt.submittedBy || "-"]],
+    confirmLabel: "Cancel Receipt",
+    danger: true,
+    collectReason: true,
+    reasonLabel: "Reason for cancellation",
+    note: "Nothing has posted to inventory yet, so cancelling this receipt has no other side effects.",
+  });
+  if (!ok) return;
+  if (!reason) return toast("A cancellation reason is required.");
+  const result = await MedlaneAPI.cancelStockReceipt(receipt.id, reason).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to cancel this stock receipt.");
+  replaceStockReceiptRecord(result.receipt);
+  log("Cancelled stock receipt", "Inventory", receipt.id);
+  notify("Stock Receipt", `${receipt.id} cancelled.`, "inventory", receipt.id);
+  if (receipt.submittedByUser) notify("Stock Receipt", `Your stock receipt ${receipt.id} was cancelled.`, "notifications", receipt.id, null, receipt.submittedByUser);
+  saveData(["notifications"]);
+  renderAll();
+  toast(`${receipt.id} cancelled.`);
+}
+
+function fillStockSheetFromReceipt(receipt) {
+  const bodyRows = (receipt.lines || []).map((line) => `<tr><td><select class="stock-branch">${branchOptions(line.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" list="inventory-code-options" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" list="inventory-item-options" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`).join("");
+  qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
+  qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
+}
+
+function openStockSheetForReceiptEdit(index) {
+  const receipt = (data.stockReceipts || [])[index];
+  if (!receipt) return toast("Stock receipt not found.");
+  if (receipt.status !== "Pending Approval") return toast("Only pending stock receipts can be edited.");
+  if (!canApproveStockReceipts()) return toast("Only Superadmin or CEO can edit stock receipts.");
+  renderStockSheet();
+  editingStockReceiptId = receipt.id;
+  const picker = qs("#inventory-po-receive-picker");
+  if (picker) { picker.value = receipt.poId || ""; picker.disabled = true; }
+  fillStockSheetFromReceipt(receipt);
+  qs("#stock-sheet-modal").showModal();
 }
 
 function inventoryPoHistoryClass(status) {
@@ -1667,6 +1760,7 @@ function renderInventory() {
   }));
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
   table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
+  renderStockReceipts();
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
   table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, (transfer.lines || []).reduce((sum, line) => sum + transferLineQty(line), 0), (transfer.lines || []).map((line) => `${escapeHtml(transferLineLot(line))}<small>${escapeHtml(transferLineExpiry(line))}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View Details</button><button class="mini-button" data-transfer-print="${escapeHtml(transfer.id)}">Print</button>`] })));
   const demoRequests = data.inventoryDemoRequests || [];
@@ -1719,12 +1813,13 @@ function renderInventoryWorkflowTabs() {
   if (!tabs) return;
   const counts = {
     receiving: (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).length,
+    receipts: (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval").length,
     completed: (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).length,
     transfers: (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status)).length,
     demos: (data.inventoryDemoRequests || []).filter((request) => !["Returned", "To Sales", "Cancelled"].includes(request.status)).length,
     stocks: (data.inventory || []).filter((item) => item.branch === inventoryBranchTab).length,
   };
-  const labels = { receiving: "Receiving POs", completed: "Completed POs", transfers: "Transfers", demos: "Demo Requests", stocks: "Stocks" };
+  const labels = { receiving: "Receiving POs", receipts: "Pending Receipts", completed: "Completed POs", transfers: "Transfers", demos: "Demo Requests", stocks: "Stocks" };
   tabs.querySelectorAll("[data-inventory-workflow]").forEach((button) => {
     const tab = button.dataset.inventoryWorkflow;
     button.classList.toggle("active", tab === inventoryWorkflowTab);
@@ -1765,6 +1860,8 @@ function ensureInventoryDatalists() {
   qs("#inventory-brand-options").innerHTML = [...new Set(data.items.map((item) => item.brand).filter(Boolean))].map((brand) => `<option value="${escapeHtml(brand)}"></option>`).join("");
 }
 
+let editingStockReceiptId = null;
+
 function stockSheetRow(index) {
   return `<tr><td><select class="stock-branch">${branchOptions(inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" /></td><td><input class="stock-code" list="inventory-code-options" /></td><td><input class="stock-item" list="inventory-item-options" /></td><td><input class="stock-lot" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" /></td><td><input class="stock-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
@@ -1777,6 +1874,9 @@ function renderStockSheet() {
   const pickerOptions = `<option value="">Manual receive</option>${receivablePurchaseOrders().map((po) => `<option value="${escapeHtml(po.id)}">${escapeHtml(po.id)} · ${escapeHtml(po.supplier)}</option>`).join("")}`;
   if (!qs("#inventory-po-receive-picker")) tableEl.closest(".table-card")?.insertAdjacentHTML("beforebegin", `<div class="toolbar"><div class="field"><label for="inventory-po-receive-picker">Inventory Purchase Order</label><select id="inventory-po-receive-picker">${pickerOptions}</select></div></div>`);
   else qs("#inventory-po-receive-picker").innerHTML = pickerOptions;
+  const picker = qs("#inventory-po-receive-picker");
+  if (picker) picker.disabled = false;
+  editingStockReceiptId = null;
   tableEl.innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${stockSheetRow(0)}</tbody>`;
 }
 
@@ -1973,33 +2073,27 @@ async function saveStockSheet() {
   if (!rows.length) return toast("No stock rows to save.");
   if (rows.some((row) => !row.item || !row.branch || !row.lot || (!isEquipmentItem(row.item) && !row.expiry) || row.qty <= 0)) return toast("Complete all stock sheet fields before saving.");
   if (rows.some((row) => row.expiry !== "N/A" && daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
-  if (po) {
-    const lines = rows.map(({ item, branch, lot, expiry, qty }) => ({ code: item.code, branch, lot, expiry, qty }));
-    const result = await MedlaneAPI.receivePurchaseOrderStock(po.id, lines).catch((error) => ({ error }));
-    if (result.error) return toast(result.error.message || "Unable to receive stock for this purchase order.");
-    replacePoRecord(result.po);
-    // Mirror the server's inventory posting locally so the UI reflects it immediately;
-    // the server call above is the authoritative write, this is display-only.
-    rows.forEach(({ branch, item, brand, lot, expiry, qty }) => {
-      const existing = data.inventory.find((entry) => entry.code === item.code && entry.branch === branch && entry.lot === lot);
-      if (existing) existing.qty += qty;
-      else data.inventory.push({ code: item.code, item: item.name, brand, branch, lot, serial: lot, expiry, qty, min: 10 });
-    });
-    clearPendingSaveQueueKeys(["inventory"]);
-    notify("Purchase Order", `${po.id} ${result.po.status === "Fully Received" ? "fully received" : "partially received"}.`, "inventory", po.id);
-    log("Received stock from purchase order", "Inventory", `${po.id}: ${rows.length} row(s)`);
-  } else {
-    rows.forEach(({ branch, item, brand, lot, expiry, qty }) => {
-      const existing = data.inventory.find((entry) => entry.code === item.code && entry.branch === branch && entry.lot === lot);
-      if (existing) existing.qty += qty;
-      else data.inventory.push({ code: item.code, item: item.name, brand, branch, lot, serial: lot, expiry, qty, min: 10 });
-    });
-    log("Received stock from sheet", "Inventory", `${rows.length} row(s)`);
-    saveData();
+  const lines = rows.map(({ item, branch, lot, expiry, qty }) => ({ code: item.code, branch, lot, expiry, qty }));
+  if (editingStockReceiptId) {
+    const result = await MedlaneAPI.editStockReceipt(editingStockReceiptId, lines).catch((error) => ({ error }));
+    if (result.error) return toast(result.error.message || "Unable to update this stock receipt.");
+    replaceStockReceiptRecord(result.receipt);
+    log("Edited stock receipt", "Inventory", `${result.receipt.id}: ${rows.length} row(s)`);
+    editingStockReceiptId = null;
+    qs("#stock-sheet-modal")?.close();
+    renderAll();
+    toast(`${result.receipt.id} updated — still awaiting Superadmin/CEO approval.`);
+    return;
   }
+  const result = await MedlaneAPI.submitStockReceipt(po?.id || null, lines).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to submit stock for receiving.");
+  data.stockReceipts.push(result.receipt);
+  clearPendingSaveQueueKeys(["stockReceipts"]);
+  notify("Stock Receipt", `${result.receipt.id} submitted for approval${po ? ` (${po.id})` : ""}.`, "inventory", result.receipt.id, ["Superadmin", "CEO"]);
+  log("Submitted stock receipt for approval", "Inventory", `${result.receipt.id}: ${rows.length} row(s)`);
   qs("#stock-sheet-modal")?.close();
   renderAll();
-  toast(`${rows.length} stock row(s) saved.`);
+  toast(`${result.receipt.id} submitted for Superadmin/CEO approval.`);
 }
 
 async function saveTransferSheet() {

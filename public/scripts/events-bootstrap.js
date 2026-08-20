@@ -449,6 +449,12 @@ document.body.addEventListener("click", (event) => {
   if (inventoryPoCancel) return cancelPurchaseOrder(Number(inventoryPoCancel.dataset.inventoryPoCancel));
   const inventoryPoReceive = event.target.closest("[data-inventory-po-receive]");
   if (inventoryPoReceive) { const po = data.inventoryPurchaseOrders[Number(inventoryPoReceive.dataset.inventoryPoReceive)]; if (po) openStockSheetForPo(po.id); return; }
+  const stockReceiptApprove = event.target.closest("[data-stock-receipt-approve]");
+  if (stockReceiptApprove) return approveStockReceipt(Number(stockReceiptApprove.dataset.stockReceiptApprove));
+  const stockReceiptEdit = event.target.closest("[data-stock-receipt-edit]");
+  if (stockReceiptEdit) return openStockSheetForReceiptEdit(Number(stockReceiptEdit.dataset.stockReceiptEdit));
+  const stockReceiptCancel = event.target.closest("[data-stock-receipt-cancel]");
+  if (stockReceiptCancel) return cancelStockReceipt(Number(stockReceiptCancel.dataset.stockReceiptCancel));
   const revertImport = event.target.closest("[data-revert-import]");
   if (revertImport) return revertImportBatch(Number(revertImport.dataset.revertImport));
   const productIssuePrint = event.target.closest("[data-product-issue-print]");
