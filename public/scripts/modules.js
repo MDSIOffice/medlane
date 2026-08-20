@@ -2071,8 +2071,8 @@ async function saveStockSheet() {
     return { branch, item, brand, lot, expiry, qty };
   }).filter(Boolean);
   if (!rows.length) return toast("No stock rows to save.");
-  if (rows.some((row) => !row.item || !row.branch || !row.lot || (!isEquipmentItem(row.item) && !row.expiry) || row.qty <= 0)) return toast("Complete all stock sheet fields before saving.");
-  if (rows.some((row) => row.expiry !== "N/A" && daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
+  if (rows.some((row) => !row.item || !row.branch || row.qty <= 0)) return toast("Complete all stock sheet fields before saving.");
+  if (rows.some((row) => row.expiry && row.expiry !== "N/A" && daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
   const lines = rows.map(({ item, branch, lot, expiry, qty }) => ({ code: item.code, branch, lot, expiry, qty }));
   if (editingStockReceiptId) {
     const result = await MedlaneAPI.editStockReceipt(editingStockReceiptId, lines).catch((error) => ({ error }));

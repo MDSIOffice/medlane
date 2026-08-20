@@ -789,7 +789,6 @@ function validateReceivingLines(po, submittedLines, items) {
     if (!branch) throw new Error(`Branch is required for ${code}`);
     const lot = String(submitted.lot || "").trim();
     const expiry = equipment ? "N/A" : String(submitted.expiry || "").trim();
-    if (!lot || (!equipment && !expiry)) throw new Error(`Lot and expiry are required for ${code}`);
     let poLine = null;
     if (po) {
       poLine = (po.lines || []).find((entry) => entry.code === code && (!entry.lot || entry.lot === lot) && Number(entry.qty || 0) > Number(entry.receivedQty || 0));
