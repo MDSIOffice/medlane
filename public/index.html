@@ -406,6 +406,7 @@
           <button class="primary-button" id="open-transfer-sheet" type="button">Stock Transfer</button>
           <button class="primary-button" id="open-demo-request" type="button">Request Demo</button>
           <button class="ghost-button" id="open-transfer-history" type="button">Transfer History</button>
+          <button class="ghost-button" id="open-stock-receipt-history" type="button">Receiving History</button>
         </div>
         <div class="tabs workflow-tabs" id="inventory-workflow-tabs">
           <button class="tab active" data-inventory-workflow="receiving">Receiving POs</button>
@@ -834,6 +835,11 @@
     <dialog class="modal sheet-modal" id="stock-sheet-modal">
       <div class="sheet-modal-body">
         <div class="modal-header"><div><p class="eyebrow">Receive Stock</p><h2>Spreadsheet Entry</h2></div><button class="icon-button" id="stock-sheet-close" type="button" aria-label="Close">x</button></div>
+        <div class="form-grid">
+          <div class="field"><label for="stock-sheet-order-number">Order Number</label><input id="stock-sheet-order-number" placeholder="Supplier order / DR number" /></div>
+          <div class="field"><label for="stock-sheet-date-received">Date Received</label><input id="stock-sheet-date-received" type="date" /></div>
+          <div class="field"><label for="stock-sheet-source">Shipment / Local Purchase</label><select id="stock-sheet-source"><option value="">Select source</option><option value="Shipment">Shipment</option><option value="Local Purchase">Local Purchase</option></select></div>
+        </div>
         <div class="table-card compact-table sheet-table-card"><table id="stock-sheet-table"></table></div>
         <div class="sheet-modal-actions"><button class="ghost-button" id="add-stock-sheet-row" type="button">Add Item</button><div class="modal-actions"><button class="ghost-button" id="stock-sheet-cancel" type="button">Cancel</button><button class="primary-button" id="save-stock-sheet" type="button">Submit for Approval</button></div></div>
       </div>
@@ -877,6 +883,15 @@
         <p>Review every transfer action, including source, destination, quantity, lot, user, and notes.</p>
         <div class="table-card compact-table"><table id="transfer-history-table"></table></div>
         <div class="modal-actions"><button class="ghost-button" id="transfer-history-cancel" type="button">Close</button></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal report-modal" id="stock-receipt-history-modal">
+      <div class="report-preview">
+        <div class="modal-header"><div><p class="eyebrow">Receiving History</p><h2>Approved Stock Receipts</h2></div><button class="icon-button" id="stock-receipt-history-close" type="button" aria-label="Close">x</button></div>
+        <p>Every approved stock receipt, itemized. Click a receipt to view its full line detail and approval trail.</p>
+        <div class="table-card compact-table"><table id="stock-receipt-history-table"></table></div>
+        <div class="modal-actions"><button class="ghost-button" id="stock-receipt-history-cancel" type="button">Close</button></div>
       </div>
     </dialog>
 

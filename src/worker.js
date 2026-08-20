@@ -775,6 +775,18 @@ function requireStockReceiptApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve stock receipts");
 }
 
+const receivingSources = ["Shipment", "Local Purchase"];
+
+function validateReceivingMeta(body) {
+  const orderNumber = String(body.orderNumber || "").trim();
+  if (!orderNumber) throw new Error("Order Number is required");
+  const dateReceived = String(body.dateReceived || "").trim();
+  if (!dateReceived || !/^\d{4}-\d{2}-\d{2}$/.test(dateReceived)) throw new Error("A valid Date Received is required");
+  const source = String(body.source || "").trim();
+  if (!receivingSources.includes(source)) throw new Error("Source must be Shipment or Local Purchase");
+  return { orderNumber, dateReceived, source };
+}
+
 function validateReceivingLines(po, submittedLines, items) {
   if (!Array.isArray(submittedLines) || !submittedLines.length) throw new Error("No receiving lines provided");
   return submittedLines.map((submitted) => {
@@ -2756,11 +2768,15 @@ export default {
           const itemRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`);
           const items = itemRows.map((row) => row.data);
           const lines = validateReceivingLines(po, Array.isArray(body.lines) ? body.lines : [], items);
+          const { orderNumber, dateReceived, source } = validateReceivingMeta(body);
           const receipt = {
             id: `SR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
             poId: po?.id || null,
             supplier: po?.supplier || "",
             status: "Pending Approval",
+            orderNumber,
+            dateReceived,
+            source,
             lines,
             submittedBy: by,
             submittedByUser: profile.email || "",
@@ -2806,6 +2822,10 @@ export default {
           const itemRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`);
           const items = itemRows.map((row) => row.data);
           receipt.lines = validateReceivingLines(po, Array.isArray(body.lines) ? body.lines : [], items);
+          const { orderNumber, dateReceived, source } = validateReceivingMeta(body);
+          receipt.orderNumber = orderNumber;
+          receipt.dateReceived = dateReceived;
+          receipt.source = source;
           receipt.history.push({ date: timestamp, status: "Pending Approval", note: `Edited by ${by}.`, by });
           const records = recordsFromState({ stockReceipts: [receipt] }, authUser.id, stateKey, ["stockReceipts"]);
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(records) });

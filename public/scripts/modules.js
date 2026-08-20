@@ -1266,11 +1266,36 @@ function stockReceiptActionsCell(receipt, index) {
 function renderStockReceipts() {
   if (!qs("#stock-receipt-table")) return;
   const receipts = (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval");
-  table("#stock-receipt-table", ["Receipt No.", "Purchase Order", "Lines", "Submitted", "Action"], receipts.slice().reverse().map((receipt) => {
+  table("#stock-receipt-table", ["Receipt No.", "Order No.", "Purchase Order", "Received / Source", "Lines", "Submitted", "Action"], receipts.slice().reverse().map((receipt) => {
     const index = data.stockReceipts.indexOf(receipt);
     const qty = (receipt.lines || []).reduce((sum, line) => sum + Number(line.qty || 0), 0);
-    return { focus: receipt.id, cells: [receipt.id, `${escapeHtml(receipt.poId || "Manual receive")}${receipt.supplier ? `<small>${escapeHtml(receipt.supplier)}</small>` : ""}`, `${(receipt.lines || []).length} line(s)<small>${qty} unit(s)</small>`, `${escapeHtml(receipt.submittedBy || "-")}<small>${escapeHtml(receipt.submittedAt || "-")}</small>`, stockReceiptActionsCell(receipt, index)] };
+    return { focus: receipt.id, cells: [receipt.id, escapeHtml(receipt.orderNumber || "-"), `${escapeHtml(receipt.poId || "Manual receive")}${receipt.supplier ? `<small>${escapeHtml(receipt.supplier)}</small>` : ""}`, `${escapeHtml(receipt.dateReceived || "-")}<small>${escapeHtml(receipt.source || "-")}</small>`, `${(receipt.lines || []).length} line(s)<small>${qty} unit(s)</small>`, `${escapeHtml(receipt.submittedBy || "-")}<small>${escapeHtml(receipt.submittedAt || "-")}</small>`, stockReceiptActionsCell(receipt, index)] };
   }));
+}
+
+function stockReceiptLineRowsHtml(receipt) {
+  return (receipt.lines || []).map((line) => `<tr><td>${escapeHtml(line.item || line.code)}<small>${escapeHtml(line.code)}</small></td><td>${escapeHtml(line.branch || "-")}</td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${Number(line.qty || 0)}</td></tr>`).join("") || `<tr><td colspan="5">No lines recorded.</td></tr>`;
+}
+
+function renderStockReceiptHistory() {
+  if (!qs("#stock-receipt-history-table")) return;
+  const receipts = (data.stockReceipts || []).filter((receipt) => receipt.status === "Approved");
+  table("#stock-receipt-history-table", ["Receipt No.", "Order No.", "Purchase Order", "Received / Source", "Lines", "Approved By"], receipts.slice().reverse().map((receipt) => {
+    const qty = (receipt.lines || []).reduce((sum, line) => sum + Number(line.qty || 0), 0);
+    return { focus: receipt.id, cells: [`<button class="link-button dark" data-stock-receipt-detail="${escapeHtml(receipt.id)}">${escapeHtml(receipt.id)}</button>`, escapeHtml(receipt.orderNumber || "-"), `${escapeHtml(receipt.poId || "Manual receive")}${receipt.supplier ? `<small>${escapeHtml(receipt.supplier)}</small>` : ""}`, `${escapeHtml(receipt.dateReceived || "-")}<small>${escapeHtml(receipt.source || "-")}</small>`, `${(receipt.lines || []).length} line(s)<small>${qty} unit(s)</small>`, `${escapeHtml(receipt.approvedBy || "-")}<small>${escapeHtml(receipt.approvedAt || "-")}</small>`] };
+  }));
+}
+
+function showStockReceiptDetail(id) {
+  const receipt = (data.stockReceipts || []).find((entry) => entry.id === id);
+  if (!receipt) return toast("Stock receipt not found.");
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal audit-detail-modal transfer-detail-modal";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Stock Receipt Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-stock-receipt-detail aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Order Number</small><strong>${escapeHtml(receipt.orderNumber || "-")}</strong></div><div class="report-preview-card"><small>Date Received</small><strong>${escapeHtml(receipt.dateReceived || "-")}</strong></div><div class="report-preview-card"><small>Source</small><strong>${escapeHtml(receipt.source || "-")}</strong></div><div class="report-preview-card"><small>Purchase Order</small><strong>${escapeHtml(receipt.poId || "Manual receive")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Branch</th><th>Lot</th><th>Expiry</th><th>Qty</th></tr></thead><tbody>${stockReceiptLineRowsHtml(receipt)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${(receipt.history || []).map((event) => `<div class="event-item ${/approved/i.test(event.status) ? "done" : /cancel/i.test(event.status) ? "blocked" : "pending"}"><span>${escapeHtml((event.status || "S")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("") || `<p>No history recorded yet.</p>`}</div></details>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-close-stock-receipt-detail]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
 }
 
 function replaceStockReceiptRecord(receipt) {
@@ -1334,6 +1359,9 @@ function fillStockSheetFromReceipt(receipt) {
   const bodyRows = (receipt.lines || []).map((line) => `<tr><td><select class="stock-branch">${branchOptions(line.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" list="inventory-code-options" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" list="inventory-item-options" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
   qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
+  if (qs("#stock-sheet-order-number")) qs("#stock-sheet-order-number").value = receipt.orderNumber || "";
+  if (qs("#stock-sheet-date-received")) qs("#stock-sheet-date-received").value = receipt.dateReceived || fmtDate(today);
+  if (qs("#stock-sheet-source")) qs("#stock-sheet-source").value = receipt.source || "";
 }
 
 function openStockSheetForReceiptEdit(index) {
@@ -1745,11 +1773,15 @@ function renderInventory() {
   const low = visibleInventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
   const nearExpiry = visibleInventory.filter((item) => inventoryStatus(item) === "Near Expiry");
   const forDisposal = visibleInventory.filter((item) => inventoryStatus(item) === "For Disposal");
-  const expiringSoon = visibleInventory.filter((item) => item.expiry !== "N/A").sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, 4);
+  const visualCardRowLimit = 5;
+  const worstLow = low.slice().sort((a, b) => Math.max(b.min - b.qty, 0) - Math.max(a.min - a.qty, 0)).slice(0, visualCardRowLimit);
+  const expiringSoon = visibleInventory.filter((item) => item.expiry !== "N/A").sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, visualCardRowLimit);
+  const mostOverdueDisposal = forDisposal.slice().sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, visualCardRowLimit);
+  const overflowNote = (list, label) => list.length > visualCardRowLimit ? `Showing the top ${visualCardRowLimit} of ${list.length} ${label} records.` : "";
   qs("#inventory-visuals").innerHTML = [
-    visualCard("!", "Low Stock", `${low.length} records`, barRows(low.map((item) => [inventoryItemLabel(item), Math.max(item.min - item.qty, 0)]), (value) => `${value} short`, ["red", "orange"]), "risk", "Computed as minimum stock minus current quantity for records below minimum."),
-    visualCard("⌁", "Near Expiry", `${nearExpiry.length} lots`, barRows(expiringSoon.map((item) => [inventoryItemLabel(item), daysUntil(item.expiry)]), (value) => value < 0 ? "expired" : `${value} days`, ["red", "orange", "green"]), "warning", "Computed from lot expiry dates and days remaining from today."),
-    visualCard("×", "For Disposal", `${forDisposal.length} expired`, barRows(forDisposal.map((item) => [inventoryItemLabel(item), Math.abs(daysUntil(item.expiry))]), (value) => `${value} days expired`, ["red", "orange"]), "risk", "Expired inventory is marked for disposal and blocked from SI/TS/DR invoicing."),
+    visualCard("!", "Low Stock", `${low.length} records`, barRows(worstLow.map((item) => [inventoryItemLabel(item), Math.max(item.min - item.qty, 0)]), (value) => `${value} short`, ["red", "orange"]), "risk", overflowNote(low, "low/critical") || "Computed as minimum stock minus current quantity for records below minimum."),
+    visualCard("⌁", "Near Expiry", `${nearExpiry.length} lots`, barRows(expiringSoon.map((item) => [inventoryItemLabel(item), daysUntil(item.expiry)]), (value) => value < 0 ? "expired" : `${value} days`, ["red", "orange", "green"]), "warning", overflowNote(nearExpiry, "near-expiry") || "Computed from lot expiry dates and days remaining from today."),
+    visualCard("×", "For Disposal", `${forDisposal.length} expired`, barRows(mostOverdueDisposal.map((item) => [inventoryItemLabel(item), Math.abs(daysUntil(item.expiry))]), (value) => `${value} days expired`, ["red", "orange"]), "risk", overflowNote(forDisposal, "for-disposal") || "Expired inventory is marked for disposal and blocked from SI/TS/DR invoicing."),
     visualCard("▤", "Stock Health", `${visibleInventory.length} total`, barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((itemStatus) => [itemStatus, visibleInventory.filter((item) => inventoryStatus(item) === itemStatus).length]), (value) => `${value} records`, ["green", "orange", "red", "red", "red"]), "info", "Computed by classifying each inventory record by quantity and expiry rules."),
   ].join("");
   qs("#inventory-compact-toggle")?.classList.toggle("active", inventoryCompactView);
@@ -1868,6 +1900,12 @@ function stockSheetRow(index) {
 
 function receivablePurchaseOrders() { return (data.inventoryPurchaseOrders || []).filter((po) => ["For Receiving", "Partially Received"].includes(po.status)); }
 
+function resetStockSheetMeta() {
+  if (qs("#stock-sheet-order-number")) qs("#stock-sheet-order-number").value = "";
+  if (qs("#stock-sheet-date-received")) qs("#stock-sheet-date-received").value = fmtDate(today);
+  if (qs("#stock-sheet-source")) qs("#stock-sheet-source").value = "";
+}
+
 function renderStockSheet() {
   const tableEl = qs("#stock-sheet-table");
   if (!tableEl) return;
@@ -1877,12 +1915,14 @@ function renderStockSheet() {
   const picker = qs("#inventory-po-receive-picker");
   if (picker) picker.disabled = false;
   editingStockReceiptId = null;
+  resetStockSheetMeta();
   tableEl.innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${stockSheetRow(0)}</tbody>`;
 }
 
 function fillStockSheetFromInventoryPo(poId) {
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
   if (!po) return renderStockSheet();
+  if (qs("#stock-sheet-order-number") && !qs("#stock-sheet-order-number").value.trim()) qs("#stock-sheet-order-number").value = po.id;
   const remainingLines = po.lines.filter((line) => Number(line.qty || 0) - Number(line.receivedQty || 0) > 0);
   const bodyRows = (remainingLines.length ? remainingLines : po.lines).map((line) => `<tr><td><select class="stock-branch">${branchOptions(po.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" list="inventory-code-options" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" list="inventory-item-options" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
@@ -2058,6 +2098,13 @@ async function saveStockSheet() {
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
   if (!canManagePoReceiving()) return toast("Receiving stock needs Logistics or Superadmin access.");
   if (po && !["For Receiving", "Partially Received"].includes(po.status)) return toast(`${po.id} is not ready for receiving.`);
+  const orderNumber = qs("#stock-sheet-order-number")?.value.trim();
+  const dateReceived = qs("#stock-sheet-date-received")?.value;
+  const source = qs("#stock-sheet-source")?.value;
+  if (!orderNumber) return toast("Order Number is required.");
+  if (!dateReceived) return toast("Date Received is required.");
+  if (!source) return toast("Select Shipment or Local Purchase.");
+  const meta = { orderNumber, dateReceived, source };
   const rows = qsa("#stock-sheet-table tbody tr").map((row) => {
     const branch = row.querySelector(".stock-branch")?.value;
     const code = row.querySelector(".stock-code")?.value.trim();
@@ -2075,7 +2122,7 @@ async function saveStockSheet() {
   if (rows.some((row) => row.expiry && row.expiry !== "N/A" && daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
   const lines = rows.map(({ item, branch, lot, expiry, qty }) => ({ code: item.code, branch, lot, expiry, qty }));
   if (editingStockReceiptId) {
-    const result = await MedlaneAPI.editStockReceipt(editingStockReceiptId, lines).catch((error) => ({ error }));
+    const result = await MedlaneAPI.editStockReceipt(editingStockReceiptId, lines, meta).catch((error) => ({ error }));
     if (result.error) return toast(result.error.message || "Unable to update this stock receipt.");
     replaceStockReceiptRecord(result.receipt);
     log("Edited stock receipt", "Inventory", `${result.receipt.id}: ${rows.length} row(s)`);
@@ -2085,7 +2132,7 @@ async function saveStockSheet() {
     toast(`${result.receipt.id} updated — still awaiting Superadmin/CEO approval.`);
     return;
   }
-  const result = await MedlaneAPI.submitStockReceipt(po?.id || null, lines).catch((error) => ({ error }));
+  const result = await MedlaneAPI.submitStockReceipt(po?.id || null, lines, meta).catch((error) => ({ error }));
   if (result.error) return toast(result.error.message || "Unable to submit stock for receiving.");
   data.stockReceipts.push(result.receipt);
   clearPendingSaveQueueKeys(["stockReceipts"]);
