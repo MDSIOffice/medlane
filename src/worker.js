@@ -1877,7 +1877,13 @@ function manilaScheduleParts(value) {
 }
 
 async function runFiveMinuteScheduledTasks(event, env) {
-  const scheduled = manilaScheduleParts(event.scheduledTime || Date.now());
+  // event.scheduledTime is documented as milliseconds, but this Worker has observed it
+  // arrive in seconds (log samples decode to sane current dates only when read as seconds,
+  // e.g. 1787484041 -> 2026-08-23, vs January 1970 as ms) — which parked every hour/weekday
+  // gate below near the 1970 epoch and silently starved the 18:00 digest/backup block for
+  // as long as this bug existed. Date.now() is unambiguous and just as accurate for a
+  // minute/hour/weekday check, so use it instead of trusting scheduledTime's units.
+  const scheduled = manilaScheduleParts(Date.now());
   const tasks = [runApiHealthMonitor(env)];
   if (["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env));
   // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
