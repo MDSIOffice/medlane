@@ -1,11 +1,11 @@
 # Graph Report - medlane  (2026-08-24)
 
 ## Corpus Check
-- 45 files · ~281,795 words
+- 45 files · ~281,758 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1977 nodes · 4269 edges · 109 communities (92 shown, 17 thin omitted)
+- 1977 nodes · 4269 edges · 108 communities (91 shown, 17 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 236 edges (avg confidence: 0.61)
 - Token cost: 0 input · 0 output
 
@@ -29,22 +29,22 @@
 - renderAll
 - importCheckedRows
 - worker.js
-- renderPayables
+- attachedFilesFor
 - importCheckedRows
 - attachedFilesFor
 - runApiHealthMonitor
 - public/scripts/ui-utils.js
 - scripts/ui-utils.js
+- MedlaneAPI
 - renderInventory
 - renderInventory
-- renderCollectionMapVisual
 - composeAndSendDigest
 - printableFooterHtml
 - renderReconciliation
-- memoCardHtml
+- renderBackup
 - renderPrintTemplateSidePanel
 - renderBackup
-- renderDashboard
+- renderCollections
 - renderProductIssues
 - syncPaymentRequestTotal
 - renderProductIssues
@@ -58,10 +58,10 @@
 - buildPrintTemplateCanvas
 - scripts/config-data.js
 - printableFooterHtml
-- renderCollectionMapVisual
+- renderReconciliation
 - renderStockSheet
 - renderPrintTemplateSidePanel
-- findItemByCodeOrName
+- syncStockSheetRow
 - renderDashboard
 - money
 - common.sh
@@ -69,8 +69,7 @@
 - clearBackupStatus
 - syncBackendUsers
 - Tasks: [FEATURE NAME]
-- is
-- saveStockSheet
+- pe
 - createAppSession
 - Bt
 - za
@@ -150,7 +149,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (109 total, 17 thin omitted)
+## Communities (108 total, 17 thin omitted)
 
 ### Community 0 - "public/scripts/state.js"
 Cohesion: 0.05
@@ -169,16 +168,16 @@ Cohesion: 0.09
 Nodes (19): authHashParams(), hydrateAuthenticatedSession(), initializeRoute(), isAuthenticatedRoute(), isDashboardRoute(), isLoginRoute(), jwtEmail(), logoutCurrentUser() (+11 more)
 
 ### Community 4 - "openModal"
-Cohesion: 0.06
-Nodes (44): buildSale(), collectInvoicePreviewLines(), cvYear(), discountNeedsApproval(), documentExists(), financialLineTemplate(), invoiceItemStockQty(), invoiceLineTemplate() (+36 more)
+Cohesion: 0.05
+Nodes (52): buildPurchaseOrder(), buildSale(), collectInvoiceEditorLines(), collectInvoicePreviewLines(), cvYear(), discountNeedsApproval(), documentExists(), financialLineTemplate() (+44 more)
 
 ### Community 5 - "public/scripts/modules.js"
-Cohesion: 0.03
-Nodes (79): addDemoRequestLine(), auditLogModules, bir2307DrawBoxedDigits(), bir2307DrawDigits(), bir2307DrawTin(), bir2307DrawTinLastGroup(), bir2307MMDDYYYY(), bir2307Money() (+71 more)
+Cohesion: 0.02
+Nodes (91): auditLogModules, bir2307DrawBoxedDigits(), bir2307DrawDigits(), bir2307DrawTin(), bir2307DrawTinLastGroup(), bir2307MMDDYYYY(), bir2307Money(), bir2307QuarterRange() (+83 more)
 
 ### Community 6 - "scripts/modules.js"
-Cohesion: 0.03
-Nodes (85): addDemoRequestLine(), applyReconciliationHistory(), auditLogModules, bir2307DrawBoxedDigits(), bir2307DrawDigits(), bir2307DrawTin(), bir2307DrawTinLastGroup(), bir2307MMDDYYYY() (+77 more)
+Cohesion: 0.02
+Nodes (96): auditLogModules, bir2307DrawBoxedDigits(), bir2307DrawDigits(), bir2307DrawTin(), bir2307DrawTinLastGroup(), bir2307MMDDYYYY(), bir2307Money(), bir2307QuarterRange() (+88 more)
 
 ### Community 7 - "public/scripts/vendor/pdf-lib.min.js"
 Cohesion: 0.04
@@ -189,8 +188,8 @@ Cohesion: 0.04
 Nodes (8): cs(), hs(), qe(), us(), Ve(), Vr(), We(), wr()
 
 ### Community 9 - "renderAll"
-Cohesion: 0.09
-Nodes (33): applyRole(), approveExpense(), canApproveMigrations(), confirmTransferDispatch(), confirmTransferReceive(), getReportDefinitions(), handleWorkflowAction(), importRevertBlockers() (+25 more)
+Cohesion: 0.07
+Nodes (42): MedlaneAPI, acknowledgeMemo(), advancePurchaseOrderStatus(), applyRole(), approveExpense(), approvePurchaseOrder(), canApproveMigrations(), canApprovePurchaseOrders() (+34 more)
 
 ### Community 10 - "fetch"
 Cohesion: 0.06
@@ -208,17 +207,17 @@ Nodes (23): buildImportedClient(), buildImportedProduct(), buildImportedSupplier
 Cohesion: 0.06
 Nodes (45): canAccessKey(), canWrite(), daysUntilIso(), defaultSeedSignature, DIGEST_AUDIT_NOISE_ACTIONS, DIGEST_COLORS, DIGEST_METRIC_CARDS, DIGEST_ROLE_RECIPIENTS (+37 more)
 
-### Community 14 - "renderPayables"
+### Community 14 - "attachedFilesFor"
 Cohesion: 0.11
-Nodes (27): attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canUpdateDeliveryStatus(), clientDocRecordId(), clientDocsModalRowsHtml(), docUploadButtons() (+19 more)
+Nodes (27): attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canPostMemo(), canUpdateDeliveryStatus(), clientDocRecordId(), clientDocsModalRowsHtml() (+19 more)
 
 ### Community 15 - "importCheckedRows"
-Cohesion: 0.08
-Nodes (44): applyCollectionPayment(), approvePaymentRequest(), buildImportedClient(), buildImportedProduct(), buildImportedSupplier(), buildMigratedSale(), canApprovePaymentRequests(), cancelPaymentRequest() (+36 more)
+Cohesion: 0.10
+Nodes (38): applyCollectionPayment(), approvePaymentRequest(), buildImportedClient(), buildImportedProduct(), buildImportedSupplier(), buildMigratedSale(), canApprovePaymentRequests(), cancelPaymentRequest() (+30 more)
 
 ### Community 16 - "attachedFilesFor"
-Cohesion: 0.09
-Nodes (31): attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canPostMemo(), canUpdateDeliveryStatus(), clientDocRecordId(), clientDocsModalRowsHtml() (+23 more)
+Cohesion: 0.11
+Nodes (28): attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canPostMemo(), canUpdateDeliveryStatus(), clientDocRecordId(), clientDocsModalRowsHtml() (+20 more)
 
 ### Community 17 - "runApiHealthMonitor"
 Cohesion: 0.10
@@ -228,17 +227,17 @@ Nodes (33): checkAssetPageHealth(), editDiscordWebhookMessage(), healthCheckLine
 Cohesion: 0.08
 Nodes (3): calendarToneOrder, graphNote(), visualCard()
 
-### Community 20 - "renderInventory"
-Cohesion: 0.08
-Nodes (34): MedlaneAPI, acknowledgeMemo(), advancePurchaseOrderStatus(), approvePurchaseOrder(), approveStockReceipt(), canApproveDemoManagement(), canApproveDemoSales(), canApprovePurchaseOrders() (+26 more)
+### Community 20 - "MedlaneAPI"
+Cohesion: 0.13
+Nodes (20): MedlaneAPI, acknowledgeMemo(), advancePurchaseOrderStatus(), approvePurchaseOrder(), approveStockReceipt(), canApprovePurchaseOrders(), canApproveStockReceipts(), cancelPurchaseOrder() (+12 more)
 
 ### Community 21 - "renderInventory"
-Cohesion: 0.12
-Nodes (24): canApproveDemoManagement(), canApproveDemoSales(), canCloseDemoRequest(), demoRequestActions(), demoRequestLineSummary(), inventoryItemLabel(), itemizedSummary(), payable2307Cell() (+16 more)
-
-### Community 22 - "renderCollectionMapVisual"
 Cohesion: 0.10
-Nodes (24): collectionContactsGeoJson(), collectionRegionCount(), collectionRegionSource(), collectionRegionSummaries(), contactActionCard(), featureRegionName(), geoJsonBounds(), geoRegionName() (+16 more)
+Nodes (28): addDemoRequestLine(), canApproveDemoManagement(), canApproveDemoSales(), canCloseDemoRequest(), demoRequestActions(), demoRequestLineRow(), demoRequestLineSummary(), ensureInventoryDatalists() (+20 more)
+
+### Community 22 - "renderInventory"
+Cohesion: 0.10
+Nodes (27): addDemoRequestLine(), canApproveDemoManagement(), canApproveDemoSales(), canCloseDemoRequest(), demoRequestActions(), demoRequestLineRow(), demoRequestLineSummary(), ensureInventoryDatalists() (+19 more)
 
 ### Community 23 - "composeAndSendDigest"
 Cohesion: 0.15
@@ -252,9 +251,9 @@ Nodes (19): addMonthsToDate(), clientInvoiceReportHtml(), dashboardReportHtml(),
 Cohesion: 0.20
 Nodes (12): applyReconciliationHistory(), getReconciliationFindings(), getReconciliationSuccesses(), getReconScope(), getScopedClientBalance(), isWithinReconRange(), periodKey(), recordReconciliationRun() (+4 more)
 
-### Community 26 - "memoCardHtml"
-Cohesion: 0.13
-Nodes (22): backupRunLabel(), canManageUsers(), canPostMemo(), dedupedUsers(), formatBytes(), formatSessionDate(), memoAcknowledgedByCurrentUser(), memoAudienceCheckboxesHtml() (+14 more)
+### Community 26 - "renderBackup"
+Cohesion: 0.18
+Nodes (13): backupRunLabel(), canManageUsers(), dedupedUsers(), formatBytes(), formatSessionDate(), memoRecipientCount(), renderBackup(), renderDashboardBackupStatus() (+5 more)
 
 ### Community 27 - "renderPrintTemplateSidePanel"
 Cohesion: 0.15
@@ -264,25 +263,25 @@ Nodes (24): applyPtFieldOverride(), applyPtRowOverride(), buildPrintTemplateCanv
 Cohesion: 0.18
 Nodes (13): backupRunLabel(), canManageUsers(), dedupedUsers(), formatBytes(), formatSessionDate(), memoRecipientCount(), renderBackup(), renderDashboardBackupStatus() (+5 more)
 
-### Community 29 - "renderDashboard"
-Cohesion: 0.16
-Nodes (14): calendarState(), dashboardReportRows(), dashboardVisibleSales(), exportDashboardCsv(), monthLabel(), multiSeriesChart(), navigateCalendarWidget(), printDashboardReport() (+6 more)
+### Community 29 - "renderCollections"
+Cohesion: 0.08
+Nodes (28): calendarState(), collectionStatusActions(), contactActionCard(), dashboardReportRows(), dashboardVisibleSales(), exportDashboardCsv(), monthLabel(), multiSeriesChart() (+20 more)
 
 ### Community 30 - "renderProductIssues"
 Cohesion: 0.11
 Nodes (24): canActOnProductIssue(), clientInvoicesExportRows(), clientInvoicesFilteredSales(), clientSupportHistoryCard(), confirmResolveProductIssue(), demoRequestHistoryCard(), exportClientInvoicesCsv(), lineChart() (+16 more)
 
 ### Community 31 - "syncPaymentRequestTotal"
-Cohesion: 0.14
-Nodes (22): collectFinancialLines(), collectPaymentRequestInvoices(), collectPaymentRequestLines(), financialRequestDeductions(), openInvoicesForPaymentRequest(), openPaymentRequestForInvoice(), payableWithholdingSummary(), paymentRequestDeductions() (+14 more)
+Cohesion: 0.16
+Nodes (20): collectFinancialLines(), collectPaymentRequestInvoices(), collectPaymentRequestLines(), financialRequestDeductions(), openInvoicesForPaymentRequest(), payableWithholdingSummary(), paymentRequestDeductions(), paymentRequestInvoiceDatalistOptions() (+12 more)
 
 ### Community 32 - "renderProductIssues"
-Cohesion: 0.13
-Nodes (19): canActOnProductIssue(), clientInvoicesExportRows(), clientInvoicesFilteredSales(), clientSupportHistoryCard(), confirmResolveProductIssue(), demoRequestHistoryCard(), exportClientInvoicesCsv(), productIssueActionsMenu() (+11 more)
+Cohesion: 0.09
+Nodes (25): canActOnProductIssue(), clientInvoicesExportRows(), clientInvoicesFilteredSales(), clientSupportHistoryCard(), confirmResolveProductIssue(), demoRequestHistoryCard(), exportClientInvoicesCsv(), openCollectionHistoryModal() (+17 more)
 
 ### Community 33 - "syncPaymentRequestTotal"
-Cohesion: 0.15
-Nodes (22): collectFinancialLines(), collectPaymentRequestInvoices(), collectPaymentRequestLines(), financialRequestDeductions(), findClientByName(), openInvoicesForPaymentRequest(), openPaymentRequestForInvoice(), paymentRequestDeductions() (+14 more)
+Cohesion: 0.18
+Nodes (19): collectFinancialLines(), collectPaymentRequestInvoices(), collectPaymentRequestLines(), financialRequestDeductions(), openInvoicesForPaymentRequest(), paymentRequestDeductions(), paymentRequestInvoiceDatalistOptions(), paymentRequestLineTemplate() (+11 more)
 
 ### Community 34 - "renderCollections"
 Cohesion: 0.10
@@ -297,8 +296,8 @@ Cohesion: 0.18
 Nodes (17): a(), ae(), de(), _e(), ee(), fe(), ge(), Gr() (+9 more)
 
 ### Community 37 - "i"
-Cohesion: 0.18
-Nodes (17): a(), ae(), de(), _e(), ee(), fe(), ge(), Gr() (+9 more)
+Cohesion: 0.20
+Nodes (17): a(), ae(), as(), _e(), Gr(), i(), is(), Kr() (+9 more)
 
 ### Community 38 - "public/scripts/config-data.js"
 Cohesion: 0.13
@@ -320,21 +319,21 @@ Nodes (14): clientContactDepartments, deliveryStatusOptions, employeeBenefitOpti
 Cohesion: 0.13
 Nodes (20): addMonthsToDate(), clientInvoiceReportHtml(), dashboardReportHtml(), itemForecastMonthKeys(), itemForecastMonthLabels(), itemForecastReportHtml(), itemForecastRows(), memoAudienceLabel() (+12 more)
 
-### Community 43 - "renderCollectionMapVisual"
-Cohesion: 0.10
-Nodes (24): collectionContactsGeoJson(), collectionRegionCount(), collectionRegionSource(), collectionRegionSummaries(), contactActionCard(), featureRegionName(), geoJsonBounds(), geoRegionName() (+16 more)
+### Community 43 - "renderReconciliation"
+Cohesion: 0.13
+Nodes (17): applyReconciliationHistory(), ensureWorkflowPanel(), getReconciliationFindings(), getReconciliationSuccesses(), getReconScope(), getScopedClientBalance(), isWithinReconRange(), moduleWorkflowItems() (+9 more)
 
 ### Community 44 - "renderStockSheet"
-Cohesion: 0.18
-Nodes (15): addStockSheetRow(), addTransferSheetRow(), branchOptions(), fillStockSheetFromInventoryPo(), fillStockSheetFromReceipt(), itemBranchBalances(), openStockSheetForPo(), openStockSheetForReceiptEdit() (+7 more)
+Cohesion: 0.15
+Nodes (17): addStockSheetRow(), addTransferSheetRow(), branchOptions(), fillStockSheetFromInventoryPo(), fillStockSheetFromReceipt(), findItemForSheetRow(), itemBranchBalances(), openStockSheetForPo() (+9 more)
 
 ### Community 45 - "renderPrintTemplateSidePanel"
 Cohesion: 0.24
 Nodes (17): applyPtFieldOverride(), applyPtRowOverride(), ensurePtRowOverride(), handlePtCanvasKeydown(), measurePtDefaultRow(), nudgePtSelected(), ptCanvasScale(), ptElementBoxIn() (+9 more)
 
-### Community 46 - "findItemByCodeOrName"
-Cohesion: 0.09
-Nodes (25): addStockSheetRow(), addTransferSheetRow(), branchOptions(), buildInventoryPurchaseOrder(), buildPurchaseOrder(), collectInvoiceEditorLines(), fillStockSheetFromInventoryPo(), findItemByCodeOrName() (+17 more)
+### Community 46 - "syncStockSheetRow"
+Cohesion: 0.18
+Nodes (14): addStockSheetRow(), addTransferSheetRow(), branchOptions(), fillStockSheetFromInventoryPo(), findItemForSheetRow(), itemBranchBalances(), openStockSheetForPo(), receivablePurchaseOrders() (+6 more)
 
 ### Community 47 - "renderDashboard"
 Cohesion: 0.14
@@ -364,13 +363,9 @@ Nodes (6): confirmInviteUser(), handleUserInvite(), mergeUsersFromBackend(), sub
 Cohesion: 0.07
 Nodes (26): Dependencies & Execution Order, Format: `[ID] [P?] [Story] Description`, Implementation for User Story 1, Implementation for User Story 2, Implementation for User Story 3, Implementation Strategy, Incremental Delivery, MVP First (User Story 1 Only) (+18 more)
 
-### Community 54 - "is"
-Cohesion: 0.50
-Nodes (5): as(), is(), Ms(), os(), rs()
-
-### Community 55 - "saveStockSheet"
-Cohesion: 0.18
-Nodes (14): MedlaneAPI, acknowledgeMemo(), advancePurchaseOrderStatus(), approvePurchaseOrder(), canApprovePurchaseOrders(), cancelPurchaseOrder(), canManagePoReceiving(), inventoryPoActionsCell() (+6 more)
+### Community 54 - "pe"
+Cohesion: 0.40
+Nodes (5): de(), ee(), fe(), ge(), pe()
 
 ### Community 56 - "createAppSession"
 Cohesion: 0.38
@@ -520,11 +515,11 @@ Nodes (3): confirmCloseDialog(), guardDialogEscape(), guardedDialogClose()
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `MedlaneAPI` connect `renderInventory` to `supabaseFetch`, `fetch`?**
+- **Why does `MedlaneAPI` connect `MedlaneAPI` to `supabaseFetch`, `fetch`?**
   _High betweenness centrality (0.292) - this node is a cross-community bridge._
-- **Why does `MedlaneAPI` connect `saveStockSheet` to `supabaseFetch`, `fetch`?**
+- **Why does `MedlaneAPI` connect `renderAll` to `supabaseFetch`, `fetch`?**
   _High betweenness centrality (0.277) - this node is a cross-community bridge._
-- **Why does `backupStatus()` connect `supabaseFetch` to `fetch`, `renderInventory`, `worker.js`, `saveStockSheet`?**
+- **Why does `backupStatus()` connect `supabaseFetch` to `renderAll`, `fetch`, `MedlaneAPI`, `worker.js`?**
   _High betweenness centrality (0.179) - this node is a cross-community bridge._
 - **What connects `common.sh script`, `peso`, `today` to the rest of the system?**
   _169 weakly-connected nodes found - possible documentation gaps or missing edges._
