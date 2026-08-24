@@ -43,9 +43,12 @@ const moduleRecordKeys = {
   masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals", "masterTab"],
   // Read-only baseline every role gets regardless of module_permissions — items/clients/suppliers are
   // reference data other modules (receiving, transfers, demos, invoicing) autofill from, not just data
-  // the Masterlists admin screen shows. Never granted for "edit": editing the catalog still requires
-  // the "masterlists" permission itself.
-  "catalog-reference": ["items", "clients", "suppliers"],
+  // the Masterlists admin screen shows. Stock quantities/lots are included too so invoice creation can
+  // show stock hints and lot options for a role (e.g. Accounting) that has no Inventory module access —
+  // this key alone does not expose transfers/POs/demo requests/receipts, which stay gated by the real
+  // "inventory" permission below. Never granted for "edit": editing the catalog still requires
+  // the "masterlists" (or "inventory", for stock) permission itself.
+  "catalog-reference": ["items", "clients", "suppliers", "inventory"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
   "purchase-orders": ["purchaseOrders"],
   invoicing: ["sales"],
