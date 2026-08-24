@@ -40,6 +40,21 @@ function confirmCloseDialog() {
 async function guardedDialogClose(closeFn) {
   if (await confirmCloseDialog()) closeFn();
 }
+// A second, deliberate click-through before anything is actually written to the
+// database — separate from any module-specific confirm dialog (which describes
+// WHAT is being saved). This one is a plain misclick guard: same question, same
+// button, everywhere a save/write is about to happen. Stacks as its own native
+// <dialog> on top of whatever modal triggered it (including another confirm
+// dialog), so no manual z-index bookkeeping is needed.
+function confirmFinalSave(title = "Save this change?", note = "This will write the change to the database. Please confirm you meant to click Save.") {
+  return confirmDetailsModal({
+    eyebrow: "Final Confirmation",
+    title,
+    note,
+    confirmLabel: "Yes, Save",
+    danger: true,
+  });
+}
 function guardDialogEscape(dialog) {
   dialog?.addEventListener("cancel", (event) => {
     event.preventDefault();

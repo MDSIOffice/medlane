@@ -616,7 +616,7 @@ function syncInvoiceRowLot(input) {
   }
 }
 
-function syncInvoiceRowItem(input) {
+function syncInvoiceRowItem(input, options = {}) {
   if (!input) return;
   const row = input.closest(".invoice-line-row");
   const item = findItemByCodeOrName(input.value);
@@ -627,7 +627,10 @@ function syncInvoiceRowItem(input) {
   if (stockHint) stockHint.outerHTML = invoiceRowStockHintHtml(item, warehouse) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
   if (!item) return;
   row.querySelector(".invoice-brand-input").value = item.brand || "";
-  row.querySelector(".invoice-uom-input").value = item.uom || "unit";
+  // Skip when re-syncing a line whose unit was already set on purpose (e.g. carried over
+  // from the source purchase order line, which can legitimately differ from the item's
+  // default uom — a "box" PO line shouldn't get silently reset back to "piece").
+  if (!options.preserveUom) row.querySelector(".invoice-uom-input").value = item.uom || "unit";
   const expiryField = row.querySelector(".expiry-field");
   const expiryInput = row.querySelector(".invoice-expiry-input");
   const equipment = isEquipmentItem(item);
@@ -644,7 +647,7 @@ function syncInvoiceRowItem(input) {
 }
 
 function syncInvoiceLinesForClient() {
-  qsa(".invoice-item-input").forEach((input) => { if (input.value.trim()) syncInvoiceRowItem(input); });
+  qsa(".invoice-item-input").forEach((input) => { if (input.value.trim()) syncInvoiceRowItem(input, { preserveUom: true }); });
   renderInvoiceComputePreview();
 }
 
@@ -670,7 +673,7 @@ function syncInvoiceFromPurchaseOrder() {
   const pendingLines = (po.lines || []).map((line) => ({ ...line, qty: poLineStatus(po, line).pending })).filter((line) => line.qty > 0);
   if (pendingLines.length) {
     qs("#invoice-line-list").innerHTML = pendingLines.map((line) => invoiceLineTemplate(line)).join("");
-    qsa(".invoice-item-input").forEach((input) => syncInvoiceRowItem(input));
+    qsa(".invoice-item-input").forEach((input) => syncInvoiceRowItem(input, { preserveUom: true }));
   }
   renderInvoiceComputePreview();
 }
@@ -1133,6 +1136,7 @@ async function resetPtAll() {
 }
 
 async function savePrintTemplate(silent = false) {
+  if (!silent && !(await confirmFinalSave(`Save ${ptActiveType} print template?`))) return;
   const record = { id: ptActiveType, type: ptActiveType, fields: ptOverrides.fields, row: ptOverrides.row || undefined, updatedBy: currentUser?.name || "System User", updatedAt: fmtDate(today) };
   const list = data.printTemplates || (data.printTemplates = []);
   const idx = list.findIndex((t) => t.type === ptActiveType);
@@ -1994,6 +1998,7 @@ async function saveDemoRequest() {
   if (!qs("#demo-sales-agent")?.value.trim()) return toast("Sales agent is required.");
   if (!qs("#demo-date")?.value || !qs("#demo-return-date")?.value) return toast("Demo date and expected return date are required.");
   if (!lines.length || lines.some((line) => !line.item || line.qty <= 0)) return toast("Add at least one complete machine or spare part line.");
+  if (!(await confirmFinalSave("Submit this demo request?"))) return;
   const request = { id: nextId(data.inventoryDemoRequests || [], "DEMO"), date: fmtDate(today), requestedBy: currentUser?.name || "System User", client, salesAgent: qs("#demo-sales-agent").value.trim(), demoDate: qs("#demo-date").value, returnDate: qs("#demo-return-date").value, purpose: qs("#demo-purpose")?.value.trim(), location: qs("#demo-location")?.value.trim(), contactPerson: qs("#demo-contact-person")?.value.trim(), contactNumber: qs("#demo-contact-number")?.value.trim(), status: "For Sales Approval", history: [{ date: fmtDate(today), status: "Requested", by: currentUser?.name || "System User", note: `${lines.length} itemized demo line(s) requested.` }], lines };
   data.inventoryDemoRequests ||= [];
   data.inventoryDemoRequests.push(request);
@@ -2011,6 +2016,7 @@ async function saveDemoRequest() {
 async function updateDemoRequestStatus(id, status) {
   const request = (data.inventoryDemoRequests || []).find((entry) => entry.id === id);
   if (!request) return toast("Demo request not found.");
+  if (!(await confirmFinalSave(`Mark ${request.id} as ${status}?`))) return;
   const user = currentUser?.name || "System User";
   if (status === "For Management Approval") {
     if (!canApproveDemoSales(request)) return toast("Sales approval is required first.");
@@ -2161,6 +2167,7 @@ async function saveTransferSheet() {
   if (!rows.length) return toast("No transfer rows to save.");
   if (rows.some((row) => !row.item || !row.lot || row.qty <= 0)) return toast("Complete all stock transfer fields before saving.");
   if (rows.some((row) => !row.source)) return toast("Not enough source stock for the selected item lot.");
+  if (!(await confirmFinalSave(`Create stock transfer request from ${from} to ${to}?`))) return;
   // Stock is NOT deducted here — a request only reserves nothing yet. The approving branch
   // reviews each line against currently-available stock and confirms dispatch, which is when
   // the actual deduction happens (see reviewAndDispatchTransfer / confirmTransferDispatch).
@@ -2626,6 +2633,7 @@ async function submitMemoCompose() {
   if (!allRoles && !selectedRoles.length) return toast("Select at least one role, or choose All Roles.");
   const audience = allRoles ? "all" : selectedRoles;
   const files = [...(qs("#memo-attachments")?.files || [])];
+  if (!(await confirmFinalSave(`Post memo ${memoNo}?`))) return;
   const submitBtn = qs("#submit-memo-compose");
   submitBtn.disabled = true;
   showActionLoading(dialog, "Posting memo...");
@@ -2992,6 +3000,7 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
   if (!payments.length) return toast("Collection not found.");
   if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited and can no longer be changed.");
   const postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payments[0].postedDate || fmtDate(today)) || "" : "";
+  if (!(await confirmFinalSave(`Mark ${receiptNo} as ${status}?`))) return;
   payments.forEach((payment) => {
     if (status === "Deposited") applyCollectionPayment(payment);
     else reverseCollectionPayment(payment);
@@ -4061,6 +4070,7 @@ async function updateProductIssueStatus(id, status) {
     note = result.note;
   } else {
     note = (prompt(`Action taken for marking ${id} as ${status}:`, "") || "").trim();
+    if (!(await confirmFinalSave(`Mark ${id} as ${status}?`))) return;
   }
   report.status = status;
   if (status === "Pass to Engineering") report.currentActor = "Engineering";
@@ -5023,6 +5033,7 @@ async function approveExpense(index, nextStatus) {
   if (!expense) return;
   const allowed = nextStatus === "Approved by HR" ? ["Superadmin", "HR", "Admin", "CEO"] : ["Superadmin", "Accounting", "Admin", "CEO"];
   if (!allowed.includes(currentUser?.role)) return toast(`${nextStatus} requires ${nextStatus.includes("HR") ? "HR" : "Accounting"} approval.`);
+  if (!(await confirmFinalSave(`Mark ${expense.id} as ${nextStatus}?`))) return;
   expense.status = nextStatus;
   expense.approvedBy = currentUser?.name || "System User";
   expense.approvedAt = fmtDate(today);
@@ -5668,6 +5679,7 @@ async function runReconciliationWorkflow() {
   const findings = getReconciliationFindings(scope);
   const totalChecks = scope.sales.length * 5 + scope.payments.length * 3 + scope.clients.length * requiredClientDocs.length + scope.transfers.length;
   const passRate = totalChecks ? Math.round((Math.max(totalChecks - findings.length, 0) / totalChecks) * 100) : 100;
+  if (!(await confirmFinalSave("Run reconciliation and save this to history?"))) return;
   const run = recordReconciliationRun(findings, passRate, scope);
   const saveResult = await persistRecords({ reconHistory: [run] });
   if (!saveResult?.ok) return;
