@@ -103,6 +103,7 @@ async function submitModal(event) {
     if (modalType === "employee") next.targetSales = Number(next.targetSales || 0);
     const moduleKey = masterlistModuleKey(modalType);
     const previousKey = masterlistRecordKey(modalType, previous);
+    if (!(await confirmFinalSave(`Save changes to this ${modalType}?`))) return;
     editContext.list[editContext.index] = next;
     if (moduleKey) {
       const saveResult = await persistRecords({ [moduleKey]: [next] }, { [moduleKey]: [previousKey] });
@@ -127,6 +128,7 @@ async function submitModal(event) {
       : values;
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const moduleKey = masterlistModuleKey(modalType);
+    if (!(await confirmFinalSave(`Save this new ${modalType}?`))) return;
     listByType[modalType].push(record);
     if (moduleKey) {
       const saveResult = await persistRecords({ [moduleKey]: [record] });
@@ -142,6 +144,7 @@ async function submitModal(event) {
   if (modalType === "invoice") {
     try {
       const sale = buildSale(values);
+      if (!(await confirmFinalSave("Save this invoice?"))) return;
       data.sales.push(sale);
       const saveResult = await persistRecords({ sales: [sale], inventory: inventoryTouchedBySale(sale), purchaseOrders: purchaseOrdersTouchedBySales([sale]) });
       if (!saveResult?.ok) return;
@@ -159,6 +162,7 @@ async function submitModal(event) {
     let po;
     try { po = buildPurchaseOrder(values); }
     catch (error) { notify("Validation", error.message, "purchase-orders", values.client || ""); saveData(); return toast(error.message); }
+    if (!(await confirmFinalSave("Save this purchase order?"))) return;
     data.purchaseOrders.push(po);
     const saveResult = await persistRecords({ purchaseOrders: [po] });
     if (!saveResult?.ok) return;
@@ -173,6 +177,7 @@ async function submitModal(event) {
     let po;
     try { po = buildInventoryPurchaseOrder(values); }
     catch (error) { notify("Validation", error.message, "inventory", values.supplier || ""); saveData(); return toast(error.message); }
+    if (!(await confirmFinalSave("Save this inventory purchase order?"))) return;
     data.inventoryPurchaseOrders.push(po);
     const saveResult = await persistRecords({ inventoryPurchaseOrders: [po] });
     if (!saveResult?.ok) return;
@@ -186,6 +191,7 @@ async function submitModal(event) {
   if (modalType === "cancelReplace") {
     const oldSale = data.sales.find((sale) => sale.id === values.oldInvoice);
     if (!oldSale || oldSale.status === "Cancelled") return toast("Original invoice is not available for cancellation.");
+    if (!(await confirmFinalSave(`Cancel and replace ${oldSale.documentNo || oldSale.id}?`))) return;
     try {
       restoreCancelledStock(oldSale);
       const replacement = buildSale(values, oldSale.documentNo || oldSale.id);
@@ -277,6 +283,7 @@ async function submitModal(event) {
       history: [{ date: nowStamp, status: isCollection ? "Pending" : "Prepared", note: isCollection ? `Collection created for ${linkedSales.map((sale) => sale.documentNo || sale.id).join(", ")}.` : "CV voucher created.", by: currentUser?.name || "System User" }],
       createdAt: fmtDate(today),
     };
+    if (!(await confirmFinalSave("Save this payment request?"))) return;
     data.paymentRequests.unshift(paymentRequest);
     const saveResult = await persistRecords({ paymentRequests: [paymentRequest] });
     if (!saveResult?.ok) return;
@@ -296,6 +303,7 @@ async function submitModal(event) {
     const deductions = financialRequestDeductions(gross);
     if (!items.length || deductions.total <= 0) return toast("Add at least one payable item with amount.");
     const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, grossAmount: deductions.grossAmount, withholdingTax1: deductions.withholdingTax1, withholdingTax2: deductions.withholdingTax2, amount: deductions.total, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, createdByUser: currentUser?.email || "" };
+    if (!(await confirmFinalSave("Save this payable?"))) return;
     data.payables.push(payable);
     const saveResult = await persistRecords({ payables: [payable] });
     if (!saveResult?.ok) return;
@@ -314,6 +322,7 @@ async function submitModal(event) {
     if (["Per Diem", "Revolving Fund"].includes(values.type) && !String(values.employeeName || "").trim()) return toast("Employee Name is required for Per Diem or Revolving Fund expenses.");
     if (!["Per Diem", "Revolving Fund"].includes(values.type)) values.employeeName = "";
     const replenishment = { id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "", createdByUser: currentUser?.email || "" };
+    if (!(await confirmFinalSave("Save this expense/replenishment?"))) return;
     data.replenishments.push(replenishment);
     const saveResult = await persistRecords({ replenishments: [replenishment] });
     if (!saveResult?.ok) return;
@@ -325,6 +334,7 @@ async function submitModal(event) {
     return;
   }
   if (modalType === "warranty") {
+    if (!(await confirmFinalSave("Save this warranty record?"))) return;
     data.warranties.push(values);
     const saveResult = await persistRecords({ warranties: [values] });
     if (!saveResult?.ok) return;
@@ -348,6 +358,7 @@ async function submitModal(event) {
     values.originRole = productIssueOriginRole(currentUser?.role);
     values.currentActor = values.originRole;
     values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: values.remarks?.trim() ? `Report started: ${values.remarks.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
+    if (!(await confirmFinalSave(`Save this ${modalConfigs[modalType].title.toLowerCase()}?`))) return;
     data.productIssues.push(values);
     const saveResult = await persistRecords({ productIssues: [values] });
     if (!saveResult?.ok) return;
@@ -578,8 +589,9 @@ qs("#settings-form").addEventListener("submit", (event) => {
   applyRole();
   toast("User settings updated for this session. Profile persistence is managed by Admin users.");
 });
-qs("#invoice-approval-form").addEventListener("submit", (event) => {
+qs("#invoice-approval-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!(await confirmFinalSave("Save invoice approval settings?"))) return;
   data.invoiceApprovals = formObject(event.currentTarget);
   log("Updated invoice approval settings", "Invoicing", "Invoice approvals");
   notify("Invoicing", "Invoice approved-by names were updated.", "invoicing", "Invoice approvals");
@@ -603,6 +615,7 @@ qs("#password-form").addEventListener("submit", async (event) => {
   if (values.newPassword !== values.confirmPassword) return toast("Confirm password does not match.");
   const activeSession = MedlaneAPI.session();
   if (!activeSession?.access_token) return toast("Sign in again before changing your password.");
+  if (!(await confirmFinalSave("Change your password?"))) return;
   try { await MedlaneAPI.changePassword(values.oldPassword, values.newPassword); }
   catch (error) { return toast(error.message || "Password update failed."); }
   event.currentTarget.reset();
@@ -614,13 +627,14 @@ qs("#password-form").addEventListener("submit", async (event) => {
   saveData(["notifications"]);
   toast("Password updated.");
 });
-qs("#platform-branch-form").addEventListener("submit", (event) => {
+qs("#platform-branch-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!canEditModule("masterlists")) return toast("Branch masterlist changes need approval from Admin or Superadmin.");
   const values = formObject(event.currentTarget);
   const branch = values.branch.trim();
   if (!branch) return toast("Branch name is required.");
   if (platformBranches().some((item) => item.toLowerCase() === branch.toLowerCase())) return toast("Branch already exists.");
+  if (!(await confirmFinalSave(`Add branch "${branch}"?`))) return;
   data.platformBranches.push(branch);
   data.branchAddresses ||= {};
   data.branchAddresses[branch] = values.address.trim();
@@ -663,10 +677,12 @@ qs("#platform-branch-list").addEventListener("click", (event) => {
   if (button) return removePlatformBranch(button.dataset.removePlatformBranch);
 });
 
-function editPlatformBranchAddress(branch) {
+async function editPlatformBranchAddress(branch) {
   if (!canEditModule("masterlists")) return toast("Branch masterlist changes need approval from Admin or Superadmin.");
+  const nextAddress = prompt(`Address for ${branch}:`, data.branchAddresses?.[branch] || "") || data.branchAddresses?.[branch] || "";
+  if (!(await confirmFinalSave(`Save address for ${branch}?`))) return;
   data.branchAddresses ||= {};
-  data.branchAddresses[branch] = prompt(`Address for ${branch}:`, data.branchAddresses[branch] || "") || data.branchAddresses[branch] || "";
+  data.branchAddresses[branch] = nextAddress;
   log("Edited branch address", "Masterlists", branch);
   notify("Settings", `${branch} branch address was updated.`, "settings", branch);
   saveData();
@@ -674,10 +690,11 @@ function editPlatformBranchAddress(branch) {
   toast(`${branch} address saved.`);
 }
 
-function removePlatformBranch(branch) {
+async function removePlatformBranch(branch) {
   if (!canEditModule("masterlists")) return toast("Branch masterlist changes need approval from Admin or Superadmin.");
   const reasons = branchUsageReasons(branch);
   if (reasons.length) return toast(`Cannot remove ${branch}; it is used by ${reasons.join(", ")}.`);
+  if (!(await confirmFinalSave(`Remove branch "${branch}"?`))) return;
   data.platformBranches = platformBranches().filter((item) => item !== branch);
   if (data.branchAddresses) delete data.branchAddresses[branch];
   if (inventoryBranchTab === branch) inventoryBranchTab = platformBranches()[0] || "";
@@ -711,6 +728,7 @@ qs("#users-table").addEventListener("click", async (event) => {
   if (String(user.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase()) return toast("You cannot archive your own account.");
   const reason = prompt(`Reason for archiving ${user.name || user.email}:`, "Archived by admin");
   if (!String(reason || "").trim()) return toast("Archive reason is required.");
+  if (!(await confirmFinalSave(`Archive ${user.name || user.email}?`))) return;
   const result = await MedlaneAPI.setUserDisabled(user.email || user.username, true, String(reason).trim()).catch((error) => ({ error }));
   if (result.error) return toast(result.error.message || "Unable to archive user.");
   await syncBackendUsers();
@@ -1657,6 +1675,7 @@ async function setUserPasswordPrompt(index) {
   if (password === null) return;
   const policyError = passwordPolicyError(password);
   if (policyError) return toast(policyError);
+  if (!(await confirmFinalSave(`Set a new password for ${user.name || email}?`))) return;
   const result = await MedlaneAPI.setUserPassword(email, password).catch((error) => ({ error }));
   if (result.error) return toast(result.error.message || "Unable to set password.");
   log("Set user password", "Users", email);
