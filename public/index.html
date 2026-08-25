@@ -345,6 +345,7 @@
         <div class="tabs" id="analytics-tabs">
           <button class="tab active" data-analytics-tab="current">Current Operations</button>
           <button class="tab" data-analytics-tab="growth">Future Growth</button>
+          <button class="tab" data-analytics-tab="value">Proof of Value</button>
         </div>
         <div class="analytics-grid analytics-panel active" data-analytics-panel="current">
           <article class="panel chart-wide"><div class="panel-header"><div><p class="eyebrow">Trend</p><h2>Monthly Sales Line Graph</h2></div></div><div class="line-chart" id="analytics-sales-trend"></div></article>
@@ -370,6 +371,20 @@
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Cashflow</p><h2>Collection Recovery Potential</h2></div></div><div class="donut-wrap" id="growth-collection-potential"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Risk</p><h2>Stock Coverage Forecast</h2></div></div><div class="chart-bars compact-chart" id="growth-stock-coverage"></div></article>
           <article class="panel"><div class="panel-header"><div><p class="eyebrow">Recommendations</p><h2>Growth Plays</h2></div></div><ul class="compact-list" id="growth-recommendations"></ul></article>
+        </div>
+        <div class="analytics-grid analytics-panel" data-analytics-panel="value">
+          <article class="panel chart-wide">
+            <div class="panel-header"><div><p class="eyebrow">Proof of Value</p><h2>Workflow Speed vs. Manual Process</h2></div></div>
+            <div class="visual-grid" id="value-cycle-time-visuals"></div>
+          </article>
+          <article class="panel chart-wide">
+            <div class="panel-header"><div><p class="eyebrow">Proof of Value</p><h2>Caught Before It Cost You</h2></div></div>
+            <div class="visual-grid" id="value-savings-visuals"></div>
+          </article>
+          <article class="panel chart-wide">
+            <div class="panel-header"><div><p class="eyebrow">Proof of Value</p><h2>Adoption &amp; Reliability</h2></div><button class="ghost-button" id="print-value-report" type="button">Print System Value Report</button></div>
+            <div class="visual-grid" id="value-adoption-visuals"></div>
+          </article>
         </div>
       </section>
 
@@ -764,9 +779,9 @@
         <article class="panel">
           <div class="panel-header"><div><p class="eyebrow">Schedule</p><h2>Backup Cadence</h2></div></div>
           <ul class="compact-list">
-            <li><span>Weekly</span><strong>Every Sunday 18:00 UTC</strong></li>
-            <li><span>Monthly</span><strong>Every 1st day 18:00 UTC</strong></li>
-            <li><span>Yearly</span><strong>Every January 1 18:00 UTC</strong></li>
+            <li><span>Weekly</span><strong>Every Friday 6:00 PM (Asia/Manila)</strong></li>
+            <li><span>Monthly</span><strong>1st of the month, 6:00 PM (Asia/Manila)</strong></li>
+            <li><span>Yearly</span><strong>January 1, 6:00 PM (Asia/Manila)</strong></li>
             <li><span>Storage optimization</span><strong>Compressed full recovery points to keep restore simple and safe</strong></li>
           </ul>
         </article>
