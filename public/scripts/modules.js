@@ -225,6 +225,15 @@ function parseInvoiceLines(text, options = {}) {
   });
 }
 
+// Lot number and expiry are optional when receiving stock — an item that isn't
+// tracked by expiry (or whose expiry was simply left blank on receipt) is stored
+// with expiry "" or "N/A" interchangeably, not always the literal "N/A" string.
+// Treating only "N/A" as "no expiry" made daysUntil("") — NaN — read as already
+// expired, silently excluding real, in-stock units from availability checks.
+function hasNoExpiry(expiry) {
+  return !expiry || expiry === "N/A";
+}
+
 function isEquipmentItem(item) {
   const category = String(item?.category || item?.classification || "").trim().toLowerCase();
   return category === "equipment";
@@ -515,7 +524,7 @@ function itemStockLotTracked(item, branch) {
 function invoiceItemStockQty(item, branch) {
   if (!item) return 0;
   return data.inventory
-    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (entry.expiry === "N/A" || daysUntil(entry.expiry) >= 0))
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
 }
 
@@ -688,8 +697,8 @@ function syncInvoiceRowItem(input, options = {}) {
   if (expiryInput) { expiryInput.required = !equipment; if (equipment) expiryInput.value = ""; }
   if (!row.querySelector(".invoice-price-input").value) row.querySelector(".invoice-price-input").value = "";
   const stock = data.inventory
-    .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (entry.expiry === "N/A" || daysUntil(entry.expiry) >= 0))
-    .sort((a, b) => daysUntil(a.expiry === "N/A" ? "2099-12-31" : a.expiry) - daysUntil(b.expiry === "N/A" ? "2099-12-31" : b.expiry))[0];
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
+    .sort((a, b) => daysUntil(hasNoExpiry(a.expiry) ? "2099-12-31" : a.expiry) - daysUntil(hasNoExpiry(b.expiry) ? "2099-12-31" : b.expiry))[0];
   if (stock) {
     row.querySelector(".invoice-lot-input").value = stock.lot || "";
     if (!equipment) row.querySelector(".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
