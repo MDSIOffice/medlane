@@ -854,6 +854,12 @@ qs("#inventory-workflow-tabs").addEventListener("click", (event) => {
   inventoryWorkflowTab = button.dataset.inventoryWorkflow;
   renderInventory();
 });
+qs("#po-workflow-tabs")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-po-workflow]");
+  if (!button) return;
+  poWorkflowTab = button.dataset.poWorkflow;
+  renderPurchaseOrders();
+});
 qs("#print-template-tabs")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-pt-tab]");
   if (!button) return;

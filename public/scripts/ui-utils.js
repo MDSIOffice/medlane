@@ -365,7 +365,7 @@ function prepareFocusedSection(section, record) {
   if (section === "replenishments") return renderReplenishments();
   if (section === "collections") return renderCollections();
   if (section === "sales") return renderSales();
-  if (section === "purchase-orders") return renderPurchaseOrders();
+  if (section === "purchase-orders") { poWorkflowTab = "pending"; return renderPurchaseOrders(); }
   if (section === "invoicing") return renderInvoicing();
   if (section === "imports") return renderImports();
   if (section === "reports") return renderReports();

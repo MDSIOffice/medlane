@@ -219,7 +219,7 @@ function parseInvoiceLines(text, options = {}) {
     const qty = Number(qtyValue);
     const price = Number(priceValue);
     if (!qty || qty <= 0 || Number.isNaN(price) || price < 0) throw new Error(`Invalid qty or price for ${item.name}`);
-    if (requireLot && !lotValue) throw new Error(`Missing lot number for ${item.name}`);
+    if (requireLot && !lotValue && itemStockLotTracked(item, sourceBranch)) throw new Error(`Missing lot number for ${item.name}`);
     if (requireLot && !equipment && !expiryValue) throw new Error(`Missing expiry date for ${item.name}`);
     return { item: item.name, code: item.code, brand: brandValue || item.brand, qty, uom: uomValue || item.uom || "unit", price, sourceBranch, branch: sourceBranch, lot: lotValue || "", expiry: equipment ? "N/A" : expiryValue || "", discount: Number(discountValue || 0), discountReason: "" };
   });
@@ -498,6 +498,20 @@ function invoiceRowLotOptionsHtml(item, branch) {
   return data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0).map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.branch)} · Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
 }
 
+// Exact code+branch+lot+qty match first. If that misses and there's an untracked (no lot
+// on file) row with enough qty, fall back to it — this is what lets a lot typed during
+// invoicing "claim" stock that was received without one (see itemStockLotTracked).
+function matchInvoiceLineStock(line) {
+  return data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && i.lot === line.lot && i.qty >= line.qty)
+    || data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && !i.lot && i.qty >= line.qty);
+}
+
+function itemStockLotTracked(item, branch) {
+  if (!item) return true;
+  const entries = data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0);
+  return entries.length ? entries.some((entry) => entry.lot) : true;
+}
+
 function invoiceItemStockQty(item, branch) {
   if (!item) return 0;
   return data.inventory
@@ -509,7 +523,9 @@ function invoiceRowStockHintHtml(item, branch) {
   if (!item) return "";
   const qty = invoiceItemStockQty(item, branch);
   const uom = item.uom || "unit";
-  return `<small class="invoice-stock-hint${qty <= 0 ? " invoice-stock-hint-empty" : ""}" data-role="stock-hint">${qty > 0 ? `Stock available: ${qty} ${escapeHtml(uom)}${qty === 1 ? "" : "s"}${branch ? ` at ${escapeHtml(branch)}` : ""}` : `No stock available${branch ? ` at ${escapeHtml(branch)}` : ""}`}</small>`;
+  const reserved = pendingPoDemandForItem(item.code, branch, qs("#po")?.value || null);
+  const reservedNote = reserved > 0 ? ` · ${reserved} already pending on other PO${reserved === 1 ? "" : "s"}` : "";
+  return `<small class="invoice-stock-hint${qty <= 0 ? " invoice-stock-hint-empty" : ""}" data-role="stock-hint">${qty > 0 ? `Stock available: ${qty} ${escapeHtml(uom)}${qty === 1 ? "" : "s"}${branch ? ` at ${escapeHtml(branch)}` : ""}` : `No stock available${branch ? ` at ${escapeHtml(branch)}` : ""}`}${escapeHtml(reservedNote)}</small>`;
 }
 
 function invoiceLineTemplate(line = {}, options = {}) {
@@ -520,6 +536,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
   const selectedInvoiceBranch = qs("#sourceBranch")?.value || line.sourceBranch || line.branch || inventoryBranchTab || platformBranches()[0] || "";
   const preferredBranch = selectedInvoiceBranch;
   const stock = item ? data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === preferredBranch) || {} : {};
+  const lotTracked = itemStockLotTracked(item, preferredBranch);
   const selectedUom = line.uom || item?.uom || "unit";
   const uid = ++invoiceRowUid;
   return `<div class="invoice-line-row">
@@ -530,7 +547,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="1" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${uomOptions.map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" value="${line.price || ""}" required /></div>
-      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label><input class="invoice-lot-input" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist></div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
+      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label>${lotTracked ? `<input class="invoice-lot-input" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist>` : `<input class="invoice-lot-input" autocomplete="off" value="${escapeHtml(line.lot || "")}" placeholder="No lot on file — enter it here to record it" />`}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
     </div>
     <button class="icon-button remove-invoice-line" type="button" aria-label="Remove item" title="Remove item">×</button>
@@ -557,12 +574,39 @@ function poLineStatus(po, line) {
   return { served, pending: Math.max(Number(line.qty || 0) - served, 0) };
 }
 
+const PO_COMPLETED_DOC_LABELS = { SI: "Sales Invoice", TS: "Transmittal Slip", DR: "Delivery Receipt" };
+const PO_TERMINAL_STATUSES = Object.values(PO_COMPLETED_DOC_LABELS);
+
 function poStatus(po) {
   const pending = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0);
   const served = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).served, 0);
-  if (pending <= 0) return po.completedType === "TS" ? "Transmittal Slip" : "Sales Invoice";
+  if (pending <= 0) return PO_COMPLETED_DOC_LABELS[po.completedType] || "Sales Invoice";
   if (served > 0) return "Pending Orders";
   return "For Invoicing";
+}
+
+// How much of an item's stock at a branch is already claimed by pending/partially-invoiced
+// POs (not yet fully served). Surfaced on the Stocks table so a "1 in stock" row that reads
+// as available isn't a surprise "No stock available" once someone tries to invoice it, and
+// enforced in buildSale() so one PO can't silently eat stock another open PO is waiting on.
+function competingPurchaseOrdersForItem(code, branch, excludePoId = null) {
+  return data.purchaseOrders
+    .filter((po) => po.id !== excludePoId && warehouseForArea(po.area) === branch)
+    .map((po) => ({ po, pending: (po.lines || []).filter((line) => line.code === code).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0) }))
+    .filter((entry) => entry.pending > 0);
+}
+
+function pendingPoDemandForItem(code, branch, excludePoId = null) {
+  return competingPurchaseOrdersForItem(code, branch, excludePoId).reduce((sum, entry) => sum + entry.pending, 0);
+}
+
+function inventoryReservedCellHtml(item) {
+  const competitors = competingPurchaseOrdersForItem(item.code, item.branch);
+  const reserved = competitors.reduce((sum, entry) => sum + entry.pending, 0);
+  if (!reserved) return `<span class="muted-cell">—</span>`;
+  const firstPoId = escapeHtml(competitors[0].po.id);
+  const title = `${reserved} unit${reserved === 1 ? "" : "s"} pending across open purchase orders for ${escapeHtml(item.item)} at ${escapeHtml(item.branch)}: ${competitors.map((entry) => `${entry.po.id} (${entry.po.client}) x${entry.pending}`).join(", ")}`;
+  return `<button type="button" class="pill ${reserved > item.qty ? "red" : "orange"} pill-button" title="${title}" data-go-section="purchase-orders" data-focus-record="${firstPoId}">${reserved} pending</button>`;
 }
 
 function poFullyPaid(po) {
@@ -571,7 +615,7 @@ function poFullyPaid(po) {
 }
 
 function poInvoiceable(po) {
-  return !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po)) && !poFullyPaid(po);
+  return !PO_TERMINAL_STATUSES.includes(poStatus(po)) && !poFullyPaid(po);
 }
 
 function openPurchaseOrdersForClient(clientName) {
@@ -626,6 +670,12 @@ function syncInvoiceRowItem(input, options = {}) {
   const stockHint = row.querySelector("[data-role='stock-hint']");
   if (stockHint) stockHint.outerHTML = invoiceRowStockHintHtml(item, warehouse) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
   if (!item) return;
+  const lotInput = row.querySelector(".invoice-lot-input");
+  if (lotInput && lotInput.type !== "hidden") {
+    const lotTracked = itemStockLotTracked(item, warehouse);
+    lotInput.required = lotTracked;
+    lotInput.placeholder = lotTracked ? (isEquipmentItem(item) ? "Serial or lot number" : "Lot number") : "No lot on file — enter it here to record it";
+  }
   row.querySelector(".invoice-brand-input").value = item.brand || "";
   // Skip when re-syncing a line whose unit was already set on purpose (e.g. carried over
   // from the source purchase order line, which can legitimately differ from the item's
@@ -1789,9 +1839,9 @@ function renderInventory() {
     visualCard("▤", "Stock Health", `${visibleInventory.length} total`, barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((itemStatus) => [itemStatus, visibleInventory.filter((item) => inventoryStatus(item) === itemStatus).length]), (value) => `${value} records`, ["green", "orange", "red", "red", "red"]), "info", "Computed by classifying each inventory record by quantity and expiry rules."),
   ].join("");
   qs("#inventory-compact-toggle")?.classList.toggle("active", inventoryCompactView);
-  const inventoryHeaders = inventoryCompactView ? ["Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Min", "Status"] : ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Min", "Status"];
+  const inventoryHeaders = inventoryCompactView ? ["Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Reserved", "Min", "Status"] : ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Reserved", "Min", "Status"];
   table("#inventory-table", inventoryHeaders, rows.map((i) => {
-    const fullCells = [i.branch, i.brand, i.code, i.item, i.serial ? `${i.serial}<small>${i.lot}</small>` : i.lot, i.expiry, i.qty, i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`];
+    const fullCells = [i.branch, i.brand, i.code, i.item, i.serial ? `${i.serial}<small>${i.lot}</small>` : i.lot, i.expiry, i.qty, inventoryReservedCellHtml(i), i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`];
     return { focus: i.lot, cells: inventoryCompactView ? fullCells.slice(3) : fullCells };
   }));
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
@@ -2425,18 +2475,26 @@ function renderPurchaseOrders() {
     .reverse();
   const pending = visible.filter((po) => poStatus(po) === "Pending Orders");
   const forInvoicing = visible.filter((po) => poStatus(po) === "For Invoicing");
+  const invoiced = visible.filter((po) => PO_TERMINAL_STATUSES.includes(poStatus(po)));
   qs("#purchase-order-visuals").innerHTML = [
     visualCard("!", "Pending Orders", `${pending.length} PO${pending.length === 1 ? "" : "s"}`, pending.length ? barRows(pending.map((po) => [po.id, (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0)]), (value) => `${value} pending qty`, ["orange", "red"]) : "<p>No partially served orders.</p>", pending.length ? "warning" : "success", "Computed as ordered quantity minus served invoice quantity per PO line."),
     visualCard("▧", "For Invoicing", `${forInvoicing.length} unserved`, forInvoicing.length ? barRows(forInvoicing.map((po) => [po.id, (po.lines || []).length]), (value) => `${value} line${value === 1 ? "" : "s"}`, ["", "green"]) : "<p>No unserved POs.</p>", "info", "Computed from POs with no served invoice quantity yet."),
-    visualCard("✓", "Completed", `${visible.filter((po) => ["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).length} served`, "<p>Completed POs are tagged by the document that fully served them.</p>", "success", "Computed from POs whose ordered quantities are fully served by SI or TS."),
+    visualCard("✓", "Completed", `${invoiced.length} served`, "<p>Completed POs are tagged by the document that fully served them.</p>", "success", "Computed from POs whose ordered quantities are fully served by SI or TS."),
   ].join("");
+  qsa("#po-workflow-tabs .tab").forEach((btn) => {
+    const tab = btn.dataset.poWorkflow;
+    btn.classList.toggle("active", tab === poWorkflowTab);
+    const count = tab === "invoiced" ? invoiced.length : pending.length + forInvoicing.length;
+    btn.innerHTML = `${tab === "invoiced" ? "Invoiced" : "Pending"} <span class="tab-count">${count}</span>`;
+  });
+  const tabbed = visible.filter((po) => (poWorkflowTab === "invoiced") === PO_TERMINAL_STATUSES.includes(poStatus(po)));
   qsa("#po-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.poView === poViewMode));
   qs("#purchase-order-table-view").hidden = poViewMode !== "table";
   qs("#purchase-order-grid").hidden = poViewMode !== "card";
   if (poViewMode === "table") {
-    table("#purchase-order-table", ["PO No.", "Client", "Area", "Date", "Status", "Total", "Actions"], visible.map((po) => ({ focus: po.id, cells: [po.id, po.client, po.area || "-", po.date, `<span class="pill ${statusClass(poStatus(po))}">${escapeHtml(poStatus(po))}</span>`, peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0)), `<button class="mini-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button>`] })));
+    table("#purchase-order-table", ["PO No.", "Client", "Area", "Date", "Status", "Total", "Actions"], tabbed.map((po) => ({ focus: po.id, cells: [po.id, po.client, po.area || "-", po.date, `<span class="pill ${statusClass(poStatus(po))}">${escapeHtml(poStatus(po))}</span>`, peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0)), `<button class="mini-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button>`] })));
   }
-  qs("#purchase-order-grid").innerHTML = visible.map((po) => {
+  qs("#purchase-order-grid").innerHTML = tabbed.map((po) => {
     const status = poStatus(po);
     const lines = (po.lines || []).map((line) => {
       const served = poLineStatus(po, line);
@@ -5774,7 +5832,7 @@ const modalConfigs = {
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
-  cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
+  cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => data.clients.map((client) => client.name)], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => data.banks.map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => data.suppliers.map((s) => s.name)], ["contact", "Contact Info"], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => data.employees.map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
@@ -6222,8 +6280,16 @@ function buildSale(values, replacementOf = null) {
   if (discountNeedsApproval(discount) && !canAuthorize) throw new Error("Discounts need Admin/CEO approval.");
   for (const line of lines) {
     if (line.expiry !== "N/A" && daysUntil(line.expiry) < 0) throw new Error(`Expired lot blocked for ${line.item}.`);
-    const stock = data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && i.lot === line.lot && i.qty >= line.qty);
-    if (!stock) throw new Error(`No sufficient ${line.item} stock in ${line.sourceBranch} for lot ${line.lot}.`);
+    const stock = matchInvoiceLineStock(line);
+    if (!stock) throw new Error(`No sufficient ${line.item} stock in ${line.sourceBranch}${line.lot ? ` for lot ${line.lot}` : ""}.`);
+    const otherDemand = pendingPoDemandForItem(line.code, line.sourceBranch, po.id);
+    if (otherDemand > 0) {
+      const available = invoiceItemStockQty({ code: line.code, name: line.item }, line.sourceBranch);
+      if (available - line.qty < otherDemand) {
+        const competitor = competingPurchaseOrdersForItem(line.code, line.sourceBranch, po.id)[0];
+        throw new Error(`${line.item} is already reserved for ${competitor?.po.id || "another purchase order"}${competitor ? ` (${competitor.po.client})` : ""} — only ${Math.max(available - otherDemand, 0)} unit${Math.max(available - otherDemand, 0) === 1 ? "" : "s"} free to invoice here.`);
+      }
+    }
   }
   const amount = values.type === "DR" ? 0 : saleAmount(lines);
   if (discount > amount) throw new Error("Discount cannot exceed gross amount.");
@@ -6232,7 +6298,8 @@ function buildSale(values, replacementOf = null) {
   const credit = clientCreditState(client.name, net);
   if (credit.exceeded && !canAuthorize) throw new Error("Credit limit exceeded. Needs Admin/CEO authorization.");
   lines.forEach((line) => {
-    const stock = data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && i.lot === line.lot && i.qty >= line.qty);
+    const stock = matchInvoiceLineStock(line);
+    if (line.lot && !stock.lot) stock.lot = line.lot;
     stock.qty -= line.qty;
   });
   if (credit.exceeded) notify("Credit", `${currentUser.name} authorized ${client.name} to exceed credit limit: ${peso.format(credit.projected)} / ${peso.format(credit.limit)}.`, "masterlists", client.name);
