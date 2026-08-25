@@ -1964,10 +1964,8 @@ function renderStockSheet() {
   const tableEl = qs("#stock-sheet-table");
   if (!tableEl) return;
   const pickerOptions = `<option value="">Manual receive</option>${receivablePurchaseOrders().map((po) => `<option value="${escapeHtml(po.id)}">${escapeHtml(po.id)} · ${escapeHtml(po.supplier)}</option>`).join("")}`;
-  if (!qs("#inventory-po-receive-picker")) tableEl.closest(".table-card")?.insertAdjacentHTML("beforebegin", `<div class="toolbar"><div class="field"><label for="inventory-po-receive-picker">Inventory Purchase Order</label><select id="inventory-po-receive-picker">${pickerOptions}</select></div></div>`);
-  else qs("#inventory-po-receive-picker").innerHTML = pickerOptions;
   const picker = qs("#inventory-po-receive-picker");
-  if (picker) picker.disabled = false;
+  if (picker) { picker.innerHTML = pickerOptions; picker.disabled = false; }
   editingStockReceiptId = null;
   resetStockSheetMeta();
   tableEl.innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${stockSheetRow(0)}</tbody>`;
