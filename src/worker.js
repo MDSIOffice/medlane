@@ -726,8 +726,22 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     }
     for (const line of lines) {
       const branch = line.sourceBranch || line.branch;
-      const available = inventoryByKey.get(saleStockLookupKey(line.code, branch, line.lot)) || 0;
-      if (Number(line.qty) > available) throw new Error(`Invoice ${label}: insufficient stock for ${line.item || line.code || "item"} in ${branch || "the selected branch"} (available ${available}, requested ${line.qty}).`);
+      const qty = Number(line.qty);
+      const exactKey = saleStockLookupKey(line.code, branch, line.lot);
+      let key = exactKey;
+      let available = inventoryByKey.get(exactKey) || 0;
+      // A lot typed during invoicing can "claim" stock that was received without one on file
+      // (see itemStockLotTracked in modules.js) — mirror that fallback here so the same line
+      // that passes client-side validation doesn't get rejected server-side.
+      if (available < qty) {
+        const untrackedKey = saleStockLookupKey(line.code, branch, "");
+        const untrackedAvailable = inventoryByKey.get(untrackedKey) || 0;
+        if (untrackedAvailable >= qty) { key = untrackedKey; available = untrackedAvailable; }
+      }
+      if (qty > available) throw new Error(`Invoice ${label}: insufficient stock for ${line.item || line.code || "item"} in ${branch || "the selected branch"} (available ${available}, requested ${qty}).`);
+      // Decrement within this batch so two new invoices in the same save that both claim the
+      // last unit of something can't both pass — the second sees what the first already took.
+      inventoryByKey.set(key, available - qty);
     }
   }
 }
@@ -1478,7 +1492,9 @@ function salesPoStatusServer(po, sales) {
     return sum + Math.max(Number(line.qty || 0) - served, 0);
   }, 0);
   if (pendingQty > 0) return "Pending Orders";
-  return linkedSales.some((sale) => sale.type === "SI") ? "Sales Invoice" : "Transmittal Slip";
+  if (linkedSales.some((sale) => sale.type === "SI")) return "Sales Invoice";
+  if (linkedSales.some((sale) => sale.type === "DR")) return "Delivery Receipt";
+  return "Transmittal Slip";
 }
 
 const digestStateModules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "inventoryDemoRequests", "pendingTransfers", "collectionContacts", "purchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues", "payments", "imports", "reconHistory"];
@@ -1493,7 +1509,7 @@ async function loadDigestState(env, modules = digestStateModules) {
 
 function pendingSummaryFields(state) {
   const sales = state.sales || [];
-  const salesPurchaseOrders = (state.purchaseOrders || []).filter((po) => !["Sales Invoice", "Transmittal Slip"].includes(salesPoStatusServer(po, sales)) && !poFullyPaidServer(po, sales));
+  const salesPurchaseOrders = (state.purchaseOrders || []).filter((po) => !["Sales Invoice", "Transmittal Slip", "Delivery Receipt"].includes(salesPoStatusServer(po, sales)) && !poFullyPaidServer(po, sales));
   const inventoryPurchaseOrders = (state.inventoryPurchaseOrders || []).filter((po) => !/approved|fully received|cancelled/i.test(po.status || ""));
   const inventoryPoApproval = inventoryPurchaseOrders.filter((po) => po.status === "Pending Approval");
   const transfers = (state.pendingTransfers || []).filter((transfer) => !/received|cancelled/i.test(transfer.status || ""));

@@ -463,6 +463,10 @@
 
       <section class="section" id="purchase-orders">
         <div class="section-header"><div><p class="eyebrow">Purchase Orders</p><h2>Client orders before serving and invoicing</h2></div><button class="primary-button" data-action="open-modal" data-type="purchaseOrder">New Purchase Order</button></div>
+        <div class="tabs workflow-tabs" id="po-workflow-tabs">
+          <button class="tab active" data-po-workflow="pending">Pending</button>
+          <button class="tab" data-po-workflow="invoiced">Invoiced</button>
+        </div>
         <div class="toolbar date-toolbar">
           <div class="field"><label for="po-date-from">PO from</label><input id="po-date-from" type="date" /></div>
           <div class="field"><label for="po-date-to">PO to</label><input id="po-date-to" type="date" /></div>
