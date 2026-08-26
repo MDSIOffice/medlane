@@ -1,11 +1,11 @@
 # Graph Report - medlane  (2026-08-26)
 
 ## Corpus Check
-- 46 files · ~292,408 words
+- 46 files · ~292,437 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2049 nodes · 4451 edges · 107 communities (92 shown, 15 thin omitted)
+- 2049 nodes · 4451 edges · 106 communities (91 shown, 15 thin omitted)
 - Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 243 edges (avg confidence: 0.61)
 - Token cost: 0 input · 0 output
 
@@ -25,10 +25,10 @@
 - public/scripts/vendor/pdf-lib.min.js
 - scripts/vendor/pdf-lib.min.js
 - renderAll
-- worker.js
+- fetch
 - renderAll
 - importCheckedRows
-- printableInvoiceHtml
+- worker.js
 - attachedFilesFor
 - importCheckedRows
 - renderStockSheet
@@ -43,7 +43,7 @@
 - MedlaneAPI
 - renderLogs
 - game.js
-- memoCardHtml
+- renderBackup
 - renderPrintTemplateSidePanel
 - renderProductIssues
 - syncPaymentRequestTotal
@@ -54,7 +54,7 @@
 - i
 - i
 - public/scripts/config-data.js
-- renderPayables
+- attachedFilesFor
 - printableFooterHtml
 - scripts/config-data.js
 - printableFooterHtml
@@ -67,10 +67,9 @@
 - common.sh
 - supabaseFetch
 - sendDiscordDigest
-- json
+- renderReconciliation
 - Tasks: [FEATURE NAME]
 - renderCollections
-- postNewRecordEventsToDiscord
 - createAppSession
 - Bt
 - za
@@ -148,7 +147,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (107 total, 15 thin omitted)
+## Communities (106 total, 15 thin omitted)
 
 ### Community 0 - "public/scripts/state.js"
 Cohesion: 0.05
@@ -188,11 +187,11 @@ Nodes (8): cs(), hs(), qe(), us(), Ve(), Vr(), We(), wr()
 
 ### Community 9 - "renderAll"
 Cohesion: 0.06
-Nodes (48): MedlaneAPI, acknowledgeMemo(), advancePurchaseOrderStatus(), applyRole(), approveExpense(), approvePurchaseOrder(), canApprovePurchaseOrders(), cancelPurchaseOrder() (+40 more)
+Nodes (46): MedlaneAPI, acknowledgeMemo(), advancePurchaseOrderStatus(), applyRole(), approveExpense(), approvePurchaseOrder(), canApprovePurchaseOrders(), cancelPurchaseOrder() (+38 more)
 
-### Community 10 - "worker.js"
+### Community 10 - "fetch"
 Cohesion: 0.05
-Nodes (73): applyReceivingLines(), canAccessKey(), canWrite(), checkAssetPageHealth(), daysUntilIso(), dedupeRowsByRecordKey(), defaultSeedSignature, deleteDiscordWebhookMessage() (+65 more)
+Nodes (52): applyReceivingLines(), authenticatedProfile(), authenticatedUser(), canAccessKey(), checkAssetPageHealth(), dedupeRowsByRecordKey(), deleteDiscordWebhookMessage(), enrichAuditLogEntry() (+44 more)
 
 ### Community 11 - "renderAll"
 Cohesion: 0.07
@@ -202,9 +201,9 @@ Nodes (42): applyRole(), approveExpense(), approveFinancialRequest(), canApprove
 Cohesion: 0.19
 Nodes (23): buildImportedClient(), buildImportedProduct(), buildImportedSupplier(), buildMigratedSale(), detectImportKind(), importAddress(), importCheckedRows(), importContact() (+15 more)
 
-### Community 13 - "printableInvoiceHtml"
-Cohesion: 0.24
-Nodes (11): documentType(), fieldOverrideStyle(), formDate(), formMoney(), lineAmount(), printableInvoiceHtml(), printableRows(), productIssuePrintableHtml() (+3 more)
+### Community 13 - "worker.js"
+Cohesion: 0.06
+Nodes (50): addDays(), canWrite(), daysUntilIso(), defaultSeedSignature, DIGEST_AUDIT_NOISE_ACTIONS, DIGEST_COLORS, DIGEST_METRIC_CARDS, DIGEST_ROLE_RECIPIENTS (+42 more)
 
 ### Community 14 - "attachedFilesFor"
 Cohesion: 0.09
@@ -231,12 +230,12 @@ Cohesion: 0.08
 Nodes (3): calendarToneOrder, graphNote(), visualCard()
 
 ### Community 20 - "renderCollectionMapVisual"
-Cohesion: 0.11
-Nodes (21): collectionContactsGeoJson(), collectionRegionCount(), collectionRegionSource(), collectionRegionSummaries(), contactActionCard(), featureRegionName(), geoJsonBounds(), geoRegionName() (+13 more)
+Cohesion: 0.10
+Nodes (24): collectionContactsGeoJson(), collectionRegionCount(), collectionRegionSource(), collectionRegionSummaries(), contactActionCard(), featureRegionName(), geoJsonBounds(), geoRegionName() (+16 more)
 
 ### Community 21 - "renderInventory"
-Cohesion: 0.16
-Nodes (18): canApproveDemoManagement(), canApproveDemoSales(), canCloseDemoRequest(), demoRequestActions(), demoRequestLineSummary(), inventoryItemLabel(), itemizedSummary(), notificationItem() (+10 more)
+Cohesion: 0.12
+Nodes (24): canApproveDemoManagement(), canApproveDemoSales(), canCloseDemoRequest(), demoRequestActions(), demoRequestLineSummary(), inventoryItemLabel(), itemizedSummary(), payable2307Cell() (+16 more)
 
 ### Community 22 - "renderCollections"
 Cohesion: 0.15
@@ -262,9 +261,9 @@ Nodes (21): dedupedUsers(), formatLogCell(), formatLogRecord(), loadMoreCollecti
 Cohesion: 0.11
 Nodes (35): closeGameModal(), doJump(), drawGame(), drawRoundedRect(), endGame(), gameLoop(), hideOverlay(), hideOverlayLeaderboard() (+27 more)
 
-### Community 28 - "memoCardHtml"
-Cohesion: 0.13
-Nodes (22): backupRunLabel(), canManageUsers(), canPostMemo(), dedupedUsers(), formatBytes(), formatSessionDate(), memoAcknowledgedByCurrentUser(), memoAudienceCheckboxesHtml() (+14 more)
+### Community 28 - "renderBackup"
+Cohesion: 0.18
+Nodes (13): backupRunLabel(), canManageUsers(), dedupedUsers(), formatBytes(), formatSessionDate(), memoRecipientCount(), renderBackup(), renderDashboardBackupStatus() (+5 more)
 
 ### Community 29 - "renderPrintTemplateSidePanel"
 Cohesion: 0.24
@@ -306,9 +305,9 @@ Nodes (17): a(), ae(), de(), _e(), ee(), fe(), ge(), Gr() (+9 more)
 Cohesion: 0.13
 Nodes (14): clientContactDepartments, deliveryStatusOptions, employeeBenefitOptions, initialData, peso, productClassificationOptions, requiredClientDocs, requiredSecurityApprovals (+6 more)
 
-### Community 39 - "renderPayables"
-Cohesion: 0.06
-Nodes (43): applyReconciliationHistory(), attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canUpdateDeliveryStatus(), clientDocRecordId(), clientDocsModalRowsHtml() (+35 more)
+### Community 39 - "attachedFilesFor"
+Cohesion: 0.11
+Nodes (28): attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canPostMemo(), canUpdateDeliveryStatus(), clientDocRecordId(), clientDocsModalRowsHtml() (+20 more)
 
 ### Community 40 - "printableFooterHtml"
 Cohesion: 0.09
@@ -323,8 +322,8 @@ Cohesion: 0.11
 Nodes (23): addMonthsToDate(), clientInvoiceReportHtml(), dashboardReportHtml(), dashboardReportRows(), dashboardVisibleSales(), exportDashboardCsv(), itemForecastMonthKeys(), itemForecastMonthLabels() (+15 more)
 
 ### Community 43 - "detectThresholdsAndApprovals"
-Cohesion: 0.24
-Nodes (12): addDays(), dashboardAnalyticsFields(), detectThresholdsAndApprovals(), digestClientBalance(), digestDaysUntil(), digestInventoryStatus(), digestSaleStatus(), generateReportsFromState() (+4 more)
+Cohesion: 0.39
+Nodes (8): dashboardAnalyticsFields(), detectThresholdsAndApprovals(), digestClientBalance(), digestDaysUntil(), digestInventoryStatus(), digestSaleStatus(), inventoryStatusFields(), recordMonthKey()
 
 ### Community 44 - "renderInventory"
 Cohesion: 0.13
@@ -351,16 +350,16 @@ Cohesion: 0.08
 Nodes (17): check-prerequisites.sh script, check_dir(), check_file(), get_feature_paths(), get_repo_root(), has_jq(), _persist_feature_json(), resolve_specify_init_dir() (+9 more)
 
 ### Community 50 - "supabaseFetch"
-Cohesion: 0.16
-Nodes (20): activeMetadataUsage(), checkSupabaseAppRecordsHealth(), cleanEmail(), createBackup(), extractLinkResult(), findAuthUserByEmail(), findAuthUserForProfileOrEmail(), generateSupabaseActionLink() (+12 more)
+Cohesion: 0.13
+Nodes (24): activeMetadataUsage(), checkSupabaseAppRecordsHealth(), cleanEmail(), createBackup(), extractLinkResult(), findAuthUserByEmail(), findAuthUserForProfileOrEmail(), generateSupabaseActionLink() (+16 more)
 
 ### Community 51 - "sendDiscordDigest"
 Cohesion: 0.29
 Nodes (8): backupDigestLines(), discordBullet(), discordFieldValue(), pendingSummaryFields(), poFullyPaidServer(), salesPoStatusServer(), sendDiscordDigest(), trackNewOccurrences()
 
-### Community 52 - "json"
-Cohesion: 0.24
-Nodes (11): authenticatedProfile(), authenticatedUser(), json(), methodNotAllowed(), profileForUser(), resendFrom(), sendResendEmail(), supabaseAuthAdminFetchOnce() (+3 more)
+### Community 52 - "renderReconciliation"
+Cohesion: 0.13
+Nodes (17): applyReconciliationHistory(), ensureWorkflowPanel(), getReconciliationFindings(), getReconciliationSuccesses(), getReconScope(), getScopedClientBalance(), isWithinReconRange(), moduleWorkflowItems() (+9 more)
 
 ### Community 53 - "Tasks: [FEATURE NAME]"
 Cohesion: 0.07
@@ -369,10 +368,6 @@ Nodes (26): Dependencies & Execution Order, Format: `[ID] [P?] [Story] Descripti
 ### Community 54 - "renderCollections"
 Cohesion: 0.09
 Nodes (29): applyCollectionPayment(), approvePaymentRequest(), canApprovePaymentRequests(), cancelPaymentRequest(), collectionStatusActions(), collectionStatusHistory(), collectionTagForType(), contactActionCard() (+21 more)
-
-### Community 55 - "postNewRecordEventsToDiscord"
-Cohesion: 0.29
-Nodes (7): discordEventEmbed(), eventActor(), inventoryPoTotal(), moduleRecordMap(), postNewRecordEventsToDiscord(), salesPoTotal(), webhookText()
 
 ### Community 56 - "createAppSession"
 Cohesion: 0.38
@@ -518,11 +513,11 @@ Nodes (3): confirmCloseDialog(), guardDialogEscape(), guardedDialogClose()
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `MedlaneAPI` connect `MedlaneAPI` to `recordSystemLog`, `worker.js`?**
+- **Why does `MedlaneAPI` connect `MedlaneAPI` to `recordSystemLog`, `fetch`?**
   _High betweenness centrality (0.241) - this node is a cross-community bridge._
-- **Why does `MedlaneAPI` connect `renderAll` to `recordSystemLog`, `worker.js`?**
+- **Why does `MedlaneAPI` connect `renderAll` to `recordSystemLog`, `fetch`?**
   _High betweenness centrality (0.238) - this node is a cross-community bridge._
-- **Why does `backupStatus()` connect `recordSystemLog` to `MedlaneAPI`, `worker.js`, `supabaseFetch`, `renderAll`?**
+- **Why does `backupStatus()` connect `recordSystemLog` to `renderAll`, `fetch`, `worker.js`, `supabaseFetch`, `MedlaneAPI`?**
   _High betweenness centrality (0.148) - this node is a cross-community bridge._
 - **What connects `common.sh script`, `peso`, `today` to the rest of the system?**
   _171 weakly-connected nodes found - possible documentation gaps or missing edges._

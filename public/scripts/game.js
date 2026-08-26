@@ -44,21 +44,35 @@
 
   // A shared <audio> element can't overlap itself — starting play() while it's
   // already playing just restarts it, cutting the previous sound short (very
-  // noticeable for rapid dodges). Cloning gives every play its own instance.
-  function playSfx(audio) {
+  // noticeable for rapid dodges). A small round-robin pool of pre-cloned nodes
+  // gives every play its own instance without re-fetching/re-decoding the file
+  // on every single call — dodges fire more and more often as a run's speed
+  // ramps up, so a fresh cloneNode() per play gets measurably more expensive
+  // the longer/better a run goes. Pools are built eagerly (not on first play)
+  // so primeAllAudio() can unlock every node from the same gesture — Safari
+  // ties playback permission to the element, not the page.
+  const SFX_POOL_SIZE = 4;
+  const sfxPools = {};
+  for (const [key, audio] of Object.entries(sfxAudio)) {
+    sfxPools[key] = { nodes: Array.from({ length: SFX_POOL_SIZE }, () => audio.cloneNode()), next: 0 };
+  }
+  function playSfx(key) {
     if (!soundEnabled) return;
     try {
-      const node = audio.cloneNode();
-      node.volume = audio.volume;
+      const pool = sfxPools[key];
+      const node = pool.nodes[pool.next];
+      pool.next = (pool.next + 1) % pool.nodes.length;
+      node.volume = sfxAudio[key].volume;
+      node.currentTime = 0;
       node.play().catch(() => { /* blocked outside a gesture — silently skip */ });
     } catch (error) { console.error("[Luksong Medlane] playSfx failed:", error); }
   }
 
-  function sfxJump() { playSfx(sfxAudio.jump); }
-  function sfxDodge() { playSfx(sfxAudio.dodge); }
-  function sfxGameOver() { playSfx(sfxAudio.gameover); }
-  function sfxClick() { playSfx(sfxAudio.click); }
-  function sfxNewBest() { playSfx(sfxAudio.newbest); }
+  function sfxJump() { playSfx("jump"); }
+  function sfxDodge() { playSfx("dodge"); }
+  function sfxGameOver() { playSfx("gameover"); }
+  function sfxClick() { playSfx("click"); }
+  function sfxNewBest() { playSfx("newbest"); }
 
   // Played (and immediately paused) directly inside the "Play Game" click —
   // the one guaranteed user gesture — so every element's very first play()
@@ -67,7 +81,8 @@
   // sfxDodge firing from inside the game loop) keep working for the rest of
   // the session without needing a fresh gesture each time.
   function primeAllAudio() {
-    [...Object.values(sfxAudio), musicAudio].forEach((audio) => {
+    const pooledNodes = Object.values(sfxPools).flatMap((pool) => pool.nodes);
+    [...pooledNodes, musicAudio].forEach((audio) => {
       // .load() makes the fetch start unambiguous rather than relying on every
       // browser to trigger it purely from play() on a preload="none" element.
       if (audio.readyState === 0) audio.load();
@@ -139,7 +154,12 @@
   let bgOffset = 0;
   let particles = [];
 
-  function themeColors() {
+  // getComputedStyle() forces a style recalculation — cheap once, but drawGame()
+  // calls this on every animation frame (~60/sec), so a naive per-call read
+  // costs more the longer a run goes. The theme only actually changes when
+  // <html data-theme> flips, so cache the result and recompute solely on that.
+  let cachedThemeColors = null;
+  function computeThemeColors() {
     const styles = getComputedStyle(document.documentElement);
     const get = (name, fallback) => (styles.getPropertyValue(name) || "").trim() || fallback;
     return {
@@ -155,6 +175,12 @@
       red: get("--red", "#d71920"),
     };
   }
+  function themeColors() {
+    if (!cachedThemeColors) cachedThemeColors = computeThemeColors();
+    return cachedThemeColors;
+  }
+  new MutationObserver(() => { cachedThemeColors = null; })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   function resetGameState() {
     playerY = GROUND_Y - PLAYER_H;
@@ -483,7 +509,7 @@
       el.classList.remove("pop");
       void el.offsetWidth; // restart the pop animation on every step
       el.classList.add("pop");
-      playSfx(label === "Talon!" ? sfxAudio.countdownGo : sfxAudio.countdownBeep);
+      playSfx(label === "Talon!" ? "countdownGo" : "countdownBeep");
       await wait(label === "Talon!" ? 480 : 620);
     }
     if (myGeneration !== gameRunGeneration) return false;
