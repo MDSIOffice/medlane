@@ -1267,7 +1267,7 @@ function financialRequestPrintableHtml(record, type) {
   const partyLabel = type === "payable" ? "Supplier" : "Requester";
   const partyValue = type === "payable" ? record.supplier : record.requester;
   const extraMeta = type === "payable"
-    ? `<span>Contact: <strong>${escapeHtml(record.contact || "-")}</strong></span>`
+    ? ""
     : `<span>Office: <strong>${escapeHtml(record.office || "-")}</strong></span><span>Type: <strong>${escapeHtml(record.type || "-")}</strong></span>`;
   const hasVendorColumn = type === "payable" && items.some((item) => item.vendor);
   const gross = Number(record.grossAmount || 0) || itemGross(items) || Number(record.amount || 0) + Number(record.withholdingTax1 || 0) + Number(record.withholdingTax2 || 0);
