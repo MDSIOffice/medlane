@@ -1709,6 +1709,61 @@ function dashboardAnalyticsFields(state, monthKey) {
   ];
 }
 
+// Builds the field set for the live Inventory Status Discord board: buckets every inventory
+// row by digestInventoryStatus() into disposal/critical/low-stock/near-expiry, each sorted
+// so the most urgent row (lowest qty, soonest expiry) leads the list — matches the same
+// thresholds the Low/Critical Stock and Near-Expiry Stock digest sections already use, just
+// scoped to their own channel instead of mixed into the general digest.
+function inventoryStatusFields(inventory) {
+  const disposal = inventory.filter((item) => digestInventoryStatus(item) === "For Disposal").sort((a, b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
+  const critical = inventory.filter((item) => digestInventoryStatus(item) === "Critical").sort((a, b) => Number(a.qty || 0) - Number(b.qty || 0));
+  const lowStock = inventory.filter((item) => digestInventoryStatus(item) === "Low Stock").sort((a, b) => Number(a.qty || 0) - Number(b.qty || 0));
+  const nearExpiry = inventory.filter((item) => digestInventoryStatus(item) === "Near Expiry").sort((a, b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
+  const flaggedCount = disposal.length + critical.length + lowStock.length + nearExpiry.length;
+  const healthy = inventory.length - flaggedCount;
+
+  const PREVIEW_ROWS = 10;
+  const stockLine = (item) => `**${item.item || item.code || "Item"}** (${item.branch || "-"}) — ${item.qty ?? 0}/${item.min ?? 0} qty${item.lot ? `, lot ${item.lot}` : ""}`;
+  const expiryLine = (item) => `**${item.item || item.code || "Item"}** (${item.branch || "-"}) — lot ${item.lot || "-"}, expires ${item.expiry} (${digestDaysUntil(item.expiry)}d)`;
+  const disposalLine = (item) => `**${item.item || item.code || "Item"}** (${item.branch || "-"}) — lot ${item.lot || "-"}, expired ${item.expiry} (${Math.abs(digestDaysUntil(item.expiry))}d ago)`;
+  const field = (emoji, name, rows, mapper) => {
+    if (!rows.length) return null;
+    const preview = rows.slice(0, PREVIEW_ROWS).map((row) => `▸ ${mapper(row)}`);
+    return { name: `${emoji} ${name} (${rows.length})`, value: discordFieldValue(preview, 950, rows.length), inline: false };
+  };
+
+  const fields = [
+    field("⛔", "For Disposal (Expired)", disposal, disposalLine),
+    field("🔴", "Critical Stock", critical, stockLine),
+    field("🟠", "Low Stock", lowStock, stockLine),
+    field("⏳", "Near-Expiry Stock", nearExpiry, expiryLine),
+    { name: "📊 Snapshot", value: [`**SKUs tracked:** ${inventory.length}`, `**Healthy stock:** ${healthy}`, `**Flagged:** ${flaggedCount}`].join("\n"), inline: false },
+  ].filter(Boolean);
+  return { fields, flaggedCount, criticalCount: disposal.length + critical.length };
+}
+
+async function runInventoryStatusMonitor(env) {
+  if (!env.DISCORD_INVENTORY_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord inventory monitor skipped", module: "Discord", record: "DISCORD_INVENTORY_WEBHOOK_URL not configured" });
+  const state = await loadDigestState(env, ["inventory"]);
+  const inventory = state.inventory || [];
+  const { fields, flaggedCount, criticalCount } = inventoryStatusFields(inventory);
+  const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const description = flaggedCount
+    ? `⚠️ **${flaggedCount} item${flaggedCount === 1 ? "" : "s"}** need attention (critical/low stock, near-expiry, or expired).\n🕒 **Latest update:** ${updatedAt} PHT`
+    : `✨ All stock levels and expiry dates are clear.\n🕒 **Latest update:** ${updatedAt} PHT`;
+  const embed = { title: "📦 Medlane Inventory Status", color: criticalCount ? 0xef4b4f : flaggedCount ? 0xf59e0b : 0x22c55e, description, fields, timestamp: new Date().toISOString() };
+  const stored = await monitoringState(env, "discord-inventory").catch(() => ({}));
+  if (stored.messageId) {
+    const edited = await editDiscordWebhookMessage(env.DISCORD_INVENTORY_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
+    if (edited?.edited) return saveMonitoringState(env, "discord-inventory", { ...stored, updatedAt: new Date().toISOString() });
+    await recordSystemLog(env, { action: "Discord inventory edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
+  }
+  const sent = await sendDiscordWebhookUrl(env, env.DISCORD_INVENTORY_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
+  if (sent.error) return recordSystemLog(env, { action: "Discord inventory monitor failed", module: "Discord", record: sent.error.message });
+  if (sent.messageId) await saveMonitoringState(env, "discord-inventory", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
+  else await recordSystemLog(env, { action: "Discord inventory message id missing", module: "Discord", record: "Discord post succeeded but did not return a message ID" });
+}
+
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 function isTransientJwtClockSkew(error) {
@@ -1940,7 +1995,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // minute/hour/weekday check, so use it instead of trusting scheduledTime's units.
   const scheduled = manilaScheduleParts(Date.now());
   const tasks = [runApiHealthMonitor(env)];
-  if (["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env));
+  if (["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env));
   // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
   // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
