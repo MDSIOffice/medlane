@@ -262,7 +262,7 @@ async function submitModal(event) {
       if (total > combinedBalance) return toast(`Total (${peso.format(total)}) exceeds the combined balance of the selected invoice(s) (${peso.format(combinedBalance)}).`);
     }
     const isCollection = linkedSales.length > 0;
-    const nowStamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const nowStamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
     const paymentRequest = {
       ...values,
       items,
@@ -357,7 +357,7 @@ async function submitModal(event) {
     values.resolvedAt = values.status === "Resolved" ? fmtDate(today) : "";
     values.originRole = productIssueOriginRole(currentUser?.role);
     values.currentActor = values.originRole;
-    values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: values.status || "Open", note: values.remarks?.trim() ? `Report started: ${values.remarks.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
+    values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: values.status || "Open", note: values.remarks?.trim() ? `Report started: ${values.remarks.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
     if (!(await confirmFinalSave(`Save this ${modalConfigs[modalType].title.toLowerCase()}?`))) return;
     data.productIssues.push(values);
     const saveResult = await persistRecords({ productIssues: [values] });
@@ -1524,7 +1524,7 @@ qs("#run-import").addEventListener("click", async () => {
   if (progressWrap) progressWrap.hidden = false;
   try {
     const result = importCheckedRows(checked);
-    const importEntry = { id: `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" };
+    const importEntry = { id: `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" };
     data.imports.unshift(importEntry);
     if (progressLabel) progressLabel.textContent = "Saving to server...";
     const saveResult = await persistRecords({ ...(result.createdRecords || {}), imports: [importEntry] });
@@ -1605,7 +1605,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
   }
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   log("Logged in", "Authentication", currentUser.role);
-  if (currentUser?.email) notify("Security", `New sign-in to your account (${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}).`, "notifications", "", null, currentUser.email);
+  if (currentUser?.email) notify("Security", `New sign-in to your account (${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" })}).`, "notifications", "", null, currentUser.email);
   saveData(["notifications"]);
   playLoginSuccessSound();
   showWelcomeTransition(currentUser.name || currentUser.role, () => {

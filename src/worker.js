@@ -82,13 +82,13 @@ function json(data, init = {}) {
 }
 
 function shortDate() {
-  return new Date().toISOString().slice(0, 10);
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 }
 
 const poNextStatus = { Approved: "Sent to Supplier", "Sent to Supplier": "In Transit", "In Transit": "For Receiving" };
 const poCancellableStatuses = ["Approved", "Sent to Supplier", "In Transit", "For Receiving", "Partially Received"];
 function poTimestamp() {
-  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 
 function appStateKey(env) {
@@ -1139,7 +1139,7 @@ function itemGross(items = []) { return items.reduce((sum, item) => sum + Number
 
 function formDate(value) {
   const date = value ? new Date(value) : new Date();
-  return date.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+  return date.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric", timeZone: "Asia/Manila" });
 }
 
 function lineAmount(line) {

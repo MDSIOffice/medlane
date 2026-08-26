@@ -179,7 +179,7 @@ function log(action, module, record, options = {}) {
   if (options.save !== false) saveData();
 }
 function notify(type, message, section = "notifications", record = "", audience = null, targetUser = null) {
-  const entry = { date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), type, message, section, record, status: "Unread" };
+  const entry = { date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), type, message, section, record, status: "Unread" };
   if (Array.isArray(audience)) entry.audience = audience;
   if (targetUser) entry.targetUser = targetUser;
   data.notifications.unshift(entry);
@@ -201,7 +201,7 @@ function visibleNotifications() {
   return (data.notifications || []).filter(canSeeNotification);
 }
 function generatedNoticeDate() {
-  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 function syncGeneratedNotifications() {
   if (!data?.notifications) return;
