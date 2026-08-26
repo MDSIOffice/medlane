@@ -377,23 +377,13 @@ const MedlaneAPI = (() => {
 
   async function fetchAppVersion() {
     // Plain fetch, not request() — this is polled every few minutes in the background and must
-    // not trigger the global loading spinner or carry an auth header.
+    // not trigger the global loading spinner or carry an auth header. Deciding what to do with the
+    // result (defer a reload until it's safe, etc.) lives in events-bootstrap.js, which has the
+    // app-level context (open dialogs, unsaved records) this client layer doesn't.
     const response = await fetch("/api/version");
     const payload = await response.json().catch(() => null);
     return payload?.version || "";
   }
 
-  // Compares the running tab's version against the live deploy and force-logs-out on a mismatch,
-  // so a tab left open across a deploy can't keep running stale code past a bug fix or patch.
-  async function checkAppVersion(knownVersion) {
-    if (!knownVersion) return false;
-    let latest = "";
-    try { latest = await fetchAppVersion(); }
-    catch { return false; }
-    if (!latest || latest === knownVersion) return false;
-    forceSessionLogout("Medlane OS was updated. Please log in again to get the latest version.");
-    return true;
-  }
-
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, listGameLeaderboard, fetchAppVersion, checkAppVersion };
+  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, listGameLeaderboard, fetchAppVersion };
 })();

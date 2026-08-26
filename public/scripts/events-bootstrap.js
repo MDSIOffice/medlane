@@ -1793,22 +1793,65 @@ function logoutCurrentUser() {
   restoreRememberedLogin();
 }
 
+// Deploy-freshness watchdog: a tab left open across a deploy (someone who steps away, or just
+// never refreshes) would otherwise keep running whatever JS bundle it loaded at open indefinitely
+// — including past a bug fix or permission-check patch. We can't just force-logout on a timer:
+// that would blow away an in-progress PO/stock sheet with no warning. Instead we detect the new
+// version, then wait for an actual safe point (no dialog open, nothing unsaved) before reloading.
+// It's a plain reload, not a session-clearing logout — the still-valid token rehydrates on its own,
+// so nobody has to type their password again just because a deploy happened.
 const APP_VERSION_POLL_MS = 5 * 60 * 1000;
-let appVersionPollTimer = null;
+const APP_UPDATE_RETRY_MS = 30 * 1000;
+let appVersionTimer = null;
 let appVersionKnown = "";
+let appUpdatePending = false;
+let appUpdateNoticeShown = false;
+
+function isSafeToApplyAppUpdate() {
+  return qsa("dialog[open]").length === 0 && Object.keys(readPendingSaveQueue()).length === 0;
+}
+
+function scheduleAppVersionCheck(delay) {
+  clearTimeout(appVersionTimer);
+  appVersionTimer = setTimeout(runAppVersionCheck, delay);
+}
+
+async function runAppVersionCheck() {
+  if (appUpdatePending) {
+    if (isSafeToApplyAppUpdate()) { location.reload(); return; }
+    scheduleAppVersionCheck(APP_UPDATE_RETRY_MS);
+    return;
+  }
+  const latest = await MedlaneAPI.fetchAppVersion().catch(() => "");
+  if (latest && !appVersionKnown) {
+    appVersionKnown = latest;
+  } else if (latest && latest !== appVersionKnown) {
+    appUpdatePending = true;
+    if (!appUpdateNoticeShown) {
+      appUpdateNoticeShown = true;
+      toast("Medlane OS was updated. It'll refresh automatically once you're not mid-edit.");
+    }
+    if (isSafeToApplyAppUpdate()) { location.reload(); return; }
+  }
+  scheduleAppVersionCheck(appUpdatePending ? APP_UPDATE_RETRY_MS : APP_VERSION_POLL_MS);
+}
+
+document.addEventListener("visibilitychange", () => {
+  // Catch the "closed the laptop" / "switched tabs and forgot about it" moment quickly instead of
+  // waiting out the retry interval — but still only reload if nothing is actually unsaved.
+  if (document.hidden && appUpdatePending && isSafeToApplyAppUpdate()) location.reload();
+});
+
 function startAppVersionWatch() {
-  if (appVersionPollTimer) return;
-  MedlaneAPI.fetchAppVersion().then((version) => { if (version) appVersionKnown = version; }).catch(() => null);
-  appVersionPollTimer = setInterval(() => {
-    if (!appVersionKnown) return;
-    MedlaneAPI.checkAppVersion(appVersionKnown).catch(() => null);
-  }, APP_VERSION_POLL_MS);
+  if (appVersionTimer) return;
+  scheduleAppVersionCheck(APP_VERSION_POLL_MS);
 }
 function stopAppVersionWatch() {
-  if (!appVersionPollTimer) return;
-  clearInterval(appVersionPollTimer);
-  appVersionPollTimer = null;
+  clearTimeout(appVersionTimer);
+  appVersionTimer = null;
   appVersionKnown = "";
+  appUpdatePending = false;
+  appUpdateNoticeShown = false;
 }
 
 function restoreRememberedLogin() {
