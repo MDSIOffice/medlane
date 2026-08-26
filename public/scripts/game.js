@@ -22,16 +22,30 @@
     return audioCtx;
   }
 
-  // Browsers only allow an AudioContext to actually start inside a user-gesture
-  // call stack. Called (and awaited) at the very top of startRun(), before any
-  // other await, so every sound in the run — including the music loop — is
-  // guaranteed to have a running context rather than racing a fire-and-forget
-  // resume().
+  // Stricter browsers (Safari/iOS in particular) only trust an AudioContext as
+  // "unlocked" if resume() — and a real buffer playing through it — happen
+  // synchronously inside the click handler itself, with zero awaits first.
+  // This must be called directly from an onclick, never from inside an async
+  // function after any await.
+  function unlockAudioSync() {
+    try {
+      const ctx = ensureAudioCtx();
+      if (ctx.state === "suspended") ctx.resume();
+      const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    } catch (error) { console.error("[Luksong Medlane] audio unlock failed:", error); }
+  }
+
+  // Awaited fallback, called again inside startRun() in case the context was
+  // still mid-resume when unlockAudioSync() ran.
   async function unlockAudio() {
     try {
       const ctx = ensureAudioCtx();
       if (ctx.state === "suspended") await ctx.resume();
-    } catch { /* ignore */ }
+    } catch (error) { console.error("[Luksong Medlane] audio resume failed:", error); }
   }
 
   function playTone({ freq, duration = 0.12, type = "square", volume = 0.11, sweepTo = null, delay = 0 }) {
@@ -51,7 +65,7 @@
       osc.connect(gain).connect(ctx.destination);
       osc.start(start);
       osc.stop(start + duration + 0.03);
-    } catch { /* audio is a nice-to-have; never let it break the game */ }
+    } catch (error) { console.error("[Luksong Medlane] playTone failed:", error); }
   }
 
   function sfxJump() { playTone({ freq: 320, sweepTo: 700, duration: 0.13, type: "square", volume: 0.09 }); }
@@ -713,6 +727,7 @@
   }
 
   document.getElementById("open-game-modal")?.addEventListener("click", () => {
+    unlockAudioSync();
     const modal = document.getElementById("game-modal");
     resetGameState();
     showOverlay({ tone: "neutral", title: "Luksong Medlane", message: `<kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners. It gets faster the higher you score.`, buttonLabel: "Start Game" });
@@ -738,7 +753,7 @@
   // normal backdrop/Escape close behavior; this restriction is game-only.)
   document.getElementById("game-modal")?.addEventListener("cancel", (event) => event.preventDefault());
 
-  document.getElementById("game-start-button")?.addEventListener("click", startRun);
+  document.getElementById("game-start-button")?.addEventListener("click", () => { unlockAudioSync(); startRun(); });
   document.getElementById("game-canvas")?.addEventListener("click", () => { if (gameRunning) doJump(); });
   const CROUCH_KEYS = new Set(["ArrowDown", "KeyS"]);
   document.addEventListener("keydown", (event) => {
