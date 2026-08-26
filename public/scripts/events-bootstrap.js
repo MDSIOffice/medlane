@@ -985,7 +985,7 @@ qs("#item-forecast-clear-filters")?.addEventListener("click", () => {
 });
 qs("#item-forecast-print")?.addEventListener("click", () => printItemForecast());
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); restoreStockSheetDraftIfMatching("", null); qs("#stock-sheet-modal").showModal(); });
-qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });
+qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); restoreTransferSheetDraft(); qs("#transfer-sheet-modal").showModal(); });
 qs("#open-demo-request")?.addEventListener("click", () => { renderDemoRequestSheet(); qs("#demo-request-modal").showModal(); });
 qs("#open-transfer-history").addEventListener("click", () => { renderInventory(); qs("#transfer-history-modal").showModal(); });
 qs("#open-stock-receipt-history")?.addEventListener("click", () => { renderStockReceiptHistory(); qs("#stock-receipt-history-modal").showModal(); });
@@ -1008,8 +1008,13 @@ qs("#stock-sheet-modal").addEventListener("click", (event) => {
   if (event.target.closest(".remove-sheet-row, #add-stock-sheet-row")) setTimeout(saveStockSheetDraft, 0);
 });
 qs("#transfer-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#transfer-sheet-modal").close()));
-qs("#transfer-sheet-cancel").addEventListener("click", () => qs("#transfer-sheet-modal").close());
+qs("#transfer-sheet-cancel").addEventListener("click", () => { clearTransferSheetDraft(); qs("#transfer-sheet-modal").close(); });
 guardDialogEscape(qs("#transfer-sheet-modal"));
+qs("#transfer-sheet-modal").addEventListener("input", saveTransferSheetDraft);
+qs("#transfer-sheet-modal").addEventListener("change", saveTransferSheetDraft);
+qs("#transfer-sheet-modal").addEventListener("click", (event) => {
+  if (event.target.closest(".remove-sheet-row, #add-transfer-sheet-row")) setTimeout(saveTransferSheetDraft, 0);
+});
 qs("#transfer-history-close").addEventListener("click", () => qs("#transfer-history-modal").close());
 qs("#transfer-history-cancel").addEventListener("click", () => qs("#transfer-history-modal").close());
 qs("#open-followup-history").addEventListener("click", () => { renderCollectionContactMap(); qs("#followup-history-modal").showModal(); });

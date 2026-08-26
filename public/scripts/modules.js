@@ -2453,6 +2453,67 @@ async function saveStockSheet() {
   toast(`${result.receipt.id} submitted for Superadmin/CEO approval.`);
 }
 
+// Same draft-autosave pattern as the Receive Stock sheet above — single entry point (no PO/receipt
+// variants to scope by), so the draft just tracks the from/to branches plus the item rows.
+const TRANSFER_SHEET_DRAFT_PREFIX = "medlane-transfer-sheet-draft:";
+const TRANSFER_SHEET_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+function transferSheetDraftKey() {
+  return currentUser?.id ? `${TRANSFER_SHEET_DRAFT_PREFIX}${currentUser.id}` : null;
+}
+function clearTransferSheetDraft() {
+  const key = transferSheetDraftKey();
+  if (key) localStorage.removeItem(key);
+}
+function transferSheetRowIsBlank(row) {
+  return !row.code && !row.item && !row.lot && !row.qty;
+}
+let transferSheetDraftSaveTimer = null;
+function saveTransferSheetDraft() {
+  clearTimeout(transferSheetDraftSaveTimer);
+  transferSheetDraftSaveTimer = setTimeout(() => {
+    const key = transferSheetDraftKey();
+    if (!key || !qs("#transfer-sheet-modal")?.open) return;
+    const rows = qsa("#transfer-sheet-table tbody tr").map((row) => ({
+      code: row.querySelector(".transfer-code")?.value || "",
+      item: row.querySelector(".transfer-item")?.value || "",
+      lot: row.querySelector(".transfer-lot")?.value || "",
+      qty: row.querySelector(".transfer-qty")?.value || "",
+    }));
+    if (rows.every(transferSheetRowIsBlank)) { clearTransferSheetDraft(); return; }
+    localStorage.setItem(key, JSON.stringify({
+      from: qs("#transfer-sheet-from")?.value || "",
+      to: qs("#transfer-sheet-to")?.value || "",
+      rows,
+      savedAt: Date.now(),
+    }));
+  }, 600);
+}
+function restoreTransferSheetDraft() {
+  const key = transferSheetDraftKey();
+  if (!key) return;
+  let draft;
+  try { draft = JSON.parse(localStorage.getItem(key) || "null"); }
+  catch { draft = null; }
+  if (!draft) return;
+  if (Date.now() - (draft.savedAt || 0) > TRANSFER_SHEET_DRAFT_MAX_AGE_MS) return clearTransferSheetDraft();
+  if (draft.from && qs("#transfer-sheet-from")) qs("#transfer-sheet-from").value = draft.from;
+  if (draft.to && qs("#transfer-sheet-to")) qs("#transfer-sheet-to").value = draft.to;
+  const tbody = qs("#transfer-sheet-table tbody");
+  if (tbody && draft.rows?.length) {
+    tbody.innerHTML = draft.rows.map(() => transferSheetRow()).join("");
+    qsa("#transfer-sheet-table tbody tr").forEach((tr, index) => {
+      const row = draft.rows[index];
+      if (!row) return;
+      if (tr.querySelector(".transfer-code")) tr.querySelector(".transfer-code").value = row.code || "";
+      if (tr.querySelector(".transfer-item")) tr.querySelector(".transfer-item").value = row.item || "";
+      if (tr.querySelector(".transfer-lot")) tr.querySelector(".transfer-lot").value = row.lot || "";
+      if (tr.querySelector(".transfer-qty")) tr.querySelector(".transfer-qty").value = row.qty || "";
+    });
+    qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true));
+  }
+  toast("Resumed your unsaved transfer sheet draft.");
+}
+
 async function saveTransferSheet() {
   const from = qs("#transfer-sheet-from")?.value;
   const to = qs("#transfer-sheet-to")?.value;
@@ -2489,6 +2550,7 @@ async function saveTransferSheet() {
   if (!saveResult?.ok) return;
   log("Created stock transfer", "Inventory", `${transfer.id}: ${rows.length} item(s), ${from} -> ${to}`, { save: false });
   saveData(["notifications"]);
+  clearTransferSheetDraft();
   qs("#transfer-sheet-modal")?.close();
   renderAll();
   toast(`${transfer.id} created with ${rows.length} item(s).`);
