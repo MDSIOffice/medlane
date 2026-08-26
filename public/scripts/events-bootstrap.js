@@ -984,7 +984,7 @@ qs("#item-forecast-clear-filters")?.addEventListener("click", () => {
   renderItemForecast();
 });
 qs("#item-forecast-print")?.addEventListener("click", () => printItemForecast());
-qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); qs("#stock-sheet-modal").showModal(); });
+qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); restoreStockSheetDraftIfMatching("", null); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); qs("#transfer-sheet-modal").showModal(); });
 qs("#open-demo-request")?.addEventListener("click", () => { renderDemoRequestSheet(); qs("#demo-request-modal").showModal(); });
 qs("#open-transfer-history").addEventListener("click", () => { renderInventory(); qs("#transfer-history-modal").showModal(); });
@@ -997,9 +997,16 @@ qs("#stock-receipt-history-table")?.addEventListener("click", (event) => {
 });
 qs("#stock-receipt-history-modal")?.addEventListener("click", (event) => { if (event.target.id === "stock-receipt-history-modal") qs("#stock-receipt-history-modal").close(); });
 qs("#stock-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#stock-sheet-modal").close()));
-qs("#stock-sheet-cancel").addEventListener("click", () => qs("#stock-sheet-modal").close());
+// Cancel is a deliberate "throw this away" action, so it also drops the autosaved draft — unlike
+// the X/Escape guard above, which still warns about losing changes but (now) actually keeps them.
+qs("#stock-sheet-cancel").addEventListener("click", () => { clearStockSheetDraft(); qs("#stock-sheet-modal").close(); });
 guardDialogEscape(qs("#stock-sheet-modal"));
 qs("#add-stock-sheet-row").addEventListener("click", addStockSheetRow);
+qs("#stock-sheet-modal").addEventListener("input", saveStockSheetDraft);
+qs("#stock-sheet-modal").addEventListener("change", saveStockSheetDraft);
+qs("#stock-sheet-modal").addEventListener("click", (event) => {
+  if (event.target.closest(".remove-sheet-row, #add-stock-sheet-row")) setTimeout(saveStockSheetDraft, 0);
+});
 qs("#transfer-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#transfer-sheet-modal").close()));
 qs("#transfer-sheet-cancel").addEventListener("click", () => qs("#transfer-sheet-modal").close());
 guardDialogEscape(qs("#transfer-sheet-modal"));

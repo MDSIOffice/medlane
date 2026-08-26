@@ -1438,6 +1438,7 @@ function openStockSheetForReceiptEdit(index) {
   const picker = qs("#inventory-po-receive-picker");
   if (picker) { picker.value = receipt.poId || ""; picker.disabled = true; }
   fillStockSheetFromReceipt(receipt);
+  restoreStockSheetDraftIfMatching(receipt.poId || "", receipt.id);
   qs("#stock-sheet-modal").showModal();
 }
 
@@ -1462,6 +1463,7 @@ function openStockSheetForPo(poId) {
   const picker = qs("#inventory-po-receive-picker");
   if (picker) picker.value = poId;
   fillStockSheetFromInventoryPo(poId);
+  restoreStockSheetDraftIfMatching(poId, null);
   qs("#stock-sheet-modal").showModal();
 }
 
@@ -2323,6 +2325,82 @@ function syncStockSheetRow(input, allowPartial = false) {
   if (balanceHint) balanceHint.textContent = `Balance — ${itemBranchBalances(match.code)}`;
 }
 
+// Autosaves the in-progress Receive Stock sheet to localStorage so a forced logout, a crashed
+// tab, or a deploy-triggered reload doesn't wipe out a half-entered receiving sheet — the exact
+// scenario that motivated this. Keyed per-user so a shared PC never shows one person's draft to
+// whoever logs in next; scoped to (poId, editingStockReceiptId) so a draft only ever restores into
+// the same context it was written for, never bleeding rows from one PO/receipt into another.
+const STOCK_SHEET_DRAFT_PREFIX = "medlane-stock-sheet-draft:";
+const STOCK_SHEET_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+function stockSheetDraftKey() {
+  return currentUser?.id ? `${STOCK_SHEET_DRAFT_PREFIX}${currentUser.id}` : null;
+}
+function clearStockSheetDraft() {
+  const key = stockSheetDraftKey();
+  if (key) localStorage.removeItem(key);
+}
+function stockSheetRowIsBlank(row) {
+  return !row.brand && !row.code && !row.item && !row.lot && !row.qty;
+}
+let stockSheetDraftSaveTimer = null;
+function saveStockSheetDraft() {
+  clearTimeout(stockSheetDraftSaveTimer);
+  stockSheetDraftSaveTimer = setTimeout(() => {
+    const key = stockSheetDraftKey();
+    if (!key || !qs("#stock-sheet-modal")?.open) return;
+    const rows = qsa("#stock-sheet-table tbody tr").map((row) => ({
+      branch: row.querySelector(".stock-branch")?.value || "",
+      brand: row.querySelector(".stock-brand")?.value || "",
+      code: row.querySelector(".stock-code")?.value || "",
+      item: row.querySelector(".stock-item")?.value || "",
+      lot: row.querySelector(".stock-lot")?.value || "",
+      expiry: row.querySelector(".stock-expiry")?.value || "",
+      qty: row.querySelector(".stock-qty")?.value || "",
+    }));
+    const orderNumber = qs("#stock-sheet-order-number")?.value || "";
+    if (rows.every(stockSheetRowIsBlank) && !orderNumber) { clearStockSheetDraft(); return; }
+    localStorage.setItem(key, JSON.stringify({
+      poId: qs("#inventory-po-receive-picker")?.value || "",
+      editingStockReceiptId: editingStockReceiptId || null,
+      meta: { orderNumber, dateReceived: qs("#stock-sheet-date-received")?.value || "", source: qs("#stock-sheet-source")?.value || "" },
+      rows,
+      savedAt: Date.now(),
+    }));
+  }, 600);
+}
+// Restores the draft only if it was written for this exact context (same PO / same receipt being
+// edited) — called after the normal fresh prefill (blank row, PO lines, or receipt lines) so it
+// only overlays genuinely resumed work, never mismatched leftovers from a different PO.
+function restoreStockSheetDraftIfMatching(poId, editingReceiptId) {
+  const key = stockSheetDraftKey();
+  if (!key) return;
+  let draft;
+  try { draft = JSON.parse(localStorage.getItem(key) || "null"); }
+  catch { draft = null; }
+  if (!draft) return;
+  if (Date.now() - (draft.savedAt || 0) > STOCK_SHEET_DRAFT_MAX_AGE_MS) return clearStockSheetDraft();
+  if ((draft.poId || "") !== (poId || "") || (draft.editingStockReceiptId || null) !== (editingReceiptId || null)) return;
+  if (qs("#stock-sheet-order-number")) qs("#stock-sheet-order-number").value = draft.meta?.orderNumber || "";
+  if (qs("#stock-sheet-date-received")) qs("#stock-sheet-date-received").value = draft.meta?.dateReceived || fmtDate(today);
+  if (qs("#stock-sheet-source")) qs("#stock-sheet-source").value = draft.meta?.source || "";
+  const tbody = qs("#stock-sheet-table tbody");
+  if (tbody && draft.rows?.length) {
+    tbody.innerHTML = draft.rows.map((row, index) => stockSheetRow(index)).join("");
+    qsa("#stock-sheet-table tbody tr").forEach((tr, index) => {
+      const row = draft.rows[index];
+      if (!row) return;
+      if (row.branch && tr.querySelector(".stock-branch")) tr.querySelector(".stock-branch").value = row.branch;
+      if (tr.querySelector(".stock-brand")) tr.querySelector(".stock-brand").value = row.brand || "";
+      if (tr.querySelector(".stock-code")) tr.querySelector(".stock-code").value = row.code || "";
+      if (tr.querySelector(".stock-item")) tr.querySelector(".stock-item").value = row.item || "";
+      if (tr.querySelector(".stock-lot")) tr.querySelector(".stock-lot").value = row.lot || "";
+      if (tr.querySelector(".stock-expiry")) tr.querySelector(".stock-expiry").value = row.expiry || "";
+      if (tr.querySelector(".stock-qty")) tr.querySelector(".stock-qty").value = row.qty || "";
+    });
+  }
+  toast("Resumed your unsaved stock sheet draft.");
+}
+
 async function saveStockSheet() {
   const poId = qs("#inventory-po-receive-picker")?.value;
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
@@ -2357,6 +2435,7 @@ async function saveStockSheet() {
     replaceStockReceiptRecord(result.receipt);
     log("Edited stock receipt", "Inventory", `${result.receipt.id}: ${rows.length} row(s)`);
     editingStockReceiptId = null;
+    clearStockSheetDraft();
     qs("#stock-sheet-modal")?.close();
     renderAll();
     toast(`${result.receipt.id} updated — still awaiting Superadmin/CEO approval.`);
@@ -2368,6 +2447,7 @@ async function saveStockSheet() {
   clearPendingSaveQueueKeys(["stockReceipts"]);
   notify("Stock Receipt", `${result.receipt.id} submitted for approval${po ? ` (${po.id})` : ""}.`, "inventory", result.receipt.id, ["Superadmin", "CEO"]);
   log("Submitted stock receipt for approval", "Inventory", `${result.receipt.id}: ${rows.length} row(s)`);
+  clearStockSheetDraft();
   qs("#stock-sheet-modal")?.close();
   renderAll();
   toast(`${result.receipt.id} submitted for Superadmin/CEO approval.`);
