@@ -1056,11 +1056,21 @@ function manilaTimestamp() {
 }
 
 function gameBadgeForScore(score) {
-  if (score >= 500) return "Platinum";
-  if (score >= 300) return "Gold";
-  if (score >= 150) return "Silver";
-  if (score >= 50) return "Bronze";
+  if (score >= 50000) return "Platinum";
+  if (score >= 20000) return "Gold";
+  if (score >= 8000) return "Silver";
+  if (score >= 2000) return "Bronze";
   return null;
+}
+
+// Cumulative XP needed to REACH a given level (level 1 needs 0). Quadratic curve —
+// each level costs more than the last, so early levels come quickly (rewarding a
+// first run) while high levels take sustained, repeated play to "flex".
+function gameXpForLevel(level) {
+  return 200 * (Math.max(level, 1) - 1) ** 2;
+}
+function gameLevelForXp(xp) {
+  return Math.floor(Math.sqrt(Math.max(xp, 0) / 200)) + 1;
 }
 
 // Writes directly to the "logs" module so a save's trail survives even if the
@@ -2478,7 +2488,7 @@ export default {
       if (url.pathname === "/api/auth/refresh") {
         if (request.method !== "POST") return methodNotAllowed();
         requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
-        const { refreshToken } = await request.json();
+        const { refreshToken } = await request.json().catch(() => ({}));
         if (!refreshToken) return json({ error: "Refresh token is required" }, { status: 400 });
         const refreshResponse = await fetch(`${supabaseBaseUrl(env)}/auth/v1/token?grant_type=refresh_token`, {
           method: "POST",
@@ -2840,7 +2850,7 @@ export default {
         await supabaseFetch(env, "/rest/v1/app_records", {
           method: "POST",
           headers: { prefer: "return=minimal" },
-          body: JSON.stringify([{ state_key: stateKey, module_name: "game-sessions", record_key: token, data: { userId: authUser.id, startedAt: Date.now() }, updated_by: authUser.id }]),
+          body: JSON.stringify([{ state_key: stateKey, module_name: "game-sessions", record_key: token, data: { userId: authUser.id, startedAt: Date.now(), used: false }, updated_by: authUser.id }]),
         });
         return json({ token }, { status: 201 });
       }
@@ -2859,8 +2869,15 @@ export default {
         if (!token) return json({ error: "Missing game session token. Start a new game to submit a score." }, { status: 400 });
         const sessionRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-sessions&record_key=eq.${encodeURIComponent(token)}&select=data`);
         const gameSession = sessionRows[0]?.data;
-        await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-sessions&record_key=eq.${encodeURIComponent(token)}`, { method: "DELETE" });
-        if (!gameSession || gameSession.userId !== authUser.id) return json({ error: "Invalid or already-used game session token." }, { status: 400 });
+        if (!gameSession || gameSession.userId !== authUser.id || gameSession.used) return json({ error: "Invalid or already-used game session token." }, { status: 400 });
+        // Mark the token used via the same upsert the rest of this file already relies
+        // on (the service role has INSERT/UPDATE on app_records but not DELETE) — this
+        // is what makes the token single-use, not a row deletion.
+        await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+          method: "POST",
+          headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify([{ state_key: stateKey, module_name: "game-sessions", record_key: token, data: { ...gameSession, used: true }, updated_by: authUser.id }]),
+        });
         const elapsedMs = Date.now() - Number(gameSession.startedAt || 0);
         if (elapsedMs > 30 * 60 * 1000) return json({ error: "Game session expired. Play again to submit a score." }, { status: 400 });
         const elapsedSeconds = Math.max(elapsedMs / 1000, 0.5);
@@ -2870,15 +2887,25 @@ export default {
         const existing = existingRows[0]?.data || null;
         const isNewBest = !existing || score > existing.score;
         const best = isNewBest ? score : existing.score;
-        if (isNewBest) {
-          const entry = { name: profile.name || profile.email || "System User", score, date: manilaTimestamp() };
-          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
-            method: "POST",
-            headers: { prefer: "resolution=merge-duplicates,return=minimal" },
-            body: JSON.stringify([{ state_key: stateKey, module_name: "game-scores", record_key: authUser.id, data: entry, updated_by: authUser.id }]),
-          });
-        }
-        return json({ ok: true, best, isNewBest, badge: gameBadgeForScore(best) });
+        // XP is cumulative across every run (grinding builds level even without a new
+        // best), while best/date only move on an actual personal best.
+        const prevTotalXp = Number(existing?.totalXp || 0);
+        const prevLevel = gameLevelForXp(prevTotalXp);
+        const totalXp = prevTotalXp + score;
+        const level = gameLevelForXp(totalXp);
+        const entry = {
+          name: profile.name || profile.email || "System User",
+          score: best,
+          date: isNewBest ? manilaTimestamp() : (existing?.date || manilaTimestamp()),
+          totalXp,
+          level,
+        };
+        await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+          method: "POST",
+          headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify([{ state_key: stateKey, module_name: "game-scores", record_key: authUser.id, data: entry, updated_by: authUser.id }]),
+        });
+        return json({ ok: true, best, isNewBest, badge: gameBadgeForScore(best), totalXp, level, leveledUp: level > prevLevel, xpToNextLevel: gameXpForLevel(level + 1) - totalXp });
       }
 
       if (url.pathname === "/api/game/score/me" && request.method === "GET") {
@@ -2886,14 +2913,20 @@ export default {
         const stateKey = appStateKey(env);
         const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&record_key=eq.${encodeURIComponent(authUser.id)}&select=data`);
         const best = rows[0]?.data?.score || 0;
-        return json({ best, badge: gameBadgeForScore(best) });
+        const totalXp = Number(rows[0]?.data?.totalXp || 0);
+        const level = gameLevelForXp(totalXp);
+        return json({ best, badge: gameBadgeForScore(best), totalXp, level, xpToNextLevel: gameXpForLevel(level + 1) - totalXp });
       }
 
       if (url.pathname === "/api/game/leaderboard" && request.method === "GET") {
         await authenticatedProfile(request, env);
         const stateKey = appStateKey(env);
+        const byLevel = url.searchParams.get("by") === "level";
         const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&select=data`);
-        const entries = rows.map((row) => row.data).filter(Boolean).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 20).map((entry) => ({ ...entry, badge: gameBadgeForScore(entry.score) }));
+        const entries = rows.map((row) => row.data).filter(Boolean)
+          .sort((a, b) => byLevel ? (b.totalXp || 0) - (a.totalXp || 0) : (b.score || 0) - (a.score || 0))
+          .slice(0, 20)
+          .map((entry) => ({ ...entry, badge: gameBadgeForScore(entry.score), level: gameLevelForXp(entry.totalXp || 0) }));
         return json({ entries });
       }
 

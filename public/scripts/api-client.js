@@ -371,8 +371,8 @@ const MedlaneAPI = (() => {
     return request("/api/game/score/me");
   }
 
-  async function listGameLeaderboard() {
-    return request("/api/game/leaderboard");
+  async function listGameLeaderboard(by = "score") {
+    return request(`/api/game/leaderboard?by=${encodeURIComponent(by)}`);
   }
 
   return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, listGameLeaderboard };

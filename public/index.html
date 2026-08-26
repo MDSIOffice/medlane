@@ -742,6 +742,7 @@
           <div class="panel-header"><div><p class="eyebrow">Break Time</p><h2>Escape the Audit</h2><p class="page-description">Dodge the incoming audits. Beat your best run.</p></div></div>
           <div class="game-launcher-row">
             <button class="primary-button" id="open-game-modal" type="button">Play Game</button>
+            <span class="game-level-chip" id="game-level-chip" hidden><span>⭐</span><span id="game-level-chip-text">Lv. 1</span></span>
             <span class="game-badge-chip" id="game-best-badge-chip" hidden><span id="game-best-badge-icon">🏆</span><span id="game-best-badge-text"></span></span>
             <button class="icon-button game-leaderboard-trigger" id="open-game-leaderboard" type="button" title="Leaderboard" aria-label="Leaderboard">🏆</button>
           </div>
@@ -1004,11 +1005,12 @@
           <div class="game-hud">
             <span class="game-hud-item">Score<strong id="game-score">0</strong></span>
             <span class="game-hud-item">Best<strong id="game-best">0</strong></span>
+            <span class="game-hud-item">Lv.<strong id="game-level">1</strong></span>
             <span class="game-hud-badge-chip" id="game-hud-badge" hidden></span>
           </div>
           <div class="game-overlay" id="game-overlay">
             <div class="game-overlay-card">
-              <div class="game-overlay-icon" id="game-overlay-icon">🏃</div>
+              <div class="game-overlay-icon" id="game-overlay-icon" data-tone="neutral"><img src="medlane.jpg" alt="" /></div>
               <h3 id="game-overlay-title">Escape the Audit</h3>
               <p id="game-overlay-message">Press <kbd>Space</kbd>, click, or tap to jump over incoming audit stamps. Survive as long as you can.</p>
               <button class="primary-button" id="game-start-button" type="button">Start Game</button>
@@ -1020,7 +1022,11 @@
 
     <dialog class="modal report-modal" id="game-leaderboard-modal">
       <div class="report-preview">
-        <div class="modal-header"><div><p class="eyebrow">Hall of Fame</p><h2>Top Scorers</h2></div><button class="icon-button" id="game-leaderboard-close" type="button" aria-label="Close">x</button></div>
+        <div class="modal-header"><div><p class="eyebrow">Hall of Fame</p><h2>Escape the Audit Leaderboard</h2></div><button class="icon-button" id="game-leaderboard-close" type="button" aria-label="Close">x</button></div>
+        <div class="tabs" id="game-leaderboard-tabs">
+          <button class="tab active" data-leaderboard-tab="score" type="button">🏆 Top Scores</button>
+          <button class="tab" data-leaderboard-tab="level" type="button">⭐ Top Level</button>
+        </div>
         <div class="table-card compact-table"><table id="game-leaderboard-table"></table></div>
         <div class="modal-actions"><button class="ghost-button" id="game-leaderboard-cancel" type="button">Close</button></div>
       </div>

@@ -9,14 +9,6 @@
   const GAME_BADGE_ICON = { Bronze: "🥉", Silver: "🥈", Gold: "🥇", Platinum: "💎" };
   const GAME_BADGE_TIER = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
 
-  function gameBadgeForScore(score) {
-    if (score >= 500) return "Platinum";
-    if (score >= 300) return "Gold";
-    if (score >= 150) return "Silver";
-    if (score >= 50) return "Bronze";
-    return null;
-  }
-
   // ---------------------------------------------------------------------
   // Audio — everything below is synthesized with the Web Audio API so the
   // game needs no external sound files.
@@ -100,6 +92,9 @@
   const PLAYER_X = 78;
   const PLAYER_W = 30;
   const PLAYER_H = 42;
+
+  const playerLogoImg = new Image();
+  playerLogoImg.src = "medlane.jpg";
 
   let gameCanvas = null;
   let ctx2d = null;
@@ -300,21 +295,31 @@
       ctx2d.fillText("!", ox + ow - 8, oy - 7.5);
     }
 
-    // Player
+    // Player — the Medlane logo as a running "avatar" badge, with two small
+    // legs underneath so the run/jump animation still reads clearly.
     const legPhase = onGround ? Math.sin(distance / 5.2) : 0;
     const px = PLAYER_X, py = playerY;
     ctx2d.fillStyle = c.orange;
     ctx2d.fillRect(px + 6, py + PLAYER_H - 8 + (onGround ? Math.max(legPhase, 0) * 5 : -3), 6, 10);
     ctx2d.fillRect(px + PLAYER_W - 12, py + PLAYER_H - 8 + (onGround ? Math.max(-legPhase, 0) * 5 : -3), 6, 10);
-    ctx2d.fillStyle = c.blue;
-    drawRoundedRect(px, py + 10, PLAYER_W, PLAYER_H - 16, 7);
-    ctx2d.fill();
-    ctx2d.fillStyle = c.blueDark;
-    ctx2d.beginPath();
-    ctx2d.arc(px + PLAYER_W / 2, py + 7, 9, 0, Math.PI * 2);
-    ctx2d.fill();
-    ctx2d.fillStyle = c.green;
-    ctx2d.fillRect(px + PLAYER_W - 4, py + 16, 9, 13);
+    const badgeX = px - 3, badgeY = py, badgeW = PLAYER_W + 6, badgeH = PLAYER_H - 12;
+    if (playerLogoImg.complete && playerLogoImg.naturalWidth) {
+      ctx2d.save();
+      drawRoundedRect(badgeX, badgeY, badgeW, badgeH, 8);
+      ctx2d.fillStyle = "#ffffff";
+      ctx2d.fill();
+      ctx2d.clip();
+      ctx2d.drawImage(playerLogoImg, badgeX, badgeY, badgeW, badgeH);
+      ctx2d.restore();
+      ctx2d.strokeStyle = c.blue;
+      ctx2d.lineWidth = 2;
+      drawRoundedRect(badgeX, badgeY, badgeW, badgeH, 8);
+      ctx2d.stroke();
+    } else {
+      ctx2d.fillStyle = c.blue;
+      drawRoundedRect(badgeX, badgeY, badgeW, badgeH, 8);
+      ctx2d.fill();
+    }
 
     // Particles (new-best celebration)
     for (const particle of particles) {
@@ -354,13 +359,13 @@
     }
   }
 
-  function showOverlay({ icon, title, message, buttonLabel }) {
+  function showOverlay({ tone = "neutral", title, message, buttonLabel }) {
     const overlay = document.getElementById("game-overlay");
     const iconEl = document.getElementById("game-overlay-icon");
     const titleEl = document.getElementById("game-overlay-title");
     const msgEl = document.getElementById("game-overlay-message");
     const btn = document.getElementById("game-start-button");
-    if (iconEl) iconEl.textContent = icon;
+    if (iconEl) iconEl.dataset.tone = tone;
     if (titleEl) titleEl.textContent = title;
     if (msgEl) msgEl.innerHTML = message;
     if (btn) btn.textContent = buttonLabel;
@@ -410,43 +415,55 @@
     const finalScore = gameScore;
     const token = gameSessionToken;
     gameSessionToken = null;
-    showOverlay({ icon: "⏳", title: "Saving your run…", message: `You scored <strong>${finalScore}</strong>.`, buttonLabel: "Play Again" });
+    showOverlay({ tone: "neutral", title: "Saving your run…", message: `You scored <strong>${finalScore}</strong>.`, buttonLabel: "Play Again" });
     try {
       const result = await MedlaneAPI.submitGameScore(finalScore, token);
       const bestEl = document.getElementById("game-best");
       if (bestEl) bestEl.textContent = String(result.best);
+      const levelEl = document.getElementById("game-level");
+      if (levelEl) levelEl.textContent = String(result.level);
       const badgeChip = document.getElementById("game-hud-badge");
       if (badgeChip && result.badge) {
         badgeChip.hidden = false;
         badgeChip.textContent = `${GAME_BADGE_ICON[result.badge] || "🏆"} ${result.badge}`;
       }
       updateSettingsBadgeChip(result.best, result.badge);
-      if (result.isNewBest) {
-        spawnCelebrationParticles();
-        drawGame();
+      updateLevelChip(result.level);
+      if (result.leveledUp) sfxNewBest();
+      if (result.isNewBest || result.leveledUp) spawnCelebrationParticles();
+      if (result.isNewBest || result.leveledUp) drawGame();
+      if (result.leveledUp) {
+        toast(`Level up! You're now Level ${result.level}.`);
+        showOverlay({
+          tone: "win",
+          title: `Level Up! You're Level ${result.level}`,
+          message: `You scored <strong>${finalScore}</strong>${result.isNewBest ? " — a new personal best!" : ""} ${result.xpToNextLevel} XP to Level ${result.level + 1}.`,
+          buttonLabel: "Play Again",
+        });
+      } else if (result.isNewBest) {
         sfxNewBest();
         toast(finalScore === result.best ? `New personal best: ${finalScore}!` : "New personal best!");
         showOverlay({
-          icon: "🏆",
+          tone: "win",
           title: "New Personal Best!",
           message: `You scored <strong>${finalScore}</strong>${result.badge ? ` and earned the <strong>${GAME_BADGE_ICON[result.badge]} ${result.badge}</strong> badge` : ""}.`,
           buttonLabel: "Play Again",
         });
       } else {
         showOverlay({
-          icon: "💥",
+          tone: "lose",
           title: "Caught by the Audit!",
-          message: `You scored <strong>${finalScore}</strong>. Your best is <strong>${result.best}</strong>.`,
+          message: `You scored <strong>${finalScore}</strong>. Your best is <strong>${result.best}</strong> — Level ${result.level}, ${result.xpToNextLevel} XP to next level.`,
           buttonLabel: "Play Again",
         });
       }
     } catch (error) {
-      showOverlay({ icon: "⚠️", title: "Score not saved", message: escapeHtml(error.message || "Something went wrong."), buttonLabel: "Play Again" });
+      showOverlay({ tone: "error", title: "Score not saved", message: escapeHtml(error.message || "Something went wrong."), buttonLabel: "Play Again" });
     }
   }
 
   // ---------------------------------------------------------------------
-  // Settings badge chip + leaderboard modal
+  // Settings badges + leaderboard modal
   // ---------------------------------------------------------------------
   function updateSettingsBadgeChip(best, badge) {
     const chip = document.getElementById("game-best-badge-chip");
@@ -460,13 +477,25 @@
     if (text) text.textContent = `${badge} · Best ${best}`;
   }
 
+  function updateLevelChip(level) {
+    const chip = document.getElementById("game-level-chip");
+    const text = document.getElementById("game-level-chip-text");
+    if (!chip) return;
+    if (!level || level < 1) { chip.hidden = true; return; }
+    chip.hidden = false;
+    if (text) text.textContent = `Lv. ${level}`;
+  }
+
   async function loadGameBestBadge() {
     if (typeof MedlaneAPI === "undefined" || !MedlaneAPI.session()) return;
     try {
       const result = await MedlaneAPI.myGameScore();
       const bestEl = document.getElementById("game-best");
       if (bestEl) bestEl.textContent = String(result.best || 0);
+      const levelEl = document.getElementById("game-level");
+      if (levelEl) levelEl.textContent = String(result.level || 1);
       updateSettingsBadgeChip(result.best || 0, result.badge);
+      updateLevelChip(result.level || 1);
     } catch { /* quiet — this is a background nicety, not core functionality */ }
   }
 
@@ -477,30 +506,44 @@
     return `#${index + 1}`;
   }
 
-  const LEADERBOARD_HEADERS = ["Rank", "Name", "Highscore", "Badge", "Date"];
+  const LEADERBOARD_HEADERS = { score: ["Rank", "Name", "Highscore", "Badge", "Date"], level: ["Rank", "Name", "Level", "Total XP", "Badge"] };
+  let leaderboardTab = "score";
 
-  async function openLeaderboard() {
+  function leaderboardRow(entry, index) {
+    const cells = leaderboardTab === "level"
+      ? [
+          leaderboardRankLabel(index),
+          escapeHtml(entry.name || "Player"),
+          `<strong>${Number(entry.level || 1)}</strong>`,
+          Number(entry.totalXp || 0).toLocaleString(),
+          entry.badge ? `<span class="game-badge-chip" data-tier="${GAME_BADGE_TIER[entry.badge] || 0}"><span>${GAME_BADGE_ICON[entry.badge]}</span><span>${escapeHtml(entry.badge)}</span></span>` : "—",
+        ]
+      : [
+          leaderboardRankLabel(index),
+          escapeHtml(entry.name || "Player"),
+          `<strong>${Number(entry.score || 0)}</strong>`,
+          entry.badge ? `<span class="game-badge-chip" data-tier="${GAME_BADGE_TIER[entry.badge] || 0}"><span>${GAME_BADGE_ICON[entry.badge]}</span><span>${escapeHtml(entry.badge)}</span></span>` : "—",
+          escapeHtml(entry.date || ""),
+        ];
+    return { cells, attrs: index < 3 ? { class: "game-leaderboard-top" } : {} };
+  }
+
+  async function openLeaderboard(tab) {
+    if (tab) leaderboardTab = tab;
     sfxClick();
     const modal = document.getElementById("game-leaderboard-modal");
-    tableSkeleton("#game-leaderboard-table", LEADERBOARD_HEADERS, 6);
+    const headers = LEADERBOARD_HEADERS[leaderboardTab];
+    qsa("#game-leaderboard-tabs .tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.leaderboardTab === leaderboardTab));
+    tableSkeleton("#game-leaderboard-table", headers, 6);
     modal?.showModal();
     try {
-      const { entries } = await MedlaneAPI.listGameLeaderboard();
+      const { entries } = await MedlaneAPI.listGameLeaderboard(leaderboardTab);
       const rows = entries.length
-        ? entries.map((entry, index) => ({
-            cells: [
-              leaderboardRankLabel(index),
-              escapeHtml(entry.name || "Player"),
-              `<strong>${Number(entry.score || 0)}</strong>`,
-              entry.badge ? `<span class="game-badge-chip" data-tier="${GAME_BADGE_TIER[entry.badge] || 0}"><span>${GAME_BADGE_ICON[entry.badge]}</span><span>${escapeHtml(entry.badge)}</span></span>` : "—",
-              escapeHtml(entry.date || ""),
-            ],
-            attrs: index < 3 ? { class: "game-leaderboard-top" } : {},
-          }))
+        ? entries.map((entry, index) => leaderboardRow(entry, index))
         : [["—", "No runs yet — be the first on the board.", "-", "-", "-"]];
-      table("#game-leaderboard-table", LEADERBOARD_HEADERS, rows);
+      table("#game-leaderboard-table", headers, rows);
     } catch (error) {
-      table("#game-leaderboard-table", LEADERBOARD_HEADERS, [["-", escapeHtml(error.message || "Could not load the leaderboard."), "-", "-", "-"]]);
+      table("#game-leaderboard-table", headers, [["-", escapeHtml(error.message || "Could not load the leaderboard."), "-", "-", "-"]]);
     }
   }
 
@@ -521,7 +564,7 @@
   document.getElementById("open-game-modal")?.addEventListener("click", () => {
     const modal = document.getElementById("game-modal");
     resetGameState();
-    showOverlay({ icon: "🏃", title: "Escape the Audit", message: `Press <kbd>Space</kbd>, click, or tap to jump over incoming audit stamps. Survive as long as you can.`, buttonLabel: "Start Game" });
+    showOverlay({ tone: "neutral", title: "Escape the Audit", message: `Press <kbd>Space</kbd>, click, or tap to jump over incoming audit stamps. Survive as long as you can.`, buttonLabel: "Start Game" });
     modal?.showModal();
     setupCanvasDPR();
     drawGame();
@@ -547,7 +590,8 @@
   });
   gameCanvas?.addEventListener("touchstart", (event) => { if (gameRunning) { event.preventDefault(); doJump(); } }, { passive: false });
 
-  document.getElementById("open-game-leaderboard")?.addEventListener("click", openLeaderboard);
+  document.getElementById("open-game-leaderboard")?.addEventListener("click", () => openLeaderboard("score"));
+  qsa("#game-leaderboard-tabs .tab").forEach((btn) => btn.addEventListener("click", () => openLeaderboard(btn.dataset.leaderboardTab)));
   document.getElementById("game-leaderboard-close")?.addEventListener("click", () => document.getElementById("game-leaderboard-modal")?.close());
   document.getElementById("game-leaderboard-cancel")?.addEventListener("click", () => document.getElementById("game-leaderboard-modal")?.close());
   document.getElementById("game-leaderboard-modal")?.addEventListener("click", (event) => { if (event.target.id === "game-leaderboard-modal") document.getElementById("game-leaderboard-modal").close(); });
