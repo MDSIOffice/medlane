@@ -19,14 +19,26 @@
 
   function ensureAudioCtx() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") audioCtx.resume();
     return audioCtx;
+  }
+
+  // Browsers only allow an AudioContext to actually start inside a user-gesture
+  // call stack. Called (and awaited) at the very top of startRun(), before any
+  // other await, so every sound in the run — including the music loop — is
+  // guaranteed to have a running context rather than racing a fire-and-forget
+  // resume().
+  async function unlockAudio() {
+    try {
+      const ctx = ensureAudioCtx();
+      if (ctx.state === "suspended") await ctx.resume();
+    } catch { /* ignore */ }
   }
 
   function playTone({ freq, duration = 0.12, type = "square", volume = 0.11, sweepTo = null, delay = 0 }) {
     if (!soundEnabled) return;
     try {
       const ctx = ensureAudioCtx();
+      if (ctx.state === "suspended") ctx.resume();
       const start = ctx.currentTime + delay;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -53,18 +65,25 @@
 
   let musicTimer = null;
   let musicStep = 0;
+  function playMusicStep(bass, lead, stepSeconds) {
+    playTone({ freq: lead[musicStep % lead.length], duration: stepSeconds * 0.95, type: "square", volume: 0.055 });
+    if (musicStep % 2 === 0) playTone({ freq: bass[(musicStep / 2) % bass.length], duration: stepSeconds * 1.9, type: "triangle", volume: 0.075 });
+    if (musicStep % 4 === 2) playTone({ freq: 3800, duration: 0.02, type: "square", volume: 0.02 });
+    musicStep++;
+  }
   function startMusic() {
     stopMusic();
     if (!soundEnabled) return;
-    const bass = [110, 110, 98, 87.31];
-    const lead = [440, 523.25, 659.25, 523.25, 440, 349.23, 440, 523.25];
-    const stepSeconds = 0.165;
+    const bass = [110, 110, 98, 87.31, 110, 110, 123.47, 110];
+    const lead = [440, 523.25, 659.25, 523.25, 440, 523.25, 349.23, 440, 440, 523.25, 659.25, 783.99, 659.25, 523.25, 440, 392];
+    const stepSeconds = 0.18;
     musicStep = 0;
+    // Play the first beat immediately — waiting for the first setInterval tick
+    // leaves a silent gap right as the run starts, which reads as "no music".
+    playMusicStep(bass, lead, stepSeconds);
     musicTimer = setInterval(() => {
       if (!soundEnabled || !gameRunning) return;
-      playTone({ freq: lead[musicStep % lead.length], duration: stepSeconds * 0.85, type: "sine", volume: 0.028 });
-      if (musicStep % 2 === 0) playTone({ freq: bass[(musicStep / 2) % bass.length], duration: stepSeconds * 1.8, type: "triangle", volume: 0.04 });
-      musicStep++;
+      playMusicStep(bass, lead, stepSeconds);
     }, stepSeconds * 1000);
   }
   function stopMusic() {
@@ -92,6 +111,9 @@
   const PLAYER_X = 78;
   const PLAYER_W = 30;
   const PLAYER_H = 42;
+  const CROUCH_H = 20;
+  const FLYING_TOP = 40;
+  const FLYING_GAP = 24; // clearance above ground a crouching player fits under
 
   const playerLogoImg = new Image();
   playerLogoImg.src = "medlane.jpg";
@@ -106,6 +128,7 @@
   let playerY = 0;
   let playerVY = 0;
   let onGround = true;
+  let crouching = false;
   let obstacles = [];
   let distance = 0;
   let dodged = 0;
@@ -136,6 +159,7 @@
     playerY = GROUND_Y - PLAYER_H;
     playerVY = 0;
     onGround = true;
+    crouching = false;
     obstacles = [];
     particles = [];
     distance = 0;
@@ -161,18 +185,39 @@
     if (!gameRunning || !onGround) return;
     playerVY = JUMP_VELOCITY;
     onGround = false;
+    crouching = false;
     sfxJump();
   }
 
+  function setCrouching(next) {
+    crouching = next;
+  }
+
   function spawnObstacle() {
-    const w = 22 + Math.round(Math.random() * 20);
-    const h = 30 + Math.round(Math.random() * 20);
-    obstacles.push({ x: GAME_W + 20, w, h, passed: false });
+    // Flying obstacles (must be dodged by crouching, not jumping) only start
+    // appearing once the player has cleared a few ground obstacles, so the
+    // jump mechanic is taught before crouch is required.
+    const canFly = gameScore > 400;
+    const type = canFly && Math.random() < 0.4 ? "flying" : "ground";
+    if (type === "flying") {
+      const w = 36 + Math.round(Math.random() * 16);
+      obstacles.push({ type, x: GAME_W + 20, w, passed: false });
+    } else {
+      const w = 22 + Math.round(Math.random() * 20);
+      const h = 30 + Math.round(Math.random() * 20);
+      obstacles.push({ type, x: GAME_W + 20, w, h, passed: false });
+    }
   }
 
   function updateGame(dt) {
     distance += speed * dt;
-    speed = Math.min(6.2 + (distance / 3600), 14.5);
+    // Difficulty is tied to score (not just survival time), so a run that racks
+    // up dodge bonuses ramps up faster too — and the spawn-gap tightening below
+    // keeps making runs harder well past the point speed itself caps out.
+    speed = Math.min(6.2 + gameScore / 900, 21);
+
+    const isCrouchingNow = onGround && crouching;
+    const playerH = isCrouchingNow ? CROUCH_H : PLAYER_H;
 
     playerVY += GRAVITY * dt;
     playerY += playerVY * dt;
@@ -181,15 +226,16 @@
       playerVY = 0;
       onGround = true;
     }
+    if (onGround && crouching) playerY = GROUND_Y - CROUCH_H;
 
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnObstacle();
-      const difficulty = Math.min(distance / 5000, 1);
-      spawnTimer = (62 - difficulty * 22) + Math.random() * 30;
+      const difficulty = Math.min(gameScore / 25000, 1);
+      spawnTimer = (58 - difficulty * 34) + Math.random() * (28 - difficulty * 12);
     }
 
-    const playerBox = { x: PLAYER_X + 5, y: playerY + 4, w: PLAYER_W - 10, h: PLAYER_H - 6 };
+    const playerBox = { x: PLAYER_X + 5, y: playerY + playerH * 0.1, w: PLAYER_W - 10, h: playerH * 0.85 };
     for (const obstacle of obstacles) {
       obstacle.x -= speed * dt;
       if (!obstacle.passed && obstacle.x + obstacle.w < PLAYER_X) {
@@ -197,7 +243,9 @@
         dodged++;
         sfxDodge();
       }
-      const obstacleBox = { x: obstacle.x + 3, y: GROUND_Y - obstacle.h, w: obstacle.w - 6, h: obstacle.h };
+      const obstacleBox = obstacle.type === "flying"
+        ? { x: obstacle.x + 3, y: FLYING_TOP, w: obstacle.w - 6, h: (GROUND_Y - FLYING_GAP) - FLYING_TOP }
+        : { x: obstacle.x + 3, y: GROUND_Y - obstacle.h, w: obstacle.w - 6, h: obstacle.h };
       const hit = playerBox.x < obstacleBox.x + obstacleBox.w && playerBox.x + playerBox.w > obstacleBox.x && playerBox.y < obstacleBox.y + obstacleBox.h && playerBox.y + playerBox.h > obstacleBox.y;
       if (hit) { endGame(); return; }
     }
@@ -268,8 +316,37 @@
     ctx2d.stroke();
     ctx2d.setLineDash([]);
 
-    // Obstacles — stacked "audit" folders
+    // Obstacles — stacked "audit" folders on the ground, or a hanging "audit
+    // notice" banner that must be ducked under instead of jumped.
     for (const obstacle of obstacles) {
+      if (obstacle.type === "flying") {
+        const ox = obstacle.x, ow = obstacle.w, bottom = GROUND_Y - FLYING_GAP;
+        ctx2d.fillStyle = c.red;
+        ctx2d.globalAlpha = 0.16;
+        ctx2d.fillRect(ox, FLYING_TOP, ow, bottom - FLYING_TOP);
+        ctx2d.globalAlpha = 1;
+        ctx2d.fillStyle = c.panel;
+        drawRoundedRect(ox, bottom - 34, ow, 34, 5);
+        ctx2d.fill();
+        ctx2d.strokeStyle = c.red;
+        ctx2d.lineWidth = 2.5;
+        drawRoundedRect(ox, bottom - 34, ow, 34, 5);
+        ctx2d.stroke();
+        ctx2d.fillStyle = c.red;
+        ctx2d.font = "bold 9px 'Segoe UI', system-ui, sans-serif";
+        ctx2d.textAlign = "center";
+        ctx2d.textBaseline = "middle";
+        ctx2d.fillText("AUDIT", ox + ow / 2, bottom - 17);
+        ctx2d.strokeStyle = c.red;
+        ctx2d.lineWidth = 2;
+        [0.22, 0.78].forEach((frac) => {
+          ctx2d.beginPath();
+          ctx2d.moveTo(ox + ow * frac, FLYING_TOP - 6);
+          ctx2d.lineTo(ox + ow * frac, bottom - 34);
+          ctx2d.stroke();
+        });
+        continue;
+      }
       const ox = obstacle.x, oy = GROUND_Y - obstacle.h, ow = obstacle.w, oh = obstacle.h;
       ctx2d.fillStyle = c.panel;
       drawRoundedRect(ox, oy, ow, oh, 4);
@@ -296,13 +373,15 @@
     }
 
     // Player — the Medlane logo as a running "avatar" badge, with two small
-    // legs underneath so the run/jump animation still reads clearly.
+    // legs underneath so the run/jump/crouch animation still reads clearly.
+    const isCrouchingNow = onGround && crouching;
+    const playerH = isCrouchingNow ? CROUCH_H : PLAYER_H;
     const legPhase = onGround ? Math.sin(distance / 5.2) : 0;
     const px = PLAYER_X, py = playerY;
     ctx2d.fillStyle = c.orange;
-    ctx2d.fillRect(px + 6, py + PLAYER_H - 8 + (onGround ? Math.max(legPhase, 0) * 5 : -3), 6, 10);
-    ctx2d.fillRect(px + PLAYER_W - 12, py + PLAYER_H - 8 + (onGround ? Math.max(-legPhase, 0) * 5 : -3), 6, 10);
-    const badgeX = px - 3, badgeY = py, badgeW = PLAYER_W + 6, badgeH = PLAYER_H - 12;
+    ctx2d.fillRect(px + 6, py + playerH - 8 + (onGround && !isCrouchingNow ? Math.max(legPhase, 0) * 5 : -3), 6, isCrouchingNow ? 6 : 10);
+    ctx2d.fillRect(px + PLAYER_W - 12, py + playerH - 8 + (onGround && !isCrouchingNow ? Math.max(-legPhase, 0) * 5 : -3), 6, isCrouchingNow ? 6 : 10);
+    const badgeX = px - 3, badgeY = py, badgeW = PLAYER_W + 6, badgeH = Math.max(playerH - 12, 14);
     if (playerLogoImg.complete && playerLogoImg.naturalWidth) {
       ctx2d.save();
       drawRoundedRect(badgeX, badgeY, badgeW, badgeH, 8);
@@ -378,6 +457,7 @@
   }
 
   async function startRun() {
+    await unlockAudio();
     sfxStart();
     const startButton = document.getElementById("game-start-button");
     if (startButton) startButton.disabled = true;
@@ -564,7 +644,7 @@
   document.getElementById("open-game-modal")?.addEventListener("click", () => {
     const modal = document.getElementById("game-modal");
     resetGameState();
-    showOverlay({ tone: "neutral", title: "Escape the Audit", message: `Press <kbd>Space</kbd>, click, or tap to jump over incoming audit stamps. Survive as long as you can.`, buttonLabel: "Start Game" });
+    showOverlay({ tone: "neutral", title: "Escape the Audit", message: `<kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners. It gets faster the higher you score.`, buttonLabel: "Start Game" });
     modal?.showModal();
     setupCanvasDPR();
     drawGame();
@@ -583,12 +663,33 @@
 
   document.getElementById("game-start-button")?.addEventListener("click", startRun);
   document.getElementById("game-canvas")?.addEventListener("click", () => { if (gameRunning) doJump(); });
+  const CROUCH_KEYS = new Set(["ArrowDown", "KeyS"]);
   document.addEventListener("keydown", (event) => {
-    if (event.code !== "Space" || !document.getElementById("game-modal")?.open) return;
-    event.preventDefault();
-    if (gameRunning) doJump();
+    if (!document.getElementById("game-modal")?.open) return;
+    if (event.code === "Space") {
+      event.preventDefault();
+      if (gameRunning) doJump();
+    } else if (CROUCH_KEYS.has(event.code)) {
+      event.preventDefault();
+      if (gameRunning) setCrouching(true);
+    }
   });
-  gameCanvas?.addEventListener("touchstart", (event) => { if (gameRunning) { event.preventDefault(); doJump(); } }, { passive: false });
+  document.addEventListener("keyup", (event) => {
+    if (CROUCH_KEYS.has(event.code)) setCrouching(false);
+  });
+  // Touch: the top of the stage jumps, the bottom (where a crouch is
+  // needed) ducks for as long as the finger stays down.
+  gameCanvas?.addEventListener("touchstart", (event) => {
+    if (!gameRunning) return;
+    event.preventDefault();
+    const touch = event.touches[0];
+    const rect = gameCanvas.getBoundingClientRect();
+    const relY = (touch.clientY - rect.top) / rect.height;
+    if (relY > 0.55) setCrouching(true);
+    else doJump();
+  }, { passive: false });
+  gameCanvas?.addEventListener("touchend", () => setCrouching(false));
+  gameCanvas?.addEventListener("touchcancel", () => setCrouching(false));
 
   document.getElementById("open-game-leaderboard")?.addEventListener("click", () => openLeaderboard("score"));
   qsa("#game-leaderboard-tabs .tab").forEach((btn) => btn.addEventListener("click", () => openLeaderboard(btn.dataset.leaderboardTab)));
