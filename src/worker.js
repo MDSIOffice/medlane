@@ -1055,6 +1055,14 @@ function manilaTimestamp() {
   return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 
+function gameBadgeForScore(score) {
+  if (score >= 500) return "Platinum";
+  if (score >= 300) return "Gold";
+  if (score >= 150) return "Silver";
+  if (score >= 50) return "Bronze";
+  return null;
+}
+
 // Writes directly to the "logs" module so a save's trail survives even if the
 // save that produced it gets rejected — never routed through the same
 // delete-then-insert path used for regular module state.
@@ -2823,6 +2831,70 @@ export default {
           });
         }
         return json({ ok: true, memo });
+      }
+
+      if (url.pathname === "/api/game/session/start" && request.method === "POST") {
+        const { authUser } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const token = crypto.randomUUID();
+        await supabaseFetch(env, "/rest/v1/app_records", {
+          method: "POST",
+          headers: { prefer: "return=minimal" },
+          body: JSON.stringify([{ state_key: stateKey, module_name: "game-sessions", record_key: token, data: { userId: authUser.id, startedAt: Date.now() }, updated_by: authUser.id }]),
+        });
+        return json({ token }, { status: 201 });
+      }
+
+      if (url.pathname === "/api/game/score" && request.method === "POST") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const body = await request.json().catch(() => ({}));
+        // The client only ever reports a candidate score — this endpoint is the sole
+        // authority over what actually gets saved. A single-use session token (minted
+        // by /api/game/session/start when the run began) proves a run of a given
+        // duration actually happened, so a submission replayed from devtools/console
+        // (calling this endpoint directly with a huge score, no token, or a reused
+        // token) is rejected or clamped to what that duration could plausibly earn.
+        const token = String(body.token || "");
+        if (!token) return json({ error: "Missing game session token. Start a new game to submit a score." }, { status: 400 });
+        const sessionRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-sessions&record_key=eq.${encodeURIComponent(token)}&select=data`);
+        const gameSession = sessionRows[0]?.data;
+        await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-sessions&record_key=eq.${encodeURIComponent(token)}`, { method: "DELETE" });
+        if (!gameSession || gameSession.userId !== authUser.id) return json({ error: "Invalid or already-used game session token." }, { status: 400 });
+        const elapsedMs = Date.now() - Number(gameSession.startedAt || 0);
+        if (elapsedMs > 30 * 60 * 1000) return json({ error: "Game session expired. Play again to submit a score." }, { status: 400 });
+        const elapsedSeconds = Math.max(elapsedMs / 1000, 0.5);
+        const maxPlausibleScore = Math.ceil(elapsedSeconds * 140) + 30;
+        const score = Math.min(Math.max(0, Math.floor(Number(body.score) || 0)), maxPlausibleScore);
+        const existingRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&record_key=eq.${encodeURIComponent(authUser.id)}&select=data`);
+        const existing = existingRows[0]?.data || null;
+        const isNewBest = !existing || score > existing.score;
+        const best = isNewBest ? score : existing.score;
+        if (isNewBest) {
+          const entry = { name: profile.name || profile.email || "System User", score, date: manilaTimestamp() };
+          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+            method: "POST",
+            headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+            body: JSON.stringify([{ state_key: stateKey, module_name: "game-scores", record_key: authUser.id, data: entry, updated_by: authUser.id }]),
+          });
+        }
+        return json({ ok: true, best, isNewBest, badge: gameBadgeForScore(best) });
+      }
+
+      if (url.pathname === "/api/game/score/me" && request.method === "GET") {
+        const { authUser } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&record_key=eq.${encodeURIComponent(authUser.id)}&select=data`);
+        const best = rows[0]?.data?.score || 0;
+        return json({ best, badge: gameBadgeForScore(best) });
+      }
+
+      if (url.pathname === "/api/game/leaderboard" && request.method === "GET") {
+        await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&select=data`);
+        const entries = rows.map((row) => row.data).filter(Boolean).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 20).map((entry) => ({ ...entry, badge: gameBadgeForScore(entry.score) }));
+        return json({ entries });
       }
 
       if (url.pathname === "/api/modules/records") {
