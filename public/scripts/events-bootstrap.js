@@ -1623,6 +1623,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
     playDashboardLoginSound();
     toast(`Logged in as ${currentUser.name || currentUser.role}.`);
     maybeShowPasswordKycModal();
+    startAppVersionWatch();
   });
 });
 
@@ -1780,6 +1781,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
   toast("Password updated. You can now login.");
 });
 function logoutCurrentUser() {
+  stopAppVersionWatch();
   currentUser = null;
   localStorage.removeItem("medlane-session");
   sessionStorage.removeItem("medlane-dashboard-sound-played");
@@ -1789,6 +1791,24 @@ function logoutCurrentUser() {
   if (location.protocol !== "file:") history.replaceState(null, "", "/login");
   qs("#login-screen").classList.remove("hidden");
   restoreRememberedLogin();
+}
+
+const APP_VERSION_POLL_MS = 5 * 60 * 1000;
+let appVersionPollTimer = null;
+let appVersionKnown = "";
+function startAppVersionWatch() {
+  if (appVersionPollTimer) return;
+  MedlaneAPI.fetchAppVersion().then((version) => { if (version) appVersionKnown = version; }).catch(() => null);
+  appVersionPollTimer = setInterval(() => {
+    if (!appVersionKnown) return;
+    MedlaneAPI.checkAppVersion(appVersionKnown).catch(() => null);
+  }, APP_VERSION_POLL_MS);
+}
+function stopAppVersionWatch() {
+  if (!appVersionPollTimer) return;
+  clearInterval(appVersionPollTimer);
+  appVersionPollTimer = null;
+  appVersionKnown = "";
 }
 
 function restoreRememberedLogin() {
@@ -1815,6 +1835,7 @@ function showAuthenticatedApp() {
   renderAll();
   if (requestedSection && requestedSection !== "security" && effectiveModules().includes(requestedSection)) showSection(requestedSection);
   playDashboardLoginSound();
+  startAppVersionWatch();
 }
 async function hydrateAuthenticatedSession() {
   if (!MedlaneAPI?.session()?.access_token) throw new Error("No active API session");

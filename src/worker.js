@@ -2451,6 +2451,15 @@ export default {
         });
       }
 
+      if (url.pathname === "/api/version") {
+        if (request.method !== "GET") return methodNotAllowed();
+        // Cloudflare stamps a fresh, unique version id on every `wrangler deploy` — no manual
+        // bump needed. The client polls this and force-logs-out on a mismatch so a tab left open
+        // across a deploy (someone who steps away or never refreshes) can't keep running stale
+        // code past a bug fix or security patch.
+        return json({ version: env.CF_VERSION_METADATA?.id || "" });
+      }
+
       if (url.pathname === "/auth/continue") {
         if (request.method !== "GET") return methodNotAllowed();
         requireEnv(env, ["SUPABASE_URL"]);
