@@ -2810,7 +2810,7 @@ function renderMemoBadge() {
   const toggle = qs("#memo-toggle");
   if (!badge || !toggle || !data?.memos) return;
   const visible = data.memos.filter(memoVisibleToCurrentUser);
-  const pending = canPostMemo() ? 0 : visible.filter((memo) => !memoAcknowledgedByCurrentUser(memo)).length;
+  const pending = visible.filter((memo) => !memoAcknowledgedByCurrentUser(memo)).length;
   badge.textContent = pending;
   badge.hidden = pending === 0;
   toggle.classList.toggle("has-unread", pending > 0);
