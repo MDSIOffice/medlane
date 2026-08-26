@@ -10,98 +10,78 @@
   const GAME_BADGE_TIER = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
 
   // ---------------------------------------------------------------------
-  // Audio — everything below is synthesized with the Web Audio API so the
-  // game needs no external sound files.
+  // Audio — plain <audio> elements playing pre-rendered WAV files, not live
+  // Web Audio synthesis. Safari (desktop and iOS) has repeatedly proven
+  // unreliable at unlocking raw AudioContext/oscillator output even from a
+  // real click — even with the site's Auto-Play permission set to Allow —
+  // whereas <audio>.play() from a genuine user gesture is the one audio
+  // mechanism every browser is guaranteed to allow with no extra permission.
   // ---------------------------------------------------------------------
-  let audioCtx = null;
   let soundEnabled = true;
   try { soundEnabled = JSON.parse(localStorage.getItem("medlane-game-sound") ?? "true"); } catch { soundEnabled = true; }
 
-  function ensureAudioCtx() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    return audioCtx;
+  function sound(file, volume = 1) {
+    const audio = new Audio(`sounds/${file}`);
+    audio.volume = volume;
+    audio.preload = "auto";
+    return audio;
   }
 
-  // Stricter browsers (Safari/iOS in particular) only trust an AudioContext as
-  // "unlocked" if resume() — and a real buffer playing through it — happen
-  // synchronously inside the click handler itself, with zero awaits first.
-  // This must be called directly from an onclick, never from inside an async
-  // function after any await.
-  function unlockAudioSync() {
-    try {
-      const ctx = ensureAudioCtx();
-      if (ctx.state === "suspended") ctx.resume();
-      const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-    } catch (error) { console.error("[Luksong Medlane] audio unlock failed:", error); }
-  }
+  const sfxAudio = {
+    jump: sound("jump.wav", 0.8),
+    dodge: sound("dodge.wav", 0.55),
+    gameover: sound("gameover.wav", 0.85),
+    click: sound("click.wav", 0.5),
+    newbest: sound("newbest.wav", 0.85),
+    countdownBeep: sound("countdown-beep.wav", 0.8),
+    countdownGo: sound("countdown-go.wav", 0.9),
+  };
+  const musicAudio = sound("music-loop.wav", 0.45);
+  musicAudio.loop = true;
 
-  // Awaited fallback, called again inside startRun() in case the context was
-  // still mid-resume when unlockAudioSync() ran.
-  async function unlockAudio() {
-    try {
-      const ctx = ensureAudioCtx();
-      if (ctx.state === "suspended") await ctx.resume();
-    } catch (error) { console.error("[Luksong Medlane] audio resume failed:", error); }
-  }
-
-  function playTone({ freq, duration = 0.12, type = "square", volume = 0.11, sweepTo = null, delay = 0 }) {
+  // A shared <audio> element can't overlap itself — starting play() while it's
+  // already playing just restarts it, cutting the previous sound short (very
+  // noticeable for rapid dodges). Cloning gives every play its own instance.
+  function playSfx(audio) {
     if (!soundEnabled) return;
     try {
-      const ctx = ensureAudioCtx();
-      if (ctx.state === "suspended") ctx.resume();
-      const start = ctx.currentTime + delay;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, start);
-      if (sweepTo) osc.frequency.exponentialRampToValueAtTime(Math.max(sweepTo, 1), start + duration);
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.linearRampToValueAtTime(volume, start + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + duration + 0.03);
-    } catch (error) { console.error("[Luksong Medlane] playTone failed:", error); }
+      const node = audio.cloneNode();
+      node.volume = audio.volume;
+      node.play().catch(() => { /* blocked outside a gesture — silently skip */ });
+    } catch (error) { console.error("[Luksong Medlane] playSfx failed:", error); }
   }
 
-  function sfxJump() { playTone({ freq: 320, sweepTo: 700, duration: 0.13, type: "square", volume: 0.09 }); }
-  function sfxDodge() { playTone({ freq: 920, duration: 0.06, type: "sine", volume: 0.05 }); }
-  function sfxGameOver() { playTone({ freq: 300, sweepTo: 70, duration: 0.55, type: "sawtooth", volume: 0.12 }); }
-  function sfxClick() { playTone({ freq: 600, duration: 0.05, type: "sine", volume: 0.06 }); }
-  function sfxNewBest() {
-    [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => playTone({ freq, duration: 0.17, type: "triangle", volume: 0.12, delay: i * 0.1 }));
+  function sfxJump() { playSfx(sfxAudio.jump); }
+  function sfxDodge() { playSfx(sfxAudio.dodge); }
+  function sfxGameOver() { playSfx(sfxAudio.gameover); }
+  function sfxClick() { playSfx(sfxAudio.click); }
+  function sfxNewBest() { playSfx(sfxAudio.newbest); }
+
+  // Played (and immediately paused) directly inside the "Play Game" click —
+  // the one guaranteed user gesture — so every element's very first play()
+  // is gesture-backed. Once "unlocked" this way, later calls (including the
+  // music starting after the async countdown, and non-gesture SFX like
+  // sfxDodge firing from inside the game loop) keep working for the rest of
+  // the session without needing a fresh gesture each time.
+  function primeAllAudio() {
+    [...Object.values(sfxAudio), musicAudio].forEach((audio) => {
+      const wasMuted = audio.muted;
+      audio.muted = true; // silence the priming play so it isn't heard as a blip
+      audio.play().then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = wasMuted;
+      }).catch(() => { audio.muted = wasMuted; });
+    });
   }
 
-  let musicTimer = null;
-  let musicStep = 0;
-  function playMusicStep(bass, lead, stepSeconds) {
-    playTone({ freq: lead[musicStep % lead.length], duration: stepSeconds * 0.95, type: "square", volume: 0.055 });
-    if (musicStep % 2 === 0) playTone({ freq: bass[(musicStep / 2) % bass.length], duration: stepSeconds * 1.9, type: "triangle", volume: 0.075 });
-    if (musicStep % 4 === 2) playTone({ freq: 3800, duration: 0.02, type: "square", volume: 0.02 });
-    musicStep++;
-  }
   function startMusic() {
-    stopMusic();
     if (!soundEnabled) return;
-    const bass = [110, 110, 98, 87.31, 110, 110, 123.47, 110];
-    const lead = [440, 523.25, 659.25, 523.25, 440, 523.25, 349.23, 440, 440, 523.25, 659.25, 783.99, 659.25, 523.25, 440, 392];
-    const stepSeconds = 0.18;
-    musicStep = 0;
-    // Play the first beat immediately — waiting for the first setInterval tick
-    // leaves a silent gap right as the run starts, which reads as "no music".
-    playMusicStep(bass, lead, stepSeconds);
-    musicTimer = setInterval(() => {
-      if (!soundEnabled || !gameRunning) return;
-      playMusicStep(bass, lead, stepSeconds);
-    }, stepSeconds * 1000);
+    musicAudio.currentTime = 0;
+    musicAudio.play().catch((error) => console.error("[Luksong Medlane] music play failed:", error));
   }
   function stopMusic() {
-    if (musicTimer) clearInterval(musicTimer);
-    musicTimer = null;
+    musicAudio.pause();
   }
 
   function setSoundEnabled(next) {
@@ -490,20 +470,15 @@
     const el = document.getElementById("game-countdown");
     if (!el) return true;
     el.hidden = false;
-    const steps = [
-      { label: "3", freq: 520 },
-      { label: "2", freq: 520 },
-      { label: "1", freq: 520 },
-      { label: "Talon!", freq: 880 },
-    ];
-    for (const step of steps) {
+    const steps = ["3", "2", "1", "Talon!"];
+    for (const label of steps) {
       if (myGeneration !== gameRunGeneration) return false;
-      el.textContent = step.label;
+      el.textContent = label;
       el.classList.remove("pop");
       void el.offsetWidth; // restart the pop animation on every step
       el.classList.add("pop");
-      playTone({ freq: step.freq, sweepTo: step.label === "Talon!" ? 1300 : null, duration: step.label === "Talon!" ? 0.3 : 0.14, type: step.label === "Talon!" ? "triangle" : "square", volume: 0.13 });
-      await wait(step.label === "Talon!" ? 480 : 620);
+      playSfx(label === "Talon!" ? sfxAudio.countdownGo : sfxAudio.countdownBeep);
+      await wait(label === "Talon!" ? 480 : 620);
     }
     if (myGeneration !== gameRunGeneration) return false;
     el.hidden = true;
@@ -511,7 +486,6 @@
   }
 
   async function startRun() {
-    await unlockAudio();
     const startButton = document.getElementById("game-start-button");
     if (startButton) startButton.disabled = true;
     try {
@@ -727,7 +701,7 @@
   }
 
   document.getElementById("open-game-modal")?.addEventListener("click", () => {
-    unlockAudioSync();
+    primeAllAudio();
     const modal = document.getElementById("game-modal");
     resetGameState();
     showOverlay({ tone: "neutral", title: "Luksong Medlane", message: `<kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners. It gets faster the higher you score.`, buttonLabel: "Start Game" });
@@ -753,7 +727,7 @@
   // normal backdrop/Escape close behavior; this restriction is game-only.)
   document.getElementById("game-modal")?.addEventListener("cancel", (event) => event.preventDefault());
 
-  document.getElementById("game-start-button")?.addEventListener("click", () => { unlockAudioSync(); startRun(); });
+  document.getElementById("game-start-button")?.addEventListener("click", () => { primeAllAudio(); startRun(); });
   document.getElementById("game-canvas")?.addEventListener("click", () => { if (gameRunning) doJump(); });
   const CROUCH_KEYS = new Set(["ArrowDown", "KeyS"]);
   document.addEventListener("keydown", (event) => {
