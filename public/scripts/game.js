@@ -56,7 +56,6 @@
 
   function sfxJump() { playTone({ freq: 320, sweepTo: 700, duration: 0.13, type: "square", volume: 0.09 }); }
   function sfxDodge() { playTone({ freq: 920, duration: 0.06, type: "sine", volume: 0.05 }); }
-  function sfxStart() { playTone({ freq: 440, sweepTo: 900, duration: 0.18, type: "triangle", volume: 0.11 }); }
   function sfxGameOver() { playTone({ freq: 300, sweepTo: 70, duration: 0.55, type: "sawtooth", volume: 0.12 }); }
   function sfxClick() { playTone({ freq: 600, duration: 0.05, type: "sine", volume: 0.06 }); }
   function sfxNewBest() {
@@ -124,6 +123,7 @@
   let gameAnimationFrame = null;
   let gameLastTime = 0;
   let gameSessionToken = null;
+  let gameRunGeneration = 0; // bumped whenever the modal closes, to cancel a pending countdown
 
   let playerY = 0;
   let playerVY = 0;
@@ -133,6 +133,7 @@
   let distance = 0;
   let dodged = 0;
   let gameScore = 0;
+  let displayedScore = 0;
   let speed = 6.2;
   let spawnTimer = 0;
   let bgOffset = 0;
@@ -165,6 +166,7 @@
     distance = 0;
     dodged = 0;
     gameScore = 0;
+    displayedScore = 0;
     speed = 6.2;
     spawnTimer = 40;
     bgOffset = 0;
@@ -262,8 +264,14 @@
     bgOffset -= speed * dt * 0.35;
 
     gameScore = Math.floor(distance / 8) + dodged * 10;
+    // The on-screen counter climbs toward the real score in small steps instead of
+    // snapping straight to it — a sudden +10 dodge bonus used to look like the
+    // number jumping around; this keeps it reading as a smooth, controlled climb.
+    // gameScore itself (used for badges/leveling/submission) is never touched here.
+    if (displayedScore < gameScore) displayedScore = Math.min(displayedScore + Math.max(1, Math.ceil(dt * 3)), gameScore);
+    else displayedScore = gameScore;
     const scoreEl = document.getElementById("game-score");
-    if (scoreEl) scoreEl.textContent = String(gameScore);
+    if (scoreEl) scoreEl.textContent = String(Math.floor(displayedScore));
   }
 
   function drawRoundedRect(x, y, w, h, r) {
@@ -449,6 +457,7 @@
     if (msgEl) msgEl.innerHTML = message;
     if (btn) btn.textContent = buttonLabel;
     if (overlay) overlay.hidden = false;
+    hideOverlayLeaderboard();
   }
 
   function hideOverlay() {
@@ -456,9 +465,39 @@
     if (overlay) overlay.hidden = true;
   }
 
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // "Talon" is Filipino for "jump" — matches the Luksong Medlane name. Returns
+  // false if the modal was closed mid-countdown (checked via the generation
+  // counter) so the caller knows not to actually start the run.
+  async function runCountdown(myGeneration) {
+    const el = document.getElementById("game-countdown");
+    if (!el) return true;
+    el.hidden = false;
+    const steps = [
+      { label: "3", freq: 520 },
+      { label: "2", freq: 520 },
+      { label: "1", freq: 520 },
+      { label: "Talon!", freq: 880 },
+    ];
+    for (const step of steps) {
+      if (myGeneration !== gameRunGeneration) return false;
+      el.textContent = step.label;
+      el.classList.remove("pop");
+      void el.offsetWidth; // restart the pop animation on every step
+      el.classList.add("pop");
+      playTone({ freq: step.freq, sweepTo: step.label === "Talon!" ? 1300 : null, duration: step.label === "Talon!" ? 0.3 : 0.14, type: step.label === "Talon!" ? "triangle" : "square", volume: 0.13 });
+      await wait(step.label === "Talon!" ? 480 : 620);
+    }
+    if (myGeneration !== gameRunGeneration) return false;
+    el.hidden = true;
+    return true;
+  }
+
   async function startRun() {
     await unlockAudio();
-    sfxStart();
     const startButton = document.getElementById("game-start-button");
     if (startButton) startButton.disabled = true;
     try {
@@ -475,6 +514,10 @@
     hideOverlay();
     const badgeChip = document.getElementById("game-hud-badge");
     if (badgeChip) badgeChip.hidden = true;
+    drawGame();
+    const myGeneration = gameRunGeneration;
+    const ok = await runCountdown(myGeneration);
+    if (!ok) return;
     gameRunning = true;
     gameLastTime = performance.now();
     startMusic();
@@ -537,8 +580,36 @@
           buttonLabel: "Play Again",
         });
       }
+      // Every finished run shows how it stacks up — no extra click needed.
+      renderOverlayLeaderboard();
     } catch (error) {
       showOverlay({ tone: "error", title: "Score not saved", message: escapeHtml(error.message || "Something went wrong."), buttonLabel: "Play Again" });
+    }
+  }
+
+  function hideOverlayLeaderboard() {
+    const panel = document.getElementById("game-overlay-leaderboard");
+    if (panel) panel.hidden = true;
+  }
+
+  // Shown automatically beside the result card at the end of every run — no
+  // extra click into the (still-there) hidden Leaderboard button needed.
+  async function renderOverlayLeaderboard() {
+    const panel = document.getElementById("game-overlay-leaderboard");
+    const list = document.getElementById("game-overlay-leaderboard-list");
+    if (!panel || !list) return;
+    panel.hidden = false;
+    list.innerHTML = `<li>Loading…</li>`;
+    try {
+      const { entries } = await MedlaneAPI.listGameLeaderboard("score");
+      if (!entries.length) { list.innerHTML = `<li>No runs yet — be the first!</li>`; return; }
+      const myName = typeof currentUser !== "undefined" ? currentUser?.name : null;
+      list.innerHTML = entries.slice(0, 5).map((entry, index) => {
+        const isMe = myName && entry.name === myName;
+        return `<li class="${isMe ? "is-me" : ""}"><span>${leaderboardRankLabel(index)} ${escapeHtml(entry.name || "Player")}</span><strong>${Number(entry.score || 0)}</strong></li>`;
+      }).join("");
+    } catch {
+      list.innerHTML = `<li>Could not load leaderboard.</li>`;
     }
   }
 
@@ -653,8 +724,11 @@
 
   function closeGameModal() {
     gameRunning = false;
+    gameRunGeneration++; // cancels any in-flight countdown
     if (gameAnimationFrame) cancelAnimationFrame(gameAnimationFrame);
     stopMusic();
+    const countdownEl = document.getElementById("game-countdown");
+    if (countdownEl) countdownEl.hidden = true;
     document.getElementById("game-modal")?.close();
   }
   document.getElementById("game-modal-close")?.addEventListener("click", closeGameModal);
