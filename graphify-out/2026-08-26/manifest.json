@@ -1,458 +1,506 @@
 {
   "public/scripts/api-client.js": {
     "mtime": 1787721029.6104755,
-    "seen": 1787722781.174135,
+    "seen": 1787723612.9083068,
     "ast_hash": "97a329a12bf5b648a08a5a0bfeafc008",
     "semantic_hash": ""
   },
   "public/scripts/app-motion.js": {
     "mtime": 1786602579.0103474,
-    "seen": 1787722781.174135,
+    "seen": 1787723612.908308,
     "ast_hash": "c46bea8c6a71e7bc5d26ad79556555fa",
     "semantic_hash": "c46bea8c6a71e7bc5d26ad79556555fa"
   },
   "public/scripts/config-data.js": {
     "mtime": 1787482011.9253287,
-    "seen": 1787722781.1741362,
+    "seen": 1787723612.908308,
     "ast_hash": "0a7ceb49b0628a852d05db923238a2a8",
     "semantic_hash": "0a7ceb49b0628a852d05db923238a2a8"
   },
   "public/scripts/events-bootstrap.js": {
     "mtime": 1787708185.933035,
-    "seen": 1787722781.1741362,
+    "seen": 1787723612.908309,
     "ast_hash": "4f4ec9331471454eeed198f0e1a5e2e3",
     "semantic_hash": ""
   },
   "public/scripts/landing-motion.js": {
     "mtime": 1786602579.0114372,
-    "seen": 1787722781.174138,
+    "seen": 1787723612.90831,
     "ast_hash": "7b1ba44198083d2bbae2cd4b939e2ba9",
     "semantic_hash": "7b1ba44198083d2bbae2cd4b939e2ba9"
   },
   "public/scripts/modules.js": {
     "mtime": 1787719718.3975885,
-    "seen": 1787722781.174138,
+    "seen": 1787723612.9083111,
     "ast_hash": "5e9a323d7622147fb11b74f7decbbf38",
     "semantic_hash": ""
   },
   "public/scripts/state.js": {
     "mtime": 1787708144.8040547,
-    "seen": 1787722781.1741388,
+    "seen": 1787723612.908312,
     "ast_hash": "dd9f6d97a5ef0d5de79d6c6a1f901289",
     "semantic_hash": ""
   },
   "public/scripts/ui-utils.js": {
     "mtime": 1787708169.3781817,
-    "seen": 1787722781.1741388,
+    "seen": 1787723612.908312,
     "ast_hash": "6e353fa6f3e3594d7ffa871bf04f09e4",
     "semantic_hash": ""
   },
   "public/scripts/vendor/pdf-lib.min.js": {
-    "mtime": 1787482011.9308672,
-    "seen": 1787722781.17414,
-    "ast_hash": "dec481b1abd5119d3fbbd2695bdaebb1",
-    "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
+    "mtime": 1787723025.084264,
+    "seen": 1787723612.908312,
+    "ast_hash": "dfb90be9346d7e3d1bf47788a7d51b49",
+    "semantic_hash": ""
   },
   "scripts/api-client.js": {
     "mtime": 1786599115.6580713,
-    "seen": 1787722781.17414,
+    "seen": 1787723612.908313,
     "ast_hash": "d44ea87421852155e405024da2859bbb",
     "semantic_hash": "d44ea87421852155e405024da2859bbb"
   },
   "scripts/app-motion.js": {
     "mtime": 1786599115.6581552,
-    "seen": 1787722781.174141,
+    "seen": 1787723612.908313,
     "ast_hash": "c46bea8c6a71e7bc5d26ad79556555fa",
     "semantic_hash": "c46bea8c6a71e7bc5d26ad79556555fa"
   },
   "scripts/config-data.js": {
     "mtime": 1787482011.9321198,
-    "seen": 1787722781.174141,
+    "seen": 1787723612.9083142,
     "ast_hash": "0a7ceb49b0628a852d05db923238a2a8",
     "semantic_hash": "0a7ceb49b0628a852d05db923238a2a8"
   },
   "scripts/events-bootstrap.js": {
     "mtime": 1787482011.9324424,
-    "seen": 1787722781.174142,
+    "seen": 1787723612.9083142,
     "ast_hash": "1c672ed0e4cf7bd88bdd08c30f1222a2",
     "semantic_hash": ""
   },
   "scripts/landing-motion.js": {
     "mtime": 1786599115.6585085,
-    "seen": 1787722781.174142,
+    "seen": 1787723612.908315,
     "ast_hash": "7b1ba44198083d2bbae2cd4b939e2ba9",
     "semantic_hash": "7b1ba44198083d2bbae2cd4b939e2ba9"
   },
   "scripts/modules.js": {
     "mtime": 1787482011.9330957,
-    "seen": 1787722781.174143,
+    "seen": 1787723612.908315,
     "ast_hash": "9a085b397c923377ec7a89c96617d167",
     "semantic_hash": ""
   },
   "scripts/state.js": {
     "mtime": 1787482011.9335186,
-    "seen": 1787722781.174143,
+    "seen": 1787723612.908316,
     "ast_hash": "e8e620a431320ba8b470aa581246993e",
     "semantic_hash": ""
   },
   "scripts/ui-utils.js": {
     "mtime": 1787482011.9337654,
-    "seen": 1787722781.174144,
+    "seen": 1787723612.908316,
     "ast_hash": "1bb018ce2b141522ebc0bc24e096a25c",
     "semantic_hash": ""
   },
   "scripts/vendor/pdf-lib.min.js": {
     "mtime": 1787482011.9349546,
-    "seen": 1787722781.174144,
+    "seen": 1787723612.9083169,
     "ast_hash": "dec481b1abd5119d3fbbd2695bdaebb1",
     "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
   },
   "src/worker.js": {
     "mtime": 1787722125.1735048,
-    "seen": 1787722781.174145,
+    "seen": 1787723612.9083169,
     "ast_hash": "1d266e029f28bd1aef54ba042123dc88",
     "semantic_hash": ""
   },
   "Notification Sound.mp3": {
     "mtime": 1786599115.642902,
-    "seen": 1787722781.1741672,
+    "seen": 1787723612.908339,
     "ast_hash": "b1f2fdffc054a3ed379bdc04ebd83c56",
     "semantic_hash": "b1f2fdffc054a3ed379bdc04ebd83c56"
   },
   "Startup Sound.mp3": {
     "mtime": 1786599115.6432176,
-    "seen": 1787722781.1741672,
+    "seen": 1787723612.90834,
     "ast_hash": "3d9d21746de864aee3ce89215d63d438",
     "semantic_hash": "3d9d21746de864aee3ce89215d63d438"
   },
   "public/Notification Sound.mp3": {
     "mtime": 1786599115.6531756,
-    "seen": 1787722781.1741672,
+    "seen": 1787723612.90834,
     "ast_hash": "b1f2fdffc054a3ed379bdc04ebd83c56",
     "semantic_hash": "b1f2fdffc054a3ed379bdc04ebd83c56"
   },
   "public/Startup Sound.mp3": {
     "mtime": 1786599115.653443,
-    "seen": 1787722781.174169,
+    "seen": 1787723612.908341,
     "ast_hash": "3d9d21746de864aee3ce89215d63d438",
     "semantic_hash": "3d9d21746de864aee3ce89215d63d438"
   },
   ".specify/scripts/bash/check-prerequisites.sh": {
     "mtime": 1787482011.9013412,
-    "seen": 1787722781.174128,
+    "seen": 1787723612.908301,
     "ast_hash": "e8f1e7d868ab35e0fa68e6a7aa50f707",
     "semantic_hash": ""
   },
   ".specify/scripts/bash/common.sh": {
     "mtime": 1787482011.9016402,
-    "seen": 1787722781.174131,
+    "seen": 1787723612.908304,
     "ast_hash": "047f4eb5725671079d617c3b2935a4f6",
     "semantic_hash": ""
   },
   ".specify/scripts/bash/create-new-feature.sh": {
     "mtime": 1787482011.9018545,
-    "seen": 1787722781.1741319,
+    "seen": 1787723612.908305,
     "ast_hash": "bd3d0b837199f0f6f9f5b33a0693a6e9",
     "semantic_hash": ""
   },
   ".specify/scripts/bash/resolve-template.sh": {
     "mtime": 1787482011.9019887,
-    "seen": 1787722781.174133,
+    "seen": 1787723612.908306,
     "ast_hash": "8e3dfe574895c76bb9cd555fea0ce54d",
     "semantic_hash": ""
   },
   ".specify/scripts/bash/setup-plan.sh": {
     "mtime": 1787482011.9020834,
-    "seen": 1787722781.174134,
+    "seen": 1787723612.908306,
     "ast_hash": "918d00539c8114c53e6360f5871c61c8",
     "semantic_hash": ""
   },
   ".specify/scripts/bash/setup-tasks.sh": {
     "mtime": 1787482011.9021559,
-    "seen": 1787722781.174134,
+    "seen": 1787723612.9083068,
     "ast_hash": "30ec558a29cb7cee770f6a1238a6e68b",
     "semantic_hash": ""
   },
   ".specify/memory/constitution.md": {
     "mtime": 1787482011.901168,
-    "seen": 1787722781.174145,
+    "seen": 1787723612.908318,
     "ast_hash": "dcefb6b60e7cb3db2e966977b6f02f18",
     "semantic_hash": ""
   },
   ".specify/templates/checklist-template.md": {
     "mtime": 1787482011.9022691,
-    "seen": 1787722781.174146,
+    "seen": 1787723612.908318,
     "ast_hash": "5af23404f7e1314e93fab2bcfcfa5c23",
     "semantic_hash": ""
   },
   ".specify/templates/constitution-template.md": {
     "mtime": 1787482011.9023376,
-    "seen": 1787722781.174146,
+    "seen": 1787723612.908319,
     "ast_hash": "dcefb6b60e7cb3db2e966977b6f02f18",
     "semantic_hash": ""
   },
   ".specify/templates/plan-template.md": {
     "mtime": 1787482011.9024076,
-    "seen": 1787722781.1741471,
+    "seen": 1787723612.908319,
     "ast_hash": "311db0670c3d19d2f5b781de97529b79",
     "semantic_hash": ""
   },
   ".specify/templates/spec-template.md": {
     "mtime": 1787482011.9024837,
-    "seen": 1787722781.1741471,
+    "seen": 1787723612.908319,
     "ast_hash": "45ac8538bc1220324c9f0d610145b53f",
     "semantic_hash": ""
   },
   ".specify/templates/tasks-template.md": {
     "mtime": 1787482011.9025786,
-    "seen": 1787722781.174148,
+    "seen": 1787723612.90832,
     "ast_hash": "f8b4f62d384defa0a559bdbbaacb0540",
     "semantic_hash": ""
   },
   ".specify/workflows/speckit/workflow.yml": {
     "mtime": 1787482011.9027336,
-    "seen": 1787722781.174148,
+    "seen": 1787723612.90832,
     "ast_hash": "06fd89e478bb8e0e668917a5f02f9055",
     "semantic_hash": ""
   },
   "AGENTS.md": {
     "mtime": 1786599115.6425123,
-    "seen": 1787722781.174149,
+    "seen": 1787723612.9083211,
     "ast_hash": "3fa3c9263317a78b66c9b2980375e0b5",
     "semantic_hash": ""
   },
   "CLAUDE.md": {
     "mtime": 1787482011.9029632,
-    "seen": 1787722781.174149,
+    "seen": 1787723612.9083211,
     "ast_hash": "82efb97a359f5c7290bf2513d14686be",
     "semantic_hash": ""
   },
   "dashboard/index.html": {
     "mtime": 1786599115.644584,
-    "seen": 1787722781.17415,
+    "seen": 1787723612.908322,
     "ast_hash": "c880269890831701226b58229d47cf61",
     "semantic_hash": ""
   },
   "docs/email-template-preview.html": {
     "mtime": 1786599115.646449,
-    "seen": 1787722781.17415,
+    "seen": 1787723612.908322,
     "ast_hash": "001565b35d95a2557ec985b38a33828e",
     "semantic_hash": ""
   },
   "docs/medlane-system-proposal.html": {
     "mtime": 1786599115.646571,
-    "seen": 1787722781.174151,
+    "seen": 1787723612.908323,
     "ast_hash": "e560511ba6ecfb7adf81f701aa6da026",
     "semantic_hash": ""
   },
   "index.html": {
     "mtime": 1787482011.9229178,
-    "seen": 1787722781.174151,
+    "seen": 1787723612.908323,
     "ast_hash": "ee26dae7a9047b4f62f2c287a7d4c2e4",
     "semantic_hash": ""
   },
   "login/index.html": {
     "mtime": 1786599115.6497843,
-    "seen": 1787722781.174152,
+    "seen": 1787723612.908324,
     "ast_hash": "cb001fe60c3cd5eaa3fec1783609fc2f",
     "semantic_hash": ""
   },
   "public/.well-known/security.txt": {
     "mtime": 1786599115.6512053,
-    "seen": 1787722781.174152,
+    "seen": 1787723612.908324,
     "ast_hash": "bf3d3389c4d7f204069098a8c958c27c",
     "semantic_hash": ""
   },
   "public/dashboard/index.html": {
     "mtime": 1786599115.6535678,
-    "seen": 1787722781.1741529,
+    "seen": 1787723612.9083252,
     "ast_hash": "c880269890831701226b58229d47cf61",
     "semantic_hash": ""
   },
   "public/index.html": {
     "mtime": 1787722137.1774032,
-    "seen": 1787722781.1741529,
+    "seen": 1787723612.9083252,
     "ast_hash": "2de00d26d45c30557d2ff4b9699ea7db",
     "semantic_hash": ""
   },
   "public/login/index.html": {
     "mtime": 1786599115.6537673,
-    "seen": 1787722781.1741529,
+    "seen": 1787723612.908326,
     "ast_hash": "cb001fe60c3cd5eaa3fec1783609fc2f",
     "semantic_hash": ""
   },
   "public/robots.txt": {
     "mtime": 1787482011.924475,
-    "seen": 1787722781.174154,
+    "seen": 1787723612.908326,
     "ast_hash": "61b03da22907c3c5cbef3df160400074",
     "semantic_hash": ""
   },
   "public/security.txt": {
     "mtime": 1786599115.6573424,
-    "seen": 1787722781.174155,
+    "seen": 1787723612.9083269,
     "ast_hash": "bf3d3389c4d7f204069098a8c958c27c",
     "semantic_hash": ""
   },
   "TS And SI.pdf": {
     "mtime": 1786599115.6441512,
-    "seen": 1787722781.174155,
+    "seen": 1787723612.9083269,
     "ast_hash": "3f11df3d91a71b7aa78496759f8c1161",
     "semantic_hash": ""
   },
   "assets/bir-2307-blank.pdf": {
     "mtime": 1787482011.9046626,
-    "seen": 1787722781.174155,
+    "seen": 1787723612.9083278,
     "ast_hash": "8d6892c3d53e0e3e5fabac0b4a631af4",
     "semantic_hash": ""
   },
   "docs/Medlane-System-Proposal.pdf": {
     "mtime": 1786599115.6459513,
-    "seen": 1787722781.174156,
+    "seen": 1787723612.9083278,
     "ast_hash": "4af4473f9eeb8e4518598754068db767",
     "semantic_hash": ""
   },
   "docs/reference/DR LAYOUT.pdf": {
     "mtime": 1786599115.6471162,
-    "seen": 1787722781.174156,
+    "seen": 1787723612.908329,
     "ast_hash": "852ea381b47efc5e45e0da51f889e8cf",
     "semantic_hash": ""
   },
   "docs/reference/SI LAYOUT.pdf": {
     "mtime": 1786599115.647516,
-    "seen": 1787722781.1741571,
+    "seen": 1787723612.908329,
     "ast_hash": "ecce2533e3ecf7dd56975d040acd056a",
     "semantic_hash": ""
   },
   "docs/reference/SOA Format.pdf": {
     "mtime": 1786599115.6484914,
-    "seen": 1787722781.1741571,
+    "seen": 1787723612.90833,
     "ast_hash": "d08d17d4bca1e48e0592dcdde453a6c3",
     "semantic_hash": ""
   },
   "docs/reference/TS LAYOUT.pdf": {
     "mtime": 1786599115.6492338,
-    "seen": 1787722781.174158,
+    "seen": 1787723612.90833,
     "ast_hash": "2ceb52b48b196a60b170c7c081717cd4",
     "semantic_hash": ""
   },
   "public/assets/bir-2307-blank.pdf": {
     "mtime": 1787482011.9237945,
-    "seen": 1787722781.174158,
+    "seen": 1787723612.90833,
     "ast_hash": "8d6892c3d53e0e3e5fabac0b4a631af4",
     "semantic_hash": ""
   },
   "2.jpg": {
     "mtime": 1786599115.6412401,
-    "seen": 1787722781.174158,
+    "seen": 1787723612.908331,
     "ast_hash": "5fcf69432cb2851f27b46d3421a8694c",
     "semantic_hash": ""
   },
   "3.jpg": {
     "mtime": 1786599115.641641,
-    "seen": 1787722781.174159,
+    "seen": 1787723612.908331,
     "ast_hash": "90845fc45da9a1c4c5d06c6ea294a3be",
     "semantic_hash": ""
   },
   "4.jpg": {
     "mtime": 1786599115.6420465,
-    "seen": 1787722781.174159,
+    "seen": 1787723612.908332,
     "ast_hash": "62b5ae32c0d7ca0e7f6e2e9349e88f39",
     "semantic_hash": ""
   },
   "5.jpg": {
     "mtime": 1786599115.6424384,
-    "seen": 1787722781.1741598,
+    "seen": 1787723612.908332,
     "ast_hash": "aeadb250250c40d1ce419ff74bfecddf",
     "semantic_hash": ""
   },
   "docs/1.png": {
     "mtime": 1786599115.6454628,
-    "seen": 1787722781.1741598,
+    "seen": 1787723612.908333,
     "ast_hash": "0e7a1e7df6a96bf2b58ed2fbf4f4db5a",
     "semantic_hash": ""
   },
   "medlane-social-preview.jpg": {
     "mtime": 1786599115.6499739,
-    "seen": 1787722781.174161,
+    "seen": 1787723612.908333,
     "ast_hash": "d3acb3c384e6f123041b2ce253a1c625",
     "semantic_hash": ""
   },
   "medlane.jpg": {
     "mtime": 1786599115.6501234,
-    "seen": 1787722781.174161,
+    "seen": 1787723612.908334,
     "ast_hash": "79de10b7a78c18ebb6ef9c866ed77066",
     "semantic_hash": ""
   },
   "ph-07.png": {
     "mtime": 1786599115.6509967,
-    "seen": 1787722781.174161,
+    "seen": 1787723612.908334,
     "ast_hash": "2d14add24e78c7f61090427961cf7bb5",
     "semantic_hash": ""
   },
   "public/2.jpg": {
     "mtime": 1786599115.6516917,
-    "seen": 1787722781.174162,
+    "seen": 1787723612.9083352,
     "ast_hash": "5fcf69432cb2851f27b46d3421a8694c",
     "semantic_hash": ""
   },
   "public/3.jpg": {
     "mtime": 1786599115.6520627,
-    "seen": 1787722781.174162,
+    "seen": 1787723612.9083352,
     "ast_hash": "90845fc45da9a1c4c5d06c6ea294a3be",
     "semantic_hash": ""
   },
   "public/4.jpg": {
     "mtime": 1786599115.6524446,
-    "seen": 1787722781.1741629,
+    "seen": 1787723612.9083362,
     "ast_hash": "62b5ae32c0d7ca0e7f6e2e9349e88f39",
     "semantic_hash": ""
   },
   "public/5.jpg": {
     "mtime": 1786599115.6528223,
-    "seen": 1787722781.1741629,
+    "seen": 1787723612.9083362,
     "ast_hash": "aeadb250250c40d1ce419ff74bfecddf",
     "semantic_hash": ""
   },
   "public/medlane-social-preview.jpg": {
     "mtime": 1787720208.7120752,
-    "seen": 1787722781.174165,
+    "seen": 1787723612.9083378,
     "ast_hash": "0659dea336081d0301e0d2c182f5c62e",
     "semantic_hash": ""
   },
   "public/medlane.jpg": {
     "mtime": 1786599115.6540682,
-    "seen": 1787722781.174166,
+    "seen": 1787723612.9083378,
     "ast_hash": "79de10b7a78c18ebb6ef9c866ed77066",
     "semantic_hash": ""
   },
   "public/ph-07.png": {
     "mtime": 1786599115.6548972,
-    "seen": 1787722781.174166,
+    "seen": 1787723612.908339,
     "ast_hash": "2d14add24e78c7f61090427961cf7bb5",
     "semantic_hash": ""
   },
   "public/apple-touch-icon.png": {
     "mtime": 1787716154.378514,
-    "seen": 1787722781.174164,
+    "seen": 1787723612.9083369,
     "ast_hash": "459a9963b1c1f5bdc6194432cd1956c8",
     "semantic_hash": ""
   },
   "public/favicon-16x16.png": {
     "mtime": 1787716154.4136996,
-    "seen": 1787722781.174164,
+    "seen": 1787723612.9083369,
     "ast_hash": "79e17eca8287241504aef6e36ef79bc4",
     "semantic_hash": ""
   },
   "public/favicon-32x32.png": {
     "mtime": 1787716154.3977637,
-    "seen": 1787722781.174165,
+    "seen": 1787723612.9083369,
     "ast_hash": "82ac0ef1c61d9ae3c12886f2707d6ea2",
     "semantic_hash": ""
   },
   "public/scripts/game.js": {
-    "mtime": 1787722761.267716,
-    "seen": 1787722781.174137,
-    "ast_hash": "4c6508e485e7c52273074c441015a2de",
+    "mtime": 1787723585.9047134,
+    "seen": 1787723612.90831,
+    "ast_hash": "0366ac40eff9db9428b3bdd3c837912d",
+    "semantic_hash": ""
+  },
+  "public/sounds/click.wav": {
+    "mtime": 1787723344.7342322,
+    "seen": 1787723612.908341,
+    "ast_hash": "1a06cb844a7b8581f85b43cc06f9f6f8",
+    "semantic_hash": ""
+  },
+  "public/sounds/countdown-beep.wav": {
+    "mtime": 1787723344.745973,
+    "seen": 1787723612.9083421,
+    "ast_hash": "b09afde240c1559dbaf049d9134164a1",
+    "semantic_hash": ""
+  },
+  "public/sounds/countdown-go.wav": {
+    "mtime": 1787723344.7510958,
+    "seen": 1787723612.9083421,
+    "ast_hash": "4fed9ddbd1b2366f8d49171b7cbc494c",
+    "semantic_hash": ""
+  },
+  "public/sounds/dodge.wav": {
+    "mtime": 1787723344.72407,
+    "seen": 1787723612.908343,
+    "ast_hash": "5d7680d4ec67c07d9aecd81e623677c4",
+    "semantic_hash": ""
+  },
+  "public/sounds/gameover.wav": {
+    "mtime": 1787723344.7332942,
+    "seen": 1787723612.908343,
+    "ast_hash": "f7ca3e2448640a8998b783e4a4e88adf",
+    "semantic_hash": ""
+  },
+  "public/sounds/jump.wav": {
+    "mtime": 1787723344.7231052,
+    "seen": 1787723612.908344,
+    "ast_hash": "87102b0e754ae0a4609ab06a8c71f802",
+    "semantic_hash": ""
+  },
+  "public/sounds/music-loop.wav": {
+    "mtime": 1787723344.8029664,
+    "seen": 1787723612.908344,
+    "ast_hash": "70aac4786c7d3dc630c7b02706b49882",
+    "semantic_hash": ""
+  },
+  "public/sounds/newbest.wav": {
+    "mtime": 1787723344.7440174,
+    "seen": 1787723612.908345,
+    "ast_hash": "5ae58ceb58a8a9da288ee660ca53a98b",
     "semantic_hash": ""
   }
 }

@@ -20,10 +20,13 @@
   let soundEnabled = true;
   try { soundEnabled = JSON.parse(localStorage.getItem("medlane-game-sound") ?? "true"); } catch { soundEnabled = true; }
 
+  // preload stays "none" so none of this ~220KB downloads on every page load
+  // for every visitor — it's fetched only once someone actually opens the
+  // game (see primeAllAudio(), called from the "Play Game" click).
   function sound(file, volume = 1) {
     const audio = new Audio(`sounds/${file}`);
     audio.volume = volume;
-    audio.preload = "auto";
+    audio.preload = "none";
     return audio;
   }
 
@@ -65,6 +68,9 @@
   // the session without needing a fresh gesture each time.
   function primeAllAudio() {
     [...Object.values(sfxAudio), musicAudio].forEach((audio) => {
+      // .load() makes the fetch start unambiguous rather than relying on every
+      // browser to trigger it purely from play() on a preload="none" element.
+      if (audio.readyState === 0) audio.load();
       const wasMuted = audio.muted;
       audio.muted = true; // silence the priming play so it isn't heard as a blip
       audio.play().then(() => {
