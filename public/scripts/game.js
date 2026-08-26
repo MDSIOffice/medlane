@@ -732,8 +732,11 @@
     document.getElementById("game-modal")?.close();
   }
   document.getElementById("game-modal-close")?.addEventListener("click", closeGameModal);
-  document.getElementById("game-modal")?.addEventListener("click", (event) => { if (event.target.id === "game-modal") closeGameModal(); });
-  document.getElementById("game-modal")?.addEventListener("cancel", (event) => { event.preventDefault(); closeGameModal(); });
+  // Deliberately no backdrop-click-to-close and no Escape-to-close here — a
+  // misclick or stray Escape used to kill an in-progress run. Only the X
+  // button closes this modal. (Every other dialog in the app keeps its
+  // normal backdrop/Escape close behavior; this restriction is game-only.)
+  document.getElementById("game-modal")?.addEventListener("cancel", (event) => event.preventDefault());
 
   document.getElementById("game-start-button")?.addEventListener("click", startRun);
   document.getElementById("game-canvas")?.addEventListener("click", () => { if (gameRunning) doJump(); });
