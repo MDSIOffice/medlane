@@ -1895,6 +1895,42 @@ function manilaScheduleParts(value) {
   return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
 }
 
+// A single exact-tick match (minute === "00" && hour === "18") means one missed or delayed
+// Cron Trigger invocation (Cloudflare does not guarantee an invocation for every tick — it can
+// be skipped under load or during a deploy) silently drops that entire day's/week's/month's
+// digest or backup with no error to log, because the `if` block is simply never entered.
+// Instead, treat the whole 18:00 Manila hour as a tolerant window: try on every 5-minute tick
+// inside it, but guard each job with a persisted "already ran for this period" flag so it only
+// actually executes once per day/week/month/year and safely retries on the next tick if an
+// earlier attempt in the same hour threw.
+function manilaPeriodKeys(scheduled) {
+  const dayKey = `${scheduled.year}-${scheduled.month}-${scheduled.day}`;
+  return { dayKey, monthKey: `${scheduled.year}-${scheduled.month}`, yearKey: scheduled.year };
+}
+
+async function claimAutomationPeriod(env, jobKey, periodKey) {
+  const stateKey = `automation-once-${jobKey}`;
+  const state = await monitoringState(env, stateKey).catch(() => ({}));
+  if (state.lastPeriod === periodKey) return false;
+  await saveMonitoringState(env, stateKey, { lastPeriod: periodKey, lastAttemptAt: new Date().toISOString() }).catch(() => null);
+  return true;
+}
+
+async function runOncePerPeriod(env, jobKey, periodKey, fn) {
+  if (!(await claimAutomationPeriod(env, jobKey, periodKey))) return null;
+  try {
+    const result = await fn();
+    await recordSystemLog(env, { action: "Automation job completed", module: "Automation", record: `${jobKey} (${periodKey})` }).catch(() => null);
+    return result;
+  } catch (error) {
+    // Release the claim so the next 5-minute tick within the same 18:00 hour retries instead of
+    // treating a failed attempt as "done for the period".
+    await saveMonitoringState(env, `automation-once-${jobKey}`, { lastPeriod: null, lastAttemptAt: new Date().toISOString(), lastError: error.message }).catch(() => null);
+    await recordSystemLog(env, { action: "Automation job failed", module: "Automation", record: `${jobKey} (${periodKey}): ${error.message}` }).catch(() => null);
+    throw error;
+  }
+}
+
 async function runFiveMinuteScheduledTasks(event, env) {
   // event.scheduledTime is documented as milliseconds, but this Worker has observed it
   // arrive in seconds (log samples decode to sane current dates only when read as seconds,
@@ -1909,11 +1945,15 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
   // fired — this internal hour check is what has always driven the real sends.
-  if (scheduled.minute === "00" && scheduled.hour === "18") {
-    if (!["Sat", "Sun"].includes(scheduled.weekday)) tasks.push(runDailyDigest(env));
-    if (scheduled.weekday === "Fri") tasks.push(runWeeklyDigest(env), createBackup(env, "weekly", null));
-    if (scheduled.day === "01") tasks.push(createBackup(env, "monthly", null));
-    if (scheduled.month === "01" && scheduled.day === "01") tasks.push(createBackup(env, "yearly", null));
+  if (scheduled.hour === "18") {
+    const { dayKey, monthKey, yearKey } = manilaPeriodKeys(scheduled);
+    if (!["Sat", "Sun"].includes(scheduled.weekday)) tasks.push(runOncePerPeriod(env, "daily-digest", dayKey, () => runDailyDigest(env)));
+    if (scheduled.weekday === "Fri") {
+      tasks.push(runOncePerPeriod(env, "weekly-digest", dayKey, () => runWeeklyDigest(env)));
+      tasks.push(runOncePerPeriod(env, "weekly-backup", dayKey, () => createBackup(env, "weekly", null)));
+    }
+    if (scheduled.day === "01") tasks.push(runOncePerPeriod(env, "monthly-backup", monthKey, () => createBackup(env, "monthly", null)));
+    if (scheduled.month === "01" && scheduled.day === "01") tasks.push(runOncePerPeriod(env, "yearly-backup", yearKey, () => createBackup(env, "yearly", null)));
   }
   const results = await Promise.allSettled(tasks);
   for (const result of results) {

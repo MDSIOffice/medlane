@@ -1342,6 +1342,7 @@ qs("#refresh-backups")?.addEventListener("click", () => { renderBackup(); toast(
 qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
 qs("#run-manual-digest-daily")?.addEventListener("click", () => runManualDigest("Daily"));
 qs("#run-manual-digest-weekly")?.addEventListener("click", () => runManualDigest("Weekly"));
+qs("#print-value-report")?.addEventListener("click", printSystemValueReport);
 qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
 
 function setBackupStatus(title, detail = "", progress = 0, tone = "active") {
