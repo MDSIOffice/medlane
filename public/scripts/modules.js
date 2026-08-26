@@ -225,6 +225,15 @@ function parseInvoiceLines(text, options = {}) {
   });
 }
 
+// Lot number and expiry are optional when receiving stock — an item that isn't
+// tracked by expiry (or whose expiry was simply left blank on receipt) is stored
+// with expiry "" or "N/A" interchangeably, not always the literal "N/A" string.
+// Treating only "N/A" as "no expiry" made daysUntil("") — NaN — read as already
+// expired, silently excluding real, in-stock units from availability checks.
+function hasNoExpiry(expiry) {
+  return !expiry || expiry === "N/A";
+}
+
 function isEquipmentItem(item) {
   const category = String(item?.category || item?.classification || "").trim().toLowerCase();
   return category === "equipment";
@@ -515,7 +524,7 @@ function itemStockLotTracked(item, branch) {
 function invoiceItemStockQty(item, branch) {
   if (!item) return 0;
   return data.inventory
-    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (entry.expiry === "N/A" || daysUntil(entry.expiry) >= 0))
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
 }
 
@@ -688,8 +697,8 @@ function syncInvoiceRowItem(input, options = {}) {
   if (expiryInput) { expiryInput.required = !equipment; if (equipment) expiryInput.value = ""; }
   if (!row.querySelector(".invoice-price-input").value) row.querySelector(".invoice-price-input").value = "";
   const stock = data.inventory
-    .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (entry.expiry === "N/A" || daysUntil(entry.expiry) >= 0))
-    .sort((a, b) => daysUntil(a.expiry === "N/A" ? "2099-12-31" : a.expiry) - daysUntil(b.expiry === "N/A" ? "2099-12-31" : b.expiry))[0];
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
+    .sort((a, b) => daysUntil(hasNoExpiry(a.expiry) ? "2099-12-31" : a.expiry) - daysUntil(hasNoExpiry(b.expiry) ? "2099-12-31" : b.expiry))[0];
   if (stock) {
     row.querySelector(".invoice-lot-input").value = stock.lot || "";
     if (!equipment) row.querySelector(".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
@@ -1683,6 +1692,7 @@ function renderAnalytics() {
   ];
   qs("#analytics-insights").innerHTML = insights.map((text) => `<li><span>${escapeHtml(text)}</span></li>`).join("");
   renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, totalPaid);
+  renderValueAnalytics();
 }
 
 function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, totalPaid) {
@@ -1708,6 +1718,171 @@ function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, total
     "Push Region I repeat orders and dealer areas with open AR recovery.",
     "Use low-stock signals to plan transfer or reorder quantities before quarterly demand spikes.",
   ].map((text) => `<li><span>${escapeHtml(text)}</span></li>`).join("");
+}
+
+// ---- Proof of Value: cycle-time, savings-caught, and adoption/reliability analytics ----
+// These metrics exist to demonstrate the system's value over the manual/spreadsheet process it
+// replaced: how fast work moves (cycle time), what it has already caught before it became a
+// loss (money saved), and how much it is actually used and how reliable it has been (adoption).
+
+function daysBetween(startValue, endValue) {
+  const start = new Date(startValue || 0).getTime();
+  const end = new Date(endValue || 0).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  return Math.max(0, Math.round((end - start) / 86400000));
+}
+
+function poApprovalDays(po) {
+  const approvedEntry = (po.history || []).find((entry) => entry.status === "Approved");
+  if (!approvedEntry) return null;
+  return daysBetween(po.date, approvedEntry.date);
+}
+
+function financialApprovalDays(record) {
+  if (!record.approvedAt) return null;
+  return daysBetween(record.date, record.approvedAt);
+}
+
+function demoTurnaroundDays(request) {
+  if (!/[Rr]eturned|To Sales/.test(request.status || "")) return null;
+  return daysBetween(request.date || request.demoDate, request.history?.at(-1)?.date || request.returnDate);
+}
+
+function saleFullyPaidDate(sale) {
+  const invoiceKey = sale.documentNo || sale.id;
+  const linked = data.payments.filter((payment) => payment.invoice === invoiceKey).slice().sort((a, b) => new Date(a.dateRecorded || a.dateCollected || 0) - new Date(b.dateRecorded || b.dateCollected || 0));
+  let cumulative = 0;
+  for (const payment of linked) {
+    cumulative += Number(payment.amount || 0);
+    if (cumulative >= Number(sale.net || 0) - 0.01) return payment.dateRecorded || payment.dateCollected || null;
+  }
+  return null;
+}
+
+function saleCollectionDays(sale) {
+  return daysBetween(sale.date, saleFullyPaidDate(sale));
+}
+
+function catalogItemFor(inventoryRow) {
+  return data.items.find((entry) => entry.code === inventoryRow.code || entry.name === inventoryRow.item) || {};
+}
+
+function averageOf(values) {
+  const clean = values.filter((value) => value !== null && Number.isFinite(value));
+  return clean.length ? Math.round(clean.reduce((sum, value) => sum + value, 0) / clean.length) : null;
+}
+
+function computeValueMetrics() {
+  const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled");
+  const fullyPaidSales = sales.filter((sale) => Number(sale.paid || 0) >= Number(sale.net || 0) - 0.01);
+  const collectionDays = fullyPaidSales.map(saleCollectionDays);
+  const avgDSO = averageOf(collectionDays);
+
+  const allPos = [...(data.purchaseOrders || []), ...(data.inventoryPurchaseOrders || [])];
+  const poDays = allPos.map(poApprovalDays);
+  const avgPoApproval = averageOf(poDays);
+
+  const allFinancialRequests = [...(data.payables || []), ...(data.replenishments || [])];
+  const financeDays = allFinancialRequests.map(financialApprovalDays);
+  const avgExpenseApproval = averageOf(financeDays);
+
+  const demoRequests = data.inventoryDemoRequests || [];
+  const demoDays = demoRequests.map(demoTurnaroundDays);
+  const avgDemoTurnaround = averageOf(demoDays);
+
+  const visibleInventory = byBranch(data.inventory);
+  const nearExpiryRows = visibleInventory.filter((row) => ["Near Expiry", "Critical"].includes(inventoryStatus(row)));
+  const nearExpiryValue = nearExpiryRows.reduce((sum, row) => sum + Number(row.qty || 0) * Number(catalogItemFor(row).price || 0), 0);
+
+  const creditExposure = data.clients.filter((client) => client.creditLimit > 0 && clientBalance(client.name) > client.creditLimit).reduce((sum, client) => sum + (clientBalance(client.name) - client.creditLimit), 0);
+
+  const duplicateClientNames = data.clients.length - new Set(data.clients.map((client) => String(client.name || "").trim().toLowerCase()).filter(Boolean)).size;
+  const duplicateItemCodes = data.items.length - new Set(data.items.map((item) => String(item.code || "").trim().toLowerCase()).filter(Boolean)).size;
+  const duplicateReceipts = data.payments.length - new Set(data.payments.map((payment) => String(payment.receiptNo || "").trim().toLowerCase()).filter(Boolean)).size;
+  const duplicatesBlocked = duplicateClientNames + duplicateItemCodes + duplicateReceipts;
+
+  return {
+    avgDSO, collectionSample: collectionDays.filter((d) => d !== null).length,
+    avgPoApproval, poSample: poDays.filter((d) => d !== null).length,
+    avgExpenseApproval, expenseSample: financeDays.filter((d) => d !== null).length,
+    avgDemoTurnaround, demoSample: demoDays.filter((d) => d !== null).length,
+    nearExpiryValue, nearExpiryCount: nearExpiryRows.length,
+    creditExposure, duplicatesBlocked,
+  };
+}
+
+function cycleTimeCard(icon, title, avgDays, sampleSize, unit, note) {
+  const value = avgDays === null ? "No data yet" : `${avgDays} ${unit}${avgDays === 1 ? "" : "s"}`;
+  const body = `<p>${sampleSize} record${sampleSize === 1 ? "" : "s"} with a recorded completion date.</p>`;
+  return visualCard(icon, title, value, body, avgDays === null ? "info" : "success", note);
+}
+
+let valueAdoptionRequest = 0;
+async function renderValueAnalytics() {
+  const cycleGrid = qs("#value-cycle-time-visuals");
+  const savingsGrid = qs("#value-savings-visuals");
+  const adoptionGrid = qs("#value-adoption-visuals");
+  if (!cycleGrid || !savingsGrid || !adoptionGrid) return;
+  const metrics = computeValueMetrics();
+  cycleGrid.innerHTML = [
+    cycleTimeCard("₱", "Avg. Days to Full Collection (DSO)", metrics.avgDSO, metrics.collectionSample, "day", "Computed from invoice date to the date accumulated payments reached the invoice net total, for fully paid invoices."),
+    cycleTimeCard("✓", "Avg. Purchase Order Approval Time", metrics.avgPoApproval, metrics.poSample, "day", "Computed from purchase order creation date to its first 'Approved' status-history entry."),
+    cycleTimeCard("◇", "Avg. Payable/Expense Approval Time", metrics.avgExpenseApproval, metrics.expenseSample, "day", "Computed from request date to the recorded approval date for payables and employee expenses."),
+    cycleTimeCard("⇄", "Avg. Demo Request Turnaround", metrics.avgDemoTurnaround, metrics.demoSample, "day", "Computed from demo request date to its closing status-history entry (Returned / To Sales)."),
+  ].join("");
+  savingsGrid.innerHTML = [
+    visualCard("!", "Near-Expiry Stock Value Flagged", peso.format(metrics.nearExpiryValue), `<p>${metrics.nearExpiryCount} lot${metrics.nearExpiryCount === 1 ? "" : "s"} currently flagged Near Expiry or Critical, valued at current item price.</p>`, metrics.nearExpiryValue ? "warning" : "success", "Value at risk of write-off if not sold or transferred before expiry — caught here instead of at a physical stock count."),
+    visualCard("◌", "Credit Limit Exposure Flagged", peso.format(metrics.creditExposure), `<p>Combined balance over approved credit limit across all flagged clients.</p>`, metrics.creditExposure ? "warning" : "success", "Computed as each client's outstanding AR balance minus their credit limit, summed only where the balance exceeds the limit."),
+    visualCard("⚠", "Duplicate Records Blocked", String(metrics.duplicatesBlocked), `<p>Duplicate client names, item codes, and payment receipt numbers currently detected.</p>`, metrics.duplicatesBlocked ? "warning" : "success", "Computed by comparing record counts against unique normalized names/codes across clients, items, and payment receipts."),
+  ].join("");
+
+  const requestId = ++valueAdoptionRequest;
+  adoptionGrid.innerHTML = visualCard("↻", "Adoption & Reliability", "Loading...", "<p>Fetching recent activity and backup history...</p>", "info");
+  try {
+    const [logsResult, backupsResult, backupStatusResult] = await Promise.all([
+      MedlaneAPI.listLogs({ limit: 200 }).catch(() => null),
+      MedlaneAPI.listBackups().catch(() => null),
+      MedlaneAPI.backupStatus().catch(() => null),
+    ]);
+    if (requestId !== valueAdoptionRequest) return;
+    const hasLogAccess = Boolean(logsResult);
+    const entries = logsResult?.entries || [];
+    const activeUsers = new Set(entries.filter((entry) => entry.user && entry.user !== "System").map((entry) => entry.user)).size;
+    const actionsLabel = !hasLogAccess ? "Requires log access" : entries.length >= 200 ? "200+" : String(entries.length);
+    const weeklyBackups = (backupsResult?.backups || []).filter((row) => row.backup_type === "weekly");
+    const lastWeeklyBackup = weeklyBackups[0];
+    const uptimeNote = backupStatusResult?.stale === false ? "Current" : backupStatusResult ? "Overdue" : "Unknown";
+    adoptionGrid.innerHTML = [
+      visualCard("◆", "Active Users (recent activity)", hasLogAccess ? String(activeUsers) : "Requires log access", `<p>Distinct named users with a logged action in the most recently loaded audit window.</p>`, "info", "Computed from the last 200 audit log entries (or fewer if the account has less history). System-generated entries are excluded."),
+      visualCard("▤", "Actions Logged", actionsLabel, `<p>Every edit, approval, export, and status change is timestamped and attributed to a user — something a manual/spreadsheet process cannot guarantee.</p>`, "info", "Count of the most recently loaded audit log entries, capped at 200 per load; open Audit Logs for the full history."),
+      visualCard("⛁", "Backup Reliability", uptimeNote, `<p>${lastWeeklyBackup ? `Last weekly backup: ${formatSessionDate(lastWeeklyBackup.created_at)} (${formatBytes(lastWeeklyBackup.size_bytes)}).` : "No weekly backup recorded yet."}</p>`, uptimeNote === "Current" ? "success" : "warning", "Sourced from the Backup module's recovery-point history and freshness check."),
+    ].join("");
+  } catch (error) {
+    if (requestId !== valueAdoptionRequest) return;
+    adoptionGrid.innerHTML = visualCard("◌", "Adoption & Reliability", "Unavailable", "<p>Audit log or backup access is required to show this panel.</p>", "info");
+  }
+}
+
+function systemValueReportHtml(metrics) {
+  const rows = [
+    ["Avg. Days to Full Collection (DSO)", metrics.avgDSO === null ? "No data yet" : `${metrics.avgDSO} day(s)`],
+    ["Avg. Purchase Order Approval Time", metrics.avgPoApproval === null ? "No data yet" : `${metrics.avgPoApproval} day(s)`],
+    ["Avg. Payable/Expense Approval Time", metrics.avgExpenseApproval === null ? "No data yet" : `${metrics.avgExpenseApproval} day(s)`],
+    ["Avg. Demo Request Turnaround", metrics.avgDemoTurnaround === null ? "No data yet" : `${metrics.avgDemoTurnaround} day(s)`],
+    ["Near-Expiry Stock Value Flagged", peso.format(metrics.nearExpiryValue)],
+    ["Credit Limit Exposure Flagged", peso.format(metrics.creditExposure)],
+    ["Duplicate Records Blocked", String(metrics.duplicatesBlocked)],
+  ];
+  return `<section class="payment-request-print">${printableBrandHeaderHtml("System Value Report")}<div class="pr-meta"><span>Generated: <strong>${escapeHtml(fmtDate(today))}</strong></span><span>Branch: <strong>${escapeHtml(data.branch === "all" ? "All Branches" : data.branch)}</strong></span></div><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}</tbody></table><p class="page-description">These metrics measure workflow speed and issues caught before they became a cost, using system-recorded dates and statuses that a manual/spreadsheet process could not reliably capture.</p>${printableFooterHtml()}</section>`;
+}
+
+function printSystemValueReport() {
+  const metrics = computeValueMetrics();
+  const dialog = qs("#payment-request-preview-modal");
+  qs("#payment-request-preview-title").textContent = "System Value Report";
+  qs("#payment-request-preview-content").innerHTML = systemValueReportHtml(metrics);
+  if (!dialog.open) dialog.showModal();
+  log("Printed system value report", "Analytics", fmtDate(today), { save: false });
 }
 
 function renderMasterlists() {
