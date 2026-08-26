@@ -2482,7 +2482,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .collection-detail-modal { width: min(1420px, calc(100vw - 24px)); }
 .collection-detail-modal .collection-detail-preview { width: 100%; max-width: none; }
 
-/* ---- Escape the Audit mini-game ---- */
+/* ---- Luksong Medlane mini-game ---- */
 .game-launcher-panel .panel-header { margin-bottom: 16px; }
 .game-launcher-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .game-leaderboard-trigger { width: 34px; height: 34px; font-size: 15px; opacity: .58; filter: grayscale(.25); }

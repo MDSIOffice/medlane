@@ -1,4 +1,4 @@
-// Escape the Audit — hidden mini-game easter egg (User Settings > Play Game).
+// Luksong Medlane — hidden mini-game easter egg (User Settings > Play Game).
 // Deliberately wrapped in a closure: score, obstacles, and the run loop are not
 // reachable from the devtools console, so tampering has to go through the
 // server API — which is the only thing that actually decides what gets saved
@@ -644,7 +644,7 @@
   document.getElementById("open-game-modal")?.addEventListener("click", () => {
     const modal = document.getElementById("game-modal");
     resetGameState();
-    showOverlay({ tone: "neutral", title: "Escape the Audit", message: `<kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners. It gets faster the higher you score.`, buttonLabel: "Start Game" });
+    showOverlay({ tone: "neutral", title: "Luksong Medlane", message: `<kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners. It gets faster the higher you score.`, buttonLabel: "Start Game" });
     modal?.showModal();
     setupCanvasDPR();
     drawGame();
