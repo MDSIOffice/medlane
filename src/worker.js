@@ -332,6 +332,19 @@ async function editDiscordWebhookMessage(webhookUrl, messageId, { content = "", 
   return { edited: true };
 }
 
+async function deleteDiscordWebhookMessage(webhookUrl, messageId) {
+  if (!webhookUrl || !messageId) return { deleted: false, reason: "Webhook URL or message ID is missing" };
+  const url = new URL(webhookUrl);
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/messages/${encodeURIComponent(messageId)}`;
+  url.searchParams.delete("wait");
+  const response = await fetch(url.toString(), { method: "DELETE" });
+  if (!response.ok && response.status !== 204) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Discord webhook delete failed: ${response.status} ${text}`);
+  }
+  return { deleted: true };
+}
+
 function discordFieldValue(lines, limit = 900, totalCount = lines.length) {
   if (!lines.length) return "None";
   let value = "";
@@ -1742,26 +1755,62 @@ function inventoryStatusFields(inventory) {
   return { fields, flaggedCount, criticalCount: disposal.length + critical.length };
 }
 
-async function runInventoryStatusMonitor(env) {
-  if (!env.DISCORD_INVENTORY_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord inventory monitor skipped", module: "Discord", record: "DISCORD_INVENTORY_WEBHOOK_URL not configured" });
-  const state = await loadDigestState(env, ["inventory"]);
-  const inventory = state.inventory || [];
-  const { fields, flaggedCount, criticalCount } = inventoryStatusFields(inventory);
+function normalizeBranchName(value) {
+  return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+}
+
+async function postInventoryBranchBoard(env, branchLabel, branchInventory) {
+  const { fields, flaggedCount, criticalCount } = inventoryStatusFields(branchInventory);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const description = flaggedCount
     ? `⚠️ **${flaggedCount} item${flaggedCount === 1 ? "" : "s"}** need attention (critical/low stock, near-expiry, or expired).\n🕒 **Latest update:** ${updatedAt} PHT`
     : `✨ All stock levels and expiry dates are clear.\n🕒 **Latest update:** ${updatedAt} PHT`;
-  const embed = { title: "📦 Medlane Inventory Status", color: criticalCount ? 0xef4b4f : flaggedCount ? 0xf59e0b : 0x22c55e, description, fields, timestamp: new Date().toISOString() };
-  const stored = await monitoringState(env, "discord-inventory").catch(() => ({}));
+  const embed = { title: `📦 Medlane Inventory Status — ${branchLabel}`, color: criticalCount ? 0xef4b4f : flaggedCount ? 0xf59e0b : 0x22c55e, description, fields, timestamp: new Date().toISOString() };
+  const stateKey = `discord-inventory-${normalizeBranchName(branchLabel)}`;
+  const stored = await monitoringState(env, stateKey).catch(() => ({}));
   if (stored.messageId) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_INVENTORY_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
-    if (edited?.edited) return saveMonitoringState(env, "discord-inventory", { ...stored, updatedAt: new Date().toISOString() });
-    await recordSystemLog(env, { action: "Discord inventory edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
+    if (edited?.edited) return saveMonitoringState(env, stateKey, { ...stored, updatedAt: new Date().toISOString() });
+    await recordSystemLog(env, { action: "Discord inventory edit failed", module: "Discord", record: `${branchLabel}: ${edited?.error?.message || "Unknown edit failure"}` });
   }
   const sent = await sendDiscordWebhookUrl(env, env.DISCORD_INVENTORY_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
-  if (sent.error) return recordSystemLog(env, { action: "Discord inventory monitor failed", module: "Discord", record: sent.error.message });
-  if (sent.messageId) await saveMonitoringState(env, "discord-inventory", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
-  else await recordSystemLog(env, { action: "Discord inventory message id missing", module: "Discord", record: "Discord post succeeded but did not return a message ID" });
+  if (sent.error) return recordSystemLog(env, { action: "Discord inventory monitor failed", module: "Discord", record: `${branchLabel}: ${sent.error.message}` });
+  if (sent.messageId) await saveMonitoringState(env, stateKey, { messageId: sent.messageId, updatedAt: new Date().toISOString() });
+  else await recordSystemLog(env, { action: "Discord inventory message id missing", module: "Discord", record: `${branchLabel}: Discord post succeeded but did not return a message ID` });
+}
+
+// Deletes the Discord message and clears the tracked state for a branch board that no longer
+// has a matching masterlist branch (removed, or renamed to a different normalized key) — so a
+// stale board doesn't sit there forever showing data that stopped being true.
+async function removeInventoryBranchBoard(env, branchKey) {
+  const stateKey = `discord-inventory-${branchKey}`;
+  const stored = await monitoringState(env, stateKey).catch(() => ({}));
+  if (!stored.messageId) return;
+  await deleteDiscordWebhookMessage(env.DISCORD_INVENTORY_WEBHOOK_URL, stored.messageId).catch((error) => recordSystemLog(env, { action: "Discord inventory cleanup failed", module: "Discord", record: `${branchKey}: ${error.message}` }));
+  await saveMonitoringState(env, stateKey, {}).catch((error) => recordSystemLog(env, { action: "Discord inventory state clear failed", module: "Discord", record: `${branchKey}: ${error.message}` }));
+  await recordSystemLog(env, { action: "Discord inventory board removed", module: "Discord", record: `Branch board no longer in masterlist: ${branchKey}` }).catch(() => null);
+}
+
+async function runInventoryStatusMonitor(env) {
+  if (!env.DISCORD_INVENTORY_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord inventory monitor skipped", module: "Discord", record: "DISCORD_INVENTORY_WEBHOOK_URL not configured" });
+  const state = await loadDigestState(env, ["inventory", "platformBranches"]);
+  const inventory = state.inventory || [];
+  // Branch list comes from the masterlist (Settings > Branches), not a hardcoded pair, so a
+  // newly added branch automatically gets its own board next tick with no code change. Falls
+  // back to whatever branch names actually appear on inventory rows if masterlist is empty,
+  // so this never silently produces zero boards.
+  const configuredBranches = (state.platformBranches || []).filter(Boolean);
+  const branches = configuredBranches.length ? configuredBranches : [...new Set(inventory.map((item) => item.branch).filter(Boolean))].sort();
+  const activeKeys = new Set(branches.map(normalizeBranchName));
+
+  const registry = await monitoringState(env, "discord-inventory-branches").catch(() => ({}));
+  const staleKeys = (registry.keys || []).filter((key) => !activeKeys.has(key));
+
+  await Promise.allSettled([
+    ...branches.map((branch) => postInventoryBranchBoard(env, branch, inventory.filter((item) => normalizeBranchName(item.branch) === normalizeBranchName(branch)))),
+    ...staleKeys.map((key) => removeInventoryBranchBoard(env, key)),
+  ]);
+  await saveMonitoringState(env, "discord-inventory-branches", { keys: [...activeKeys] }).catch((error) => recordSystemLog(env, { action: "Discord inventory registry save failed", module: "Discord", record: error.message }));
 }
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
