@@ -2881,7 +2881,10 @@ export default {
         const elapsedMs = Date.now() - Number(gameSession.startedAt || 0);
         if (elapsedMs > 30 * 60 * 1000) return json({ error: "Game session expired. Play again to submit a score." }, { status: 400 });
         const elapsedSeconds = Math.max(elapsedMs / 1000, 0.5);
-        const maxPlausibleScore = Math.ceil(elapsedSeconds * 140) + 30;
+        // Top speed and spawn-rate difficulty both now scale with score (see game.js),
+        // pushing the realistic ceiling to roughly ~185 pts/sec at max difficulty —
+        // keep this comfortably above that so genuine high-skill runs never get clamped.
+        const maxPlausibleScore = Math.ceil(elapsedSeconds * 230) + 30;
         const score = Math.min(Math.max(0, Math.floor(Number(body.score) || 0)), maxPlausibleScore);
         const existingRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&record_key=eq.${encodeURIComponent(authUser.id)}&select=data`);
         const existing = existingRows[0]?.data || null;
