@@ -1703,17 +1703,17 @@ button.calendar-cell:hover { background: var(--tint); }
 .client-ar-card .report-preview-card { min-height: auto; }
 .report-preview-card small { display: block; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
 .report-preview-card strong { display: block; margin-top: 7px; font-size: 20px; }
-.audit-detail-modal { width: min(820px, calc(100vw - 24px)); }
+.audit-detail-modal { width: min(820px, calc(100vw - 24px)); padding: 24px; }
 .audit-detail-modal .modal-header { margin-bottom: 14px; }
-.audit-detail-summary { display: grid; gap: 8px; margin: 0 24px 16px; border: 1px solid rgba(0, 110, 182, 0.16); border-radius: 22px; background: linear-gradient(135deg, var(--tint), var(--panel-solid)); padding: 18px; }
+.audit-detail-summary { display: grid; gap: 8px; margin: 0 0 16px; border: 1px solid rgba(0, 110, 182, 0.16); border-radius: 22px; background: linear-gradient(135deg, var(--tint), var(--panel-solid)); padding: 18px; }
 .audit-detail-summary .pill { width: fit-content; }
 .audit-detail-summary strong { color: var(--ink); font-size: clamp(20px, 3vw, 28px); line-height: 1.08; overflow-wrap: anywhere; }
 .audit-detail-summary small { color: var(--muted); font-weight: 900; }
-.audit-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 24px 14px; }
+.audit-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 14px; }
 .audit-detail-stat { min-width: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--tint); padding: 14px; }
 .audit-detail-stat small { display: block; color: var(--muted); font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .audit-detail-stat strong { display: block; margin-top: 6px; color: var(--ink); font-size: 18px; line-height: 1.2; overflow-wrap: anywhere; }
-.audit-technical-detail { margin: 0 24px 24px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-solid); }
+.audit-technical-detail { margin: 0 0 24px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-solid); }
 .audit-technical-detail summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; cursor: pointer; list-style: none; }
 .audit-technical-detail summary::-webkit-details-marker { display: none; }
 .audit-technical-detail summary span { color: var(--muted); font-size: 12px; font-weight: 900; }
@@ -1800,7 +1800,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .total-collections-amount small { color: var(--muted); font-weight: 700; }
 .attached-files-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .docs-complete { background: var(--tint-green); color: var(--green); }
-.client-docs-modal { max-width: 480px; width: 100%; }
+.client-docs-modal { max-width: 480px; width: 100%; padding: 24px; }
 .client-docs-list { display: grid; gap: 12px; margin-top: 14px; }
 .client-doc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--tint); }
 .client-doc-info { display: grid; gap: 4px; min-width: 0; }
@@ -1810,7 +1810,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .action-menu-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .action-menu-list button { width: 100%; justify-content: center; }
 .payment-request-more-modal { max-width: 360px; width: 100%; }
-.transfer-review-modal { max-width: 640px; width: 100%; }
+.transfer-review-modal { max-width: 640px; width: 100%; padding: 24px; }
 .transfer-review-list { display: grid; gap: 12px; margin-top: 14px; }
 .transfer-review-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(80px, 0.6fr) minmax(120px, 0.8fr) minmax(110px, 0.7fr); grid-template-areas: "item qty lot expiry" "note note note note"; gap: 10px 12px; align-items: end; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--tint); }
 .transfer-review-item { grid-area: item; display: grid; gap: 4px; min-width: 0; align-self: center; }
@@ -2310,12 +2310,12 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .modal form, .report-preview, .sheet-modal-body { padding: 16px; }
   .memo-compose-modal .modal-header { padding: 16px 16px 0; }
   .memo-compose-modal .modal-actions { padding: 0 16px 16px; }
+  .audit-detail-modal, .client-docs-modal, .transfer-review-modal { padding: 16px; }
   .modal-header { gap: 10px; }
   .modal-header .icon-button { position: absolute; right: 14px; top: 14px; }
   .modal-header h2 { padding-right: 52px; }
   .chart-wide { grid-column: auto; }
   .report-preview-grid { grid-template-columns: 1fr; }
-  .audit-detail-summary, .audit-detail-grid, .audit-technical-detail { margin-left: 16px; margin-right: 16px; }
   .audit-detail-grid { grid-template-columns: 1fr; }
   .audit-technical-detail summary { align-items: flex-start; flex-direction: column; }
   .audit-technical-detail > div > div { grid-template-columns: 1fr; gap: 5px; }
