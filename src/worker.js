@@ -1067,10 +1067,10 @@ function gameBadgeForScore(score) {
 // each level costs more than the last, so early levels come quickly (rewarding a
 // first run) while high levels take sustained, repeated play to "flex".
 function gameXpForLevel(level) {
-  return 200 * (Math.max(level, 1) - 1) ** 2;
+  return 1800 * (Math.max(level, 1) - 1) ** 2;
 }
 function gameLevelForXp(xp) {
-  return Math.floor(Math.sqrt(Math.max(xp, 0) / 200)) + 1;
+  return Math.floor(Math.sqrt(Math.max(xp, 0) / 1800)) + 1;
 }
 
 // Writes directly to the "logs" module so a save's trail survives even if the

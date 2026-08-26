@@ -1008,12 +1008,19 @@
             <span class="game-hud-item">Lv.<strong id="game-level">1</strong></span>
             <span class="game-hud-badge-chip" id="game-hud-badge" hidden></span>
           </div>
+          <div class="game-countdown" id="game-countdown" hidden></div>
           <div class="game-overlay" id="game-overlay">
-            <div class="game-overlay-card">
-              <div class="game-overlay-icon" id="game-overlay-icon" data-tone="neutral"><img src="medlane.jpg" alt="" /></div>
-              <h3 id="game-overlay-title">Luksong Medlane</h3>
-              <p id="game-overlay-message"><kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners.</p>
-              <button class="primary-button" id="game-start-button" type="button">Start Game</button>
+            <div class="game-overlay-layout">
+              <div class="game-overlay-card">
+                <div class="game-overlay-icon" id="game-overlay-icon" data-tone="neutral"><img src="medlane.jpg" alt="" /></div>
+                <h3 id="game-overlay-title">Luksong Medlane</h3>
+                <p id="game-overlay-message"><kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners.</p>
+                <button class="primary-button" id="game-start-button" type="button">Start Game</button>
+              </div>
+              <div class="game-overlay-leaderboard" id="game-overlay-leaderboard" hidden>
+                <h4>🏆 Top Scores</h4>
+                <ol id="game-overlay-leaderboard-list"></ol>
+              </div>
             </div>
           </div>
         </div>

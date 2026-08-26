@@ -2493,7 +2493,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .game-badge-chip[data-tier="3"] { background: #fdf2c8; color: #92660a; box-shadow: 0 6px 16px -6px rgba(217, 160, 10, .45); }
 .game-badge-chip[data-tier="4"] { background: linear-gradient(120deg, #dbeafe, #ede9fe); color: #4338ca; box-shadow: 0 6px 16px -6px rgba(79, 70, 229, .45); }
 .game-level-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 900; letter-spacing: .01em; background: var(--chip-blue-bg); color: var(--text-on-blue-chip); box-shadow: 0 6px 16px -6px rgba(0, 110, 182, .4); }
-#game-leaderboard-tabs { margin-bottom: 14px; }
+#game-leaderboard-tabs { justify-content: flex-start; margin-bottom: 14px; }
 
 .game-modal { width: min(820px, calc(100vw - 24px)); background: var(--panel-solid); }
 .game-modal-inner { padding: 24px; }
@@ -2506,7 +2506,17 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .game-hud-item strong { font-size: 14px; font-variant-numeric: tabular-nums; }
 .game-hud-badge-chip { margin-left: auto; background: rgba(16, 33, 61, .78); color: #fde68a; border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 800; backdrop-filter: blur(4px); }
 .game-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(16, 33, 61, .58), rgba(16, 33, 61, .74)); backdrop-filter: blur(2px); }
+.game-overlay-layout { display: flex; align-items: stretch; justify-content: center; gap: 20px; flex-wrap: wrap; max-width: 680px; padding: 0 20px; }
 .game-overlay-card { text-align: center; max-width: 420px; padding: 28px 26px; }
+.game-overlay-leaderboard { width: 220px; text-align: left; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .16); border-radius: 16px; padding: 16px 16px; align-self: center; max-height: 300px; overflow-y: auto; backdrop-filter: blur(4px); }
+.game-overlay-leaderboard h4 { margin: 0 0 10px; color: #fff; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; opacity: .85; }
+.game-overlay-leaderboard ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; counter-reset: none; }
+.game-overlay-leaderboard li { display: flex; align-items: center; gap: 8px; color: rgba(255, 255, 255, .9); font-size: 12.5px; padding: 3px 6px; border-radius: 8px; }
+.game-overlay-leaderboard li strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.game-overlay-leaderboard li.is-me { background: rgba(90, 180, 255, .24); font-weight: 800; }
+.game-countdown { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: rgba(16, 33, 61, .3); pointer-events: none; font-size: 72px; font-weight: 900; color: #fff; text-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+.game-countdown.pop { animation: game-countdown-pop .6s ease; }
+@keyframes game-countdown-pop { 0% { transform: scale(.4); opacity: 0; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 .game-overlay-icon { width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 20px; background: #fff; padding: 9px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px #5ab4ff, 0 14px 30px -8px rgba(90, 180, 255, .55); }
 .game-overlay-icon img { width: 100%; height: 100%; object-fit: contain; }
 .game-overlay-icon[data-tone="win"] { box-shadow: 0 0 0 3px #fbbf24, 0 14px 30px -8px rgba(251, 191, 36, .6); }
