@@ -24,17 +24,17 @@
     <meta property="og:title" content="Medlane OS" />
     <meta property="og:description" content="Secure operations platform for Medlane Diagnostic Solutions, Inc." />
     <meta property="og:url" content="https://medlanesolutions.com/" />
-    <meta property="og:image" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260730b" />
-    <meta property="og:image:secure_url" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260730b" />
+    <meta property="og:image" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260826a" />
+    <meta property="og:image:secure_url" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260826a" />
     <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Medlane Diagnostic Solutions logo" />
-    <meta property="og:updated_time" content="2026-07-30T18:00:00+00:00" />
+    <meta property="og:updated_time" content="2026-08-26T00:00:00+00:00" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Medlane OS" />
     <meta name="twitter:description" content="Secure operations platform for Medlane Diagnostic Solutions, Inc." />
-    <meta name="twitter:image" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260730b" />
+    <meta name="twitter:image" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260826a" />
     <meta name="twitter:image:alt" content="Medlane Diagnostic Solutions logo" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -738,6 +738,14 @@
             <div class="modal-actions full"><button class="primary-button" type="submit">Save Settings</button></div>
           </form>
         </article>
+        <article class="panel settings-panel game-launcher-panel">
+          <div class="panel-header"><div><p class="eyebrow">Break Time</p><h2>Escape the Audit</h2><p class="page-description">Dodge the incoming audits. Beat your best run.</p></div></div>
+          <div class="game-launcher-row">
+            <button class="primary-button" id="open-game-modal" type="button">Play Game</button>
+            <span class="game-badge-chip" id="game-best-badge-chip" hidden><span id="game-best-badge-icon">🏆</span><span id="game-best-badge-text"></span></span>
+            <button class="icon-button game-leaderboard-trigger" id="open-game-leaderboard" type="button" title="Leaderboard" aria-label="Leaderboard">🏆</button>
+          </div>
+        </article>
       </section>
 
       <section class="section" id="settings">
@@ -982,6 +990,42 @@
       </form>
     </dialog>
 
+    <dialog class="modal game-modal" id="game-modal">
+      <div class="game-modal-inner">
+        <div class="modal-header">
+          <div><p class="eyebrow">Mini Game</p><h2>Escape the Audit</h2></div>
+          <div class="game-modal-header-actions">
+            <button class="icon-button" id="game-sound-toggle" type="button" title="Mute sound" aria-label="Toggle sound">🔊</button>
+            <button class="icon-button" id="game-modal-close" type="button" aria-label="Close">x</button>
+          </div>
+        </div>
+        <div class="game-stage">
+          <canvas id="game-canvas" width="760" height="320" aria-label="Escape the Audit game canvas"></canvas>
+          <div class="game-hud">
+            <span class="game-hud-item">Score<strong id="game-score">0</strong></span>
+            <span class="game-hud-item">Best<strong id="game-best">0</strong></span>
+            <span class="game-hud-badge-chip" id="game-hud-badge" hidden></span>
+          </div>
+          <div class="game-overlay" id="game-overlay">
+            <div class="game-overlay-card">
+              <div class="game-overlay-icon" id="game-overlay-icon">🏃</div>
+              <h3 id="game-overlay-title">Escape the Audit</h3>
+              <p id="game-overlay-message">Press <kbd>Space</kbd>, click, or tap to jump over incoming audit stamps. Survive as long as you can.</p>
+              <button class="primary-button" id="game-start-button" type="button">Start Game</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="modal report-modal" id="game-leaderboard-modal">
+      <div class="report-preview">
+        <div class="modal-header"><div><p class="eyebrow">Hall of Fame</p><h2>Top Scorers</h2></div><button class="icon-button" id="game-leaderboard-close" type="button" aria-label="Close">x</button></div>
+        <div class="table-card compact-table"><table id="game-leaderboard-table"></table></div>
+        <div class="modal-actions"><button class="ghost-button" id="game-leaderboard-cancel" type="button">Close</button></div>
+      </div>
+    </dialog>
+
     <div class="toast" id="toast"></div>
     <script src="scripts/vendor/pdf-lib.min.js"></script>
     <script src="scripts/config-data.js"></script>
@@ -990,6 +1034,7 @@
     <script src="scripts/ui-utils.js"></script>
     <script src="scripts/modules.js"></script>
     <script src="scripts/events-bootstrap.js"></script>
+    <script src="scripts/game.js"></script>
     <script src="scripts/landing-motion.js"></script>
     <script src="scripts/app-motion.js"></script>
   </body>

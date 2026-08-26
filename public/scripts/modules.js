@@ -774,6 +774,7 @@ function showSection(sectionId, options = {}) {
   if (sectionId === "collections") setTimeout(renderCollectionMapVisual, 80);
   if (sectionId === "backup") renderBackup();
   if (sectionId === "logs") renderLogs();
+  if (sectionId === "user-settings" && typeof loadGameBestBadge === "function") loadGameBestBadge();
 }
 
 function renderBranchFilter() {
