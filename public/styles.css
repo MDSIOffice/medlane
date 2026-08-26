@@ -817,6 +817,7 @@ select, .search-input {
 .primary-button::after { content: ""; position: absolute; inset: -60% auto -60% -42%; width: 36%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.38), transparent); transform: rotate(18deg); transition: left .52s cubic-bezier(.16,.84,.44,1); pointer-events: none; }
 .primary-button:hover::after { left: 108%; }
 .primary-button:disabled { cursor: wait; opacity: .78; transform: none; }
+.ghost-button:disabled, .mini-button:disabled { cursor: not-allowed; opacity: .5; transform: none; box-shadow: none; }
 .primary-button.is-loading { display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
 .primary-button.is-loading::before { content: ""; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.38); border-top-color: #fff; border-radius: 999px; animation: spin .8s linear infinite; }
 .save-status-indicator { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-solid); color: var(--muted); box-shadow: var(--shadow-soft); font-size: 12px; font-weight: 800; }

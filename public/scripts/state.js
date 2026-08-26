@@ -618,6 +618,6 @@ function includesSearch(values) {
 }
 function byBranch(items, key = "branch") { return data.branch === "all" ? items : items.filter((item) => item[key] === data.branch || item[key] === "Both" || item.area === data.branch || item.office === data.branch || item.dealer === data.branch); }
 function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + Number(days)); return d; }
-function fmtDate(date) { return new Date(date).toISOString().slice(0, 10); }
+function fmtDate(date) { return new Date(date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); }
 function daysUntil(date) { return Math.ceil((new Date(date) - today) / 86400000); }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]); }

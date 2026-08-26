@@ -400,7 +400,7 @@ async function approvePaymentRequest(cvNo) {
   request.approvedBy = by;
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
-  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updates only after deposit.`, by });
+  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updates only after deposit.`, by });
   const saveResult = await persistRecords({ paymentRequests: [request], payments: newPayments });
   if (!saveResult?.ok) return;
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
@@ -446,7 +446,7 @@ async function cancelPaymentRequest(cvNo) {
   request.cancelledAt = fmtDate(today);
   request.cancelReason = reason;
   request.history = paymentRequestHistory(request);
-  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Cancelled", note: `Cancelled by ${by}. Reason: ${reason}`, by });
+  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Cancelled", note: `Cancelled by ${by}. Reason: ${reason}`, by });
   const saveResult = await persistRecords({ paymentRequests: [request], payments: payment ? [payment] : [], sales: sale ? [sale] : [] });
   if (!saveResult?.ok) return;
   log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`, { save: false });
@@ -2091,7 +2091,7 @@ function renderInventoryWorkflowTabs() {
 
 function recordTransferHistory(transfer, action, notes) {
   const itemSummary = (transfer.lines || []).map((line) => `${line.item} (${line.dispatchedQty ?? line.requestedQty ?? 0})`).join(", ");
-  const entry = { id: `TH-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), transferId: transfer.id, action, item: itemSummary, itemCount: (transfer.lines || []).length, from: transfer.from, to: transfer.to, user: currentUser?.name || "System User", notes };
+  const entry = { id: `TH-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), transferId: transfer.id, action, item: itemSummary, itemCount: (transfer.lines || []).length, from: transfer.from, to: transfer.to, user: currentUser?.name || "System User", notes };
   data.transferHistory.unshift(entry);
   data.transferHistory = data.transferHistory.slice(0, 80);
   return entry;
@@ -2910,7 +2910,7 @@ async function acknowledgeMemo(id) {
 function memoPrintDateLabel(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }).toUpperCase();
+  return parsed.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).toUpperCase();
 }
 
 function memoPrintableHtml(memo) {
@@ -3249,11 +3249,11 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
       request.status = "Completed";
       request.completedAt = fmtDate(today);
       request.completedBy = by;
-      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status: "Completed", note: `Marked Deposited by ${by}. Invoice paid amount updated.`, by });
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Completed", note: `Marked Deposited by ${by}. Invoice paid amount updated.`, by });
     } else {
       request.requestStatus = "Approved";
       request.status = "Approved";
-      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, note: `${status} recorded by ${by}. Invoice paid amount was not updated.`, by });
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, note: `${status} recorded by ${by}. Invoice paid amount was not updated.`, by });
     }
   }
   const affectedSales = [...new Map(payments.map((payment) => saleForPayment(payment)).filter(Boolean).map((sale) => [sale.documentNo || sale.id, sale])).values()];
@@ -3275,7 +3275,7 @@ function syncCollectionContactsForBalances() {
 }
 
 function collectionStatusHistory(status) {
-  return [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, user: currentUser?.name || "System User" }];
+  return [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, user: currentUser?.name || "System User" }];
 }
 
 function syncPostedCollectionReminders() {
@@ -3924,7 +3924,7 @@ function updateCollectionContact(client, status) {
   contact.chequeInvoice = status === "Cheque Available" ? chequeInvoice.trim() : "";
   const channelText = contact.channels?.length ? ` via ${contact.channels.join(" + ")}` : "";
   contact.notes = status === "Answered" ? `Client answered this week's follow-up${channelText}.` : status === "Cheque Available" ? `Cheque is available for ${contact.chequeInvoice}${channelText}; coordinate pickup or deposit.` : status === "Unreached" ? `Could not reach client${channelText}; try another channel.` : `No reply${channelText}; schedule another follow-up.`;
-  data.collectionContactHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), client, area: contact.area, invoice: contact.chequeInvoice || "", channels: contact.channels?.join(" + ") || "Not set", status, employee: contact.employee, notes: contact.notes });
+  data.collectionContactHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), client, area: contact.area, invoice: contact.chequeInvoice || "", channels: contact.channels?.join(" + ") || "Not set", status, employee: contact.employee, notes: contact.notes });
   data.collectionContactHistory = data.collectionContactHistory.slice(0, 40);
   log("Updated collection contact map", "Collections", `${client}: ${status}`);
   saveData();
@@ -4312,7 +4312,7 @@ async function updateProductIssueStatus(id, status) {
   report.resolvedBy = status === "Resolved" ? resolvedBy : status === "Open" ? "" : report.resolvedBy;
   report.resolvedAt = status === "Resolved" ? fmtDate(today) : "";
   report.history = productIssueHistory(report);
-  report.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), status, note: note || `Marked ${status}`, by: currentUser?.name || "System User" });
+  report.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, note: note || `Marked ${status}`, by: currentUser?.name || "System User" });
   if (note) {
     const tag = `Action: ${actingRole} — ${note}`;
     report.actionsTaken = report.actionsTaken ? `${report.actionsTaken}\n${tag}` : tag;
@@ -4340,7 +4340,7 @@ function addMonthsToDate(date, months) {
 }
 
 function itemForecastMonthKeys() { return [2, 1, 0].map((offset) => fmtDate(addMonthsToDate(today, -offset)).slice(0, 7)); }
-function itemForecastMonthLabels() { return [2, 1, 0].map((offset) => addMonthsToDate(today, -offset).toLocaleString("en-US", { month: "short" })); }
+function itemForecastMonthLabels() { return [2, 1, 0].map((offset) => addMonthsToDate(today, -offset).toLocaleString("en-US", { month: "short", timeZone: "Asia/Manila" })); }
 
 function itemForecastRows(allocationMonths) {
   const fromDate = fmtDate(addMonthsToDate(today, -3));
@@ -4431,7 +4431,7 @@ function renderItemForecast() {
 }
 
 function itemForecastReportHtml(rows, monthLabels, allocationMonths) {
-  const generatedAt = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const generatedAt = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
   return `<section class="payment-request-print">${printableBrandHeaderHtml("Item Forecast")}<div class="pr-meta"><span>Allocation Window: <strong>+${allocationMonths} month${allocationMonths === 1 ? "" : "s"}</strong></span><span>Generated: <strong>${escapeHtml(generatedAt)}</strong></span><span>Items: <strong>${rows.length}</strong></span></div><table><thead><tr><th>Item Code</th><th>Item Name</th><th>Brand</th><th>${escapeHtml(monthLabels[0])} Sales</th><th>${escapeHtml(monthLabels[1])} Sales</th><th>${escapeHtml(monthLabels[2])} Sales</th><th>Avg Monthly (3mo)</th><th>Projected Demand</th><th>Current Stock</th><th>Suggested Restock</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.item.code)}</td><td>${escapeHtml(row.item.name)}</td><td>${escapeHtml(row.item.brand || "-")}</td><td>${row.monthlyQty[0]}</td><td>${row.monthlyQty[1]}</td><td>${row.monthlyQty[2]}</td><td>${row.avgMonthlyQty.toFixed(1)}</td><td>${Math.round(row.projectedDemand)}</td><td>${row.currentStock}</td><td>${row.suggestedRestock}</td></tr>`).join("") || `<tr><td colspan="10">No items to report for the current filters.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
 }
 
@@ -4853,6 +4853,8 @@ function payableAttachmentCell(payable) {
 
 function payable2307Cell(payable) {
   if ((payable.requestStatus || payable.status) !== "Approved") return "-";
+  const hasWithholding = Number(payable.withholdingTax1 || 0) > 0 || Number(payable.withholdingTax2 || 0) > 0;
+  if (!hasWithholding) return `<button class="ghost-button" type="button" disabled title="No withholding tax was applied to this payable">Generate 2307</button>`;
   const supplier = data.suppliers.find((entry) => entry.name === payable.supplier);
   if (!supplier?.tin) return `<small class="field-error-message">Missing supplier TIN</small>`;
   return `<button class="ghost-button" data-generate2307="${escapeHtml(payable.id)}" type="button">Generate 2307</button>`;
@@ -5412,7 +5414,7 @@ function recordReconciliationRun(findings, passRate, scope) {
   const high = findings.filter((item) => item[3] === "High").length;
   const medium = findings.filter((item) => item[3] === "Medium").length;
   const low = findings.filter((item) => item[3] === "Low").length;
-  const run = { id: `REC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), range: scope.range.label, period: qs("#recon-period")?.value || "month", findings: findings.length, high, medium, low, passRate };
+  const run = { id: `REC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), range: scope.range.label, period: qs("#recon-period")?.value || "month", findings: findings.length, high, medium, low, passRate };
   data.reconHistory.unshift(run);
   data.reconHistory = data.reconHistory.slice(0, 30);
   return run;
@@ -5498,7 +5500,7 @@ function canUpdateDeliveryStatus() { return ["Accounting", "Superadmin", "CEO"].
 function formatSessionDate(value) {
   if (!value) return "-";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 function formatBytes(value) {
   const bytes = Number(value || 0);
@@ -5986,7 +5988,7 @@ function handleWorkflowAction(action) {
       }
     });
     if (count) {
-      data.collectionContactHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }), area: "All", client: "Batch reminder", channels: "Email", status: "Unreached", employee: currentUser?.name || "System User", notes: `${count} pending clients reminded.` });
+      data.collectionContactHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), area: "All", client: "Batch reminder", channels: "Email", status: "Unreached", employee: currentUser?.name || "System User", notes: `${count} pending clients reminded.` });
       log("Sent batch collection reminders", "Collections", `${count} clients`);
       saveData();
       renderAll();
@@ -6395,7 +6397,7 @@ function buildInventoryPurchaseOrder(values) {
 }
 
 function poHistoryTimestamp() {
-  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 
 function poHistory(po) {
