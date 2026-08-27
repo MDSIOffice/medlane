@@ -2296,7 +2296,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   min-height: 100vh;
   margin: 0;
   padding: 0;
-  background: #ffffff;
+  background: var(--lr-navy);
   color: var(--lr-ink);
   font-family: var(--lr-body);
 }
@@ -2454,8 +2454,8 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-map-link { font-family: var(--lr-body); font-weight: 600; font-size: 13px; color: var(--lr-blue); text-decoration: none; }
 .lr-map-link:hover { text-decoration: underline; }
 
-.lr-nav { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px var(--lr-pad-x); background: rgba(6,47,86,.5); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(61,179,205,.18); transition: padding .3s ease, background .3s ease, border-color .3s ease, box-shadow .3s ease; }
-.lr-nav--scrolled { padding-top: 9px; padding-bottom: 9px; background: rgba(5,17,32,.82); border-bottom-color: rgba(61,179,205,.32); box-shadow: 0 14px 40px rgba(0,0,0,.4); }
+.lr-nav { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px var(--lr-pad-x); background: rgba(5,16,32,.9); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(61,179,205,.16); transition: padding .3s ease, background .3s ease, border-color .3s ease, box-shadow .3s ease; }
+.lr-nav--scrolled { padding-top: 10px; padding-bottom: 10px; background: rgba(3,11,24,.96); border-bottom-color: rgba(61,179,205,.3); box-shadow: 0 14px 40px rgba(0,0,0,.45); }
 .lr-nav--scrolled .lr-logo { width: 36px; height: 36px; }
 .lr-nav--scrolled .lr-logo img { width: 26px; height: 26px; }
 .lr-nav--scrolled .lr-brand-text small { opacity: 0; max-height: 0; margin-top: 0; transition: opacity .25s ease, max-height .3s ease, margin-top .3s ease; }
@@ -2469,7 +2469,9 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-brand-text strong { display: block; font-family: var(--lr-display); font-weight: 800; font-size: 20px; color: var(--lr-light); line-height: 1; letter-spacing: .01em; }
 .lr-brand-text small { display: block; font-family: var(--lr-body); font-weight: 700; font-size: 10px; letter-spacing: .11em; text-transform: uppercase; color: rgba(125,211,252,.92); margin-top: 3px; white-space: nowrap; }
 .lr-nav-links { position: relative; display: flex; gap: 30px; }
-.lr-nav-links a { position: relative; font-family: var(--lr-body); font-weight: 500; font-size: 14px; color: rgba(248,250,252,.82); text-decoration: none; padding: 4px 2px; transition: color .22s ease, transform .18s ease; }
+.lr-nav:not(.lr-nav--scrolled) .lr-brand-text strong,
+.lr-nav:not(.lr-nav--scrolled) .lr-nav-links a { text-shadow: 0 1px 14px rgba(0,0,0,.45); }
+.lr-nav-links a { position: relative; font-family: var(--lr-body); font-weight: 500; font-size: 14px; color: rgba(248,250,252,.92); text-decoration: none; padding: 4px 2px; transition: color .22s ease, transform .18s ease; }
 .lr-nav-links a:hover { color: #fff; }
 .lr-nav-links a.is-active { color: var(--lr-cyan); }
 /* underline on the active link (JS ink bar layers the animated glow on top) */
