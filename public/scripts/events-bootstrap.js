@@ -1010,20 +1010,20 @@ qs("#stock-receipt-history-table")?.addEventListener("click", (event) => {
   if (detail) return showStockReceiptDetail(detail.dataset.stockReceiptDetail);
 });
 qs("#stock-receipt-history-modal")?.addEventListener("click", (event) => { if (event.target.id === "stock-receipt-history-modal") qs("#stock-receipt-history-modal").close(); });
-qs("#stock-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#stock-sheet-modal").close()));
+qs("#stock-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#stock-sheet-modal").close(), { keepsDraft: true }));
 // Cancel is a deliberate "throw this away" action, so it also drops the autosaved draft — unlike
-// the X/Escape guard above, which still warns about losing changes but (now) actually keeps them.
+// the X/Escape guard above, which keeps the draft for next time.
 qs("#stock-sheet-cancel").addEventListener("click", () => { clearStockSheetDraft(); qs("#stock-sheet-modal").close(); });
-guardDialogEscape(qs("#stock-sheet-modal"));
+guardDialogEscape(qs("#stock-sheet-modal"), { keepsDraft: true });
 qs("#add-stock-sheet-row").addEventListener("click", addStockSheetRow);
 qs("#stock-sheet-modal").addEventListener("input", saveStockSheetDraft);
 qs("#stock-sheet-modal").addEventListener("change", saveStockSheetDraft);
 qs("#stock-sheet-modal").addEventListener("click", (event) => {
   if (event.target.closest(".remove-sheet-row, #add-stock-sheet-row")) setTimeout(saveStockSheetDraft, 0);
 });
-qs("#transfer-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#transfer-sheet-modal").close()));
+qs("#transfer-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#transfer-sheet-modal").close(), { keepsDraft: true }));
 qs("#transfer-sheet-cancel").addEventListener("click", () => { clearTransferSheetDraft(); qs("#transfer-sheet-modal").close(); });
-guardDialogEscape(qs("#transfer-sheet-modal"));
+guardDialogEscape(qs("#transfer-sheet-modal"), { keepsDraft: true });
 qs("#transfer-sheet-modal").addEventListener("input", saveTransferSheetDraft);
 qs("#transfer-sheet-modal").addEventListener("change", saveTransferSheetDraft);
 qs("#transfer-sheet-modal").addEventListener("click", (event) => {

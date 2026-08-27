@@ -28,7 +28,16 @@ function paymentStatusForSale(sale) {
   if (Number(sale.paid || 0) > 0) return "Partially Paid";
   return "Unpaid";
 }
-function confirmCloseDialog() {
+function confirmCloseDialog({ keepsDraft = false } = {}) {
+  if (keepsDraft) {
+    return confirmDetailsModal({
+      eyebrow: "Close Window",
+      title: "Close this window?",
+      note: "What you have entered is kept as a draft on this device and will be waiting when you reopen this window. Nothing is submitted yet. To throw the entries away instead, use Cancel.",
+      confirmLabel: "Close, Keep Draft",
+      danger: false,
+    });
+  }
   return confirmDetailsModal({
     eyebrow: "Unsaved Changes",
     title: "Close this window?",
@@ -37,8 +46,8 @@ function confirmCloseDialog() {
     danger: true,
   });
 }
-async function guardedDialogClose(closeFn) {
-  if (await confirmCloseDialog()) closeFn();
+async function guardedDialogClose(closeFn, options) {
+  if (await confirmCloseDialog(options)) closeFn();
 }
 // A second, deliberate click-through before anything is actually written to the
 // database — separate from any module-specific confirm dialog (which describes
@@ -55,10 +64,10 @@ function confirmFinalSave(title = "Save this change?", note = "This will write t
     danger: true,
   });
 }
-function guardDialogEscape(dialog) {
+function guardDialogEscape(dialog, options) {
   dialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
-    guardedDialogClose(() => dialog.close());
+    guardedDialogClose(() => dialog.close(), options);
   });
 }
 function downloadCsv(filename, rows) {

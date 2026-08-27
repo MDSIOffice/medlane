@@ -258,16 +258,45 @@ async function recordSystemLog(env, { action, module, record }) {
   }).catch(() => null);
 }
 
+// Resend's API caps at 10 requests/second and answers a burst with HTTP 429
+// ("Too many requests. You can only make 10 requests per second."). The daily/weekly
+// digest fans out one send per recipient and used to fire them all at once, so past a
+// handful of recipients every extra email 429'd and silently never arrived. Funnel every
+// Resend call through one promise chain with a minimum gap (~6/sec, comfortably under the
+// limit) and retry a 429 with backoff so a brief spike never drops a message.
+const RESEND_MIN_GAP_MS = 160;
+let resendGate = Promise.resolve();
+let resendLastAt = 0;
+function paceResend() {
+  const next = resendGate.then(async () => {
+    const wait = resendLastAt + RESEND_MIN_GAP_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+    resendLastAt = Date.now();
+  });
+  resendGate = next.catch(() => {});
+  return next;
+}
+
+async function resendEmailRequest(env, body) {
+  for (let attempt = 0; ; attempt++) {
+    await paceResend();
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (response.status !== 429 || attempt >= 5) return response;
+    const retryAfter = Number(response.headers.get("retry-after"));
+    await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 5000) : 400 * (attempt + 1));
+  }
+}
+
 async function sendResendEmail(env, { to, subject, html }) {
   if (!env.RESEND_API_KEY) {
     await recordSystemLog(env, { action: "Email skipped", module: "Email", record: `${to} — ${subject} (RESEND_API_KEY not configured)` });
     return { sent: false, provider: "resend", reason: "RESEND_API_KEY is not configured" };
   }
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ from: resendFrom(env), to: [to], subject, html }),
-  });
+  const response = await resendEmailRequest(env, { from: resendFrom(env), to: [to], subject, html });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     await recordSystemLog(env, { action: "Email failed", module: "Email", record: `${to} — ${subject}: ${payload?.message || payload?.error || response.status}` });
@@ -2033,21 +2062,33 @@ function manilaPeriodKeys(scheduled) {
 async function claimAutomationPeriod(env, jobKey, periodKey) {
   const stateKey = `automation-once-${jobKey}`;
   const state = await monitoringState(env, stateKey).catch(() => ({}));
-  if (state.lastPeriod === periodKey) return false;
-  await saveMonitoringState(env, stateKey, { lastPeriod: periodKey, lastAttemptAt: new Date().toISOString() }).catch(() => null);
+  if (state.lastPeriod === periodKey) return false; // already completed for this period
+  // Hold a short in-flight lock so two overlapping 5-minute invocations (or a retry landing
+  // while the first attempt is still running) don't double-fire the job. The lock expires
+  // after ~9 minutes — longer than one 5-minute tick, so a genuinely killed attempt is
+  // retried on a later tick within the same 18:00 window rather than lost.
+  const attemptAt = state.attemptPeriod === periodKey ? new Date(state.attemptAt || 0).getTime() : 0;
+  if (attemptAt && Date.now() - attemptAt < 9 * 60 * 1000) return false;
+  await saveMonitoringState(env, stateKey, { ...state, attemptPeriod: periodKey, attemptAt: new Date().toISOString() }).catch(() => null);
   return true;
 }
 
 async function runOncePerPeriod(env, jobKey, periodKey, fn) {
   if (!(await claimAutomationPeriod(env, jobKey, periodKey))) return null;
+  const stateKey = `automation-once-${jobKey}`;
   try {
     const result = await fn();
+    // Mark completion only after fn() actually succeeds. If the invocation is hard-killed
+    // mid-run (CPU / subrequest limit) the catch below never runs, but because completion
+    // is not recorded here, the in-flight lock in claimAutomationPeriod simply expires and
+    // the next tick retries — instead of the job being lost for the whole day/week.
+    await saveMonitoringState(env, stateKey, { lastPeriod: periodKey, completedAt: new Date().toISOString() }).catch(() => null);
     await recordSystemLog(env, { action: "Automation job completed", module: "Automation", record: `${jobKey} (${periodKey})` }).catch(() => null);
     return result;
   } catch (error) {
-    // Release the claim so the next 5-minute tick within the same 18:00 hour retries instead of
-    // treating a failed attempt as "done for the period".
-    await saveMonitoringState(env, `automation-once-${jobKey}`, { lastPeriod: null, lastAttemptAt: new Date().toISOString(), lastError: error.message }).catch(() => null);
+    // Drop the in-flight lock so the next 5-minute tick within the same 18:00 hour retries
+    // instead of waiting out the lock.
+    await saveMonitoringState(env, stateKey, { attemptPeriod: null, attemptAt: null, lastAttemptAt: new Date().toISOString(), lastError: error.message }).catch(() => null);
     await recordSystemLog(env, { action: "Automation job failed", module: "Automation", record: `${jobKey} (${periodKey}): ${error.message}` }).catch(() => null);
     throw error;
   }
@@ -2069,13 +2110,17 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // fired — this internal hour check is what has always driven the real sends.
   if (scheduled.hour === "18") {
     const { dayKey, monthKey, yearKey } = manilaPeriodKeys(scheduled);
+    const minute = Number(scheduled.minute);
+    // Stagger the heavy 18:00 jobs onto separate 5-minute invocations. A single Worker run
+    // doing a digest AND a full-state gzip backup AND the monitors together is what exhausts
+    // the invocation (subrequest / CPU limits) on Fridays and the 1st — after which the
+    // killed job used to be skipped for the whole period. Each job still has 15+ minutes of
+    // retry room left in the 18:00 hour after its start minute.
     if (!["Sat", "Sun"].includes(scheduled.weekday)) tasks.push(runOncePerPeriod(env, "daily-digest", dayKey, () => runDailyDigest(env)));
-    if (scheduled.weekday === "Fri") {
-      tasks.push(runOncePerPeriod(env, "weekly-digest", dayKey, () => runWeeklyDigest(env)));
-      tasks.push(runOncePerPeriod(env, "weekly-backup", dayKey, () => createBackup(env, "weekly", null)));
-    }
-    if (scheduled.day === "01") tasks.push(runOncePerPeriod(env, "monthly-backup", monthKey, () => createBackup(env, "monthly", null)));
-    if (scheduled.month === "01" && scheduled.day === "01") tasks.push(runOncePerPeriod(env, "yearly-backup", yearKey, () => createBackup(env, "yearly", null)));
+    if (scheduled.weekday === "Fri" && minute >= 10) tasks.push(runOncePerPeriod(env, "weekly-digest", dayKey, () => runWeeklyDigest(env)));
+    if (scheduled.weekday === "Fri" && minute >= 20) tasks.push(runOncePerPeriod(env, "weekly-backup", dayKey, () => createBackup(env, "weekly", null)));
+    if (scheduled.day === "01" && minute >= 30) tasks.push(runOncePerPeriod(env, "monthly-backup", monthKey, () => createBackup(env, "monthly", null)));
+    if (scheduled.month === "01" && scheduled.day === "01" && minute >= 40) tasks.push(runOncePerPeriod(env, "yearly-backup", yearKey, () => createBackup(env, "yearly", null)));
   }
   const results = await Promise.allSettled(tasks);
   for (const result of results) {
