@@ -5,7 +5,7 @@
   const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // Scrollytelling: reveal sections as they enter the viewport instead of all-at-once on load.
-  const revealTargets = page.querySelectorAll(".landing-values, .landing-capabilities, .landing-photo-story, .landing-live-ops, .landing-gallery, .landing-locations, .landing-footer");
+  const revealTargets = page.querySelectorAll(".lr-section:not(.lr-hero)");
   if ("IntersectionObserver" in window) {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
@@ -45,7 +45,7 @@
 
   // Microinteraction: gentle magnetic pull on nav links toward the cursor.
   if (!reduceMotion) {
-    page.querySelectorAll(".landing-menu a").forEach((link) => {
+    page.querySelectorAll(".lr-nav-links a").forEach((link) => {
       link.addEventListener("mousemove", (event) => {
         const rect = link.getBoundingClientRect();
         const offsetX = (event.clientX - rect.left - rect.width / 2) * 0.28;

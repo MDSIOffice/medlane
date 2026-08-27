@@ -38,7 +38,7 @@
     <meta name="twitter:image:alt" content="Medlane Diagnostic Solutions logo" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@500;600;700;800&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -55,100 +55,244 @@
       <strong id="welcome-transition-name">Welcome</strong>
       <small>Loading your Medlane workspace</small>
     </div>
-    <section class="landing-page" id="landing-page">
+    <section class="landing-page lr" id="landing-page">
       <div class="landing-scroll-progress" aria-hidden="true"><span></span></div>
-      <div class="landing-mesh" aria-hidden="true"><span></span><span></span><span></span></div>
-      <div class="landing-ambient" aria-hidden="true"><span></span><i></i><b></b></div>
-      <div class="landing-flow-field" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
-      <div class="landing-particles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-      <div class="landing-orbits" aria-hidden="true"><span></span><span></span><span></span></div>
       <button class="landing-back-to-top" id="landing-back-to-top" type="button" aria-label="Back to top">↑</button>
-      <header class="landing-nav">
-        <a class="landing-brand" href="/" aria-label="Medlane Diagnostic Solutions homepage"><img src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" /><span><strong>Medlane</strong><small>Diagnostic Solutions, Inc.</small></span></a>
-        <nav class="landing-menu" aria-label="Company profile navigation">
-          <a href="#about-medlane">About</a>
-          <a href="#solutions">Solutions</a>
-          <a href="#locations">Locations</a>
-          <a href="#contact-info">Contact</a>
+
+      <header class="lr-nav">
+        <a class="lr-brand" href="/" aria-label="Medlane Diagnostic Solutions homepage">
+          <span class="lr-logo-mark" aria-hidden="true"><i></i></span>
+          <span class="lr-brand-text"><strong>MEDLANE</strong><small>Diagnostic Solutions, Inc.</small></span>
+        </a>
+        <nav class="lr-nav-links" aria-label="Company navigation">
+          <a href="#lr-profile">About</a>
+          <a href="#lr-capabilities">Solutions</a>
+          <a href="#lr-gallery">Field Work</a>
+          <a href="#lr-locations">Locations</a>
+          <a href="#lr-contact">Contact</a>
         </nav>
+        <a class="lr-nav-cta" href="#lr-contact">Partner With Us</a>
       </header>
-      <main class="landing-hero">
-        <section class="landing-hero-copy">
-          <p class="landing-kicker">Importer and distributor since 1997</p>
-          <h1>Laboratory diagnostics, delivered with service that stays close.</h1>
-          <p>Medlane Diagnostic Solutions supplies diagnostic equipment, reagents, consumables, and operational support for laboratories and healthcare facilities across the Philippines.</p>
-          <div class="landing-proof-strip"><span>Licensed distributor</span><span>Las Piñas HQ</span><span>Naga branch</span><span>11-50 team size</span></div>
-        </section>
-        <section class="landing-diagnostic-card" aria-label="Medlane diagnostics profile">
-          <div class="hero-photo" role="img" aria-label="Medlane field installation team">
-            <div class="hero-live-panel" aria-hidden="true"><span class="live-dot"></span><strong>Live field sync</strong><small>Installations · Stock · Service</small></div>
-            <div class="hero-float-card hero-float-card--top"><span class="hero-float-kicker">Est. 1997</span><strong>Licensed Distributor</strong><small>Equipment, reagents &amp; supplies</small></div>
-            <div class="hero-float-card hero-float-card--bottom"><strong>Two branches, one standard</strong><small>Las Piñas HQ · Naga City</small></div>
+
+      <section class="lr-section lr-hero" aria-labelledby="lr-hero-title">
+        <div class="lr-hero-grid-bg" aria-hidden="true"></div>
+        <span class="lr-hero-orb" aria-hidden="true"></span>
+        <span class="lr-particle lr-particle-1" aria-hidden="true"></span>
+        <span class="lr-particle lr-particle-2" aria-hidden="true"></span>
+        <span class="lr-particle lr-particle-3" aria-hidden="true"></span>
+        <div class="lr-inner lr-hero-inner">
+          <div class="lr-hero-left">
+            <p class="lr-pill lr-pill--cyan">Importer &amp; Distributor Since 1997</p>
+            <h1 id="lr-hero-title">Precision Diagnostics, <br />Delivered.</h1>
+            <p class="lr-hero-sub">Licensed importer and distributor of diagnostic equipment, reagents, and laboratory supplies across the Philippines. Supporting local healthcare pathways with unyielding reliability.</p>
+            <div class="lr-hero-actions">
+              <a class="lr-btn lr-btn--primary" href="#lr-capabilities">Explore Solutions</a>
+              <a class="lr-btn lr-btn--ghost" href="#lr-locations">Contact Branches</a>
+            </div>
+            <div class="lr-proof-strip">
+              <span>Licensed Distributor</span><span>Las Piñas HQ</span><span>Naga Branch</span><span>11–50 Team</span>
+            </div>
           </div>
-          <div class="diagnostic-card-head"><img src="medlane.jpg" alt="" /><strong>Medlane Diagnostic Solutions</strong><small>Equipment · Reagents · Service</small></div>
-          <div class="diagnostic-flow"><article><span>01</span><strong>Equipment</strong><small>Reliable diagnostic platforms for daily lab operations.</small></article><article><span>02</span><strong>Reagents</strong><small>Traceable supplies and kits for continuity of testing.</small></article><article><span>03</span><strong>Service</strong><small>Goal-driven support focused on long-term client relationships.</small></article></div>
-        </section>
-      </main>
-      <section class="landing-values" id="about-medlane">
-        <article data-icon="01"><span>Mission</span><strong>Outstanding service for diagnostic teams.</strong><p>Service-oriented professionals focused on client productivity, integrity, and tailored support.</p></article>
-        <article data-icon="02"><span>Vision</span><strong>A trusted name in diagnostics.</strong><p>Medlane aims to be recognized for exceptional service, innovative solutions, and customer satisfaction.</p></article>
-        <article data-icon="03"><span>Coverage</span><strong>Two operating locations.</strong><p>13 Gumamela St, Pilar Village, Las Piñas and Narra St., Mariano Village, Balatas, Naga City.</p></article>
-      </section>
-      <section class="landing-photo-story">
-        <div class="photo-story-image"></div>
-        <div class="landing-section-copy" data-icon="HQ"><p class="landing-kicker">Company Profile</p><h2>Diagnostic distribution with a relationship-first operating style.</h2><p>Medlane supports laboratories with equipment, reagents, consumables, service coordination, and branch coverage built around lasting customer relationships.</p></div>
-      </section>
-      <section class="landing-live-ops" aria-label="Collaborative operations animation">
-        <div class="landing-section-copy" data-icon="RT"><p class="landing-kicker">Real-Time Operations</p><h2>Branch teams, sales, warehouse, and service moving in one shared rhythm.</h2></div>
-        <div class="live-ops-board" aria-hidden="true">
-          <span class="ops-node ops-node-a">HQ</span><span class="ops-node ops-node-b">Sales</span><span class="ops-node ops-node-c">Stock</span><span class="ops-node ops-node-d">Service</span><span class="ops-pulse ops-pulse-a"></span><span class="ops-pulse ops-pulse-b"></span><span class="ops-pulse ops-pulse-c"></span>
+          <div class="lr-glass-card lr-hero-card">
+            <p class="lr-badge lr-badge--green"><i aria-hidden="true"></i>Live field sync active</p>
+            <h2>Core Laboratory Pillars</h2>
+            <ol class="lr-pillars">
+              <li><span class="lr-pillar-no">01</span><div><strong>Equipment</strong><p>Premium clinical analyzers, immunodiagnostic arrays, and benchtop hardware from vetted global manufacturers.</p></div></li>
+              <li><span class="lr-pillar-no">02</span><div><strong>Reagents</strong><p>Original assays, system packs, calibrators, and diagnostic kits ensuring operational traceability.</p></div></li>
+              <li><span class="lr-pillar-no">03</span><div><strong>Service</strong><p>Philippine-wide preventive maintenance, certified technical calibration, and live support dispatch.</p></div></li>
+            </ol>
+          </div>
         </div>
       </section>
-      <section class="landing-gallery" aria-label="Medlane installation highlights">
-        <div class="gallery-header">
-          <p class="gallery-kicker">Field Work</p>
-          <h2>Installations, training, and on-site laboratory support.</h2>
-          <span class="gallery-divider" aria-hidden="true"></span>
+
+      <section class="lr-section lr-section--tint lr-values" id="lr-values">
+        <div class="lr-inner">
+          <div class="lr-head lr-head--center">
+            <p class="lr-kicker">Core Commitment</p>
+            <h2>Our Operating Values</h2>
+            <span class="lr-divider" aria-hidden="true"></span>
+          </div>
+          <div class="lr-cards-3">
+            <article class="lr-card">
+              <span class="lr-icon lr-icon--cyan"><img src="assets/landing/icon-handshake.svg" alt="" /></span>
+              <h3>Relationship-first</h3>
+              <p>Built on lasting partnerships with laboratories across the Philippines. We don't just supply; we integrate with your team's rhythm.</p>
+            </article>
+            <article class="lr-card lr-card--raised">
+              <span class="lr-icon lr-icon--orange"><img src="assets/landing/icon-activity.svg" alt="" /></span>
+              <h3>Operational clarity</h3>
+              <p>Real-time coordination across branches, warehouse, and field teams ensures that stock requests translate immediately to dispatch events.</p>
+            </article>
+            <article class="lr-card">
+              <span class="lr-icon lr-icon--blue"><img src="assets/landing/icon-shield-check.svg" alt="" /></span>
+              <h3>Dependable follow-through</h3>
+              <p>Consistent service from quotation to customs clearing, installation, application training, and ongoing proactive technical support.</p>
+            </article>
+          </div>
         </div>
-        <div class="gallery-bento">
-          <figure class="gallery-bento-main">
-            <img src="2.jpg" alt="Medlane laboratory installation team" />
-            <span class="gallery-scanlines" aria-hidden="true"></span>
-            <figcaption>
-              <strong>Installation added to the books</strong>
-              <span>Our operations field team completing a complex multi-analyzer clinical array setup.</span>
+      </section>
+
+      <section class="lr-section lr-profile" id="lr-profile">
+        <div class="lr-inner lr-profile-grid">
+          <figure class="lr-profile-photo">
+            <img src="assets/landing/profile.jpg" alt="Medlane diagnostics warehouse and laboratory floor" />
+            <span class="lr-scanlines" aria-hidden="true"></span>
+            <figcaption class="lr-holo-badge">
+              <span class="lr-holo-label">Establishment Year</span>
+              <strong>1997</strong>
+              <span class="lr-holo-note">Philippine FDA Licensed Importer</span>
             </figcaption>
           </figure>
-          <div class="gallery-bento-right">
-            <figure class="gallery-bento-wide">
-              <img src="3.jpg" alt="Medlane team with diagnostic analyzer" />
-              <figcaption><strong>Analyzer setup and handover</strong></figcaption>
-            </figure>
-            <div class="gallery-bento-pair">
-              <figure>
-                <img src="4.jpg" alt="Medlane latest installation team" />
-                <figcaption><strong>Latest installation high fives</strong></figcaption>
-              </figure>
-              <figure>
-                <img src="5.jpg" alt="Medlane retraining and installation support" />
-                <figcaption><strong>Retraining and support</strong></figcaption>
-              </figure>
+          <div class="lr-profile-text">
+            <div class="lr-head">
+              <p class="lr-kicker">Company Profile</p>
+              <h2>Diagnostic distribution with a relationship-first operating style.</h2>
+              <span class="lr-divider" aria-hidden="true"></span>
+            </div>
+            <p>Medlane supports laboratories with equipment, reagents, consumables, service coordination, and branch coverage built around lasting customer relationships. For nearly three decades, we have remained committed to providing continuous availability of critical diagnostic supplies across the regions.</p>
+            <p>Our teams operate across key clinical diagnostic sectors, facilitating seamless regulatory importation pathways, compliant temperature-controlled warehousing, and on-time local logistics dispatch.</p>
+            <div class="lr-metrics">
+              <div class="lr-metric"><strong class="lr-metric--blue">25+</strong><span>Years of Excellence</span></div>
+              <div class="lr-metric"><strong class="lr-metric--orange">100%</strong><span>FDA &amp; Regulatory Compliant</span></div>
             </div>
           </div>
         </div>
       </section>
-      <section class="landing-capabilities" id="solutions">
-        <div class="landing-section-copy" data-icon="OS"><p class="landing-kicker">What Medlane Supports</p><h2>Built for laboratories that need supplies, traceability, and dependable follow-through.</h2></div>
-        <div class="capability-grid"><article data-icon="EQ">Diagnostic equipment</article><article data-icon="RG">Reagents and diagnostic kits</article><article data-icon="CS">Consumables and supplies</article><article data-icon="IM">Importation and distribution</article><article data-icon="BR">Branch coordination</article><article data-icon="SV">Client-focused service</article></div>
+
+      <section class="lr-section lr-section--dark lr-ops" id="lr-ops">
+        <div class="lr-hero-grid-bg" aria-hidden="true"></div>
+        <span class="lr-ops-radar" aria-hidden="true"></span>
+        <div class="lr-inner lr-ops-grid">
+          <div class="lr-ops-left">
+            <div class="lr-head">
+              <p class="lr-kicker lr-kicker--cyan">Real-Time Operations</p>
+              <h2>Branch teams, sales, warehouse, and service moving in one shared rhythm.</h2>
+              <span class="lr-divider" aria-hidden="true"></span>
+            </div>
+            <p class="lr-ops-lead">Diagnostics require immediate action. Our internal live-link connects field engineers directly with centralized inventory status. If a laboratory reports a component or reagent requirement, our dispatch network triggers a synchronized event.</p>
+            <ul class="lr-checklist">
+              <li><span class="lr-check" aria-hidden="true"><img src="assets/landing/icon-check.svg" alt="" /></span>Automated stock level verification instantly linked to branches</li>
+              <li><span class="lr-check" aria-hidden="true"><img src="assets/landing/icon-check.svg" alt="" /></span>Temperature-controlled vaccine &amp; reagent storage monitoring</li>
+              <li><span class="lr-check" aria-hidden="true"><img src="assets/landing/icon-check.svg" alt="" /></span>Geotagged technician dispatch with digital checklist logs</li>
+            </ul>
+          </div>
+          <div class="lr-glass-card lr-ops-board" aria-hidden="true">
+            <svg class="lr-ops-lines" viewBox="0 0 100 100" preserveAspectRatio="none" focusable="false">
+              <line x1="50" y1="15" x2="14" y2="52" vector-effect="non-scaling-stroke" /><line x1="50" y1="15" x2="86" y2="42" vector-effect="non-scaling-stroke" />
+              <line x1="50" y1="15" x2="50" y2="88" vector-effect="non-scaling-stroke" /><line x1="86" y1="42" x2="50" y2="88" vector-effect="non-scaling-stroke" />
+              <line x1="14" y1="52" x2="50" y2="88" vector-effect="non-scaling-stroke" />
+            </svg>
+            <span class="lr-node lr-node--hq">LAS PIÑAS HQ<small>Hub Terminal</small></span>
+            <span class="lr-node lr-node--sales">FIELD SALES<small>Realtime Sync</small></span>
+            <span class="lr-node lr-node--stock">WAREHOUSE<small>Stock Available</small></span>
+            <span class="lr-node lr-node--service">FIELD ENGINEERS<small>Active Dispatch</small></span>
+            <span class="lr-node-pulse lr-node-pulse-1"></span>
+            <span class="lr-node-pulse lr-node-pulse-2"></span>
+          </div>
+        </div>
       </section>
-      <section class="landing-locations" id="locations">
-        <article data-icon="LP"><span>Las Piñas Branch / Headquarters</span><strong>Las Piñas, Metro Manila</strong><p>13 Gumamela St, Pilar Village, Las Piñas, Metro Manila 1740, PH</p><div class="landing-map"><iframe title="Medlane Las Piñas Branch map" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://maps.google.com/maps?q=14.4446,120.9977&z=17&output=embed"></iframe></div><a class="map-link" href="https://www.google.com/maps/search/?api=1&query=13%20Gumamela%20St%20Pilar%20Village%20Las%20Pinas%201740%20Metro%20Manila%20Philippines" target="_blank" rel="noreferrer">Open in Google Maps</a></article>
-        <article data-icon="NG"><span>Naga Branch</span><strong>Naga City, Camarines Sur</strong><p>Narra St., Mariano Village, Balatas, Naga City, Camarines Sur 4400, PH</p><div class="landing-map"><iframe title="Medlane Naga Branch map" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://maps.google.com/maps?q=13.6360,123.2090&z=16&output=embed"></iframe></div><a class="map-link" href="https://www.google.com/maps/search/?api=1&query=Narra%20St.%20Mariano%20Village%20Balatas%20Naga%20City%20Camarines%20Sur%204400%20Philippines" target="_blank" rel="noreferrer">Open in Google Maps</a></article>
+
+      <section class="lr-section lr-gallery" id="lr-gallery">
+        <div class="lr-inner">
+          <div class="lr-head">
+            <p class="lr-kicker">Field Work</p>
+            <h2>Installations, training, and on-site laboratory support.</h2>
+            <span class="lr-divider" aria-hidden="true"></span>
+          </div>
+          <div class="lr-bento">
+            <figure class="lr-bento-main">
+              <img src="assets/landing/gallery-main.jpg" alt="Medlane field team completing a multi-analyzer clinical array setup" />
+              <span class="lr-bento-scan" aria-hidden="true"></span>
+              <figcaption>
+                <strong>Installation added to the books</strong>
+                <span>Our operations field team completing a complex multi-analyzer clinical array setup.</span>
+              </figcaption>
+            </figure>
+            <div class="lr-bento-right">
+              <figure class="lr-bento-wide">
+                <img src="assets/landing/gallery-analyzer.jpg" alt="Medlane team during analyzer setup and handover" />
+                <figcaption><strong>Analyzer setup and handover</strong></figcaption>
+              </figure>
+              <div class="lr-bento-pair">
+                <figure>
+                  <img src="assets/landing/gallery-highfive.jpg" alt="Medlane installation team celebrating" />
+                  <figcaption><strong>Latest installation high fives</strong></figcaption>
+                </figure>
+                <figure>
+                  <img src="assets/landing/gallery-retrain.jpg" alt="Medlane engineer during retraining and support" />
+                  <figcaption><strong>Retraining and support</strong></figcaption>
+                </figure>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
-      <footer class="landing-footer" id="contact-info">
-        <div><img src="medlane.jpg" alt="" /><span><strong>Medlane Diagnostic Solutions, Inc.</strong><small>Medical Equipment Manufacturing · Privately Held · Founded 1997</small></span></div>
-        <address class="landing-contact-info"><a href="tel:288362853"><span>☎</span>288362853</a><a href="mailto:mdsolutionsph@gmail.com"><span>✉</span>mdsolutionsph@gmail.com</a></address>
-        <nav><a href="#about-medlane">About</a><a href="#solutions">Solutions</a><a href="#locations">Locations</a><a href="https://www.linkedin.com/company/medlane-diagnostic-solutions-inc/" target="_blank" rel="noreferrer">LinkedIn</a><a href="https://www.facebook.com/MedlaneDiagnosticSolutions" target="_blank" rel="noreferrer">Facebook</a></nav>
+
+      <section class="lr-section lr-section--tint lr-capabilities" id="lr-capabilities">
+        <div class="lr-inner">
+          <div class="lr-head lr-head--center">
+            <p class="lr-kicker">What Medlane Supports</p>
+            <h2>Built for laboratories that need supplies, traceability, and dependable follow-through.</h2>
+            <span class="lr-divider" aria-hidden="true"></span>
+          </div>
+          <div class="lr-cards-6">
+            <article class="lr-card"><span class="lr-icon lr-icon--grad"><img src="assets/landing/icon-cpu.svg" alt="" /></span><h3>Diagnostic equipment</h3><p>Automated hematology, clinical chemistry, urine analysis and immunoassay clinical grade equipment.</p></article>
+            <article class="lr-card"><span class="lr-icon lr-icon--grad"><img src="assets/landing/icon-droplet.svg" alt="" /></span><h3>Reagents and diagnostic kits</h3><p>Fresh diagnostic supply lines directly imported, maintaining strict validation criteria.</p></article>
+            <article class="lr-card"><span class="lr-icon lr-icon--grad"><img src="assets/landing/icon-layers.svg" alt="" /></span><h3>Consumables and supplies</h3><p>Pipettes, test tubes, blood collection systems, and everyday laboratory disposables.</p></article>
+            <article class="lr-card"><span class="lr-icon lr-icon--grad"><img src="assets/landing/icon-globe.svg" alt="" /></span><h3>Importation and distribution</h3><p>Fully cleared FDA importation pipeline bringing reliable solutions directly to internal stocks.</p></article>
+            <article class="lr-card"><span class="lr-icon lr-icon--grad"><img src="assets/landing/icon-git-branch.svg" alt="" /></span><h3>Branch coordination</h3><p>Cohesive multi-point synchronization connecting regional demands with fast delivery networks.</p></article>
+            <article class="lr-card"><span class="lr-icon lr-icon--grad"><img src="assets/landing/icon-smile.svg" alt="" /></span><h3>Client-focused service</h3><p>Preventive health checks on high-throughput diagnostic systems handled by certified engineers.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="lr-section lr-locations" id="lr-locations">
+        <div class="lr-inner">
+          <div class="lr-head lr-head--center">
+            <p class="lr-kicker">Our Locations</p>
+            <h2>Serving the National Capital &amp; Bicol Regions</h2>
+            <span class="lr-divider" aria-hidden="true"></span>
+          </div>
+          <div class="lr-loc-row">
+            <article class="lr-loc-card">
+              <header><strong>Las Piñas Branch / Headquarters</strong><span class="lr-loc-label lr-loc-label--blue">Metro Manila Terminal</span></header>
+              <p>13 Gumamela St, Pilar Village, Las Piñas, Metro Manila 1740, PH</p>
+              <div class="lr-map"><iframe title="Medlane Las Piñas Branch map" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://maps.google.com/maps?q=14.4446,120.9977&z=17&output=embed"></iframe></div>
+              <a class="lr-map-link" href="https://www.google.com/maps/search/?api=1&query=13%20Gumamela%20St%20Pilar%20Village%20Las%20Pinas%201740%20Metro%20Manila%20Philippines" target="_blank" rel="noreferrer">Open in Google Maps →</a>
+            </article>
+            <article class="lr-loc-card">
+              <header><strong>Naga Branch</strong><span class="lr-loc-label lr-loc-label--orange">Camarines Sur Terminal</span></header>
+              <p>Narra St., Mariano Village, Balatas, Naga City, Camarines Sur 4400, PH</p>
+              <div class="lr-map"><iframe title="Medlane Naga Branch map" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://maps.google.com/maps?q=13.6360,123.2090&z=16&output=embed"></iframe></div>
+              <a class="lr-map-link" href="https://www.google.com/maps/search/?api=1&query=Narra%20St.%20Mariano%20Village%20Balatas%20Naga%20City%20Camarines%20Sur%204400%20Philippines" target="_blank" rel="noreferrer">Open in Google Maps →</a>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <footer class="lr-section lr-section--dark lr-footer" id="lr-contact">
+        <div class="lr-inner">
+          <div class="lr-glass-card lr-footer-box">
+            <div class="lr-footer-left">
+              <h2>Get in Touch with our Diagnostics Experts</h2>
+              <p>We look forward to facilitating your equipment, service array setup, or custom reagent dispatch parameters. Reach our branches immediately.</p>
+            </div>
+            <div class="lr-footer-right">
+              <a class="lr-contact-item" href="tel:288362853">
+                <span class="lr-contact-icon lr-contact-icon--orange"><img src="assets/landing/icon-phone.svg" alt="" /></span>
+                <span><small>Direct Hotline</small><strong>288362853</strong></span>
+              </a>
+              <a class="lr-contact-item" href="mailto:mdsolutionsph@gmail.com">
+                <span class="lr-contact-icon lr-contact-icon--cyan"><img src="assets/landing/icon-mail.svg" alt="" /></span>
+                <span><small>Official Inquiry</small><strong>mdsolutionsph@gmail.com</strong></span>
+              </a>
+            </div>
+          </div>
+          <div class="lr-footer-bottom">
+            <p>© 2025 Medlane Diagnostic Solutions, Inc. All rights reserved.</p>
+            <p class="lr-footer-badges"><span class="lr-fb--cyan">Licensed Importer</span><span aria-hidden="true">•</span><span class="lr-fb--orange">Customs Cleared Dispatch</span></p>
+          </div>
+        </div>
       </footer>
     </section>
 
