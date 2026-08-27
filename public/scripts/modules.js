@@ -2032,7 +2032,7 @@ function renderInventory() {
   renderInventoryWorkflowTabs();
   renderInventoryBranchTabs();
   ensureInventoryDatalists();
-  const rows = data.inventory.filter((item) => item.branch === inventoryBranchTab).filter((item) => status === "all" || inventoryStatus(item) === status).filter((item) => includesSearch(Object.values(item)));
+  const rows = data.inventory.filter((item) => item.branch === inventoryBranchTab).filter((item) => status === "all" || inventoryStatus(item) === status).filter((item) => includesSearch(Object.entries(item).filter(([key]) => key !== "history").map(([, value]) => value)));
   const visibleInventory = data.inventory;
   const low = visibleInventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
   const nearExpiry = visibleInventory.filter((item) => inventoryStatus(item) === "Near Expiry");
@@ -2049,9 +2049,12 @@ function renderInventory() {
     visualCard("▤", "Stock Health", `${visibleInventory.length} total`, barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((itemStatus) => [itemStatus, visibleInventory.filter((item) => inventoryStatus(item) === itemStatus).length]), (value) => `${value} records`, ["green", "orange", "red", "red", "red"]), "info", "Computed by classifying each inventory record by quantity and expiry rules."),
   ].join("");
   qs("#inventory-compact-toggle")?.classList.toggle("active", inventoryCompactView);
-  const inventoryHeaders = inventoryCompactView ? ["Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Reserved", "Min", "Status"] : ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Reserved", "Min", "Status"];
+  const inventoryHeaders = inventoryCompactView ? ["Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Reserved", "Min", "Status", "Notes", "Actions"] : ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Reserved", "Min", "Status", "Notes", "Actions"];
   table("#inventory-table", inventoryHeaders, rows.map((i) => {
-    const fullCells = [i.branch, i.brand, i.code, i.item, i.serial ? `${i.serial}<small>${i.lot}</small>` : i.lot, i.expiry, i.qty, inventoryReservedCellHtml(i), i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`];
+    const stockRef = escapeHtml(`${i.code}|${i.branch}|${i.lot || i.serial}`);
+    const noteCell = i.note ? `<span class="inventory-note-cell" title="${escapeHtml(i.note)}">${escapeHtml(i.note)}</span>` : `<span class="muted-cell">—</span>`;
+    const actionCell = `${canEditStockRecord() ? `<button class="mini-button" data-stock-edit="${stockRef}">Edit</button> ` : ""}<button class="mini-button" data-stock-history="${stockRef}">History</button>`;
+    const fullCells = [i.branch, i.brand, i.code, i.item, i.serial ? `${i.serial}<small>${i.lot}</small>` : i.lot, i.expiry, i.qty, inventoryReservedCellHtml(i), i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`, noteCell, actionCell];
     return { focus: i.lot, cells: inventoryCompactView ? fullCells.slice(3) : fullCells };
   }));
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
@@ -2145,6 +2148,118 @@ function showTransferTimeline(id) {
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Shipment Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-transfer-timeline aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Items</small><strong>${transfer.lines?.length || 0}</strong></div><div class="report-preview-card"><small>Route</small><strong>${escapeHtml(`${transfer.from} -> ${transfer.to}`)}</strong></div><div class="report-preview-card"><small>Requested By</small><strong>${escapeHtml(transfer.requestedBy || "-")}</strong></div><div class="report-preview-card"><small>Status</small><strong>${escapeHtml(transfer.status || "-")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Requested</th><th>Dispatched</th><th>Received</th></tr></thead><tbody>${transferLineComparisonRowsHtml(transfer)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${/receive|complete/i.test(event.action) ? "done" : /incomplete|cancel/i.test(event.action) ? "blocked" : "pending"}"><span>${escapeHtml((event.action || "T")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.action || "")}</strong><p>${escapeHtml(event.notes || "-")}</p><small>${escapeHtml(event.user || "-")}</small></div></div>`).join("") || `<p>No transfer history recorded yet.</p>`}</div></details>`;
   document.body.appendChild(dialog);
   dialog.querySelector("[data-close-transfer-timeline]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
+// --- Inventory stock-row editing (quantity adjustment / expiry / note) + per-row history ---
+// Only Admin/CEO/Superadmin may edit; quantity is changed by a signed delta (never an absolute)
+// so the audit records intent and the lost-update window is just the dialog-open time. The
+// server key (code|branch|lot) is never touched — lot editing is a separate follow-up.
+
+const STOCK_EDIT_FIELD_LABELS = { qty: "Quantity", expiry: "Expiry", note: "Note" };
+
+function stockRowByRef(ref) {
+  return (data.inventory || []).find((entry) => `${entry.code}|${entry.branch}|${entry.lot || entry.serial}` === ref) || null;
+}
+
+function stockRecordIsEquipment(row) {
+  return isEquipmentItem(data.items.find((entry) => entry.code === row.code) || {});
+}
+
+async function openStockEditDialog(ref) {
+  if (!canEditStockRecord()) return toast("Only Admin, CEO, or Superadmin can edit stock records.");
+  const refreshed = await refreshInventoryFromServer();
+  if (!refreshed) toast("Could not refresh from the server — editing against local data.");
+  const row = stockRowByRef(ref);
+  if (!row) return toast("Stock record no longer exists.");
+  const equipment = stockRecordIsEquipment(row);
+  const canExpiry = !equipment;
+  const currentQty = Number(row.qty || 0);
+  qs("#stock-edit-modal")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal stock-edit-modal";
+  dialog.id = "stock-edit-modal";
+  dialog.dataset.ref = ref;
+  dialog.innerHTML = `<form id="stock-edit-form">
+    <div class="modal-header"><div><p class="eyebrow">Stock Correction</p><h2>${escapeHtml(row.item)}</h2><small>${escapeHtml(row.branch)} · ${escapeHtml(row.serial || row.lot || "-")}</small></div><button class="icon-button" type="button" data-close-stock-edit aria-label="Close">x</button></div>
+    <div class="field"><label>Current Quantity</label><input value="${currentQty}" readonly /></div>
+    <div class="field"><label for="stock-edit-adjust">Adjustment (+ to add, − to remove)</label><input id="stock-edit-adjust" type="number" step="${equipment ? "1" : "any"}" placeholder="e.g. 5 or -3" /></div>
+    <div class="field"><label>New Quantity</label><input id="stock-edit-newqty" value="${currentQty}" readonly /></div>
+    ${canExpiry ? `<div class="field"><label for="stock-edit-expiry">Expiry Date</label><input id="stock-edit-expiry" type="date" value="${escapeHtml(row.expiry && row.expiry !== "N/A" ? row.expiry : "")}" /></div>` : ""}
+    <div class="field"><label for="stock-edit-note">Note</label><textarea id="stock-edit-note" rows="2" placeholder="Optional — shown in the Notes column">${escapeHtml(row.note || "")}</textarea></div>
+    <div class="field"><label for="stock-edit-reason">Reason <small id="stock-edit-reason-hint" class="muted-cell"></small></label><input id="stock-edit-reason" type="text" placeholder="Required when adjusting quantity" /></div>
+    <div class="modal-actions"><button class="ghost-button" type="button" data-close-stock-edit>Cancel</button><button class="primary-button" type="submit">Save changes</button></div>
+  </form>`;
+  document.body.appendChild(dialog);
+  const adjustInput = dialog.querySelector("#stock-edit-adjust");
+  const newQtyInput = dialog.querySelector("#stock-edit-newqty");
+  const reasonInput = dialog.querySelector("#stock-edit-reason");
+  const reasonHint = dialog.querySelector("#stock-edit-reason-hint");
+  const recompute = () => {
+    const delta = Number(adjustInput.value || 0);
+    if (Number.isNaN(delta)) { newQtyInput.value = "—"; return; }
+    newQtyInput.value = String(currentQty + delta);
+    reasonInput.required = delta !== 0;
+    reasonHint.textContent = delta !== 0 ? "(required)" : "";
+  };
+  adjustInput.addEventListener("input", recompute);
+  dialog.querySelectorAll("[data-close-stock-edit]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  dialog.querySelector("#stock-edit-form").addEventListener("submit", (event) => { event.preventDefault(); saveStockEdit(dialog); });
+  dialog.addEventListener("close", () => dialog.remove());
+  guardDialogEscape(dialog);
+  dialog.showModal();
+}
+
+async function saveStockEdit(dialog) {
+  const row = stockRowByRef(dialog.dataset.ref);
+  if (!row) { dialog.close(); return toast("Stock record no longer exists."); }
+  const equipment = stockRecordIsEquipment(row);
+  const original = { qty: Number(row.qty || 0), expiry: row.expiry || "N/A", note: row.note || "" };
+  const delta = Number(dialog.querySelector("#stock-edit-adjust").value || 0);
+  if (Number.isNaN(delta)) return toast("Adjustment must be a number.");
+  if (equipment && !Number.isInteger(delta)) return toast("This item is equipment — the adjustment must be a whole number.");
+  const newQty = original.qty + delta;
+  if (newQty < -1e-9) return toast("That adjustment would make the quantity negative.");
+  const expiryInput = dialog.querySelector("#stock-edit-expiry");
+  const nextExpiry = expiryInput ? (expiryInput.value || "N/A") : original.expiry;
+  const nextNote = dialog.querySelector("#stock-edit-note").value.trim();
+  const reason = dialog.querySelector("#stock-edit-reason").value.trim();
+  const changes = [];
+  if (delta !== 0) changes.push({ field: "qty", from: original.qty, to: newQty });
+  if (nextExpiry !== original.expiry) changes.push({ field: "expiry", from: original.expiry, to: nextExpiry });
+  if (nextNote !== original.note) changes.push({ field: "note", from: original.note || "—", to: nextNote || "—" });
+  if (!changes.length) { dialog.close(); return; }
+  if (delta !== 0 && !reason) return toast("A reason is required when adjusting quantity.");
+  const demand = pendingPoDemandForItem(row.code, row.branch);
+  const belowNote = delta !== 0 && newQty < demand ? `\n\nNote: the resulting quantity (${newQty}) is below pending PO demand (${demand}).` : "";
+  if (!(await confirmFinalSave("Save changes to this stock record?", `This writes the change to the database and records it in this row's history.${belowNote}`))) return;
+  row.qty = newQty;
+  if (expiryInput) row.expiry = nextExpiry;
+  row.note = nextNote;
+  row.history = [{ at: generatedNoticeDate(), by: currentUser?.name || "System User", changes, reason }, ...(row.history || [])].slice(0, 50);
+  const result = await persistRecords({ inventory: [row] });
+  if (!result?.ok) return;
+  log("Edited stock record", "Inventory", `${row.item} · ${row.branch} · ${row.lot || row.serial || "-"}`, { save: false });
+  dialog.close();
+  renderInventory();
+  toast("Stock record updated.");
+}
+
+function showStockHistory(ref) {
+  const row = stockRowByRef(ref);
+  if (!row) return toast("Stock record no longer exists.");
+  const entries = row.history || [];
+  qs("#stock-history-modal")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal audit-detail-modal stock-history-modal";
+  dialog.id = "stock-history-modal";
+  const body = entries.length
+    ? `<div class="event-timeline">${entries.map((entry) => `<div class="event-item done"><span>S</span><time>${escapeHtml(entry.at || "")}</time><div><strong>${escapeHtml(entry.by || "System User")}</strong>${(entry.changes || []).map((change) => `<p>${escapeHtml(STOCK_EDIT_FIELD_LABELS[change.field] || change.field)}: ${escapeHtml(String(change.from))} → ${escapeHtml(String(change.to))}</p>`).join("")}${entry.reason ? `<small>Reason: ${escapeHtml(entry.reason)}</small>` : ""}</div></div>`).join("")}</div>`
+    : `<p>No changes recorded for this stock record yet.</p>`;
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Stock Change History</p><h2>${escapeHtml(row.item)}</h2><small>${escapeHtml(row.branch)} · ${escapeHtml(row.lot || row.serial || "-")}</small></div><button class="icon-button" type="button" data-close-stock-history aria-label="Close">x</button></div>${body}<div class="modal-actions"><button class="ghost-button" type="button" data-close-stock-history>Close</button></div>`;
+  document.body.appendChild(dialog);
+  dialog.querySelectorAll("[data-close-stock-history]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
 }

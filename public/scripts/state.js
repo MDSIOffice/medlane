@@ -184,6 +184,14 @@ const roleEditableModules = {
 function editableModules() { return currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || []; }
 function canEditModule(sectionId) { return editableModules().includes(sectionId); }
 function canEditActiveSection() { return editableModules().includes(qs(".section.active")?.id || "dashboard"); }
+// Directly correcting a stored stock row's quantity / expiry / note is a higher bar than the
+// "inventory" module permission (which also covers receiving and transfers for Logistics et al.).
+// Superadmin/CEO always; Admin only when they also hold inventory-edit (so the server, which
+// still requires the inventory key in writableKeys, agrees). Also enforced server-side.
+function canEditStockRecord() {
+  if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
+  return currentUser?.role === "Admin" && canEditModule("inventory");
+}
 function permissionModules() { return [...new Set(Object.values(accounts).flatMap((account) => account.modules))].filter((module) => !["client-invoices", "invoice-flow-detail", "report-detail"].includes(module)); }
 function followupDate() { return new Date(); }
 function followupWeekKey(date = followupDate()) {
@@ -608,6 +616,16 @@ async function persistRecords(records, recordKeys = {}) {
   } finally {
     endSaveOperation();
   }
+}
+// Pull only the latest inventory rows from the server, leaving other in-memory state (drafts,
+// open modals) untouched. Used before opening the stock-edit dialog so a quantity adjustment is
+// applied on top of a current base. Returns false when the server could not be reached.
+async function refreshInventoryFromServer() {
+  if (!currentUser || !MedlaneAPI?.session()?.access_token) return false;
+  const fresh = await MedlaneAPI.loadAppState().catch(() => null);
+  if (!fresh?.data) return false;
+  data.inventory = normalizeData({ ...emptyProductionData(), ...fresh.data }).inventory;
+  return true;
 }
 // Masterlist archiving: an archived record keeps `archived === true` and stays in storage (so
 // historical documents and existing transactions still resolve it by code/name) but is hidden
