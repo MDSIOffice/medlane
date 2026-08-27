@@ -32,6 +32,9 @@ let inventoryWorkflowTab = "receiving";
 let inventoryCompactView = false;
 let poViewMode = "table";
 let poWorkflowTab = "pending";
+let masterShowArchived = false;
+let editingPoId = null;
+let userStatusFilter = "all";
 let invoiceViewMode = "table";
 let clientHistoryTab = "invoices";
 let purchaseHistoryVisibleCounts = {};
@@ -606,6 +609,17 @@ async function persistRecords(records, recordKeys = {}) {
     endSaveOperation();
   }
 }
+// Masterlist archiving: an archived record keeps `archived === true` and stays in storage (so
+// historical documents and existing transactions still resolve it by code/name) but is hidden
+// from the active masterlist tables and from every picker used to build NEW transactions.
+function isArchived(record) { return Boolean(record && record.archived); }
+function activeRecords(list) { return (list || []).filter((record) => !isArchived(record)); }
+function activeClients() { return activeRecords(data?.clients); }
+function activeItems() { return activeRecords(data?.items); }
+function activeSuppliers() { return activeRecords(data?.suppliers); }
+function activeEmployees() { return activeRecords(data?.employees); }
+function activeBanks() { return activeRecords(data?.banks); }
+
 function nextId(items, prefix) {
   const next = items.reduce((max, item) => Math.max(max, Number(String(item.id || "").replace(`${prefix}-`, "")) || 0), 0) + 1;
   return `${prefix}-${String(next).padStart(3, "0")}`;

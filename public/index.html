@@ -394,7 +394,7 @@
       </section>
 
       <section class="section" id="masterlists">
-        <div class="section-header"><div><p class="eyebrow">Masterlists</p><h2>Clients, reagents, suppliers, employees</h2></div><button class="primary-button" id="master-add-button">Add Client</button></div>
+        <div class="section-header"><div><p class="eyebrow">Masterlists</p><h2>Clients, reagents, suppliers, employees</h2></div><div class="section-header-actions"><button class="ghost-button" id="master-archived-toggle" type="button" hidden>Show Archived</button><button class="primary-button" id="master-add-button">Add Client</button></div></div>
         <div class="tabs" id="master-tabs">
           <button class="tab active" data-master="clients">Clients</button>
           <button class="tab" data-master="items">Items</button>
@@ -709,6 +709,7 @@
           <div class="panel-header"><div><p class="eyebrow">Role Tester</p><h2>Preview role access</h2><p class="page-description">Check what a role can view and edit before assigning permissions.</p></div><select id="role-tester-select" aria-label="Preview role access"></select></div>
           <div class="report-preview-grid" id="role-tester-output"></div>
         </article>
+        <div class="toolbar"><select id="user-status-filter" aria-label="Filter users by status"><option value="all">All Statuses (excludes archived)</option></select></div>
         <div class="table-card"><table id="users-table"></table></div>
       </section>
 

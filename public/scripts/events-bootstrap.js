@@ -159,18 +159,25 @@ async function submitModal(event) {
     catch (error) { notify("Validation", error.message, "sales", values.documentNo || values.client || ""); saveData(); return toast(error.message); }
   }
   if (modalType === "purchaseOrder") {
+    const wasEditing = Boolean(editingPoId);
     let po;
-    try { po = buildPurchaseOrder(values); }
+    try { po = buildPurchaseOrder(values, { editingId: editingPoId }); }
     catch (error) { notify("Validation", error.message, "purchase-orders", values.client || ""); saveData(); return toast(error.message); }
-    if (!(await confirmFinalSave("Save this purchase order?"))) return;
-    data.purchaseOrders.push(po);
+    if (!(await confirmFinalSave(wasEditing ? `Save changes to ${po.id}?` : "Save this purchase order?"))) return;
+    if (wasEditing) {
+      const index = data.purchaseOrders.findIndex((entry) => entry.id === po.id);
+      if (index >= 0) data.purchaseOrders[index] = po; else data.purchaseOrders.push(po);
+    } else {
+      data.purchaseOrders.push(po);
+    }
     const saveResult = await persistRecords({ purchaseOrders: [po] });
     if (!saveResult?.ok) return;
-    log(`Saved ${modalType}`, modalConfigs[modalType].title, po.id || po.client, { save: false });
+    log(wasEditing ? "Edited purchase order" : `Saved ${modalType}`, modalConfigs[modalType].title, po.id || po.client, { save: false });
+    editingPoId = null;
     qs("#demo-modal").close();
     form.reset();
     renderAll();
-    toast(`${modalConfigs[modalType].title} saved.`);
+    toast(wasEditing ? `${po.id} updated.` : `${modalConfigs[modalType].title} saved.`);
     return;
   }
   if (modalType === "inventoryPurchaseOrder") {
@@ -474,6 +481,8 @@ document.body.addEventListener("click", (event) => {
   if (productIssueTimeline) return renderProductIssueDetail(productIssueTimeline.dataset.productIssueTimeline);
   const productIssueStatus = event.target.closest("[data-product-issue-status]");
   if (productIssueStatus) { const [issueId, issueStatus] = productIssueStatus.dataset.productIssueStatus.split(":"); return updateProductIssueStatus(issueId, issueStatus); }
+  const poEditButton = event.target.closest("[data-po-edit]");
+  if (poEditButton) return editPurchaseOrder(poEditButton.dataset.poEdit);
   const invoicePoButton = event.target.closest("[data-create-invoice-po]");
   if (invoicePoButton) return openInvoiceForPurchaseOrder(invoicePoButton.dataset.createInvoicePo);
   const clientInvoices = event.target.closest("[data-client-invoices]");
@@ -757,6 +766,7 @@ async function toggleUserDisabled(index) {
   if (result.error) return toast(result.error.message || `Unable to ${verb} user.`);
   user.inviteStatus = disabled ? "Disabled" : "Active";
   user.disabledReason = disabled ? String(reason).trim() : "";
+  if (!disabled) { delete user.archivedAt; delete user.archivedBy; }
   await syncBackendUsers();
   log(`${disabled ? "Disabled" : "Enabled"} user`, "Users", `${user.email} · ${user.role}`);
   saveData();
@@ -1136,11 +1146,19 @@ qs("#replenishments-table").addEventListener("click", (event) => {
   if (button) approveExpense(Number(button.dataset.approveExpense), button.dataset.nextStatus);
 });
 qs("#master-table").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-master-edit]");
-  if (button) {
+  const editButton = event.target.closest("[data-master-edit]");
+  if (editButton) {
     if (!canEditActiveSection()) return toast("Masterlist edits need approval from Admin or Superadmin.");
-    openMasterEditModal(button.dataset.masterEdit, Number(button.dataset.index));
+    return openMasterEditModal(editButton.dataset.masterEdit, Number(editButton.dataset.index));
   }
+  const archiveButton = event.target.closest("[data-master-archive]");
+  if (archiveButton) return archiveMasterlistRecord(archiveButton.dataset.masterArchive, Number(archiveButton.dataset.index));
+  const restoreButton = event.target.closest("[data-master-restore]");
+  if (restoreButton) return restoreMasterlistRecord(restoreButton.dataset.masterRestore, Number(restoreButton.dataset.index));
+});
+qs("#master-archived-toggle")?.addEventListener("click", () => {
+  masterShowArchived = !masterShowArchived;
+  renderMasterlists();
 });
 qs("#report-grid").addEventListener("click", (event) => {
   const button = event.target.closest("[data-report-preview]");
@@ -1159,7 +1177,7 @@ qs("#reconciliation-tabs").addEventListener("click", (event) => {
   reconciliationTab = button.dataset.reconTab;
   renderReconciliationTabs();
 });
-qsa("#master-tabs .tab").forEach((button) => button.addEventListener("click", () => { data.masterTab = button.dataset.master; saveData(); renderMasterlists(); }));
+qsa("#master-tabs .tab").forEach((button) => button.addEventListener("click", () => { data.masterTab = button.dataset.master; masterShowArchived = false; saveData(); renderMasterlists(); }));
 qsa("#analytics-tabs .tab").forEach((button) => button.addEventListener("click", () => {
   qsa("#analytics-tabs .tab").forEach((tab) => tab.classList.toggle("active", tab === button));
   qsa(".analytics-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.analyticsPanel === button.dataset.analyticsTab));
@@ -1254,13 +1272,13 @@ qs("#modal-fields").addEventListener("blur", (event) => {
 }, true);
 qs("#modal-close").addEventListener("click", () => {
   if (modalReadOnly) { editContext = null; qs("#demo-modal").close(); return; }
-  guardedDialogClose(() => { editContext = null; qs("#demo-modal").close(); });
+  guardedDialogClose(() => { editContext = null; editingPoId = null; qs("#demo-modal").close(); });
 });
-qs("#modal-cancel").addEventListener("click", () => { editContext = null; qs("#demo-modal").close(); });
+qs("#modal-cancel").addEventListener("click", () => { editContext = null; editingPoId = null; qs("#demo-modal").close(); });
 qs("#demo-modal").addEventListener("cancel", (event) => {
   if (modalReadOnly) return;
   event.preventDefault();
-  guardedDialogClose(() => { editContext = null; qs("#demo-modal").close(); });
+  guardedDialogClose(() => { editContext = null; editingPoId = null; qs("#demo-modal").close(); });
 });
 qs("#report-preview-close").addEventListener("click", closeReportPreview);
 qs("#report-preview-cancel").addEventListener("click", closeReportPreview);
@@ -1273,7 +1291,7 @@ qs("#payment-request-preview-print").addEventListener("click", () => window.prin
 qs("#demo-modal").addEventListener("click", (event) => {
   if (event.target.id !== "demo-modal") return;
   if (modalReadOnly) { editContext = null; qs("#demo-modal").close(); return; }
-  guardedDialogClose(() => { editContext = null; qs("#demo-modal").close(); });
+  guardedDialogClose(() => { editContext = null; editingPoId = null; qs("#demo-modal").close(); });
 });
 qs("#report-preview-modal").addEventListener("click", (event) => { if (event.target.id === "report-preview-modal") closeReportPreview(); });
 qs("#payment-request-preview-modal").addEventListener("click", (event) => { if (event.target.id === "payment-request-preview-modal") qs("#payment-request-preview-modal").close(); });
@@ -1356,6 +1374,7 @@ qs("#run-manual-digest-daily")?.addEventListener("click", () => runManualDigest(
 qs("#run-manual-digest-weekly")?.addEventListener("click", () => runManualDigest("Weekly"));
 qs("#print-value-report")?.addEventListener("click", printSystemValueReport);
 qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
+qs("#user-status-filter")?.addEventListener("change", (event) => { userStatusFilter = event.target.value; renderUsers(); });
 
 function setBackupStatus(title, detail = "", progress = 0, tone = "active") {
   const panel = qs("#backup-status-panel");
