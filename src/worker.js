@@ -241,7 +241,7 @@ function inviteEmailHtml({ fullName, email, role, actionLink, origin }) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to Medlane OS</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:12px 0 6px;font-size:34px;line-height:1.05;">Welcome to Medlane OS</h1><p style="margin:0;font-size:16px;line-height:1.6;opacity:.96;">Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.</p></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#fff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f4f9ff;border:1px solid #d8ebfb;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#005a9c;">Security reminder</strong><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Create a password with at least 8 characters, one letter, one number, and one special character. Never share your password or invitation link.</p></div><p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#4c6280;">If the button does not work, copy and paste this link into your browser:</p><p style="word-break:break-all;margin:0 0 18px;font-size:13px;line-height:1.6;color:#0077bd;">${escapeHtml(actionLink)}</p><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Account email: <strong>${escapeHtml(email)}</strong><br>Login site: <a href="${escapeHtml(origin)}" style="color:#0077bd;">${escapeHtml(origin)}</a></p></td></tr><tr><td style="padding:22px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. This message was sent for account access setup. If you did not expect this invitation, ignore this email or contact your administrator.</td></tr></table></td></tr></table></body></html>`;
 }
 
-async function recordSystemLog(env, { action, module, record }) {
+async function recordSystemLog(env, { action, module, record, extra }) {
   const stateKey = appStateKey(env);
   const entry = {
     date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }),
@@ -250,6 +250,7 @@ async function recordSystemLog(env, { action, module, record }) {
     action,
     module,
     record: record || "",
+    ...(extra && typeof extra === "object" ? extra : {}),
   };
   await supabaseFetch(env, "/rest/v1/app_records", {
     method: "POST",
@@ -291,19 +292,44 @@ async function resendEmailRequest(env, body) {
   }
 }
 
-async function sendResendEmail(env, { to, subject, html }) {
+async function sendResendEmail(env, { to, subject, html, digestMessageId = null }) {
+  // digestMessageId, when present, is the R2 key of the exact HTML this email carried — the
+  // Audit Logs "View message" button in the app reads it back. Kept on both the sent and
+  // failed log rows so a bounced digest can still be inspected.
+  const extra = digestMessageId ? { digestMessageId } : undefined;
   if (!env.RESEND_API_KEY) {
-    await recordSystemLog(env, { action: "Email skipped", module: "Email", record: `${to} — ${subject} (RESEND_API_KEY not configured)` });
+    await recordSystemLog(env, { action: "Email skipped", module: "Email", record: `${to} — ${subject} (RESEND_API_KEY not configured)`, extra });
     return { sent: false, provider: "resend", reason: "RESEND_API_KEY is not configured" };
   }
   const response = await resendEmailRequest(env, { from: resendFrom(env), to: [to], subject, html });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    await recordSystemLog(env, { action: "Email failed", module: "Email", record: `${to} — ${subject}: ${payload?.message || payload?.error || response.status}` });
+    await recordSystemLog(env, { action: "Email failed", module: "Email", record: `${to} — ${subject}: ${payload?.message || payload?.error || response.status}`, extra });
     throw new Error(payload?.message || payload?.error || `Resend failed: ${response.status}`);
   }
-  await recordSystemLog(env, { action: "Email sent", module: "Email", record: `${to} — ${subject}` });
+  await recordSystemLog(env, { action: "Email sent", module: "Email", record: `${to} — ${subject}`, extra });
   return { sent: true, provider: "resend", id: payload?.id || null };
+}
+
+// Stashes the exact rendered HTML of a digest email in R2 so the app's Audit Logs detail
+// view can show "what did they actually get". Keyed by a random id that goes onto the
+// matching audit-log row. Best-effort: a failure here must never stop the digest sending.
+async function saveDigestMessageSnapshot(env, { periodLabel, role, subject, html }) {
+  if (!env.DOCUMENTS_BUCKET || !html) return null;
+  const id = crypto.randomUUID();
+  const key = `digest-messages/${appStateKey(env)}/${id}.html.gz`;
+  await env.DOCUMENTS_BUCKET.put(key, await gzipBytes(html), {
+    httpMetadata: { contentType: "application/gzip" },
+    customMetadata: { periodLabel: String(periodLabel || ""), role: String(role || ""), subject: String(subject || ""), createdAt: new Date().toISOString() },
+  });
+  return id;
+}
+
+async function readDigestMessageSnapshot(env, id) {
+  if (!env.DOCUMENTS_BUCKET || !/^[0-9a-f-]{36}$/i.test(String(id || ""))) return null;
+  const object = await env.DOCUMENTS_BUCKET.get(`digest-messages/${appStateKey(env)}/${id}.html.gz`);
+  if (!object) return null;
+  return { html: await gunzipText(object), meta: object.customMetadata || {} };
 }
 
 async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMentions = null } = {}) {
@@ -424,47 +450,133 @@ function discordEventEmbed(title, color, fields, profile) {
   };
 }
 
-async function postNewRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
+// Modules whose creates AND status changes are broadcast to Discord by
+// postRecordEventsToDiscord. The save endpoints pre-load the stored rows of these modules
+// (with data) so the poster can diff before/after.
+const DISCORD_EVENT_MODULES = ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers", "payments"];
+
+async function postWorkflowEventToDiscord(env, profile, { title, color, fields, label }) {
+  if (!env.DISCORD_WEBHOOK_URL) return;
+  await sendDiscordWebhook(env, { embeds: [discordEventEmbed(title, color, fields, profile)] })
+    .catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `${label}: ${error.message}` }).catch(() => null));
+}
+
+async function postRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
   if (!env.DISCORD_WEBHOOK_URL || !savedRows.length) return;
   const beforeByModule = {};
-  ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].forEach((moduleName) => { beforeByModule[moduleName] = moduleRecordMap(beforeRows, moduleName); });
+  DISCORD_EVENT_MODULES.forEach((moduleName) => { beforeByModule[moduleName] = moduleRecordMap(beforeRows, moduleName); });
   const posts = [];
+  const push = (title, color, fields, label) => posts.push(postWorkflowEventToDiscord(env, profile, { title, color, fields, label }));
   for (const row of savedRows) {
     const key = String(row.record_key);
-    if (beforeByModule[row.module_name]?.has(key)) continue;
+    const before = beforeByModule[row.module_name]?.get(key);
     const record = row.data || {};
+    const isNew = !before;
+    const statusChanged = (field) => before && String(before[field] || "") !== String(record[field] || "");
+
     if (row.module_name === "purchaseOrders") {
-      posts.push(sendDiscordWebhook(env, { embeds: [discordEventEmbed("New Sales Purchase Order", 0x0077bd, [
-        { name: "PO", value: webhookText(record.id || key), inline: true },
-        { name: "Client", value: webhookText(record.client), inline: true },
-        { name: "Amount", value: money(salesPoTotal(record)), inline: true },
-        { name: "Date", value: webhookText(record.date), inline: true },
-        { name: "Status", value: webhookText(record.status || "Open"), inline: true },
-      ], profile)] }).catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `New sales PO ${record.id || key}: ${error.message}` })));
+      if (isNew) {
+        push("New Sales Purchase Order", 0x0077bd, [
+          { name: "PO", value: webhookText(record.id || key), inline: true },
+          { name: "Client", value: webhookText(record.client), inline: true },
+          { name: "Amount", value: money(salesPoTotal(record)), inline: true },
+          { name: "Date", value: webhookText(record.date), inline: true },
+          { name: "Status", value: webhookText(record.status || "Open"), inline: true },
+        ], `New sales PO ${record.id || key}`);
+      } else if (statusChanged("status") && /approved/i.test(record.status || "")) {
+        push("Sales Purchase Order Approved", 0x22c55e, [
+          { name: "PO", value: webhookText(record.id || key), inline: true },
+          { name: "Client", value: webhookText(record.client), inline: true },
+          { name: "Amount", value: money(salesPoTotal(record)), inline: true },
+        ], `Sales PO approved ${record.id || key}`);
+      }
     } else if (row.module_name === "inventoryPurchaseOrders") {
-      posts.push(sendDiscordWebhook(env, { embeds: [discordEventEmbed("New Inventory Purchase Order", 0xf59e0b, [
-        { name: "PO", value: webhookText(record.id || key), inline: true },
-        { name: "Supplier", value: webhookText(record.supplier), inline: true },
-        { name: "Total", value: money(inventoryPoTotal(record)), inline: true },
-        { name: "Branch", value: webhookText(record.branch), inline: true },
-        { name: "Status", value: webhookText(record.status || "Pending Approval"), inline: true },
-      ], profile)] }).catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `New inventory PO ${record.id || key}: ${error.message}` })));
-    } else if (row.module_name === "paymentRequests" && record.invoice && record.requestStatus === "Pending") {
-      posts.push(sendDiscordWebhook(env, { embeds: [discordEventEmbed("New Collection Approval", 0x22c55e, [
-        { name: "Request", value: webhookText(record.cvNo || record.id || key), inline: true },
-        { name: "Invoice", value: webhookText(record.invoice), inline: true },
-        { name: "Amount", value: money(record.total || record.amount), inline: true },
-        { name: "Employee", value: webhookText(record.employee || record.requestedBy), inline: true },
-        { name: "Status", value: webhookText(record.requestStatus), inline: true },
-      ], profile)] }).catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `New collection approval ${record.cvNo || record.id || key}: ${error.message}` })));
-    } else if (row.module_name === "pendingTransfers" && !/received|cancelled/i.test(record.status || "")) {
-      posts.push(sendDiscordWebhook(env, { embeds: [discordEventEmbed("New Pending Transfer", 0x8b5cf6, [
-        { name: "Transfer", value: webhookText(record.id || key), inline: true },
-        { name: "Item", value: webhookText(record.item || record.code || "Items"), inline: true },
-        { name: "Quantity", value: webhookText(record.qty || record.quantity), inline: true },
-        { name: "Route", value: `${webhookText(record.from)} -> ${webhookText(record.to)}`, inline: false },
-        { name: "Status", value: webhookText(record.status || "Pending"), inline: true },
-      ], profile)] }).catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `New pending transfer ${record.id || key}: ${error.message}` })));
+      if (isNew) {
+        push("New Inventory Purchase Order", 0xf59e0b, [
+          { name: "PO", value: webhookText(record.id || key), inline: true },
+          { name: "Supplier", value: webhookText(record.supplier), inline: true },
+          { name: "Total", value: money(inventoryPoTotal(record)), inline: true },
+          { name: "Branch", value: webhookText(record.branch), inline: true },
+          { name: "Status", value: webhookText(record.status || "Pending Approval"), inline: true },
+        ], `New inventory PO ${record.id || key}`);
+      } else if (statusChanged("status") && /approved/i.test(record.status || "")) {
+        push("Inventory Purchase Order Approved", 0x22c55e, [
+          { name: "PO", value: webhookText(record.id || key), inline: true },
+          { name: "Supplier", value: webhookText(record.supplier), inline: true },
+          { name: "Total", value: money(inventoryPoTotal(record)), inline: true },
+        ], `Inventory PO approved ${record.id || key}`);
+      }
+    } else if (row.module_name === "paymentRequests") {
+      if (isNew && record.invoice && record.requestStatus === "Pending") {
+        push("New Collection Approval", 0x22c55e, [
+          { name: "Request", value: webhookText(record.cvNo || record.id || key), inline: true },
+          { name: "Invoice", value: webhookText(record.invoice), inline: true },
+          { name: "Amount", value: money(record.total || record.amount), inline: true },
+          { name: "Employee", value: webhookText(record.employee || record.requestedBy), inline: true },
+          { name: "Status", value: webhookText(record.requestStatus), inline: true },
+        ], `New collection approval ${record.cvNo || record.id || key}`);
+      } else if (statusChanged("requestStatus") && /approved/i.test(record.requestStatus || "")) {
+        push("Collection Approved & Payment Recorded", 0x22c55e, [
+          { name: "Request", value: webhookText(record.cvNo || record.id || key), inline: true },
+          { name: "Invoice", value: webhookText(record.invoice), inline: true },
+          { name: "Amount", value: money(record.total || record.amount), inline: true },
+          { name: "Approved By", value: webhookText(record.approvedBy), inline: true },
+        ], `Collection approved ${record.cvNo || record.id || key}`);
+      } else if (statusChanged("requestStatus") && /cancelled|rejected/i.test(record.requestStatus || "")) {
+        push("Payment Request Cancelled", 0xef4b4f, [
+          { name: "Request", value: webhookText(record.cvNo || record.id || key), inline: true },
+          { name: "Invoice", value: webhookText(record.invoice), inline: true },
+          { name: "Status", value: webhookText(record.requestStatus), inline: true },
+        ], `Payment request cancelled ${record.cvNo || record.id || key}`);
+      }
+    } else if (row.module_name === "pendingTransfers") {
+      const lineCount = Array.isArray(record.lines) ? record.lines.length : (record.qty || record.quantity ? 1 : 0);
+      const routeField = { name: "Route", value: `${webhookText(record.from)} -> ${webhookText(record.to)}`, inline: false };
+      if (isNew && !/received|cancelled/i.test(record.status || "")) {
+        push("New Pending Transfer", 0x8b5cf6, [
+          { name: "Transfer", value: webhookText(record.id || key), inline: true },
+          { name: "Items", value: webhookText(lineCount || record.item || record.code || "Items"), inline: true },
+          routeField,
+          { name: "Status", value: webhookText(record.status || "Pending"), inline: true },
+        ], `New pending transfer ${record.id || key}`);
+      } else if (statusChanged("status") && /in\s*transit/i.test(record.status || "")) {
+        push("Stock Transfer Dispatched", 0x1d6fa5, [
+          { name: "Transfer", value: webhookText(record.id || key), inline: true },
+          { name: "Items", value: webhookText(lineCount || "Items"), inline: true },
+          routeField,
+          { name: "Dispatched By", value: webhookText(record.dispatchedBy), inline: true },
+        ], `Stock transfer dispatched ${record.id || key}`);
+      } else if (statusChanged("status") && /received/i.test(record.status || "")) {
+        push("Stock Transfer Received", 0x22c55e, [
+          { name: "Transfer", value: webhookText(record.id || key), inline: true },
+          { name: "Status", value: webhookText(record.status), inline: true },
+          routeField,
+          { name: "Received By", value: webhookText(record.receivedBy || record.dispatchedBy), inline: true },
+        ], `Stock transfer received ${record.id || key}`);
+      } else if (statusChanged("status") && /cancelled/i.test(record.status || "")) {
+        push("Stock Transfer Cancelled", 0xef4b4f, [
+          { name: "Transfer", value: webhookText(record.id || key), inline: true },
+          routeField,
+          { name: "Status", value: webhookText(record.status), inline: true },
+        ], `Stock transfer cancelled ${record.id || key}`);
+      }
+    } else if (row.module_name === "payments") {
+      if (isNew) {
+        push("Collection Recorded", 0x22c55e, [
+          { name: "Receipt", value: webhookText(record.receiptNo || key), inline: true },
+          { name: "Client", value: webhookText(record.client), inline: true },
+          { name: "Amount", value: money(record.amount), inline: true },
+          { name: "Invoice", value: webhookText(record.invoice), inline: true },
+          { name: "Status", value: webhookText(record.collectionStatus || "For Deposition"), inline: true },
+        ], `Collection recorded ${record.receiptNo || key}`);
+      } else if (statusChanged("collectionStatus")) {
+        push(`Collection Marked ${record.collectionStatus || "Updated"}`, /bounce/i.test(record.collectionStatus || "") ? 0xef4b4f : 0x1d6fa5, [
+          { name: "Receipt", value: webhookText(record.receiptNo || key), inline: true },
+          { name: "Client", value: webhookText(record.client), inline: true },
+          { name: "Amount", value: money(record.amount), inline: true },
+          { name: "Status", value: `${webhookText(before.collectionStatus)} -> ${webhookText(record.collectionStatus)}`, inline: true },
+        ], `Collection status ${record.receiptNo || key}`);
+      }
     }
   }
   if (posts.length) await Promise.allSettled(posts);
@@ -2350,8 +2462,10 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
       parts.push(ctaHtml);
       const emails = await emailsForRoles(env, [role]);
       const html = digestEmailHtml({ title: `${periodLabel} Digest`, bodyHtml: parts.join("") });
+      const subject = `Medlane OS — ${periodLabel} Digest`;
+      const digestMessageId = await saveDigestMessageSnapshot(env, { periodLabel, role, subject, html }).catch(() => null);
       for (const email of emails) {
-        sends.push(sendResendEmail(env, { to: email, subject: `Medlane OS — ${periodLabel} Digest`, html }).catch((error) => console.error(JSON.stringify({ message: "Digest email failed", role, email, error: error.message }))));
+        sends.push(sendResendEmail(env, { to: email, subject, html, digestMessageId }).catch((error) => console.error(JSON.stringify({ message: "Digest email failed", role, email, error: error.message }))));
       }
     } catch (error) {
       // A single role's lookup/build failing (e.g. a transient Supabase error) must never
@@ -2672,6 +2786,14 @@ export default {
         return json({ ok: true }, { status: 201 });
       }
 
+      if (url.pathname === "/api/logs/digest-message" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (!["Superadmin", "CEO"].includes(profile.role) && !profile.customPermissions?.view?.includes("logs")) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
+        const snapshot = await readDigestMessageSnapshot(env, url.searchParams.get("id"));
+        if (!snapshot) return json({ error: "Digest message not found or no longer retained" }, { status: 404 });
+        return json({ html: snapshot.html, subject: snapshot.meta.subject || "", role: snapshot.meta.role || "", periodLabel: snapshot.meta.periodLabel || "", createdAt: snapshot.meta.createdAt || "" });
+      }
+
       if (url.pathname === "/api/logs" && request.method === "GET") {
         const { profile } = await authenticatedProfile(request, env);
         if (!["Superadmin", "CEO"].includes(profile.role) && !profile.customPermissions?.view?.includes("logs")) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
@@ -2745,8 +2867,14 @@ export default {
             // real data (the exact bug that previously erased the database), not
             // an intentional bulk delete — refuse it and log full context instead
             // of silently applying it.
-            const eventModules = presentKeys.filter((key) => ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].includes(key));
-            const beforeRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name,record_key${eventModules.length ? ",data" : ""}`);
+            const eventModules = presentKeys.filter((key) => DISCORD_EVENT_MODULES.includes(key));
+            const beforeRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name,record_key`);
+            // The Discord poster diffs before/after status, so it needs the *complete* stored
+            // set of the event modules (paged), not the single capped page the circuit-breaker
+            // counts above tolerate — a truncated read would make an existing record look new.
+            const eventBeforeRows = eventModules.length
+              ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`)
+              : [];
             const beforeCounts = {};
             const beforeKeysByModule = {};
             for (const row of beforeRows) {
@@ -2862,7 +2990,7 @@ export default {
                 record: changedSummary,
               }, authUser.id, auditContext);
             }
-            await postNewRecordEventsToDiscord(env, profile, beforeRows, rows);
+            await postRecordEventsToDiscord(env, profile, eventBeforeRows, rows);
           }
           return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
         }
@@ -3115,7 +3243,7 @@ export default {
           }
         }
 
-        const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].includes(key)))];
+        const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => DISCORD_EVENT_MODULES.includes(key)))];
         const beforeRows = eventModules.length ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`) : [];
         if (rows.length) {
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
@@ -3123,7 +3251,7 @@ export default {
             headers: { prefer: "resolution=merge-duplicates,return=minimal" },
             body: JSON.stringify(rows),
           });
-          await postNewRecordEventsToDiscord(env, profile, beforeRows, rows);
+          await postRecordEventsToDiscord(env, profile, beforeRows, rows);
         }
         return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
       }
@@ -3170,6 +3298,17 @@ export default {
           method: "PATCH",
           body: JSON.stringify({ data: po, updated_by: authUser.id }),
         });
+        if (action === "approve") {
+          await postWorkflowEventToDiscord(env, profile, {
+            title: "Inventory Purchase Order Approved", color: 0x22c55e, label: `Inventory PO approved ${poId}`,
+            fields: [
+              { name: "PO", value: webhookText(po.id || poId), inline: true },
+              { name: "Supplier", value: webhookText(po.supplier), inline: true },
+              { name: "Total", value: money(inventoryPoTotal(po)), inline: true },
+              { name: "Branch", value: webhookText(po.branch), inline: true },
+            ],
+          });
+        }
         return json({ ok: true, po });
       }
 
@@ -3297,6 +3436,16 @@ export default {
             body: JSON.stringify({ data: po, updated_by: authUser.id }),
           });
         }
+        await postWorkflowEventToDiscord(env, profile, {
+          title: "Stock Receipt Approved", color: 0x22c55e, label: `Stock receipt approved ${receipt.id}`,
+          fields: [
+            { name: "Receipt", value: webhookText(receipt.id), inline: true },
+            { name: "PO", value: webhookText(receipt.poId || "—"), inline: true },
+            { name: "Supplier", value: webhookText(receipt.supplier), inline: true },
+            { name: "Units Posted", value: webhookText(totalReceived), inline: true },
+            { name: "PO Status", value: webhookText(po?.status || "—"), inline: true },
+          ],
+        });
         return json({ ok: true, receipt, po });
       }
 

@@ -6041,9 +6041,34 @@ function showAuditLogDetail(index) {
   dialog.className = "modal audit-detail-modal";
   const primaryRows = [["When", entry.date], ["Who", entry.user], ["Role", entry.role], ["Module", entry.module]].map(([label, value]) => `<div class="audit-detail-stat"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value || "-"))}</strong></div>`).join("");
   const technicalRows = [["Server captured", entry.serverCapturedAt || "-"], ["Device", entry.device], ["Browser", entry.browser], ["IP address", entry.ipAddress], ["User agent", entry.userAgent]].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><code>${escapeHtml(String(value || "-"))}</code></div>`).join("");
-  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Audit Detail</p><h2>${escapeHtml(entry.action || "Recorded action")}</h2></div><button class="icon-button" type="button" data-close-audit-detail aria-label="Close">x</button></div><div class="audit-detail-summary"><span class="pill ${statusClass(entry.action || "")}">${escapeHtml(entry.action || "Recorded action")}</span><strong>${escapeHtml(entry.record || "No record value captured")}</strong><small>${escapeHtml(entry.module || "System")}</small></div><div class="audit-detail-grid">${primaryRows}</div><details class="audit-technical-detail"><summary><strong>Technical details</strong><span>Device, IP, browser, user agent</span></summary><div>${technicalRows}</div></details>`;
+  const messageButton = entry.digestMessageId ? `<button class="ghost-button" type="button" data-view-digest-message style="margin-top:14px;">View message sent</button>` : "";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Audit Detail</p><h2>${escapeHtml(entry.action || "Recorded action")}</h2></div><button class="icon-button" type="button" data-close-audit-detail aria-label="Close">x</button></div><div class="audit-detail-summary"><span class="pill ${statusClass(entry.action || "")}">${escapeHtml(entry.action || "Recorded action")}</span><strong>${escapeHtml(entry.record || "No record value captured")}</strong><small>${escapeHtml(entry.module || "System")}</small></div><div class="audit-detail-grid">${primaryRows}</div>${messageButton}<details class="audit-technical-detail"><summary><strong>Technical details</strong><span>Device, IP, browser, user agent</span></summary><div>${technicalRows}</div></details>`;
   document.body.appendChild(dialog);
   dialog.querySelector("[data-close-audit-detail]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelector("[data-view-digest-message]")?.addEventListener("click", () => showDigestMessagePreview(entry.digestMessageId));
+  dialog.showModal();
+}
+async function showDigestMessagePreview(id) {
+  if (!id) return;
+  let result;
+  try {
+    result = await MedlaneAPI.getDigestMessage(id);
+  } catch (error) {
+    return toast(error.message || "Could not load the digest message.");
+  }
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal digest-message-modal";
+  const heading = [result.periodLabel, result.role].filter(Boolean).join(" · ") || "Digest email";
+  const frame = document.createElement("iframe");
+  frame.setAttribute("sandbox", "");
+  frame.setAttribute("title", "Digest email preview");
+  frame.style.cssText = "width:100%;height:70vh;border:1px solid var(--border, #d8eef9);border-radius:12px;background:#fff;";
+  frame.srcdoc = result.html || "<p>No message content stored.</p>";
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Digest Message</p><h2>${escapeHtml(heading)}</h2></div><button class="icon-button" type="button" data-close-digest-message aria-label="Close">x</button></div><p class="page-description">${escapeHtml(result.subject || "")}</p>`;
+  dialog.appendChild(frame);
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-close-digest-message]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
 }
