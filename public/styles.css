@@ -945,6 +945,7 @@ select, .search-input {
 .section.active { display: block; }
 .section.active { animation: fadeUp 0.32s ease both; }
 .section-header, .toolbar, .tabs { margin-bottom: 16px; }
+.section-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .toolbar { justify-content: flex-start; flex-wrap: wrap; }
 
 .stats-grid, .dashboard-grid, .invoice-grid, .report-grid, .invoice-workbench, .analytics-grid, .tracker-grid, .security-grid { display: grid; gap: 16px; }

@@ -215,10 +215,14 @@ function parseInvoiceLines(text, options = {}) {
     const expiryValue = hasBranch ? eighthValue : seventhValue;
     const item = data.items.find((entry) => entry.name === itemName || entry.code === itemName);
     if (!item) throw new Error(`Unknown item: ${itemName}`);
+    if (isArchived(item) && !options.allowArchivedItems) throw new Error(`${item.name} is archived and can no longer be added to new transactions.`);
     const equipment = isEquipmentItem(item);
     const qty = Number(qtyValue);
     const price = Number(priceValue);
+    // Fractional quantities are allowed (e.g. 0.5 of a reagent kit) — only zero, negative,
+    // and non-numeric values are rejected here. Equipment is still whole-units only.
     if (!qty || qty <= 0 || Number.isNaN(price) || price < 0) throw new Error(`Invalid qty or price for ${item.name}`);
+    if (equipment && !Number.isInteger(qty)) throw new Error(`${item.name} is equipment — quantity must be a whole number.`);
     if (requireLot && !lotValue && itemStockLotTracked(item, sourceBranch)) throw new Error(`Missing lot number for ${item.name}`);
     if (requireLot && !equipment && !expiryValue) throw new Error(`Missing expiry date for ${item.name}`);
     return { item: item.name, code: item.code, brand: brandValue || item.brand, qty, uom: uomValue || item.uom || "unit", price, sourceBranch, branch: sourceBranch, lot: lotValue || "", expiry: equipment ? "N/A" : expiryValue || "", discount: Number(discountValue || 0), discountReason: "" };
@@ -553,7 +557,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <div class="field item-field"><label>Item</label><input class="invoice-item-input" list="item-master-options" autocomplete="off" value="${escapeHtml(line.item || item?.name || "")}" placeholder="Type item name or code" required />${invoiceRowStockHintHtml(item, preferredBranch)}</div>
       <input class="invoice-source-branch-input" type="hidden" value="${escapeHtml(selectedInvoiceBranch)}" />
       <div class="field brand-field"><label>Brand</label><input class="invoice-brand-input" value="${escapeHtml(line.brand || item?.brand || "")}" readonly /></div>
-      <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="1" value="${line.qty ? Number(line.qty) : ""}" required /></div>
+      <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="0" step="any" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${uomOptions.map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" value="${line.price || ""}" required /></div>
       ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label>${lotTracked ? `<input class="invoice-lot-input" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist>` : `<input class="invoice-lot-input" autocomplete="off" value="${escapeHtml(line.lot || "")}" placeholder="No lot on file — enter it here to record it" />`}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
@@ -583,13 +587,25 @@ function poLineStatus(po, line) {
   return { served, pending: Math.max(Number(line.qty || 0) - served, 0) };
 }
 
+// A submitted client PO can still be edited only while nothing has been invoiced/served
+// against it and it is not in a terminal (fully served) status. Once any quantity is served,
+// the PO is locked — corrections then go through the invoice cancel/replace flow instead.
+function poHasAnyServed(po) {
+  return (po?.lines || []).some((line) => poServedQty(po, line.code) > 0);
+}
+function poCanEdit(po) {
+  return Boolean(po) && !PO_TERMINAL_STATUSES.includes(poStatus(po)) && !poHasAnyServed(po) && canEditModule("purchase-orders");
+}
+
 const PO_COMPLETED_DOC_LABELS = { SI: "Sales Invoice", TS: "Transmittal Slip", DR: "Delivery Receipt" };
 const PO_TERMINAL_STATUSES = Object.values(PO_COMPLETED_DOC_LABELS);
 
 function poStatus(po) {
   const pending = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0);
   const served = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).served, 0);
-  if (pending <= 0) return PO_COMPLETED_DOC_LABELS[po.completedType] || "Sales Invoice";
+  // Epsilon tolerance so fractional line quantities (e.g. 0.1 + 0.2) that sum to a hair
+  // above zero from floating-point drift don't leave a fully-served PO stuck as pending.
+  if (pending <= 1e-9) return PO_COMPLETED_DOC_LABELS[po.completedType] || "Sales Invoice";
   if (served > 0) return "Pending Orders";
   return "For Invoicing";
 }
@@ -635,7 +651,7 @@ function renderInvoiceEditor(lines = [{}], options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
   const help = requireLot ? "Search item name. Enter lot and expiry before creating SI, TS, or DR." : "Search item name. Lot and expiry will be entered during invoicing.";
-  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
+  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${activeItems().map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
 }
 
 function collectInvoiceEditorLines() {
@@ -1900,28 +1916,44 @@ function renderMasterlists() {
   qs("#master-table").classList.toggle("client-table", data.masterTab === "clients");
   const labels = { clients: "Add Client", items: "Add Item", suppliers: "Add Supplier", branches: "Add Branch", employees: "Add Employee", banks: "Add Bank" };
   qs("#master-add-button").textContent = labels[data.masterTab];
-  qs("#master-add-button").hidden = !canEditModule("masterlists");
-  const masterEditAction = (type, index) => canEditModule("masterlists") ? `<button class="mini-button" data-master-edit="${type}" data-index="${index}">Edit</button>` : "Approval required";
-  const missingDocs = data.clients.reduce((sum, client) => sum + requiredClientDocs.filter((doc) => !client.docs?.includes(doc)).length, 0);
+  const canArchive = ["Superadmin", "CEO"].includes(currentUser?.role);
+  const archivableTabs = ["clients", "items", "suppliers", "employees", "banks"];
+  const showArchived = masterShowArchived && archivableTabs.includes(data.masterTab);
+  const archivedToggle = qs("#master-archived-toggle");
+  if (archivedToggle) {
+    const canToggle = canArchive && archivableTabs.includes(data.masterTab);
+    archivedToggle.hidden = !canToggle;
+    archivedToggle.textContent = showArchived ? "Show Active" : "Show Archived";
+    archivedToggle.classList.toggle("active", showArchived);
+  }
+  qs("#master-add-button").hidden = !canEditModule("masterlists") || showArchived || data.masterTab === "branches";
+  const masterFilter = (record) => (showArchived ? isArchived(record) : !isArchived(record)) && includesSearch(Object.values(record));
+  const rowActions = (type, index) => {
+    if (showArchived) return canArchive ? `<button class="mini-button" data-master-restore="${type}" data-index="${index}">Restore</button>` : "Archived";
+    const parts = [canEditModule("masterlists") ? `<button class="mini-button" data-master-edit="${type}" data-index="${index}">Edit</button>` : "Approval required"];
+    if (canArchive) parts.push(`<button class="mini-button danger-button" data-master-archive="${type}" data-index="${index}">Archive</button>`);
+    return parts.join(" ");
+  };
+  const missingDocs = activeClients().reduce((sum, client) => sum + requiredClientDocs.filter((doc) => !client.docs?.includes(doc)).length, 0);
   qs("#master-overview").innerHTML = [
-    ["Clients", data.clients.length, `${missingDocs} missing docs`, "◆"],
-    ["Items", data.items.length, `${new Set(data.items.map((item) => item.brand)).size} brands`, "▤"],
-    ["Suppliers", data.suppliers.length, "supplier records", "◇"],
-    ["Banks", data.banks.length, "collection accounts", "●"],
+    ["Clients", activeClients().length, `${missingDocs} missing docs`, "◆"],
+    ["Items", activeItems().length, `${new Set(activeItems().map((item) => item.brand)).size} brands`, "▤"],
+    ["Suppliers", activeSuppliers().length, "supplier records", "◇"],
+    ["Banks", activeBanks().length, "collection accounts", "●"],
   ].map(([title, value, note, icon]) => `<article class="master-card"><span class="feature-icon">${icon}</span><div><strong>${value}</strong><small>${title} · ${note}</small></div></article>`).join("");
-  if (data.masterTab === "clients") table("#master-table", ["Code", "Client", "Area", "Account Type", "Sales Person", "Terms", "Contact", "TIN", "Status", "Credit Limit", "AR Used", "Required Docs", "Actions"], data.clients.filter((c) => includesSearch(Object.values(c))).map((c) => {
+  if (data.masterTab === "clients") table("#master-table", ["Code", "Client", "Area", "Account Type", "Sales Person", "Terms", "Contact", "TIN", "Status", "Credit Limit", "AR Used", "Required Docs", "Actions"], data.clients.filter(masterFilter).map((c) => {
     const used = clientBalance(c.name);
     const creditClass = used > c.creditLimit ? "credit-warning" : "";
-    return { focus: c.name, cells: [c.code || "-", c.name, c.area, c.dealer, c.salesperson || "Unassigned", `${c.terms || 30} days`, c.contact, c.tin, c.status || "Active", peso.format(c.creditLimit), `<span class="${creditClass}">${peso.format(used)}</span>`, docUploadButtons(c), masterEditAction("client", data.clients.indexOf(c))] };
+    return { focus: c.name, cells: [c.code || "-", c.name, c.area, c.dealer, c.salesperson || "Unassigned", `${c.terms || 30} days`, c.contact, c.tin, isArchived(c) ? "Archived" : (c.status || "Active"), peso.format(c.creditLimit), `<span class="${creditClass}">${peso.format(used)}</span>`, docUploadButtons(c), rowActions("client", data.clients.indexOf(c))] };
   }));
-  if (data.masterTab === "items") table("#master-table", ["Code", "Item", "Brand", "UOM", "Supplier", "Classification", "Actions"], data.items.filter((i) => includesSearch(Object.values(i))).map((i) => ({ focus: i.code, cells: [i.code, i.name, i.brand, i.uom, i.supplier, i.classification || i.category, masterEditAction("item", data.items.indexOf(i))] })));
-  if (data.masterTab === "suppliers") table("#master-table", ["Code", "Supplier", "Classification", "TIN", "Address", "ZIP", "Contact", "Status", "Actions"], data.suppliers.filter((s) => includesSearch(Object.values(s))).map((s) => ({ focus: s.name, cells: [s.code || "-", s.name, s.classification || s.brand || "Multiple", s.tin || "-", s.address, s.zip || "-", s.contact, s.status || "Active", masterEditAction("supplier", data.suppliers.indexOf(s))] })));
+  if (data.masterTab === "items") table("#master-table", ["Code", "Item", "Brand", "UOM", "Supplier", "Classification", "Actions"], data.items.filter(masterFilter).map((i) => ({ focus: i.code, cells: [i.code, i.name, i.brand, i.uom, i.supplier, i.classification || i.category, rowActions("item", data.items.indexOf(i))] })));
+  if (data.masterTab === "suppliers") table("#master-table", ["Code", "Supplier", "Classification", "TIN", "Address", "ZIP", "Contact", "Status", "Actions"], data.suppliers.filter(masterFilter).map((s) => ({ focus: s.name, cells: [s.code || "-", s.name, s.classification || s.brand || "Multiple", s.tin || "-", s.address, s.zip || "-", s.contact, isArchived(s) ? "Archived" : (s.status || "Active"), rowActions("supplier", data.suppliers.indexOf(s))] })));
   if (data.masterTab === "branches") table("#master-table", ["Branch", "Address", "Status", "Actions"], platformBranches().map((branch) => {
     const locked = data.inventory.some((item) => item.branch === branch) || data.pendingTransfers.some((transfer) => transfer.from === branch || transfer.to === branch);
     return { focus: branch, cells: [branch, branchAddresses()[branch] || "No address set", locked ? "Used by records" : "Unused", canEditModule("masterlists") ? `<button class="mini-button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${locked ? "" : `<button class="mini-button danger-button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}` : "Approval required"] };
   }));
-  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Target Sales", "Govt. Benefits", "Actions"], data.employees.filter((e) => includesSearch(Object.values(e))).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", Number(e.targetSales || 0) ? peso.format(Number(e.targetSales)) : "-", employeeBenefitsSummary(e), masterEditAction("employee", data.employees.indexOf(e))] })));
-  if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Actions"], data.banks.filter((b) => includesSearch(Object.values(b))).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, masterEditAction("bank", data.banks.indexOf(b))] })));
+  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Target Sales", "Govt. Benefits", "Actions"], data.employees.filter(masterFilter).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", Number(e.targetSales || 0) ? peso.format(Number(e.targetSales)) : "-", employeeBenefitsSummary(e), rowActions("employee", data.employees.indexOf(e))] })));
+  if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Actions"], data.banks.filter(masterFilter).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, rowActions("bank", data.banks.indexOf(b))] })));
 }
 
 function clientDocRecordId(clientName, doc) {
@@ -2119,8 +2151,8 @@ function showTransferTimeline(id) {
 
 function ensureInventoryDatalists() {
   if (!qs("#inventory-code-options")) qs("#inventory").insertAdjacentHTML("beforeend", `<datalist id="inventory-code-options"></datalist><datalist id="inventory-item-options"></datalist><datalist id="inventory-brand-options"></datalist>`);
-  qs("#inventory-code-options").innerHTML = data.items.map((item) => `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name)} · ${escapeHtml(item.brand)}</option>`).join("");
-  qs("#inventory-item-options").innerHTML = data.items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("");
+  qs("#inventory-code-options").innerHTML = activeItems().map((item) => `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name)} · ${escapeHtml(item.brand)}</option>`).join("");
+  qs("#inventory-item-options").innerHTML = activeItems().map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("");
   qs("#inventory-brand-options").innerHTML = [...new Set(data.items.map((item) => item.brand).filter(Boolean))].map((brand) => `<option value="${escapeHtml(brand)}"></option>`).join("");
 }
 
@@ -2188,7 +2220,7 @@ function demoRequestLineRow() {
 function renderDemoRequestSheet() {
   ensureInventoryDatalists();
   if (!qs("#client-options")) qs("#inventory").insertAdjacentHTML("beforeend", `<datalist id="client-options"></datalist>`);
-  qs("#client-options").innerHTML = data.clients.map((client) => `<option value="${escapeHtml(client.name)}">${escapeHtml(client.area || "")}</option>`).join("");
+  qs("#client-options").innerHTML = activeClients().map((client) => `<option value="${escapeHtml(client.name)}">${escapeHtml(client.area || "")}</option>`).join("");
   qs("#demo-client").value = "";
   qs("#demo-sales-agent").value = currentUser?.name || "";
   qs("#demo-date").value = fmtDate(today);
@@ -2808,7 +2840,7 @@ function renderPurchaseOrders() {
   qs("#purchase-order-table-view").hidden = poViewMode !== "table";
   qs("#purchase-order-grid").hidden = poViewMode !== "card";
   if (poViewMode === "table") {
-    table("#purchase-order-table", ["PO No.", "Client", "Area", "Date", "Status", "Total", "Actions"], tabbed.map((po) => ({ focus: po.id, cells: [po.id, po.client, po.area || "-", po.date, `<span class="pill ${statusClass(poStatus(po))}">${escapeHtml(poStatus(po))}</span>`, peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0)), `<button class="mini-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button>`] })));
+    table("#purchase-order-table", ["PO No.", "Client", "Area", "Date", "Status", "Total", "Actions"], tabbed.map((po) => ({ focus: po.id, cells: [po.id, po.client, po.area || "-", po.date, `<span class="pill ${statusClass(poStatus(po))}">${escapeHtml(poStatus(po))}</span>`, peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0)), `${poCanEdit(po) ? `<button class="mini-button" data-po-edit="${escapeHtml(po.id)}">Edit</button> ` : ""}<button class="mini-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button>`] })));
   }
   qs("#purchase-order-grid").innerHTML = tabbed.map((po) => {
     const status = poStatus(po);
@@ -2816,7 +2848,7 @@ function renderPurchaseOrders() {
       const served = poLineStatus(po, line);
       return `<li><span>${escapeHtml(line.item)}</span><strong>${served.served}/${line.qty} served · ${served.pending} pending</strong></li>`;
     }).join("");
-    return `<details class="invoice-card collapsible-invoice" data-focus-record="${escapeHtml(po.id)}"><summary><div class="invoice-type-icon type-PO">PO</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(po.client)}</strong><strong class="invoice-amount">${peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0))}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(status)}">${escapeHtml(status)}</span><small class="invoice-client-line">${escapeHtml(po.id)}</small><small>${escapeHtml(po.date)}</small></div></div></summary><div class="invoice-details"><ul class="compact-list">${lines}</ul><div class="modal-actions"><button class="ghost-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button></div></div></details>`;
+    return `<details class="invoice-card collapsible-invoice" data-focus-record="${escapeHtml(po.id)}"><summary><div class="invoice-type-icon type-PO">PO</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(po.client)}</strong><strong class="invoice-amount">${peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0))}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(status)}">${escapeHtml(status)}</span><small class="invoice-client-line">${escapeHtml(po.id)}</small><small>${escapeHtml(po.date)}</small></div></div></summary><div class="invoice-details"><ul class="compact-list">${lines}</ul><div class="modal-actions">${poCanEdit(po) ? `<button class="ghost-button" data-po-edit="${escapeHtml(po.id)}">Edit PO</button>` : ""}<button class="ghost-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button></div></div></details>`;
   }).join("");
 }
 
@@ -2829,6 +2861,14 @@ function openInvoiceForPurchaseOrder(poId) {
   syncInvoicePurchaseOrders(true);
   qs("#po").value = po.id;
   syncInvoiceFromPurchaseOrder();
+}
+
+function editPurchaseOrder(poId) {
+  const po = data.purchaseOrders.find((entry) => entry.id === poId);
+  if (!po) return toast("Purchase Order not found.");
+  if (!poCanEdit(po)) return toast("This PO can no longer be edited — it already has invoices/DRs against it or is fully served.");
+  showSection("purchase-orders");
+  openModal("purchaseOrder", { poEdit: po });
 }
 
 function invoiceTaxMetaHtml(sale) {
@@ -3542,7 +3582,7 @@ function financialLineTemplate(line = {}, options = {}) {
 }
 
 function renderFinancialRequestEditor(lines = [{}]) {
-  const vendorOptions = [...new Set(data.suppliers.map((s) => s.name))].map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
+  const vendorOptions = [...new Set(activeSuppliers().map((s) => s.name))].map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
   const lineOptions = { vendor: modalType !== "payable", classification: modalType === "replenishment" };
   const classificationDatalist = lineOptions.classification ? `<datalist id="expense-classification-options">${EXPENSE_CLASSIFICATION_OPTIONS.map((option) => `<option value="${escapeHtml(option)}"></option>`).join("")}</datalist>` : "";
   return `<div class="field full payment-request-editor"><label>Itemized Particulars</label><datalist id="financial-vendor-options">${vendorOptions}</datalist>${classificationDatalist}<div id="payment-request-line-list">${lines.map((line) => financialLineTemplate(line, lineOptions)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="amount">Net Total</label><input id="amount" name="amount" readonly value="0.00" /></div></div><div id="financial-request-tax-preview" class="invoice-compute-preview payment-deduction-preview"></div></div>`;
@@ -5759,11 +5799,43 @@ function renderRoleTester() {
     ["Risk Level", ["Superadmin", "CEO"].includes(selected) ? "Full platform control" : edit.length ? "Operational editor" : "View / task limited", "Use custom permissions for exceptions."],
   ].map(([title, value, note]) => `<div class="report-preview-card"><small>${escapeHtml(title)}</small><strong>${escapeHtml(value)}</strong><span>${escapeHtml(note)}</span></div>`).join("");
 }
+function userInviteStatus(user) {
+  return user?.inviteStatus || "Active";
+}
+
+// A backend sync rewrites an archived user's inviteStatus back to "Disabled" (Supabase only
+// knows "banned"), so the durable archived signal is the archivedAt stamp set on archive.
+function userIsArchived(user) {
+  return Boolean(user?.archivedAt) || /archived/i.test(userInviteStatus(user));
+}
+
+function userDisplayStatus(user) {
+  return userIsArchived(user) ? "Archived" : userInviteStatus(user);
+}
+
 function renderUsers() {
   qs("#users [data-action='open-modal'][data-type='user']").hidden = !canManageUsers();
   renderRoleTester();
   const users = dedupedUsers();
-  table("#users-table", ["Name", "Email", "Role", "Status", "Superadmin", "Access", "Actions"], users.filter((u) => includesSearch(Object.values(u))).map((u) => {
+  const activeStatuses = [...new Set(users.filter((u) => !userIsArchived(u)).map(userInviteStatus))].sort();
+  const hasArchived = users.some(userIsArchived);
+  const filterValues = ["all", ...activeStatuses, ...(hasArchived ? ["Archived"] : [])];
+  if (!filterValues.includes(userStatusFilter)) userStatusFilter = "all";
+  const filterSelect = qs("#user-status-filter");
+  if (filterSelect) {
+    filterSelect.innerHTML = `<option value="all">All Statuses (excludes archived)</option>` +
+      activeStatuses.map((status) => `<option value="${escapeHtml(status)}"${status === userStatusFilter ? " selected" : ""}>${escapeHtml(status)}</option>`).join("") +
+      (hasArchived ? `<option value="Archived"${userStatusFilter === "Archived" ? " selected" : ""}>Archived</option>` : "");
+    filterSelect.value = userStatusFilter;
+  }
+  // Archived users are hidden in the default "all" view — they only show when the filter is
+  // explicitly set to "Archived".
+  const statusFiltered = users.filter((u) => {
+    if (userStatusFilter === "all") return !userIsArchived(u);
+    if (userStatusFilter === "Archived") return userIsArchived(u);
+    return !userIsArchived(u) && userInviteStatus(u) === userStatusFilter;
+  });
+  table("#users-table", ["Name", "Email", "Role", "Status", "Superadmin", "Access", "Actions"], statusFiltered.filter((u) => includesSearch(Object.values(u))).map((u) => {
     const index = u._sourceIndex ?? data.users.indexOf(u);
     const email = String(u.email || u.username || "").trim();
     const displayName = String(u.name || u.full_name || "").trim();
@@ -5771,7 +5843,7 @@ function renderUsers() {
     const isSuperadmin = u.superadminPermissions || u.role === "Superadmin";
     const grantControl = `<label class="ios-check-row compact-doc-check user-superadmin-check"><input type="checkbox" data-user-superadmin="${index}" ${isSuperadmin ? "checked" : ""} ${canManageUsers() ? "" : "disabled"} /><span></span><strong>${isSuperadmin ? "Granted" : "Not granted"}</strong></label>`;
     const accessSummary = u.customPermissions?.enabled ? `${u.customPermissions.view?.length || 0} view / ${u.customPermissions.edit?.length || 0} edit modules` : u.access || `${u.role} default permissions`;
-    const inviteStatus = u.inviteStatus || "Active";
+    const inviteStatus = userDisplayStatus(u);
     const resend = String(inviteStatus).toLowerCase().includes("active") ? "" : `<button class="mini-button" data-resend-invite="${index}">Resend Invite</button>`;
     const disabled = /disabled|archived/i.test(inviteStatus);
     const isSelf = String(u.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase() || (u.id && u.id === currentUser?.id);
@@ -6152,21 +6224,21 @@ function handleWorkflowAction(action) {
 
 const modalConfigs = {
   client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
-  item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...data.items.map((item) => item.brand), ...data.suppliers.map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => data.suppliers.map((supplier) => supplier.name)]] },
+  item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...activeItems().map((item) => item.brand), ...activeSuppliers().map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => activeSuppliers().map((supplier) => supplier.name)]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea-optional"]] },
-  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(data.items.map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
+  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(activeItems().map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
-  purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
-  invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
-  cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => data.clients.map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
-  paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => data.clients.map((client) => client.name)], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => data.banks.map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
-  payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => data.suppliers.map((s) => s.name)], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
-  replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => data.employees.map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
-  inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => data.suppliers.map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
-  warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => data.clients.map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
+  purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
+  invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
+  cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
+  paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
+  payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
+  replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
+  inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
+  warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => activeClients().map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
-  productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
-  instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => data.clients.map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
+  productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
+  instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
 };
 
 function openModal(type, edit = null) {
@@ -6211,10 +6283,20 @@ function openModal(type, edit = null) {
     if (kind === "department-contacts") return `<div class="field full department-contacts-field"><label>${label}</label><p class="field-help">Format shown below is a guide, not required — leave any line blank if not applicable.</p><div class="department-contacts-grid">${clientContactDepartments.map(([key, deptLabel]) => `<fieldset class="department-contact-block"><legend>${escapeHtml(deptLabel)}</legend><div class="field"><label>Contact Person</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="person" /></div><div class="field"><label>Contact No.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="phone" /></div><div class="field"><label>E-mail Add.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="email" type="email" /></div></fieldset>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /><input id="contactDepartments" name="contactDepartments" type="hidden" /></div>`;
     return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${kind}" ${kind === "date" && name.toLowerCase().includes("expiry") ? `min="${fmtDate(today)}"` : ""} ${kind !== "date" && name !== "creditLimit" ? "required" : ""} /></div>`;
   }).join("");
-  if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false }));
+  editingPoId = type === "purchaseOrder" && edit?.poEdit ? edit.poEdit.id : null;
+  if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor(edit?.poEdit?.lines?.length ? edit.poEdit.lines : [{}], { requireLot: false }));
   if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
   if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false, allowDiscount: true }));
-  if (type === "purchaseOrder") qs("#date").value = fmtDate(today);
+  if (type === "purchaseOrder" && editingPoId) {
+    const po = edit.poEdit;
+    qs("#modal-title").textContent = `Edit ${po.id}`;
+    qs("#modal-kicker").textContent = "Admin Correction";
+    if (qs("#id")) { qs("#id").value = po.id; qs("#id").readOnly = true; }
+    if (qs("#client")) qs("#client").value = po.client || "";
+    if (qs("#date")) qs("#date").value = po.date || fmtDate(today);
+  } else if (type === "purchaseOrder") {
+    qs("#date").value = fmtDate(today);
+  }
   if (type === "inventoryPurchaseOrder") qs("#date").value = fmtDate(today);
   if (type === "invoice") {
     const date = qs("#date");
@@ -6461,6 +6543,98 @@ function openMasterEditModal(type, index) {
   openModal(type, { list: listByType[type], index, record: listByType[type][index] });
 }
 
+function masterlistDisplayLabel(record) {
+  return String(record?.code || record?.name || record?.email || "").trim();
+}
+
+// A masterlist record can only be archived once it has no open / incomplete transaction
+// anywhere — the "floating transaction" must be completed or cancelled first. Returns a
+// short human reason string, or "" when the record is clear to archive.
+function masterlistRecordOpenActivity(type, record) {
+  const openDemo = (predicate) => (data.inventoryDemoRequests || []).some((demo) => !["Returned", "To Sales", "Cancelled"].includes(demo.status) && predicate(demo));
+  const openPo = (predicate) => (data.purchaseOrders || []).some((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po)) && predicate(po));
+  const openInvPo = (predicate) => (data.inventoryPurchaseOrders || []).some((po) => !inventoryPoTerminalStatuses.includes(po.status) && predicate(po));
+  const openPayable = (predicate) => (data.payables || []).some((p) => !["Paid", "Cancelled"].includes(p.requestStatus || p.status) && !p.paymentConfirmed && predicate(p));
+  const openCollection = (predicate) => (data.paymentRequests || []).some((r) => !["Completed", "Cancelled"].includes(r.requestStatus || r.status) && predicate(r));
+  const reasons = [];
+  if (type === "client") {
+    const name = record.name;
+    if (openPo((po) => po.client === name)) reasons.push("an unserved purchase order");
+    if ((data.sales || []).some((s) => s.client === name && s.status !== "Cancelled" && Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0.01)) reasons.push("an unpaid invoice");
+    if (openCollection((r) => r.employee === name)) reasons.push("an open collection");
+    if (openDemo((d) => d.client === name)) reasons.push("an active demo unit");
+  } else if (type === "item") {
+    const code = record.code;
+    const onLines = (rec) => (rec.lines || []).some((l) => l.code === code);
+    if (openPo(onLines)) reasons.push("an unserved purchase order");
+    if (openInvPo(onLines)) reasons.push("an open inventory purchase order");
+    if ((data.inventory || []).some((inv) => inv.code === code && Number(inv.qty || 0) > 0)) reasons.push("stock on hand");
+    if ((data.pendingTransfers || []).some((t) => !["Received", "Cancelled"].includes(t.status) && onLines(t))) reasons.push("a pending stock transfer");
+    if (openDemo(onLines)) reasons.push("an active demo unit");
+  } else if (type === "supplier") {
+    const name = record.name;
+    if (openInvPo((po) => po.supplier === name)) reasons.push("an open inventory purchase order");
+    if (openPayable((p) => p.supplier === name)) reasons.push("an unpaid payable");
+  } else if (type === "employee") {
+    const name = record.name;
+    if ((data.replenishments || []).some((r) => (r.employeeName === name || r.requester === name) && !["Paid", "Completed", "Cancelled"].includes(r.requestStatus || r.status))) reasons.push("an open expense request");
+    if (openDemo((d) => d.salesAgent === name)) reasons.push("an active demo unit");
+  } else if (type === "bank") {
+    const name = record.name;
+    if (openCollection((r) => r.bank === name)) reasons.push("an open collection");
+    if (openPayable((p) => p.bank === name)) reasons.push("an unpaid cheque payable");
+  }
+  return reasons.length ? [...new Set(reasons)].join(", ") : "";
+}
+
+// Archive/restore are CEO/Superadmin-only (also enforced server-side in /api/modules/records).
+// Archiving needs a type-the-name confirmation followed by the standard final-save confirm.
+async function archiveMasterlistRecord(type, index) {
+  if (!["Superadmin", "CEO"].includes(currentUser?.role)) return toast("Only CEO or Superadmin can archive masterlist records.");
+  const moduleKey = masterlistModuleKey(type);
+  const list = data[moduleKey];
+  const record = list?.[index];
+  if (!record) return toast("Record not found.");
+  if (isArchived(record)) return toast("This record is already archived.");
+  const label = masterlistDisplayLabel(record);
+  const openActivity = masterlistRecordOpenActivity(type, record);
+  if (openActivity) return toast(`${label} still has ${openActivity} — complete or cancel that first, then archive.`);
+  const promptLabel = type === "item" ? "item code" : type === "employee" ? "employee name" : `${type} name`;
+  const typed = (prompt(`Archive ${type}: ${label}\n\nArchived records are hidden from active lists and from new transactions, but stay on historical documents and can be restored later.\n\nType the ${promptLabel} exactly to confirm:`) || "").trim();
+  if (!typed) return;
+  if (typed.toLowerCase() !== label.toLowerCase()) return toast("Entry did not match — archive cancelled.");
+  if (!(await confirmFinalSave(`Archive this ${type}?`, "This hides the record from active lists and new transactions. You can restore it later from the Archived view."))) return;
+  const recordKey = masterlistRecordKey(type, record);
+  record.archived = true;
+  const saveResult = await persistRecords({ [moduleKey]: [record] }, { [moduleKey]: [recordKey] });
+  if (!saveResult?.ok) { delete record.archived; renderAll(); return; }
+  log("Archived masterlist record", "Masterlists", `Archived ${type}: ${label}`, { save: false });
+  renderAll();
+  toast(`${label} archived.`);
+}
+
+async function restoreMasterlistRecord(type, index) {
+  if (!["Superadmin", "CEO"].includes(currentUser?.role)) return toast("Only CEO or Superadmin can restore masterlist records.");
+  const moduleKey = masterlistModuleKey(type);
+  const list = data[moduleKey];
+  const record = list?.[index];
+  if (!record) return toast("Record not found.");
+  if (!isArchived(record)) return toast("This record is not archived.");
+  const label = masterlistDisplayLabel(record);
+  const identityKey = masterlistRecordKey(type, record).toLowerCase();
+  if (activeRecords(list).some((other) => other !== record && masterlistRecordKey(type, other).toLowerCase() === identityKey)) {
+    return toast(`An active ${type} with the same identity already exists — rename it first, then restore.`);
+  }
+  if (!(await confirmFinalSave(`Restore this ${type}?`, `${label} will reappear in active lists and be selectable in new transactions.`))) return;
+  const recordKey = masterlistRecordKey(type, record);
+  delete record.archived;
+  const saveResult = await persistRecords({ [moduleKey]: [record] }, { [moduleKey]: [recordKey] });
+  if (!saveResult?.ok) { record.archived = true; renderAll(); return; }
+  log("Restored masterlist record", "Masterlists", `Restored ${type}: ${label}`, { save: false });
+  renderAll();
+  toast(`${label} restored.`);
+}
+
 function openCancelReplaceModal(invoiceId) {
   const sale = data.sales.find((entry) => entry.id === invoiceId);
   if (Number(sale?.paid || 0) > 0) return toast("This invoice already has a payment recorded — it can no longer be cancelled or replaced.");
@@ -6495,27 +6669,29 @@ function masterlistModuleKey(type) {
 }
 
 function validateMasterRecord(type, values, exceptIndex = -1) {
+  // Archived records never block uniqueness — restoring one is guarded separately, and an
+  // archived name/code/TIN should be free to reuse for a fresh active record.
   if (type === "client") {
     const name = values.name?.trim().toLowerCase();
     const tin = values.tin?.trim();
     if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
-    if (data.clients.some((client, index) => index !== exceptIndex && client.name.trim().toLowerCase() === name)) throw new Error("Duplicate client name detected.");
-    if (tin && data.clients.some((client, index) => index !== exceptIndex && client.tin === tin)) throw new Error("Duplicate client TIN detected.");
+    if (data.clients.some((client, index) => index !== exceptIndex && !isArchived(client) && client.name.trim().toLowerCase() === name)) throw new Error("Duplicate client name detected.");
+    if (tin && data.clients.some((client, index) => index !== exceptIndex && !isArchived(client) && client.tin === tin)) throw new Error("Duplicate client TIN detected.");
     if (Number(values.creditLimit || 0) < 0) throw new Error("Credit limit cannot be negative.");
   }
   if (type === "supplier") {
     const tin = values.tin?.trim();
     if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
-    if (tin && data.suppliers.some((supplier, index) => index !== exceptIndex && supplier.tin === tin)) throw new Error("Duplicate supplier TIN detected.");
+    if (tin && data.suppliers.some((supplier, index) => index !== exceptIndex && !isArchived(supplier) && supplier.tin === tin)) throw new Error("Duplicate supplier TIN detected.");
     if (!values.zip?.trim()) throw new Error("ZIP Code is required.");
   }
   if (type === "item") {
     const code = values.code?.trim().toLowerCase();
     const name = values.name?.trim().toLowerCase();
-    if (data.items.some((item, index) => index !== exceptIndex && item.code.trim().toLowerCase() === code)) throw new Error("Duplicate item code detected.");
-    if (data.items.some((item, index) => index !== exceptIndex && item.name.trim().toLowerCase() === name)) throw new Error("Duplicate item name detected.");
+    if (data.items.some((item, index) => index !== exceptIndex && !isArchived(item) && item.code.trim().toLowerCase() === code)) throw new Error("Duplicate item code detected.");
+    if (data.items.some((item, index) => index !== exceptIndex && !isArchived(item) && item.name.trim().toLowerCase() === name)) throw new Error("Duplicate item name detected.");
   }
-  if (type === "bank" && data.banks.some((bank, index) => index !== exceptIndex && bank.name.trim().toLowerCase() === values.name?.trim().toLowerCase())) throw new Error("Duplicate bank name detected.");
+  if (type === "bank" && data.banks.some((bank, index) => index !== exceptIndex && !isArchived(bank) && bank.name.trim().toLowerCase() === values.name?.trim().toLowerCase())) throw new Error("Duplicate bank name detected.");
 }
 
 function nextPurchaseOrderId() {
@@ -6561,11 +6737,33 @@ async function previewInventoryPurchaseOrder(identifier) {
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
 }
 
-function buildPurchaseOrder(values) {
+function buildPurchaseOrder(values, options = {}) {
   const client = findClientByName(values.client);
   if (!client) throw new Error("Client is required.");
-  const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false });
+  if (isArchived(client)) throw new Error(`${client.name} is archived and can no longer be used on a purchase order.`);
+  const existing = options.editingId ? data.purchaseOrders.find((po) => po.id === options.editingId) : null;
+  if (options.editingId && !existing) throw new Error("Purchase Order not found.");
+  const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false, allowArchivedItems: Boolean(existing) });
   if (!lines.length) throw new Error("At least one purchase order line is required.");
+  if (existing) {
+    if (PO_TERMINAL_STATUSES.includes(poStatus(existing)) || poHasAnyServed(existing)) {
+      throw new Error("This PO now has invoices/DRs against it and can no longer be edited.");
+    }
+    const originalCodes = new Set((existing.lines || []).map((line) => line.code));
+    const newArchived = lines.find((line) => !originalCodes.has(line.code) && isArchived(data.items.find((item) => item.code === line.code || item.name === line.item)));
+    if (newArchived) throw new Error(`${newArchived.item} is archived and can't be added to this PO.`);
+    const by = currentUser?.name || "System User";
+    return {
+      ...existing,
+      client: client.name,
+      area: client.area,
+      salesperson: existing.salesperson || by,
+      date: values.date || existing.date || fmtDate(today),
+      lines: lines.map(({ lot, expiry, ...line }) => line),
+      status: existing.status || "For Invoicing",
+      history: [...poHistory(existing), { date: poHistoryTimestamp(), status: existing.status || "For Invoicing", note: `Purchase order edited by ${by}.`, by }],
+    };
+  }
   const id = values.id?.trim() || nextPurchaseOrderId();
   if (data.purchaseOrders.some((po) => po.id === id)) throw new Error("Duplicate PO number detected.");
   return { id, client: client.name, area: client.area, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
@@ -6594,7 +6792,9 @@ function buildSale(values, replacementOf = null) {
   if (!po) throw new Error("Choose an incomplete or unserved Purchase Order for this account.");
   if (po.client !== client.name) throw new Error("Purchase Order does not belong to this client.");
   if (!platformBranches().includes(values.sourceBranch)) throw new Error("Choose one valid stock source branch for this invoice.");
-  const lines = parseInvoiceLines(values.itemsText || "").map((line) => ({ ...line, sourceBranch: values.sourceBranch, branch: values.sourceBranch }));
+  // Serving a PO: the "line must be on the PO" check below is the real gate, so an archived
+  // item that was ordered before it was archived can still be invoiced/delivered.
+  const lines = parseInvoiceLines(values.itemsText || "", { allowArchivedItems: true }).map((line) => ({ ...line, sourceBranch: values.sourceBranch, branch: values.sourceBranch }));
   if (!lines.length) throw new Error("At least one invoice line is required.");
   for (const line of lines) {
     const ordered = (po.lines || []).find((entry) => entry.code === line.code);

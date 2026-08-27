@@ -2723,6 +2723,23 @@ export default {
               if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
             }
 
+            // Toggling a masterlist record's `archived` flag is CEO/Superadmin-only, even
+            // through this bulk state PUT. Diff each incoming masterlist record against the
+            // stored row and reject any archived-flag transition by a non-admin actor.
+            if (!["Superadmin", "CEO"].includes(profile.role)) {
+              const masterlistModulesPresent = presentKeys.filter((key) => ["clients", "items", "suppliers", "employees", "banks"].includes(key));
+              if (masterlistModulesPresent.length) {
+                const storedMasterRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(masterlistModulesPresent))}&select=module_name,record_key,data`);
+                const storedArchived = new Map();
+                for (const row of storedMasterRows) storedArchived.set(`${row.module_name}|${row.record_key}`, Boolean(row.data && row.data.archived));
+                for (const row of rows) {
+                  if (!masterlistModulesPresent.includes(row.module_name)) continue;
+                  const wasArchived = storedArchived.get(`${row.module_name}|${row.record_key}`) || false;
+                  if (Boolean(row.data && row.data.archived) !== wasArchived) throw new Error("Only CEO or Superadmin can archive or restore masterlist records");
+                }
+              }
+            }
+
             const totalBefore = beforeRows.length;
             const totalAfter = rows.length;
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
@@ -2959,6 +2976,26 @@ export default {
         }
         rows = dedupeRowsByRecordKey(rows);
 
+        // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
+        // permission check above only gates *editing* the module, not flipping the `archived`
+        // flag, so enforce that specific transition here by diffing against the stored row.
+        const MASTERLIST_ARCHIVE_MODULES = ["clients", "items", "suppliers", "employees", "banks"];
+        const archiveCandidateRows = rows.filter((row) => MASTERLIST_ARCHIVE_MODULES.includes(row.module_name));
+        if (archiveCandidateRows.length && !["Superadmin", "CEO"].includes(profile?.role)) {
+          const keysByModule = {};
+          for (const row of archiveCandidateRows) (keysByModule[row.module_name] ||= []).push(row.record_key);
+          const storedArchivedByKey = new Map();
+          for (const [moduleName, keys] of Object.entries(keysByModule)) {
+            const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=in.${encodeURIComponent(postgrestIn(keys))}&select=record_key,data`);
+            for (const entry of stored) storedArchivedByKey.set(`${moduleName}|${entry.record_key}`, Boolean(entry.data && entry.data.archived));
+          }
+          for (const row of archiveCandidateRows) {
+            const wasArchived = storedArchivedByKey.get(`${row.module_name}|${row.record_key}`) || false;
+            const willBeArchived = Boolean(row.data && row.data.archived);
+            if (wasArchived !== willBeArchived) throw new Error("Only CEO or Superadmin can archive or restore masterlist records");
+          }
+        }
+
         // This is the real invoice-creation path (buildSale -> persistRecords -> here), not
         // /api/modules/state's bulk PUT — so the new-sale integrity checks belong here.
         const incomingSaleRows = rows.filter((row) => row.module_name === "sales");
@@ -2967,6 +3004,33 @@ export default {
           const existingSaleKeys = new Set(existingSaleRows.map((row) => row.record_key));
           const newSaleRows = incomingSaleRows.filter((row) => !existingSaleKeys.has(row.record_key));
           if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
+        }
+
+        // A submitted client PO can be edited only until it has invoices/DRs against it. This
+        // is the pure PO-edit path (no sales in the same payload); invoicing re-saves the PO
+        // row unchanged alongside its sale and is not affected. Reject when a stored PO already
+        // has a non-cancelled referencing sale AND its lines/client/date actually changed —
+        // guards against a stale client bypassing the client-side served check (spec FR-011).
+        const incomingPoRows = rows.filter((row) => row.module_name === "purchaseOrders");
+        if (incomingPoRows.length && !incomingSaleRows.length) {
+          const poIds = incomingPoRows.map((row) => row.record_key);
+          const storedPoRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(poIds))}&select=record_key,data`);
+          const storedPoByKey = new Map(storedPoRows.map((row) => [row.record_key, row.data || {}]));
+          const editedPoRows = incomingPoRows.filter((row) => storedPoByKey.has(row.record_key));
+          if (editedPoRows.length) {
+            const saleRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&select=data`);
+            const lockedPoIds = new Set(saleRows.map((row) => row.data).filter((sale) => sale && sale.po && sale.status !== "Cancelled").map((sale) => sale.po));
+            for (const row of editedPoRows) {
+              if (!lockedPoIds.has(row.record_key)) continue;
+              const stored = storedPoByKey.get(row.record_key);
+              const incoming = row.data || {};
+              const structurallyChanged =
+                JSON.stringify(stored.lines || []) !== JSON.stringify(incoming.lines || []) ||
+                String(stored.client || "") !== String(incoming.client || "") ||
+                String(stored.date || "") !== String(incoming.date || "");
+              if (structurallyChanged) throw new Error(`${row.record_key} already has invoices or delivery receipts against it and can no longer be edited.`);
+            }
+          }
         }
 
         const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers"].includes(key)))];
