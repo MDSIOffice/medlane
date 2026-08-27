@@ -1271,6 +1271,7 @@ select, .search-input {
 .pill.purple { background: var(--chip-purple-bg); color: var(--text-on-purple-chip); }
 .pill.gray { background: var(--gray-chip); color: var(--text-on-gray-chip); }
 .muted-cell { color: var(--muted); }
+.inventory-note-cell { display: inline-block; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .pill-button { border: 0; cursor: pointer; font-family: inherit; }
 .pill-button:hover { filter: brightness(0.96); }
 

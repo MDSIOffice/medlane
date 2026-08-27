@@ -2740,6 +2740,22 @@ export default {
               }
             }
 
+            // Editing a stored stock row's quantity or expiry is Admin/CEO/Superadmin-only, even
+            // through this bulk state PUT. New rows, and changes bundled with a stock-moving flow
+            // (`sales` invoicing, `pendingTransfers`), are unaffected.
+            if (!["Admin", "Superadmin", "CEO"].includes(profile.role) && presentKeys.includes("inventory") && !presentKeys.includes("sales") && !presentKeys.includes("pendingTransfers")) {
+              const storedStock = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=record_key,data`);
+              const storedStockByKey = new Map(storedStock.map((row) => [row.record_key, row.data || {}]));
+              for (const row of rows) {
+                if (row.module_name !== "inventory") continue;
+                const prev = storedStockByKey.get(row.record_key);
+                if (!prev) continue;
+                if (Number(prev.qty || 0) !== Number(row.data?.qty || 0) || String(prev.expiry || "") !== String(row.data?.expiry || "")) {
+                  throw new Error("Only Admin, CEO, or Superadmin can edit stock quantity or expiry");
+                }
+              }
+            }
+
             const totalBefore = beforeRows.length;
             const totalAfter = rows.length;
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
@@ -2993,6 +3009,27 @@ export default {
             const wasArchived = storedArchivedByKey.get(`${row.module_name}|${row.record_key}`) || false;
             const willBeArchived = Boolean(row.data && row.data.archived);
             if (wasArchived !== willBeArchived) throw new Error("Only CEO or Superadmin can archive or restore masterlist records");
+          }
+        }
+
+        // Directly correcting a stored stock row's quantity or expiry (the Inventory → Stocks
+        // "Edit" dialog) is Admin/CEO/Superadmin-only. The "inventory" module permission gates
+        // receiving/transfers for Logistics et al., but a manual stock correction is a higher bar.
+        // Legit stock-moving flows bundle a companion record (invoicing → `sales`, transfers →
+        // `pendingTransfers`); the correction dialog sends `inventory` alone, so skip the guard
+        // when a companion is present. A brand-new stock row (no stored match) also passes through.
+        const stockMovementCompanions = new Set(["sales", "pendingTransfers"]);
+        const incomingStockRows = rows.filter((row) => row.module_name === "inventory");
+        const hasStockMovementCompanion = rows.some((row) => stockMovementCompanions.has(row.module_name));
+        if (incomingStockRows.length && !hasStockMovementCompanion && !["Admin", "CEO", "Superadmin"].includes(profile?.role)) {
+          const storedStock = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(incomingStockRows.map((row) => row.record_key)))}&select=record_key,data`);
+          const storedStockByKey = new Map(storedStock.map((entry) => [entry.record_key, entry.data || {}]));
+          for (const row of incomingStockRows) {
+            const prev = storedStockByKey.get(row.record_key);
+            if (!prev) continue;
+            const qtyChanged = Number(prev.qty || 0) !== Number(row.data?.qty || 0);
+            const expiryChanged = String(prev.expiry || "") !== String(row.data?.expiry || "");
+            if (qtyChanged || expiryChanged) throw new Error("Only Admin, CEO, or Superadmin can edit stock quantity or expiry");
           }
         }
 

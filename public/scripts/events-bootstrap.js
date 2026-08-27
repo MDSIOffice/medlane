@@ -473,6 +473,10 @@ document.body.addEventListener("click", (event) => {
   if (stockReceiptEdit) return openStockSheetForReceiptEdit(Number(stockReceiptEdit.dataset.stockReceiptEdit));
   const stockReceiptCancel = event.target.closest("[data-stock-receipt-cancel]");
   if (stockReceiptCancel) return cancelStockReceipt(Number(stockReceiptCancel.dataset.stockReceiptCancel));
+  const stockEditButton = event.target.closest("[data-stock-edit]");
+  if (stockEditButton) return openStockEditDialog(stockEditButton.dataset.stockEdit);
+  const stockHistoryButton = event.target.closest("[data-stock-history]");
+  if (stockHistoryButton) return showStockHistory(stockHistoryButton.dataset.stockHistory);
   const revertImport = event.target.closest("[data-revert-import]");
   if (revertImport) return revertImportBatch(Number(revertImport.dataset.revertImport));
   const productIssuePrint = event.target.closest("[data-product-issue-print]");
