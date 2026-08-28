@@ -2182,29 +2182,52 @@ function manilaPeriodKeys(scheduled) {
   return { dayKey, monthKey: `${scheduled.year}-${scheduled.month}`, yearKey: scheduled.year };
 }
 
+// In-flight lock is treated as stale once this long passes with no heartbeat — an overlapping
+// tick may then re-claim the job, assuming the earlier attempt was hard-killed. Heartbeat
+// cadence is well under it so a job that is genuinely still running never looks stale.
+const AUTOMATION_LOCK_MS = 6 * 60 * 1000;
+const AUTOMATION_HEARTBEAT_MS = 2 * 60 * 1000;
+
 async function claimAutomationPeriod(env, jobKey, periodKey) {
   const stateKey = `automation-once-${jobKey}`;
   const state = await monitoringState(env, stateKey).catch(() => ({}));
-  if (state.lastPeriod === periodKey) return false; // already completed for this period
-  // Hold a short in-flight lock so two overlapping 5-minute invocations (or a retry landing
-  // while the first attempt is still running) don't double-fire the job. The lock expires
-  // after ~9 minutes — longer than one 5-minute tick, so a genuinely killed attempt is
-  // retried on a later tick within the same 18:00 window rather than lost.
+  if (state.lastPeriod === periodKey) return null; // already completed for this period
+  // Hold an in-flight lock so two overlapping 5-minute invocations (or a retry landing while
+  // the first attempt is still running) don't double-fire the job. runOncePerPeriod
+  // heartbeats attemptAt while fn() runs, so the lock stays live for an arbitrarily long
+  // job; it only goes stale (AUTOMATION_LOCK_MS with no heartbeat) when the invocation was
+  // actually killed, and the next tick within the 18:00 window retries.
   const attemptAt = state.attemptPeriod === periodKey ? new Date(state.attemptAt || 0).getTime() : 0;
-  if (attemptAt && Date.now() - attemptAt < 9 * 60 * 1000) return false;
-  await saveMonitoringState(env, stateKey, { ...state, attemptPeriod: periodKey, attemptAt: new Date().toISOString() }).catch(() => null);
-  return true;
+  if (attemptAt && Date.now() - attemptAt < AUTOMATION_LOCK_MS) return null;
+  const claimed = { ...state, attemptPeriod: periodKey, attemptAt: new Date().toISOString() };
+  await saveMonitoringState(env, stateKey, claimed).catch(() => null);
+  return claimed;
 }
 
 async function runOncePerPeriod(env, jobKey, periodKey, fn) {
-  if (!(await claimAutomationPeriod(env, jobKey, periodKey))) return null;
+  const claimed = await claimAutomationPeriod(env, jobKey, periodKey);
+  if (!claimed) return null;
   const stateKey = `automation-once-${jobKey}`;
+  let running = true;
+  let stopHeartbeat;
+  const heartbeatStopped = new Promise((resolve) => { stopHeartbeat = resolve; });
+  // Refresh attemptAt on a fixed cadence for as long as fn() runs. An overlapping tick then
+  // sees a live lock and does NOT start a second copy of a long digest/backup; a hard-killed
+  // invocation stops heartbeating and the lock goes stale on its own. The sleep is raced
+  // against heartbeatStopped so completion isn't delayed by up to a full interval.
+  const heartbeat = (async () => {
+    while (running) {
+      await Promise.race([sleep(AUTOMATION_HEARTBEAT_MS), heartbeatStopped]);
+      if (!running) break;
+      await saveMonitoringState(env, stateKey, { ...claimed, attemptAt: new Date().toISOString() }).catch(() => null);
+    }
+  })();
   try {
     const result = await fn();
     // Mark completion only after fn() actually succeeds. If the invocation is hard-killed
     // mid-run (CPU / subrequest limit) the catch below never runs, but because completion
-    // is not recorded here, the in-flight lock in claimAutomationPeriod simply expires and
-    // the next tick retries — instead of the job being lost for the whole day/week.
+    // is not recorded here, the in-flight lock simply goes stale and the next tick retries —
+    // instead of the job being lost for the whole day/week.
     await saveMonitoringState(env, stateKey, { lastPeriod: periodKey, completedAt: new Date().toISOString() }).catch(async (error) => {
       // If this write is silently lost, the job re-fires next period (a digest re-sends, a
       // backup runs twice) — never swallow it, make the failure visible instead.
@@ -2219,6 +2242,10 @@ async function runOncePerPeriod(env, jobKey, periodKey, fn) {
     await saveMonitoringState(env, stateKey, { attemptPeriod: null, attemptAt: null, lastAttemptAt: new Date().toISOString(), lastError: error.message }).catch(() => null);
     await recordSystemLog(env, { action: "Automation job failed", module: "Automation", record: `${jobKey} (${periodKey}): ${error.message}` }).catch(() => null);
     throw error;
+  } finally {
+    running = false;
+    stopHeartbeat();
+    await heartbeat.catch(() => {});
   }
 }
 
