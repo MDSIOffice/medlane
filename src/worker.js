@@ -338,18 +338,28 @@ async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMenti
     await recordSystemLog(env, { action: "Discord post skipped", module: "Discord", record: `${label} (DISCORD_WEBHOOK_URL not configured)` });
     return { sent: false, provider: "discord", reason: "DISCORD_WEBHOOK_URL is not configured" };
   }
-  const response = await fetch(env.DISCORD_WEBHOOK_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ content, embeds, username: "Medlane OS", ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) }),
-  });
-  if (!response.ok && response.status !== 204) {
+  const body = JSON.stringify({ content, embeds, username: "Medlane OS", ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) });
+  // Discord webhooks rate-limit (~5 requests / 2s per webhook, HTTP 429) and occasionally
+  // 5xx. On a Friday 18:00 the digest, workflow events and a backup-completed notice can all
+  // land within seconds, so retry 429/5xx with backoff (honouring retry_after) instead of
+  // losing the message to a one-shot failure.
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(env.DISCORD_WEBHOOK_URL, { method: "POST", headers: { "content-type": "application/json" }, body });
+    if (response.ok || response.status === 204) {
+      await recordSystemLog(env, { action: "Discord post sent", module: "Discord", record: label });
+      return { sent: true, provider: "discord" };
+    }
     const text = await response.text().catch(() => "");
-    await recordSystemLog(env, { action: "Discord post failed", module: "Discord", record: `${label}: ${response.status} ${text}` });
-    throw new Error(`Discord webhook failed: ${response.status} ${text}`);
+    if ((response.status !== 429 && response.status < 500) || attempt >= 4) {
+      await recordSystemLog(env, { action: "Discord post failed", module: "Discord", record: `${label}: ${response.status} ${text}` });
+      throw new Error(`Discord webhook failed: ${response.status} ${text}`);
+    }
+    let waitMs = 500 * (attempt + 1);
+    const headerRetry = Number(response.headers.get("retry-after"));
+    if (Number.isFinite(headerRetry) && headerRetry > 0) waitMs = headerRetry * 1000;
+    else { try { const parsed = JSON.parse(text); if (Number(parsed.retry_after) > 0) waitMs = Number(parsed.retry_after) * 1000; } catch { /* not JSON */ } }
+    await sleep(Math.min(waitMs, 5000));
   }
-  await recordSystemLog(env, { action: "Discord post sent", module: "Discord", record: label });
-  return { sent: true, provider: "discord" };
 }
 
 async function sendDiscordWebhookUrl(env, webhookUrl, { content = "", embeds = [], allowedMentions = null, wait = false } = {}) {
@@ -2285,19 +2295,25 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
   // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
-  // fired — this internal hour check is what has always driven the real sends. Every 5-minute
-  // tick of the hour is a retry opportunity; runNextPendingAutomationJob runs exactly one
-  // pending job per tick, in priority order, so they never pile onto one invocation.
+  // fired — this internal hour check is what has always driven the real sends.
+  //
+  // Digests and backups run in SEPARATE lanes on alternating 5-minute ticks: one Worker
+  // invocation therefore never runs two heavy jobs, and a digest that keeps failing can't
+  // starve the backups (or vice versa). Each lane runs at most one pending job per tick, in
+  // priority order — runOncePerPeriod's completion flag advances the lane to the next job —
+  // and every tick in that lane is a retry opportunity within the 18:00 window.
   if (inDigestHour) {
     const { dayKey, monthKey, yearKey } = manilaPeriodKeys(scheduled);
     const weekday = scheduled.weekday;
-    const jobs = [];
-    if (!["Sat", "Sun"].includes(weekday)) jobs.push(["daily-digest", dayKey, () => runDailyDigest(env)]);
-    if (weekday === "Fri") jobs.push(["weekly-digest", dayKey, () => runWeeklyDigest(env)]);
-    if (weekday === "Fri") jobs.push(["weekly-backup", dayKey, () => createBackup(env, "weekly", null)]);
-    if (scheduled.day === "01") jobs.push(["monthly-backup", monthKey, () => createBackup(env, "monthly", null)]);
-    if (scheduled.month === "01" && scheduled.day === "01") jobs.push(["yearly-backup", yearKey, () => createBackup(env, "yearly", null)]);
-    tasks.push(runNextPendingAutomationJob(env, jobs));
+    const digestJobs = [];
+    const backupJobs = [];
+    if (!["Sat", "Sun"].includes(weekday)) digestJobs.push(["daily-digest", dayKey, () => runDailyDigest(env)]);
+    if (weekday === "Fri") digestJobs.push(["weekly-digest", dayKey, () => runWeeklyDigest(env)]);
+    if (weekday === "Fri") backupJobs.push(["weekly-backup", dayKey, () => createBackup(env, "weekly", null)]);
+    if (scheduled.day === "01") backupJobs.push(["monthly-backup", monthKey, () => createBackup(env, "monthly", null)]);
+    if (scheduled.month === "01" && scheduled.day === "01") backupJobs.push(["yearly-backup", yearKey, () => createBackup(env, "yearly", null)]);
+    // ticks :00 :10 :20 :30 :40 :50 → digest lane; ticks :05 :15 :25 :35 :45 :55 → backup lane
+    tasks.push(runNextPendingAutomationJob(env, Number(scheduled.minute) % 10 === 0 ? digestJobs : backupJobs));
   }
   const results = await Promise.allSettled(tasks);
   for (const result of results) {
