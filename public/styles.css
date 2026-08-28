@@ -46,9 +46,11 @@
   --sidebar-scroll-thumb: rgba(61, 179, 205, 0.30);
   --font-display: "Outfit", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: "Archivo", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --accent: #3db3cd;
-  --accent-ink: #061b33;
-  --accent-strong: #2f93ab;
+  /* Light-mode accent is a deeper teal with white text — the flat Figma cyan (#3db3cd) looks
+     washed-out on white. Dark mode keeps the bright Figma cyan (see the [data-theme] block). */
+  --accent: #0e7d96;
+  --accent-ink: #ffffff;
+  --accent-strong: #0b5f74;
 }
 
 :root[data-theme="dark"] {
@@ -112,6 +114,9 @@
   --blue: #0e7d96;
   --blue-dark: #0b5f74;
   --red: #dc2626;
+  --accent: #0e7d96;
+  --accent-ink: #ffffff;
+  --accent-strong: #0b5f74;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
