@@ -2205,7 +2205,12 @@ async function runOncePerPeriod(env, jobKey, periodKey, fn) {
     // mid-run (CPU / subrequest limit) the catch below never runs, but because completion
     // is not recorded here, the in-flight lock in claimAutomationPeriod simply expires and
     // the next tick retries — instead of the job being lost for the whole day/week.
-    await saveMonitoringState(env, stateKey, { lastPeriod: periodKey, completedAt: new Date().toISOString() }).catch(() => null);
+    await saveMonitoringState(env, stateKey, { lastPeriod: periodKey, completedAt: new Date().toISOString() }).catch(async (error) => {
+      // If this write is silently lost, the job re-fires next period (a digest re-sends, a
+      // backup runs twice) — never swallow it, make the failure visible instead.
+      console.error(JSON.stringify({ message: "Automation completion flag not persisted", jobKey, periodKey, error: error.message }));
+      await recordSystemLog(env, { action: "Automation completion not saved", module: "Automation", record: `${jobKey} (${periodKey}): ${error.message}` }).catch(() => null);
+    });
     await recordSystemLog(env, { action: "Automation job completed", module: "Automation", record: `${jobKey} (${periodKey})` }).catch(() => null);
     return result;
   } catch (error) {
@@ -2217,6 +2222,25 @@ async function runOncePerPeriod(env, jobKey, periodKey, fn) {
   }
 }
 
+// Within the 18:00 Manila hour, run at most ONE heavy job (digest or backup) per 5-minute
+// invocation, in priority order. runOncePerPeriod persists a per-job completion flag, so
+// once the daily digest is done the next tick falls through to the weekly digest, then the
+// weekly backup, then the monthly/yearly backups. Previously every tick queued all of them
+// together, so one Worker invocation ran two digests plus a full-database gzip backup at
+// once, exhausted its CPU/subrequest budget, and died mid-run — leaving digests half-sent
+// (and re-sending every ~10 min) and the weekly backup skipped for the whole week.
+async function runNextPendingAutomationJob(env, jobs) {
+  for (const [jobKey, periodKey, fn] of jobs) {
+    const state = await monitoringState(env, `automation-once-${jobKey}`).catch(() => ({}));
+    if (state.lastPeriod === periodKey) continue; // already completed this period
+    // First still-pending job claims this tick. If it is currently in-flight in an
+    // overlapping invocation, runOncePerPeriod returns null and we simply wait for the
+    // next tick rather than starting a lower-priority heavy job alongside it.
+    return runOncePerPeriod(env, jobKey, periodKey, fn);
+  }
+  return null;
+}
+
 async function runFiveMinuteScheduledTasks(event, env) {
   // event.scheduledTime is documented as milliseconds, but this Worker has observed it
   // arrive in seconds (log samples decode to sane current dates only when read as seconds,
@@ -2225,25 +2249,28 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // as long as this bug existed. Date.now() is unambiguous and just as accurate for a
   // minute/hour/weekday check, so use it instead of trusting scheduledTime's units.
   const scheduled = manilaScheduleParts(Date.now());
+  const inDigestHour = scheduled.hour === "18";
   const tasks = [runApiHealthMonitor(env)];
-  if (["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env));
+  // Keep the heavier analytics/pending/inventory monitors out of the 18:00 hour entirely —
+  // that hour is reserved for the digest/backup jobs below, and stacking the monitors on the
+  // same invocation is part of what used to blow the CPU/subrequest budget.
+  if (!inDigestHour && ["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env));
   // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
   // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
-  // fired — this internal hour check is what has always driven the real sends.
-  if (scheduled.hour === "18") {
+  // fired — this internal hour check is what has always driven the real sends. Every 5-minute
+  // tick of the hour is a retry opportunity; runNextPendingAutomationJob runs exactly one
+  // pending job per tick, in priority order, so they never pile onto one invocation.
+  if (inDigestHour) {
     const { dayKey, monthKey, yearKey } = manilaPeriodKeys(scheduled);
-    const minute = Number(scheduled.minute);
-    // Stagger the heavy 18:00 jobs onto separate 5-minute invocations. A single Worker run
-    // doing a digest AND a full-state gzip backup AND the monitors together is what exhausts
-    // the invocation (subrequest / CPU limits) on Fridays and the 1st — after which the
-    // killed job used to be skipped for the whole period. Each job still has 15+ minutes of
-    // retry room left in the 18:00 hour after its start minute.
-    if (!["Sat", "Sun"].includes(scheduled.weekday)) tasks.push(runOncePerPeriod(env, "daily-digest", dayKey, () => runDailyDigest(env)));
-    if (scheduled.weekday === "Fri" && minute >= 10) tasks.push(runOncePerPeriod(env, "weekly-digest", dayKey, () => runWeeklyDigest(env)));
-    if (scheduled.weekday === "Fri" && minute >= 20) tasks.push(runOncePerPeriod(env, "weekly-backup", dayKey, () => createBackup(env, "weekly", null)));
-    if (scheduled.day === "01" && minute >= 30) tasks.push(runOncePerPeriod(env, "monthly-backup", monthKey, () => createBackup(env, "monthly", null)));
-    if (scheduled.month === "01" && scheduled.day === "01" && minute >= 40) tasks.push(runOncePerPeriod(env, "yearly-backup", yearKey, () => createBackup(env, "yearly", null)));
+    const weekday = scheduled.weekday;
+    const jobs = [];
+    if (!["Sat", "Sun"].includes(weekday)) jobs.push(["daily-digest", dayKey, () => runDailyDigest(env)]);
+    if (weekday === "Fri") jobs.push(["weekly-digest", dayKey, () => runWeeklyDigest(env)]);
+    if (weekday === "Fri") jobs.push(["weekly-backup", dayKey, () => createBackup(env, "weekly", null)]);
+    if (scheduled.day === "01") jobs.push(["monthly-backup", monthKey, () => createBackup(env, "monthly", null)]);
+    if (scheduled.month === "01" && scheduled.day === "01") jobs.push(["yearly-backup", yearKey, () => createBackup(env, "yearly", null)]);
+    tasks.push(runNextPendingAutomationJob(env, jobs));
   }
   const results = await Promise.allSettled(tasks);
   for (const result of results) {
@@ -2272,19 +2299,28 @@ async function auditLogDigestRows(env, sinceIso) {
   return rows.map((row) => row.data).filter((entry) => !DIGEST_AUDIT_NOISE_ACTIONS.has(entry.action));
 }
 
-async function emailsForRoles(env, roles) {
-  if (!roles.length) return [];
+// One pass over profiles + app users, resolving every wanted role at once, keyed by
+// lower-cased email so a person is a single recipient even if they hold several digest
+// roles. Returns Map<emailKey, { email, roles:Set }>. composeAndSendDigest then sends each
+// person ONE combined email instead of one per role (a Superadmin used to get the business
+// digest and the audit-log digest as two separate messages, every run).
+async function digestRecipients(env, roles) {
   const wanted = new Set(roles);
-  const emails = new Set();
+  const byEmail = new Map();
+  const add = (role, email) => {
+    if (!role || !email || !wanted.has(role)) return;
+    const clean = String(email).trim();
+    if (!clean) return;
+    const key = clean.toLowerCase();
+    if (!byEmail.has(key)) byEmail.set(key, { email: clean, roles: new Set() });
+    byEmail.get(key).roles.add(role);
+  };
   const profiles = await supabaseFetch(env, "/rest/v1/profiles?select=email,role").catch(() => []);
-  profiles.forEach((row) => { if (wanted.has(row.role) && row.email) emails.add(row.email); });
+  profiles.forEach((row) => add(row.role, row.email));
   const stateKey = appStateKey(env);
   const appUsers = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.users&select=data`).catch(() => []);
-  appUsers.forEach((row) => {
-    const user = row.data || {};
-    if (wanted.has(user.role) && user.email) emails.add(user.email);
-  });
-  return [...emails];
+  appUsers.forEach((row) => { const user = row.data || {}; add(user.role, user.email); });
+  return byEmail;
 }
 
 const DIGEST_COLORS = {
@@ -2441,7 +2477,37 @@ async function saveDigestSnapshot(env, periodLabel, metrics) {
   await saveMonitoringState(env, `digest-snapshot-${periodLabel.toLowerCase()}`, { ...metrics, capturedAt: new Date().toISOString() }).catch((error) => recordSystemLog(env, { action: "Digest snapshot save failed", module: "Email", record: error.message }));
 }
 
-async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimitLabel }) {
+// Per-period delivery ledger for one digest. composeAndSendDigest can be retried inside the
+// 18:00 window (an interrupted invocation, a transient throw) — this records which recipients
+// already got this period's email and whether Discord was posted, so a retry only fills the
+// gaps instead of re-blasting everyone. Keyed by periodLabel + Manila day; a new period
+// resets it. `periodKey` here matches the dayKey runOncePerPeriod uses for the same run.
+function digestProgressStateKey(periodLabel) {
+  return `digest-progress-${String(periodLabel).toLowerCase()}`;
+}
+
+async function loadDigestProgress(env, periodLabel, periodKey) {
+  const state = await monitoringState(env, digestProgressStateKey(periodLabel)).catch(() => ({}));
+  if (state.periodKey !== periodKey) return { periodKey, discordSent: false, sentEmails: new Set() };
+  return { periodKey, discordSent: Boolean(state.discordSent), sentEmails: new Set(state.sentEmails || []) };
+}
+
+async function saveDigestProgress(env, periodLabel, progress) {
+  await saveMonitoringState(env, digestProgressStateKey(periodLabel), {
+    periodKey: progress.periodKey,
+    discordSent: Boolean(progress.discordSent),
+    sentEmails: [...progress.sentEmails],
+    updatedAt: new Date().toISOString(),
+  }).catch((error) => console.error(JSON.stringify({ message: "Digest progress not persisted", periodLabel, error: error.message })));
+}
+
+async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimitLabel, force = false }) {
+  const periodKey = manilaPeriodKeys(manilaScheduleParts(Date.now())).dayKey;
+  const progress = force
+    ? { periodKey, discordSent: false, sentEmails: new Set() }
+    : await loadDigestProgress(env, periodLabel, periodKey);
+  if (force) await saveDigestProgress(env, periodLabel, progress); // wipe the ledger so a forced resend reaches everyone
+
   const state = await loadDigestState(env);
   const sections = detectThresholdsAndApprovals(state);
   const allRoles = new Set([...Object.keys(sections), ...DIGEST_ROLE_RECIPIENTS.digestBusiness, ...DIGEST_ROLE_RECIPIENTS.digestAuditLog]);
@@ -2458,40 +2524,66 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   const statCardsHtml = digestStatCardsHtml(metrics, previousSnapshot);
   const operationalHtml = digestSectionHtml([{ title: `${periodLabel} Purchase Orders, Expenses & Backups`, lines: [...financialSummary, ...backupDigestLines(auditRows)] }]);
   const ctaHtml = `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 4px;"><tr><td style="border-radius:999px;background:${DIGEST_COLORS.navy};"><a href="https://medlane.tofllorin.workers.dev/dashboard" style="display:inline-block;padding:13px 24px;color:#fff;text-decoration:none;font-weight:800;font-size:13.5px;border-radius:999px;">Open Medlane OS →</a></td></tr></table>`;
-  const sends = [];
-  for (const role of allRoles) {
+
+  // Post to Discord BEFORE the per-recipient email fan-out — the embed is built entirely
+  // from data already in hand, so putting it first means a slow or interrupted email loop
+  // can no longer stop the digest from reaching the channel. Guarded so a retry within the
+  // same period does not double-post.
+  let discordResult = { sent: false, reason: "Already posted for this period" };
+  if (!progress.discordSent) {
+    discordResult = await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }).catch(async (error) => {
+      console.error(JSON.stringify({ message: "Discord digest failed", error: error.message }));
+      await recordSystemLog(env, { action: "Discord digest failed", module: "Discord", record: `${periodLabel}: ${error.message}` }).catch(() => null);
+      return { sent: false, reason: error.message };
+    });
+    if (discordResult?.sent) {
+      progress.discordSent = true;
+      await saveDigestProgress(env, periodLabel, progress);
+    }
+  }
+
+  const subject = `Medlane OS — ${periodLabel} Digest`;
+  const recipients = await digestRecipients(env, allRoles);
+  const snapshotByBody = new Map(); // one R2 snapshot per distinct body, shared by recipients with the same role mix
+  for (const [emailKey, { email, roles }] of recipients) {
+    if (progress.sentEmails.has(emailKey)) continue; // already delivered this period
     try {
+      const roleList = [...roles];
       const parts = [];
-      if (sections[role]?.length) parts.push(digestSectionHtml(sections[role]));
-      if (DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role) && businessSummary.length) {
+      const seenTitles = new Set();
+      const sectionBlocks = [];
+      for (const role of roleList) for (const section of (sections[role] || [])) {
+        if (seenTitles.has(section.title)) continue;
+        seenTitles.add(section.title);
+        sectionBlocks.push(section);
+      }
+      if (sectionBlocks.length) parts.push(digestSectionHtml(sectionBlocks));
+      if (roleList.some((role) => DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role)) && businessSummary.length) {
         parts.push(attentionHtml);
         parts.push(`<h3 style="margin:18px 0 8px;color:${DIGEST_COLORS.navy};">${escapeHtml(`${periodLabel} Business Summary`)}</h3>${statCardsHtml}`);
         parts.push(operationalHtml);
       }
-      if (DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role)) parts.push(`<h3 style="margin:18px 0 8px;color:${DIGEST_COLORS.navy};">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
-      if (!parts.length) continue;
-      parts.push(ctaHtml);
-      const emails = await emailsForRoles(env, [role]);
-      const html = digestEmailHtml({ title: `${periodLabel} Digest`, bodyHtml: parts.join("") });
-      const subject = `Medlane OS — ${periodLabel} Digest`;
-      const digestMessageId = await saveDigestMessageSnapshot(env, { periodLabel, role, subject, html }).catch(() => null);
-      for (const email of emails) {
-        sends.push(sendResendEmail(env, { to: email, subject, html, digestMessageId }).catch((error) => console.error(JSON.stringify({ message: "Digest email failed", role, email, error: error.message }))));
+      if (roleList.some((role) => DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role))) {
+        parts.push(`<h3 style="margin:18px 0 8px;color:${DIGEST_COLORS.navy};">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
       }
+      if (!parts.length) { progress.sentEmails.add(emailKey); continue; } // nothing relevant to this recipient — don't retry them
+      parts.push(ctaHtml);
+      const bodyHtml = parts.join("");
+      const html = digestEmailHtml({ title: `${periodLabel} Digest`, bodyHtml });
+      if (!snapshotByBody.has(bodyHtml)) {
+        snapshotByBody.set(bodyHtml, await saveDigestMessageSnapshot(env, { periodLabel, role: roleList.join(", "), subject, html }).catch(() => null));
+      }
+      await sendResendEmail(env, { to: email, subject, html, digestMessageId: snapshotByBody.get(bodyHtml) });
+      progress.sentEmails.add(emailKey);
+      await saveDigestProgress(env, periodLabel, progress);
     } catch (error) {
-      // A single role's lookup/build failing (e.g. a transient Supabase error) must never
-      // stop other roles from getting their digest, nor block the Discord post below.
-      console.error(JSON.stringify({ message: "Digest role processing failed", role, error: error.message }));
-      await recordSystemLog(env, { action: "Digest role failed", module: "Email", record: `${role}: ${error.message}` }).catch(() => null);
+      // Leave this recipient out of the ledger so the next retry picks them up; a single
+      // failure must not stop the rest of the list.
+      console.error(JSON.stringify({ message: "Digest email failed", email, error: error.message }));
+      await recordSystemLog(env, { action: "Digest email failed", module: "Email", record: `${email}: ${error.message}` }).catch(() => null);
     }
   }
-  await Promise.all(sends);
-  const discordResult = await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }).catch(async (error) => {
-    console.error(JSON.stringify({ message: "Discord digest failed", error: error.message }));
-    await recordSystemLog(env, { action: "Discord digest failed", module: "Discord", record: `${periodLabel}: ${error.message}` }).catch(() => null);
-    return { sent: false, reason: error.message };
-  });
-  return { discord: discordResult };
+  return { discord: discordResult, recipients: recipients.size, sent: progress.sentEmails.size };
 }
 
 async function sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }) {
@@ -2585,14 +2677,14 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   return sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { parse: ["everyone"], roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, description, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
 }
 
-async function runDailyDigest(env) {
+async function runDailyDigest(env, { force = false } = {}) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  return composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: "last 24 hours" });
+  return composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: "last 24 hours", force });
 }
 
-async function runWeeklyDigest(env) {
+async function runWeeklyDigest(env, { force = false } = {}) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  return composeAndSendDigest(env, { periodLabel: "Weekly", auditSinceIso: since, auditLimitLabel: "last 7 days" });
+  return composeAndSendDigest(env, { periodLabel: "Weekly", auditSinceIso: since, auditLimitLabel: "last 7 days", force });
 }
 
 export default {
@@ -3835,10 +3927,12 @@ export default {
       if (url.pathname === "/api/digest/run" && request.method === "POST") {
         const { profile } = await authenticatedProfile(request, env);
         requireDigestAdmin(profile);
-        const { periodLabel = "Daily" } = await request.json().catch(() => ({}));
+        const { periodLabel = "Daily", force = false } = await request.json().catch(() => ({}));
         if (!["Daily", "Weekly"].includes(periodLabel)) return json({ error: "Invalid periodLabel" }, { status: 400 });
-        const result = periodLabel === "Weekly" ? await runWeeklyDigest(env) : await runDailyDigest(env);
-        return json({ ok: true, discordConfigured: Boolean(env.DISCORD_WEBHOOK_URL), discord: result?.discord || { sent: false, reason: "Unknown" } });
+        // Default run is idempotent per Manila day (a scheduled retry won't double-send); pass
+        // force:true to wipe that ledger and deliberately resend this period to everyone.
+        const result = periodLabel === "Weekly" ? await runWeeklyDigest(env, { force: Boolean(force) }) : await runDailyDigest(env, { force: Boolean(force) });
+        return json({ ok: true, forced: Boolean(force), recipients: result?.recipients ?? null, sent: result?.sent ?? null, discordConfigured: Boolean(env.DISCORD_WEBHOOK_URL), discord: result?.discord || { sent: false, reason: "Unknown" } });
       }
 
       if (url.pathname === "/api/backups/status" && request.method === "GET") {
