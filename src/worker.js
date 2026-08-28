@@ -1895,20 +1895,31 @@ function inventoryStatusFields(inventory) {
   const healthy = inventory.length - flaggedCount;
 
   const PREVIEW_ROWS = 10;
-  const stockLine = (item) => `**${item.item || item.code || "Item"}** (${item.branch || "-"}) — ${item.qty ?? 0}/${item.min ?? 0} qty${item.lot ? `, lot ${item.lot}` : ""}`;
-  const expiryLine = (item) => `**${item.item || item.code || "Item"}** (${item.branch || "-"}) — lot ${item.lot || "-"}, expires ${item.expiry} (${digestDaysUntil(item.expiry)}d)`;
-  const disposalLine = (item) => `**${item.item || item.code || "Item"}** (${item.branch || "-"}) — lot ${item.lot || "-"}, expired ${item.expiry} (${Math.abs(digestDaysUntil(item.expiry))}d ago)`;
-  const field = (emoji, name, rows, mapper) => {
+  // Every row renders the same two-line block so quantity and expiry are always in the same
+  // spot and easy to scan: title line (item · branch · lot), then a labelled Qty / Exp line.
+  const expiryTag = (item) => {
+    if (!item.expiry || item.expiry === "N/A") return "no expiry set";
+    const days = digestDaysUntil(item.expiry);
+    if (Number.isNaN(days)) return item.expiry;
+    if (days < 0) return `${item.expiry} · expired ${Math.abs(days)}d ago`;
+    if (days === 0) return `${item.expiry} · expires today`;
+    return `${item.expiry} · in ${days}d`;
+  };
+  const rowLine = (item) => {
+    const title = `**${item.item || item.code || "Item"}** · ${item.branch || "-"}${item.lot ? ` · lot ${item.lot}` : ""}`;
+    return `${title}\n   📦 Qty **${item.qty ?? 0} / ${item.min ?? 0}**   ⏳ Exp **${expiryTag(item)}**`;
+  };
+  const field = (emoji, name, rows) => {
     if (!rows.length) return null;
-    const preview = rows.slice(0, PREVIEW_ROWS).map((row) => `▸ ${mapper(row)}`);
+    const preview = rows.slice(0, PREVIEW_ROWS).map((row) => `▸ ${rowLine(row)}`);
     return { name: `${emoji} ${name} (${rows.length})`, value: discordFieldValue(preview, 950, rows.length), inline: false };
   };
 
   const fields = [
-    field("⛔", "For Disposal (Expired)", disposal, disposalLine),
-    field("🔴", "Critical Stock", critical, stockLine),
-    field("🟠", "Low Stock", lowStock, stockLine),
-    field("⏳", "Near-Expiry Stock", nearExpiry, expiryLine),
+    field("⛔", "For Disposal (Expired)", disposal),
+    field("🔴", "Critical Stock", critical),
+    field("🟠", "Low Stock", lowStock),
+    field("⏳", "Near-Expiry Stock", nearExpiry),
     { name: "📊 Snapshot", value: [`**SKUs tracked:** ${inventory.length}`, `**Healthy stock:** ${healthy}`, `**Flagged:** ${flaggedCount}`].join("\n"), inline: false },
   ].filter(Boolean);
   return { fields, flaggedCount, criticalCount: disposal.length + critical.length };
