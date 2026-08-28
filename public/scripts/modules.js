@@ -155,7 +155,7 @@ function lineChart(entries) {
     return `<line class="chart-gridline" x1="${pad}" y1="${y}" x2="${width - pad}" y2="${y}"></line>`;
   }).join("");
   return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly sales line graph">
-    <defs><linearGradient id="salesTrendGradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity="0.28"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/></linearGradient></defs>
+    <defs><linearGradient id="salesTrendGradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3db3cd" stop-opacity="0.28"/><stop offset="1" stop-color="#3db3cd" stop-opacity="0"/></linearGradient></defs>
     ${gridlines}<line class="chart-axis" x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}"></line>
     <polygon class="chart-area" points="${area}"></polygon><polyline class="chart-line" points="${line}"></polyline>
     ${points.map((point, index) => `<circle class="chart-point" cx="${point.x}" cy="${point.y}" r="7"><title>${monthLabel(entries[index][0])}: ${peso.format(point.value)}</title></circle>`).join("")}
@@ -172,19 +172,34 @@ function multiSeriesChart(labels, series) {
   const lineSeries = series.filter((s) => s.type !== "bar");
   const max = Math.max(...series.flatMap((s) => s.values), 1);
   const xStep = labels.length > 1 ? (width - pad * 2) / (labels.length - 1) : 0;
-  const barWidth = Math.min(26, (labels.length > 1 ? xStep : width - pad * 2) * 0.36);
+  const slot = labels.length > 1 ? xStep : width - pad * 2;
+  const groupCount = Math.max(barSeries.length, 1);
+  const groupWidth = Math.min(64, slot * 0.5);
+  const barGap = 4;
+  const barWidth = Math.max(6, (groupWidth - barGap * (groupCount - 1)) / groupCount);
   const xFor = (index) => (labels.length > 1 ? pad + index * xStep : width / 2);
   const yFor = (value) => height - pad - (value / max) * (height - pad * 2);
-  const gridlines = [0.25, 0.5, 0.75, 1].map((ratio) => {
+  const kFmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(Math.round(n)));
+  const gridlines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
     const y = height - pad - ratio * (height - pad * 2);
-    return `<line class="chart-gridline" x1="${pad}" y1="${y}" x2="${width - pad}" y2="${y}"></line>`;
+    return `<line class="chart-gridline" x1="${pad}" y1="${y}" x2="${width - pad}" y2="${y}"></line>` +
+      `<text class="chart-text" x="${pad - 8}" y="${y + 4}" text-anchor="end">${kFmt(max * ratio)}</text>`;
   }).join("");
+  const gradSeries = barSeries.filter((s) => Array.isArray(s.gradient));
+  const defs = gradSeries.length
+    ? `<defs>${gradSeries.map((s) => {
+        const id = `msc-bar-${barSeries.indexOf(s)}`;
+        return `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${s.gradient[0]}"/><stop offset="1" stop-color="${s.gradient[1]}"/></linearGradient>`;
+      }).join("")}</defs>`
+    : "";
   const tip = (s, index) => `${escapeHtml(s.label)} — ${escapeHtml(String(labels[index]))}: ${s.format ? s.format(s.values[index] || 0) : s.values[index] || 0}`;
-  const bars = barSeries.map((s) => labels.map((_, index) => {
-    const x = xFor(index) - barWidth / 2;
+  const bars = barSeries.map((s, si) => labels.map((_, index) => {
+    const groupLeft = xFor(index) - groupWidth / 2;
+    const x = groupLeft + si * (barWidth + barGap);
     const y = yFor(s.values[index] || 0);
     const barHeight = Math.max(2, height - pad - y);
-    return `<rect class="chart-bar" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="5" fill="${s.color}"><title>${tip(s, index)}</title></rect>`;
+    const fill = Array.isArray(s.gradient) ? `url(#msc-bar-${si})` : s.color;
+    return `<rect class="chart-bar" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="3" fill="${fill}"><title>${tip(s, index)}</title></rect>`;
   }).join("")).join("");
   const lines = lineSeries.map((s) => {
     const points = labels.map((_, index) => `${xFor(index)},${yFor(s.values[index] || 0)}`).join(" ");
@@ -192,9 +207,9 @@ function multiSeriesChart(labels, series) {
     return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" ${s.dashed ? 'stroke-dasharray="6 5"' : ""}></polyline>${dots}`;
   }).join("");
   const axisLabels = labels.map((label, index) => `<text class="chart-text" x="${xFor(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(String(label))}</text>`).join("");
-  const legend = series.map((s) => `<span class="chart-legend-item"><i style="background:${s.color}"></i>${escapeHtml(s.label)}</span>`).join("");
+  const legend = series.map((s) => `<span class="chart-legend-item"><i style="background:${Array.isArray(s.gradient) ? s.gradient[0] : s.color}"></i>${escapeHtml(s.label)}</span>`).join("");
   return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Sales and collections trend">
-    ${gridlines}<line class="chart-axis" x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}"></line>
+    ${defs}${gridlines}<line class="chart-axis" x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}"></line>
     ${bars}${lines}${axisLabels}
   </svg><div class="chart-legend-row">${legend}</div>`;
 }
@@ -1557,10 +1572,9 @@ function renderDashboard() {
     const trendMonths = Object.keys(monthlyTrend).sort((a, b) => a.localeCompare(b));
     trendChart.innerHTML = trendMonths.length
       ? multiSeriesChart(trendMonths.map(monthLabel), [
-          { label: "Sales", type: "bar", color: "#7c3aed", values: trendMonths.map((m) => monthlyTrend[m].sales), format: (v) => peso.format(v) },
-          { label: "Collections", type: "line", color: "#12a67e", values: trendMonths.map((m) => monthlyTrend[m].collections), format: (v) => peso.format(v) },
-          { label: "Outstanding", type: "line", dashed: true, color: "#e11d48", values: trendMonths.map((m) => monthlyTrend[m].outstanding), format: (v) => peso.format(v) },
-        ]) + graphNote("Computed from invoice net totals, payments received, and open balances grouped by invoice month within the selected date range.")
+          { label: "Monthly Sales", type: "bar", gradient: ["#3db3cd", "#006eb6"], values: trendMonths.map((m) => monthlyTrend[m].sales), format: (v) => peso.format(v) },
+          { label: "Collections Received", type: "bar", gradient: ["#e07a38", "#a05320"], values: trendMonths.map((m) => monthlyTrend[m].collections), format: (v) => peso.format(v) },
+        ]) + graphNote("Monthly invoice net totals vs. payments received, grouped by invoice month within the selected date range.")
       : `<p>No sales trend available for this view.</p>`;
   }
 }

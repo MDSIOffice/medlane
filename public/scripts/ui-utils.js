@@ -456,9 +456,12 @@ function workflowButton(label, section, record = "", action = "") {
   return `<button class="mini-button workflow-action" type="button"${actionAttr}>${escapeHtml(label)}</button>`;
 }
 
-function workflowCard({ title, text, section = "", record = "", action = "", actionLabel = "Open", tone = "info", meta = "" }) {
+const WORKFLOW_TONE_BADGE = { risk: "Urgent", warning: "Action Needed", info: "Review", success: "On Track" };
+
+function workflowCard({ title, text, section = "", record = "", action = "", actionLabel = "Open", tone = "info", meta = "", badge = "" }) {
   const hasTarget = action || section || record;
-  return `<article class="workflow-card ${tone}" data-focus-text="${escapeHtml(`${title} ${text} ${record}`)}"><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(text)}</span>${meta ? `<small>${escapeHtml(meta)}</small>` : ""}</div>${hasTarget ? workflowButton(actionLabel, section, record, action) : ""}</article>`;
+  const badgeLabel = badge || WORKFLOW_TONE_BADGE[tone] || "";
+  return `<article class="workflow-card ${tone}" data-focus-text="${escapeHtml(`${title} ${text} ${record}`)}"><div><strong>${escapeHtml(title)}${badgeLabel ? `<span class="workflow-card-badge">${escapeHtml(badgeLabel)}</span>` : ""}</strong><span>${escapeHtml(text)}</span>${meta ? `<small>${escapeHtml(meta)}</small>` : ""}</div>${hasTarget ? workflowButton(actionLabel, section, record, action) : ""}</article>`;
 }
 
 function workflowFacts() {
