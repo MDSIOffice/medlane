@@ -331,14 +331,15 @@ dialog.save-guard-dialog[open] { display: grid; }
   background: linear-gradient(180deg, var(--panel-solid), var(--tint));
   box-shadow: 0 34px 130px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255,255,255,0.95);
   padding: 34px;
+  color: var(--ink);
   animation: fadeUp 0.55s ease both;
 }
 .login-card::after { content: ""; position: absolute; inset: auto 34px 0; height: 5px; border-radius: 999px 999px 0 0; background: linear-gradient(90deg, var(--accent), var(--green), var(--orange)); opacity: .9; }
-.reset-card { width: min(520px, 100%); border: 1px solid rgba(255,255,255,.42); border-radius: 32px; background: var(--panel-solid); padding: 32px; box-shadow: 0 34px 130px rgba(0,0,0,.34); }
+.reset-card { width: min(520px, 100%); border: 1px solid rgba(255,255,255,.42); border-radius: 32px; background: var(--panel-solid); padding: 32px; color: var(--ink); box-shadow: 0 34px 130px rgba(0,0,0,.34); }
 .reset-card h1 { margin: 0 0 8px; font-size: clamp(32px, 6vw, 48px); line-height: .98; letter-spacing: -.05em; color: var(--ink); }
 .reset-card p { color: var(--muted); }
 .login-brand { margin-bottom: 26px; color: var(--ink); }
-.login-card h1 { margin: 0; max-width: 420px; font-size: clamp(34px, 6vw, 52px); line-height: .96; letter-spacing: -0.06em; }
+.login-card h1 { margin: 0; max-width: 420px; font-size: clamp(34px, 6vw, 52px); line-height: .96; letter-spacing: -0.06em; color: var(--ink); }
 .login-form { display: grid; gap: 12px; margin-top: 28px; }
 .login-form label { font-weight: 900; color: var(--ink); }
 .login-form input { width: 100%; border: 1px solid #c8dced; border-radius: 16px; background: var(--panel-solid); padding: 14px 15px; box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.03); }
