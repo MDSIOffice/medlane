@@ -2053,7 +2053,7 @@ function renderInventory() {
   const forDisposal = visibleInventory.filter((item) => inventoryStatus(item) === "For Disposal");
   const visualCardRowLimit = 5;
   const worstLow = low.slice().sort((a, b) => Math.max(b.min - b.qty, 0) - Math.max(a.min - a.qty, 0)).slice(0, visualCardRowLimit);
-  const expiringSoon = visibleInventory.filter((item) => item.expiry !== "N/A").sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, visualCardRowLimit);
+  const expiringSoon = nearExpiry.slice().sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, visualCardRowLimit);
   const mostOverdueDisposal = forDisposal.slice().sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, visualCardRowLimit);
   const overflowNote = (list, label) => list.length > visualCardRowLimit ? `Showing the top ${visualCardRowLimit} of ${list.length} ${label} records.` : "";
   qs("#inventory-visuals").innerHTML = [
