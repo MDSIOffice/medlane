@@ -49,6 +49,7 @@
   const nav = document.getElementById("lr-nav");
   const hero = page.querySelector(".lr-hero");
   if (hero && !reduceMotion) hero.classList.add("lr-parallax");
+  const parallaxItems = [];
   let ticking = false;
   function updateScrollUi() {
     ticking = false;
@@ -58,6 +59,15 @@
     if (backToTop) backToTop.classList.toggle("visible", scrollTop > 520);
     if (nav) nav.classList.toggle("lr-nav--scrolled", scrollTop > 24);
     if (hero && !reduceMotion && scrollTop < window.innerHeight) hero.style.setProperty("--lr-sy", String(scrollTop));
+    if (!reduceMotion && parallaxItems.length) {
+      const vh = window.innerHeight;
+      parallaxItems.forEach(({ el, range }) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom < -120 || rect.top > vh + 120) return;
+        const centerOffset = (rect.top + rect.height / 2 - vh / 2) / (vh / 2 + rect.height / 2);
+        el.style.setProperty("--lr-par", (Math.max(-1, Math.min(1, centerOffset)) * -range).toFixed(1) + "px");
+      });
+    }
   }
   function onScroll() {
     if (ticking) return;
@@ -65,6 +75,7 @@
     requestAnimationFrame(updateScrollUi);
   }
   window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll, { passive: true });
   updateScrollUi();
   backToTop?.addEventListener("click", () => {
     window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
@@ -125,4 +136,106 @@
       target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
     });
   });
+
+  // ================= Expressive motion layer =================
+  const heroTitle = document.getElementById("lr-hero-title");
+  const heroCard = page.querySelector(".lr-hero-card");
+
+  // ---- Split the headline into per-word spans for a staggered rotate-up reveal ----
+  if (hero && heroTitle && !reduceMotion) {
+    const frag = document.createDocumentFragment();
+    let wordIndex = 0;
+    [...heroTitle.childNodes].forEach((node) => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        frag.appendChild(node.cloneNode(true)); // keep <br> etc.
+        return;
+      }
+      (node.textContent || "").split(/(\s+)/).forEach((chunk) => {
+        if (!chunk) return;
+        if (/^\s+$/.test(chunk)) { frag.appendChild(document.createTextNode(" ")); return; }
+        const word = document.createElement("span");
+        word.className = "lr-word";
+        const inner = document.createElement("span");
+        inner.textContent = chunk;
+        inner.style.setProperty("--lr-wd", (0.45 + wordIndex * 0.08).toFixed(2) + "s");
+        word.appendChild(inner);
+        frag.appendChild(word);
+        wordIndex += 1;
+      });
+    });
+    heroTitle.textContent = "";
+    heroTitle.appendChild(frag);
+    requestAnimationFrame(() => hero.classList.add("lr-head-ready"));
+  }
+
+  // ---- Hero card 3D tilt — activate only after the entrance animation settles ----
+  if (heroCard && !reduceMotion) {
+    const armTilt = () => heroCard.classList.add("lr-tilt-ready");
+    heroCard.addEventListener("animationend", armTilt, { once: true });
+    setTimeout(armTilt, 1800);
+  }
+
+  // ---- Pointer-reactive hero (aurora/orb follow + card tilt) and cursor spotlight on dark surfaces ----
+  if (!reduceMotion && window.matchMedia("(pointer: fine)").matches) {
+    const darkSurfaces = [...page.querySelectorAll(".lr-hero, .lr-section--dark")];
+    let pointerRaf = 0;
+    let lastPointer = null;
+    const applyPointer = () => {
+      pointerRaf = 0;
+      const e = lastPointer;
+      if (!e) return;
+      if (hero) {
+        const r = hero.getBoundingClientRect();
+        if (e.clientY > r.top && e.clientY < r.bottom) {
+          const nx = (e.clientX - r.left) / r.width - 0.5;
+          const ny = (e.clientY - r.top) / Math.max(r.height, 1) - 0.5;
+          hero.style.setProperty("--lr-mx", nx.toFixed(3));
+          hero.style.setProperty("--lr-my", ny.toFixed(3));
+          if (heroCard) {
+            heroCard.style.setProperty("--lr-tx", (nx * 7).toFixed(2) + "deg");
+            heroCard.style.setProperty("--lr-ty", (-ny * 7).toFixed(2) + "deg");
+          }
+        }
+      }
+      darkSurfaces.forEach((sec) => {
+        const r = sec.getBoundingClientRect();
+        const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        sec.classList.toggle("lr-spot-on", inside);
+        if (inside) {
+          sec.style.setProperty("--lr-spot-x", (e.clientX - r.left).toFixed(0) + "px");
+          sec.style.setProperty("--lr-spot-y", (e.clientY - r.top).toFixed(0) + "px");
+        }
+      });
+    };
+    window.addEventListener("pointermove", (e) => {
+      lastPointer = e;
+      if (!pointerRaf) pointerRaf = requestAnimationFrame(applyPointer);
+    }, { passive: true });
+    document.addEventListener("pointerleave", () => {
+      if (hero) { hero.style.setProperty("--lr-mx", "0"); hero.style.setProperty("--lr-my", "0"); }
+      if (heroCard) { heroCard.style.setProperty("--lr-tx", "0deg"); heroCard.style.setProperty("--lr-ty", "0deg"); }
+      darkSurfaces.forEach((sec) => sec.classList.remove("lr-spot-on"));
+    });
+
+    // ---- Magnetic pull on primary CTAs ----
+    page.querySelectorAll(".lr-btn, .lr-nav-cta").forEach((btn) => {
+      btn.addEventListener("pointermove", (e) => {
+        const r = btn.getBoundingClientRect();
+        const mx = (e.clientX - r.left - r.width / 2) * 0.25;
+        const my = (e.clientY - r.top - r.height / 2) * 0.4;
+        btn.style.transform = `translate(${mx.toFixed(1)}px, ${my.toFixed(1)}px)`;
+      });
+      btn.addEventListener("pointerleave", () => { btn.style.transform = ""; });
+    });
+  }
+
+  // ---- Register scroll-linked parallax targets (consumed by updateScrollUi) ----
+  if (!reduceMotion) {
+    page.querySelectorAll(".lr-bento figure").forEach((fig) => {
+      if (fig.querySelector("img")) parallaxItems.push({ el: fig, range: 14 });
+    });
+    const profilePhoto = page.querySelector(".lr-profile-photo");
+    if (profilePhoto) parallaxItems.push({ el: profilePhoto, range: 20 });
+    if (parallaxItems.length) onScroll();
+  }
 })();
