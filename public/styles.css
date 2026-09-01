@@ -2502,13 +2502,14 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-ops-lines line { stroke: rgba(61,179,205,.35); stroke-width: 1.5; stroke-dasharray: 5 5; }
 .lr-node { position: absolute; z-index: 1; width: 128px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px; border-radius: 8px; background: var(--lr-navy); border: 1px solid var(--lr-cyan); font-family: var(--lr-display); font-weight: 700; font-size: 12px; color: var(--lr-light); text-align: center; }
 .lr-node small { font-family: var(--lr-body); font-weight: 400; font-size: 10px; color: var(--lr-muted); }
-.lr-node--hq { top: 6%; left: 50%; transform: translateX(-50%); border-width: 1.5px; color: var(--lr-cyan); }
-.lr-node--sales { top: 44%; left: 2%; }
-.lr-node--stock { top: 32%; right: 2%; border-color: var(--lr-orange); color: var(--lr-orange); }
-.lr-node--service { bottom: 6%; left: 50%; transform: translateX(-50%); }
+.lr-node--hq { top: 3%; left: 2%; border-width: 1.5px; color: var(--lr-cyan); }
+.lr-node--naga { top: 3%; right: 2%; border-width: 1.5px; color: var(--lr-cyan); }
+.lr-node--sales { top: 43%; left: 0; }
+.lr-node--stock { top: 43%; right: 0; border-color: var(--lr-orange); color: var(--lr-orange); }
+.lr-node--service { bottom: 3%; left: 50%; transform: translateX(-50%); }
 .lr-node-pulse { position: absolute; z-index: 1; width: 10px; height: 10px; border-radius: 50%; background: var(--lr-cyan); box-shadow: 0 0 12px var(--lr-cyan); animation: lrPulse 2s ease-out infinite; }
-.lr-node-pulse-1 { top: 42%; left: 52%; }
-.lr-node-pulse-2 { top: 36%; left: 34%; background: var(--lr-orange); box-shadow: 0 0 12px var(--lr-orange); animation-delay: .8s; }
+.lr-node-pulse-1 { top: 8%; left: 49%; }
+.lr-node-pulse-2 { top: 47%; left: 31%; background: var(--lr-orange); box-shadow: 0 0 12px var(--lr-orange); animation-delay: .8s; }
 
 .lr-bento { display: grid; grid-template-columns: 1.04fr 1fr; gap: 24px; }
 .lr-bento-right { display: grid; grid-template-rows: 1fr 1fr; gap: 24px; min-width: 0; }
@@ -2827,6 +2828,9 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-ops-lines line:nth-child(3) { animation-duration: 2.6s; }
 .lr-ops-lines line:nth-child(4) { animation-duration: 4.1s; }
 .lr-ops-lines line:nth-child(5) { animation-duration: 3.3s; }
+.lr-ops-lines line:nth-child(6) { animation-duration: 2.9s; }
+.lr-ops-lines line:nth-child(7) { animation-duration: 3.9s; }
+.lr-ops-lines line:nth-child(8) { animation-duration: 4.4s; }
 
 /* --- scroll-linked parallax: gallery + profile imagery (JS sets --lr-par) --- */
 .lr-bento figure { --lr-par: 0px; }
