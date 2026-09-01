@@ -165,7 +165,21 @@
     });
     heroTitle.textContent = "";
     heroTitle.appendChild(frag);
-    requestAnimationFrame(() => hero.classList.add("lr-head-ready"));
+    // The words are visible by default (base CSS); `.lr-head-ready` is what hides-then-reveals
+    // them via @keyframes. Only arm it when the tab is actually visible — a backgrounded tab
+    // freezes the animation timeline, which would otherwise leave the headline blank until
+    // first focus. If hidden, wait and play the reveal the first time the page is shown.
+    const playHeadlineReveal = () => hero.classList.add("lr-head-ready");
+    if (document.visibilityState === "visible") {
+      playHeadlineReveal();
+    } else {
+      const onFirstShow = () => {
+        if (document.visibilityState !== "visible") return;
+        document.removeEventListener("visibilitychange", onFirstShow);
+        playHeadlineReveal();
+      };
+      document.addEventListener("visibilitychange", onFirstShow);
+    }
   }
 
   // ---- Hero card 3D tilt — activate only after the entrance animation settles ----

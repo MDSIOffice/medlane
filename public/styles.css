@@ -2742,7 +2742,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   50%  { transform: translate3d(10%, 5%, 0) rotate(150deg) scale(1.28); }
   100% { transform: translate3d(-5%, 9%, 0) rotate(310deg) scale(1.06); }
 }
-@keyframes lrWordUp { to { transform: none; opacity: 1; } }
+@keyframes lrWordUp { from { opacity: 0; transform: translateY(120%) rotate(6deg); } to { opacity: 1; transform: none; } }
 @keyframes lrRadarSpin { to { transform: rotate(360deg); } }
 @keyframes lrDashFlow { to { stroke-dashoffset: -200; } }
 @keyframes lrNetPulse { 0%, 100% { opacity: .3; transform: scale(1); } 50% { opacity: 1; transform: scale(1.55); } }
@@ -2768,8 +2768,10 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 
 /* --- headline word reveal --- */
 .lr-hero h1 .lr-word { display: inline-block; overflow: hidden; vertical-align: top; padding: .06em .12em; margin: -.06em -.12em; }
-.lr-hero h1 .lr-word > span { display: inline-block; transform: translateY(120%) rotate(6deg); opacity: 0; }
-.lr-hero.lr-head-ready h1 .lr-word > span { animation: lrWordUp .74s cubic-bezier(.16,.84,.44,1) forwards; animation-delay: var(--lr-wd, 0s); }
+.lr-hero h1 .lr-word > span { display: inline-block; }
+/* default (above) leaves words visible if the animation never runs; the keyframes carry the
+   hidden->shown states and `both` fill hides each word through its stagger delay */
+.lr-hero.lr-head-ready h1 .lr-word > span { animation: lrWordUp .74s cubic-bezier(.16,.84,.44,1) both; animation-delay: var(--lr-wd, 0s); }
 
 /* --- hero card: pointer tilt (after entrance anim) + mini network --- */
 .lr-hero-card { position: relative; overflow: hidden; transform-style: preserve-3d; }
