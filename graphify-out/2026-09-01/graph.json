@@ -2572,30 +2572,6 @@
       "norm_label": "saletaxbreakdown()"
     },
     {
-      "label": "applyCollectionPayment()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L310",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_applycollectionpayment",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "applycollectionpayment()"
-    },
-    {
-      "label": "approvePaymentRequest()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L336",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_approvepaymentrequest",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "approvepaymentrequest()"
-    },
-    {
       "label": "buildImportedClient()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -2644,54 +2620,6 @@
       "norm_label": "buildmigratedsale()"
     },
     {
-      "label": "canApprovePaymentRequests()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L1167",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_canapprovepaymentrequests",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "canapprovepaymentrequests()"
-    },
-    {
-      "label": "cancelPaymentRequest()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L405",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_cancelpaymentrequest",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "cancelpaymentrequest()"
-    },
-    {
-      "label": "collectionStatusHistory()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2896",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_collectionstatushistory",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "collectionstatushistory()"
-    },
-    {
-      "label": "collectionTagForType()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L271",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_collectiontagfortype",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "collectiontagfortype()"
-    },
-    {
       "label": "detectImportKind()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -2702,18 +2630,6 @@
       "community": 12,
       "community_name": "importCheckedRows",
       "norm_label": "detectimportkind()"
-    },
-    {
-      "label": "findSaleByDocumentInput()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L489",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_findsalebydocumentinput",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "findsalebydocumentinput()"
     },
     {
       "label": "importAddress()",
@@ -2824,30 +2740,6 @@
       "norm_label": "parseimporttext()"
     },
     {
-      "label": "paymentRequestActionsCell()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L276",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_paymentrequestactionscell",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "paymentrequestactionscell()"
-    },
-    {
-      "label": "paymentRequestHistory()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L272",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_paymentrequesthistory",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "paymentrequesthistory()"
-    },
-    {
       "label": "receiptExists()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -2858,18 +2750,6 @@
       "community": 12,
       "community_name": "importCheckedRows",
       "norm_label": "receiptexists()"
-    },
-    {
-      "label": "reverseCollectionPayment()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L323",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_reversecollectionpayment",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "reversecollectionpayment()"
     },
     {
       "label": "rowValue()",
@@ -2884,30 +2764,6 @@
       "norm_label": "rowvalue()"
     },
     {
-      "label": "saleCollectionTimeline()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2708",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_salecollectiontimeline",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "salecollectiontimeline()"
-    },
-    {
-      "label": "saleForPayment()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L306",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_saleforpayment",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "saleforpayment()"
-    },
-    {
       "label": "splitImportLine()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -2918,18 +2774,6 @@
       "community": 12,
       "community_name": "importCheckedRows",
       "norm_label": "splitimportline()"
-    },
-    {
-      "label": "updateCollectionPaymentStatus()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2849",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_updatecollectionpaymentstatus",
-      "community": 12,
-      "community_name": "importCheckedRows",
-      "norm_label": "updatecollectionpaymentstatus()"
     },
     {
       "label": "validateClientsMasterlistRows()",
@@ -3026,66 +2870,6 @@
       "community": 120,
       "community_name": "workflowCard",
       "norm_label": "workflowcard()"
-    },
-    {
-      "label": "as()",
-      "file_type": "code",
-      "source_file": "scripts/vendor/pdf-lib.min.js",
-      "source_location": "L15",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_as",
-      "community": 123,
-      "community_name": "is",
-      "norm_label": "as()"
-    },
-    {
-      "label": "is()",
-      "file_type": "code",
-      "source_file": "scripts/vendor/pdf-lib.min.js",
-      "source_location": "L15",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_is",
-      "community": 123,
-      "community_name": "is",
-      "norm_label": "is()"
-    },
-    {
-      "label": "Ms()",
-      "file_type": "code",
-      "source_file": "scripts/vendor/pdf-lib.min.js",
-      "source_location": "L15",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_ms",
-      "community": 123,
-      "community_name": "is",
-      "norm_label": "ms()"
-    },
-    {
-      "label": "os()",
-      "file_type": "code",
-      "source_file": "scripts/vendor/pdf-lib.min.js",
-      "source_location": "L15",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_os",
-      "community": 123,
-      "community_name": "is",
-      "norm_label": "os()"
-    },
-    {
-      "label": "rs()",
-      "file_type": "code",
-      "source_file": "scripts/vendor/pdf-lib.min.js",
-      "source_location": "L15",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_rs",
-      "community": 123,
-      "community_name": "is",
-      "norm_label": "rs()"
     },
     {
       "label": "canAccessKey()",
@@ -3664,6 +3448,18 @@
       "norm_label": "memoaudiencecheckboxeshtml()"
     },
     {
+      "label": "memoAudienceLabel()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3096",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_memoaudiencelabel",
+      "community": 14,
+      "community_name": "attachedFilesFor",
+      "norm_label": "memoaudiencelabel()"
+    },
+    {
       "label": "memoCardHtml()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -3674,6 +3470,30 @@
       "community": 14,
       "community_name": "attachedFilesFor",
       "norm_label": "memocardhtml()"
+    },
+    {
+      "label": "memoPrintableHtml()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3228",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_memoprintablehtml",
+      "community": 14,
+      "community_name": "attachedFilesFor",
+      "norm_label": "memoprintablehtml()"
+    },
+    {
+      "label": "memoPrintDateLabel()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3222",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_memoprintdatelabel",
+      "community": 14,
+      "community_name": "attachedFilesFor",
+      "norm_label": "memoprintdatelabel()"
     },
     {
       "label": "memoVisibleToCurrentUser()",
@@ -3734,6 +3554,18 @@
       "community": 14,
       "community_name": "attachedFilesFor",
       "norm_label": "payableattachmentcell()"
+    },
+    {
+      "label": "printMemo()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3235",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_printmemo",
+      "community": 14,
+      "community_name": "attachedFilesFor",
+      "norm_label": "printmemo()"
     },
     {
       "label": "refreshClientDocsModal()",
@@ -3844,18 +3676,6 @@
       "norm_label": "uploadphysicalcopy()"
     },
     {
-      "label": "applyCollectionPayment()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L338",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_applycollectionpayment",
-      "community": 15,
-      "community_name": "importCheckedRows",
-      "norm_label": "applycollectionpayment()"
-    },
-    {
       "label": "approvePaymentRequest()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -3938,6 +3758,18 @@
       "community": 15,
       "community_name": "importCheckedRows",
       "norm_label": "cancelpaymentrequest()"
+    },
+    {
+      "label": "collectionStatusActions()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3518",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_collectionstatusactions",
+      "community": 15,
+      "community_name": "importCheckedRows",
+      "norm_label": "collectionstatusactions()"
     },
     {
       "label": "collectionStatusHistory()",
@@ -4108,18 +3940,6 @@
       "norm_label": "paymentrequestactionscell()"
     },
     {
-      "label": "paymentRequestHistory()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L300",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_paymentrequesthistory",
-      "community": 15,
-      "community_name": "importCheckedRows",
-      "norm_label": "paymentrequesthistory()"
-    },
-    {
       "label": "receiptExists()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -4132,40 +3952,52 @@
       "norm_label": "receiptexists()"
     },
     {
-      "label": "renderPaymentRequestDetail()",
+      "label": "renderCollections()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L479",
+      "source_location": "L3458",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderpaymentrequestdetail",
+      "id": "public_scripts_modules_rendercollections",
       "community": 15,
       "community_name": "importCheckedRows",
-      "norm_label": "renderpaymentrequestdetail()"
+      "norm_label": "rendercollections()"
     },
     {
-      "label": "renderSaleDetail()",
+      "label": "renderCollectionsTotalSummary()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L3420",
+      "source_location": "L3436",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_rendersaledetail",
+      "id": "public_scripts_modules_rendercollectionstotalsummary",
       "community": 15,
       "community_name": "importCheckedRows",
-      "norm_label": "rendersaledetail()"
+      "norm_label": "rendercollectionstotalsummary()"
     },
     {
-      "label": "reverseCollectionPayment()",
+      "label": "renderCollectionsWorkflowTabs()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L351",
+      "source_location": "L3503",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_reversecollectionpayment",
+      "id": "public_scripts_modules_rendercollectionsworkflowtabs",
       "community": 15,
       "community_name": "importCheckedRows",
-      "norm_label": "reversecollectionpayment()"
+      "norm_label": "rendercollectionsworkflowtabs()"
+    },
+    {
+      "label": "resetCollectionsTotalToAnnual()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3430",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_resetcollectionstotaltoannual",
+      "community": 15,
+      "community_name": "importCheckedRows",
+      "norm_label": "resetcollectionstotaltoannual()"
     },
     {
       "label": "rowValue()",
@@ -4180,42 +4012,6 @@
       "norm_label": "rowvalue()"
     },
     {
-      "label": "saleCollectionTimeline()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3400",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_salecollectiontimeline",
-      "community": 15,
-      "community_name": "importCheckedRows",
-      "norm_label": "salecollectiontimeline()"
-    },
-    {
-      "label": "saleEventClass()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3414",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_saleeventclass",
-      "community": 15,
-      "community_name": "importCheckedRows",
-      "norm_label": "saleeventclass()"
-    },
-    {
-      "label": "saleForPayment()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L334",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_saleforpayment",
-      "community": 15,
-      "community_name": "importCheckedRows",
-      "norm_label": "saleforpayment()"
-    },
-    {
       "label": "splitImportLine()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -4228,16 +4024,16 @@
       "norm_label": "splitimportline()"
     },
     {
-      "label": "updateCollectionPaymentStatus()",
+      "label": "syncPostedCollectionReminders()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L3541",
+      "source_location": "L3593",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_updatecollectionpaymentstatus",
+      "id": "public_scripts_modules_syncpostedcollectionreminders",
       "community": 15,
       "community_name": "importCheckedRows",
-      "norm_label": "updatecollectionpaymentstatus()"
+      "norm_label": "syncpostedcollectionreminders()"
     },
     {
       "label": "validateClientsMasterlistRows()",
@@ -6520,54 +6316,6 @@
       "norm_label": "startptdrag()"
     },
     {
-      "label": "acknowledgeMemo()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3205",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_acknowledgememo",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "acknowledgememo()"
-    },
-    {
-      "label": "advancePurchaseOrderStatus()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L1323",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_advancepurchaseorderstatus",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "advancepurchaseorderstatus()"
-    },
-    {
-      "label": "approvePurchaseOrder()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L1307",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_approvepurchaseorder",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "approvepurchaseorder()"
-    },
-    {
-      "label": "approveStockReceipt()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L1403",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_approvestockreceipt",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "approvestockreceipt()"
-    },
-    {
       "label": "canApproveDemoManagement()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -6592,54 +6340,6 @@
       "norm_label": "canapprovedemosales()"
     },
     {
-      "label": "canApprovePurchaseOrders()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L1261",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_canapprovepurchaseorders",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "canapprovepurchaseorders()"
-    },
-    {
-      "label": "canApproveStockReceipts()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L1264",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_canapprovestockreceipts",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "canapprovestockreceipts()"
-    },
-    {
-      "label": "cancelPurchaseOrder()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L1338",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_cancelpurchaseorder",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "cancelpurchaseorder()"
-    },
-    {
-      "label": "cancelStockReceipt()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L1426",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_cancelstockreceipt",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "cancelstockreceipt()"
-    },
-    {
       "label": "canCloseDemoRequest()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -6650,18 +6350,6 @@
       "community": 21,
       "community_name": "renderInventory",
       "norm_label": "canclosedemorequest()"
-    },
-    {
-      "label": "canManagePoReceiving()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L1263",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_canmanageporeceiving",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "canmanageporeceiving()"
     },
     {
       "label": "demoRequestActions()",
@@ -6688,6 +6376,18 @@
       "norm_label": "demorequestlinesummary()"
     },
     {
+      "label": "handleWorkflowAction()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L6302",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_handleworkflowaction",
+      "community": 21,
+      "community_name": "renderInventory",
+      "norm_label": "handleworkflowaction()"
+    },
+    {
       "label": "inventoryItemLabel()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -6700,28 +6400,76 @@
       "norm_label": "inventoryitemlabel()"
     },
     {
-      "label": "inventoryPoActionsCell()",
+      "label": "itemizedSummary()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L1273",
+      "source_location": "L5439",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_inventorypoactionscell",
+      "id": "public_scripts_modules_itemizedsummary",
       "community": 21,
       "community_name": "renderInventory",
-      "norm_label": "inventorypoactionscell()"
+      "norm_label": "itemizedsummary()"
     },
     {
-      "label": "poStatusLabel()",
+      "label": "payable2307Cell()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L1271",
+      "source_location": "L5166",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_postatuslabel",
+      "id": "public_scripts_modules_payable2307cell",
       "community": 21,
       "community_name": "renderInventory",
-      "norm_label": "postatuslabel()"
+      "norm_label": "payable2307cell()"
+    },
+    {
+      "label": "payableWithholdingSummary()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5204",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_payablewithholdingsummary",
+      "community": 21,
+      "community_name": "renderInventory",
+      "norm_label": "payablewithholdingsummary()"
+    },
+    {
+      "label": "paymentConfirmActions()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5461",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_paymentconfirmactions",
+      "community": 21,
+      "community_name": "renderInventory",
+      "norm_label": "paymentconfirmactions()"
+    },
+    {
+      "label": "renderFinancialSummary()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L2936",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_renderfinancialsummary",
+      "community": 21,
+      "community_name": "renderInventory",
+      "norm_label": "renderfinancialsummary()"
+    },
+    {
+      "label": "renderImportCheck()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5035",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_renderimportcheck",
+      "community": 21,
+      "community_name": "renderInventory",
+      "norm_label": "renderimportcheck()"
     },
     {
       "label": "renderInventory()",
@@ -6760,64 +6508,76 @@
       "norm_label": "renderinventoryworkflowtabs()"
     },
     {
-      "label": "renderStockReceipts()",
+      "label": "renderPayables()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L1361",
+      "source_location": "L5175",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderstockreceipts",
+      "id": "public_scripts_modules_renderpayables",
       "community": 21,
       "community_name": "renderInventory",
-      "norm_label": "renderstockreceipts()"
+      "norm_label": "renderpayables()"
     },
     {
-      "label": "replacePoRecord()",
+      "label": "renderPayablesWorkflowTabs()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L1296",
+      "source_location": "L5382",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_replaceporecord",
+      "id": "public_scripts_modules_renderpayablesworkflowtabs",
       "community": 21,
       "community_name": "renderInventory",
-      "norm_label": "replaceporecord()"
+      "norm_label": "renderpayablesworkflowtabs()"
     },
     {
-      "label": "replaceStockReceiptRecord()",
+      "label": "renderReplenishments()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L1396",
+      "source_location": "L5397",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_replacestockreceiptrecord",
+      "id": "public_scripts_modules_renderreplenishments",
       "community": 21,
       "community_name": "renderInventory",
-      "norm_label": "replacestockreceiptrecord()"
+      "norm_label": "renderreplenishments()"
     },
     {
-      "label": "saveStockSheet()",
+      "label": "renderReplenishmentsWorkflowTabs()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L2565",
+      "source_location": "L5423",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_savestocksheet",
+      "id": "public_scripts_modules_renderreplenishmentsworkflowtabs",
       "community": 21,
       "community_name": "renderInventory",
-      "norm_label": "savestocksheet()"
+      "norm_label": "renderreplenishmentsworkflowtabs()"
     },
     {
-      "label": "stockReceiptActionsCell()",
+      "label": "renderWarranty()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L1355",
+      "source_location": "L4476",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_stockreceiptactionscell",
+      "id": "public_scripts_modules_renderwarranty",
       "community": 21,
       "community_name": "renderInventory",
-      "norm_label": "stockreceiptactionscell()"
+      "norm_label": "renderwarranty()"
+    },
+    {
+      "label": "requestActions()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5459",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_requestactions",
+      "community": 21,
+      "community_name": "renderInventory",
+      "norm_label": "requestactions()"
     },
     {
       "label": "transferItemizedDetail()",
@@ -10168,196 +9928,352 @@
       "norm_label": "startptdrag()"
     },
     {
-      "label": "collectionStatusActions()",
+      "label": "applyCollectionPayment()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L3518",
+      "source_location": "L338",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_collectionstatusactions",
+      "id": "public_scripts_modules_applycollectionpayment",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "collectionstatusactions()"
+      "community_name": "showSection",
+      "norm_label": "applycollectionpayment()"
     },
     {
-      "label": "itemizedSummary()",
+      "label": "editPurchaseOrder()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5439",
+      "source_location": "L2995",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_itemizedsummary",
+      "id": "public_scripts_modules_editpurchaseorder",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "itemizedsummary()"
+      "community_name": "showSection",
+      "norm_label": "editpurchaseorder()"
     },
     {
-      "label": "payable2307Cell()",
+      "label": "getReportDefinitions()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5166",
+      "source_location": "L5773",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_payable2307cell",
+      "id": "public_scripts_modules_getreportdefinitions",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "payable2307cell()"
+      "community_name": "showSection",
+      "norm_label": "getreportdefinitions()"
     },
     {
-      "label": "payableWithholdingSummary()",
+      "label": "isClientAssignedToAgent()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5204",
+      "source_location": "L2871",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_payablewithholdingsummary",
+      "id": "public_scripts_modules_isclientassignedtoagent",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "payablewithholdingsummary()"
+      "community_name": "showSection",
+      "norm_label": "isclientassignedtoagent()"
     },
     {
-      "label": "paymentConfirmActions()",
+      "label": "isClientAssignedToCurrentUser()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5461",
+      "source_location": "L2866",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_paymentconfirmactions",
+      "id": "public_scripts_modules_isclientassignedtocurrentuser",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "paymentconfirmactions()"
+      "community_name": "showSection",
+      "norm_label": "isclientassignedtocurrentuser()"
     },
     {
-      "label": "renderCollections()",
+      "label": "lineSubtotal()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L3458",
+      "source_location": "L261",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_rendercollections",
+      "id": "public_scripts_modules_linesubtotal",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "rendercollections()"
+      "community_name": "showSection",
+      "norm_label": "linesubtotal()"
     },
     {
-      "label": "renderCollectionsTotalSummary()",
+      "label": "openCollectionHistoryModal()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L3436",
+      "source_location": "L3524",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_rendercollectionstotalsummary",
+      "id": "public_scripts_modules_opencollectionhistorymodal",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "rendercollectionstotalsummary()"
+      "community_name": "showSection",
+      "norm_label": "opencollectionhistorymodal()"
     },
     {
-      "label": "renderCollectionsWorkflowTabs()",
+      "label": "openReportPreview()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L3503",
+      "source_location": "L5790",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_rendercollectionsworkflowtabs",
+      "id": "public_scripts_modules_openreportpreview",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "rendercollectionsworkflowtabs()"
+      "community_name": "showSection",
+      "norm_label": "openreportpreview()"
     },
     {
-      "label": "renderFinancialSummary()",
+      "label": "paymentRequestHistory()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L2936",
+      "source_location": "L300",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderfinancialsummary",
+      "id": "public_scripts_modules_paymentrequesthistory",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "renderfinancialsummary()"
+      "community_name": "showSection",
+      "norm_label": "paymentrequesthistory()"
     },
     {
-      "label": "renderPayables()",
+      "label": "renderInvoiceFlowDetail()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5175",
+      "source_location": "L4306",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderpayables",
+      "id": "public_scripts_modules_renderinvoiceflowdetail",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "renderpayables()"
+      "community_name": "showSection",
+      "norm_label": "renderinvoiceflowdetail()"
     },
     {
-      "label": "renderPayablesWorkflowTabs()",
+      "label": "renderPaymentRequestDetail()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5382",
+      "source_location": "L479",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderpayablesworkflowtabs",
+      "id": "public_scripts_modules_renderpaymentrequestdetail",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "renderpayablesworkflowtabs()"
+      "community_name": "showSection",
+      "norm_label": "renderpaymentrequestdetail()"
     },
     {
-      "label": "renderReplenishments()",
+      "label": "renderReceivablesTracker()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5397",
+      "source_location": "L4250",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderreplenishments",
+      "id": "public_scripts_modules_renderreceivablestracker",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "renderreplenishments()"
+      "community_name": "showSection",
+      "norm_label": "renderreceivablestracker()"
     },
     {
-      "label": "renderReplenishmentsWorkflowTabs()",
+      "label": "renderReportPage()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5423",
+      "source_location": "L5614",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderreplenishmentsworkflowtabs",
+      "id": "public_scripts_modules_renderreportpage",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "renderreplenishmentsworkflowtabs()"
+      "community_name": "showSection",
+      "norm_label": "renderreportpage()"
     },
     {
-      "label": "requestActions()",
+      "label": "renderReports()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5459",
+      "source_location": "L5600",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_requestactions",
+      "id": "public_scripts_modules_renderreports",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "requestactions()"
+      "community_name": "showSection",
+      "norm_label": "renderreports()"
     },
     {
-      "label": "resetCollectionsTotalToAnnual()",
+      "label": "renderSaleDetail()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L3430",
+      "source_location": "L3420",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_resetcollectionstotaltoannual",
+      "id": "public_scripts_modules_rendersaledetail",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "resetcollectionstotaltoannual()"
+      "community_name": "showSection",
+      "norm_label": "rendersaledetail()"
     },
     {
-      "label": "syncPostedCollectionReminders()",
+      "label": "renderSales()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L3593",
+      "source_location": "L2900",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_syncpostedcollectionreminders",
+      "id": "public_scripts_modules_rendersales",
       "community": 30,
-      "community_name": "renderCollections",
-      "norm_label": "syncpostedcollectionreminders()"
+      "community_name": "showSection",
+      "norm_label": "rendersales()"
+    },
+    {
+      "label": "renderSalesTargetPanel()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L2885",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_rendersalestargetpanel",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "rendersalestargetpanel()"
+    },
+    {
+      "label": "reverseCollectionPayment()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L351",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_reversecollectionpayment",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "reversecollectionpayment()"
+    },
+    {
+      "label": "saleAmount()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L264",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_saleamount",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "saleamount()"
+    },
+    {
+      "label": "saleCollectionTimeline()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3400",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_salecollectiontimeline",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "salecollectiontimeline()"
+    },
+    {
+      "label": "saleEventClass()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3414",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_saleeventclass",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "saleeventclass()"
+    },
+    {
+      "label": "saleForPayment()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L334",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_saleforpayment",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "saleforpayment()"
+    },
+    {
+      "label": "saleLinkedPaymentRequests()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3365",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_salelinkedpaymentrequests",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "salelinkedpaymentrequests()"
+    },
+    {
+      "label": "salesTargetProgress()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L2876",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_salestargetprogress",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "salestargetprogress()"
+    },
+    {
+      "label": "saleSummary()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L262",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_salesummary",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "salesummary()"
+    },
+    {
+      "label": "showSaleDetail()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3368",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_showsaledetail",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "showsaledetail()"
+    },
+    {
+      "label": "showSection()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L795",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_showsection",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "showsection()"
+    },
+    {
+      "label": "trackerCard()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L4285",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_trackercard",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "trackercard()"
+    },
+    {
+      "label": "updateCollectionPaymentStatus()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3541",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_updatecollectionpaymentstatus",
+      "community": 30,
+      "community_name": "showSection",
+      "norm_label": "updatecollectionpaymentstatus()"
     },
     {
       "label": "collectFinancialLines()",
@@ -11092,148 +11008,292 @@
       "norm_label": "withholdingtaxbase()"
     },
     {
-      "label": "applyReconciliationHistory()",
+      "label": "collectionContactsGeoJson()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5712",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3183",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_applyreconciliationhistory",
+      "id": "scripts_modules_collectioncontactsgeojson",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "applyreconciliationhistory()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "collectioncontactsgeojson()"
     },
     {
-      "label": "getReconciliationFindings()",
+      "label": "collectionRegionCount()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5651",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3252",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_getreconciliationfindings",
+      "id": "scripts_modules_collectionregioncount",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "getreconciliationfindings()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "collectionregioncount()"
     },
     {
-      "label": "getReconciliationSuccesses()",
+      "label": "collectionRegionSource()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5684",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3248",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_getreconciliationsuccesses",
+      "id": "scripts_modules_collectionregionsource",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "getreconciliationsuccesses()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "collectionregionsource()"
     },
     {
-      "label": "getReconScope()",
+      "label": "collectionRegionSummaries()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5639",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3190",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_getreconscope",
+      "id": "scripts_modules_collectionregionsummaries",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "getreconscope()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "collectionregionsummaries()"
     },
     {
-      "label": "getScopedClientBalance()",
+      "label": "contactActionCard()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5647",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3173",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_getscopedclientbalance",
+      "id": "scripts_modules_contactactioncard",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "getscopedclientbalance()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "contactactioncard()"
     },
     {
-      "label": "isWithinReconRange()",
+      "label": "featureRegionName()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5633",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3402",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_iswithinreconrange",
+      "id": "scripts_modules_featureregionname",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "iswithinreconrange()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "featureregionname()"
     },
     {
-      "label": "periodKey()",
+      "label": "geoJsonBounds()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5693",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3312",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_periodkey",
+      "id": "scripts_modules_geojsonbounds",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "periodkey()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "geojsonbounds()"
     },
     {
-      "label": "recordReconciliationRun()",
+      "label": "geoRegionName()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5725",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3256",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_recordreconciliationrun",
+      "id": "scripts_modules_georegionname",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "recordreconciliationrun()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "georegionname()"
     },
     {
-      "label": "renderReconciliation()",
+      "label": "loadLeafletAssets()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5735",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3364",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderreconciliation",
+      "id": "scripts_modules_loadleafletassets",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "renderreconciliation()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "loadleafletassets()"
     },
     {
-      "label": "renderReconciliationHistory()",
+      "label": "loadPhilippinesRegionsGeoJson()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5703",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3435",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderreconciliationhistory",
+      "id": "scripts_modules_loadphilippinesregionsgeojson",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "renderreconciliationhistory()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "loadphilippinesregionsgeojson()"
     },
     {
-      "label": "renderReconciliationTabs()",
+      "label": "normalizeRegionName()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5707",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3407",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderreconciliationtabs",
+      "id": "scripts_modules_normalizeregionname",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "renderreconciliationtabs()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "normalizeregionname()"
     },
     {
-      "label": "runReconciliationWorkflow()",
+      "label": "notificationItem()",
       "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L6287",
+      "source_file": "scripts/modules.js",
+      "source_location": "L5249",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_runreconciliationworkflow",
+      "id": "scripts_modules_notificationitem",
       "community": 34,
-      "community_name": "renderReconciliation",
-      "norm_label": "runreconciliationworkflow()"
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "notificationitem()"
+    },
+    {
+      "label": "openContactRegion()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3507",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_opencontactregion",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "opencontactregion()"
+    },
+    {
+      "label": "openMasterEditModal()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L5913",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_openmastereditmodal",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "openmastereditmodal()"
+    },
+    {
+      "label": "philippinesGeoJson()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3419",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_philippinesgeojson",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "philippinesgeojson()"
+    },
+    {
+      "label": "regionMapLabel()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3235",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_regionmaplabel",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "regionmaplabel()"
+    },
+    {
+      "label": "regionStatusColor()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3394",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_regionstatuscolor",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "regionstatuscolor()"
+    },
+    {
+      "label": "regionTrackingStatus()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3381",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_regiontrackingstatus",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "regiontrackingstatus()"
+    },
+    {
+      "label": "renderCollectionContactMap()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3165",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_rendercollectioncontactmap",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "rendercollectioncontactmap()"
+    },
+    {
+      "label": "renderCollectionMapVisual()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3344",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_rendercollectionmapvisual",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "rendercollectionmapvisual()"
+    },
+    {
+      "label": "renderLeafletCollectionMap()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3443",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_renderleafletcollectionmap",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "renderleafletcollectionmap()"
+    },
+    {
+      "label": "renderNotifications()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L5252",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_rendernotifications",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "rendernotifications()"
+    },
+    {
+      "label": "toggleContactChannel()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3517",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_togglecontactchannel",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "togglecontactchannel()"
+    },
+    {
+      "label": "updateCollectionContact()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L3529",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_updatecollectioncontact",
+      "community": 34,
+      "community_name": "renderCollectionMapVisual",
+      "norm_label": "updatecollectioncontact()"
     },
     {
       "label": "buildInventoryPurchaseOrder()",
@@ -11356,18 +11416,6 @@
       "norm_label": "financiallinetemplate()"
     },
     {
-      "label": "findItemByCodeOrName()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L282",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_finditembycodeorname",
-      "community": 35,
-      "community_name": "openModal",
-      "norm_label": "finditembycodeorname()"
-    },
-    {
       "label": "hasNoExpiry()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -11476,18 +11524,6 @@
       "norm_label": "itemstocklottracked()"
     },
     {
-      "label": "lineSubtotal()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L261",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_linesubtotal",
-      "community": 35,
-      "community_name": "openModal",
-      "norm_label": "linesubtotal()"
-    },
-    {
       "label": "matchInvoiceLineStock()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -11558,18 +11594,6 @@
       "community": 35,
       "community_name": "openModal",
       "norm_label": "opencancelreplacemodal()"
-    },
-    {
-      "label": "openCollectionHistoryModal()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3524",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_opencollectionhistorymodal",
-      "community": 35,
-      "community_name": "openModal",
-      "norm_label": "opencollectionhistorymodal()"
     },
     {
       "label": "openInvoiceForPurchaseOrder()",
@@ -11824,42 +11848,6 @@
       "norm_label": "renderpurchaseorders()"
     },
     {
-      "label": "saleAmount()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L264",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_saleamount",
-      "community": 35,
-      "community_name": "openModal",
-      "norm_label": "saleamount()"
-    },
-    {
-      "label": "saleLinkedPaymentRequests()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3365",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_salelinkedpaymentrequests",
-      "community": 35,
-      "community_name": "openModal",
-      "norm_label": "salelinkedpaymentrequests()"
-    },
-    {
-      "label": "saveDemoRequest()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L2374",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_savedemorequest",
-      "community": 35,
-      "community_name": "openModal",
-      "norm_label": "savedemorequest()"
-    },
-    {
       "label": "saveStockEdit()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -11870,18 +11858,6 @@
       "community": 35,
       "community_name": "openModal",
       "norm_label": "savestockedit()"
-    },
-    {
-      "label": "showSaleDetail()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3368",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_showsaledetail",
-      "community": 35,
-      "community_name": "openModal",
-      "norm_label": "showsaledetail()"
     },
     {
       "label": "showStockHistory()",
@@ -12002,18 +11978,6 @@
       "community": 35,
       "community_name": "openModal",
       "norm_label": "syncinvoicerowitem()"
-    },
-    {
-      "label": "syncInvoiceRowLot()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L689",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_syncinvoicerowlot",
-      "community": 35,
-      "community_name": "openModal",
-      "norm_label": "syncinvoicerowlot()"
     },
     {
       "label": "syncPaymentRequestBankAccount()",
@@ -12316,16 +12280,16 @@
       "norm_label": "ae()"
     },
     {
-      "label": "de()",
+      "label": "as()",
       "file_type": "code",
       "source_file": "scripts/vendor/pdf-lib.min.js",
       "source_location": "L15",
       "_callable": true,
       "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_de",
+      "id": "scripts_vendor_pdf_lib_min_as",
       "community": 37,
       "community_name": "i",
-      "norm_label": "de()"
+      "norm_label": "as()"
     },
     {
       "label": "_e()",
@@ -12338,42 +12302,6 @@
       "community": 37,
       "community_name": "i",
       "norm_label": "_e()"
-    },
-    {
-      "label": "ee()",
-      "file_type": "code",
-      "source_file": "scripts/vendor/pdf-lib.min.js",
-      "source_location": "L15",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_ee",
-      "community": 37,
-      "community_name": "i",
-      "norm_label": "ee()"
-    },
-    {
-      "label": "fe()",
-      "file_type": "code",
-      "source_file": "scripts/vendor/pdf-lib.min.js",
-      "source_location": "L15",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_fe",
-      "community": 37,
-      "community_name": "i",
-      "norm_label": "fe()"
-    },
-    {
-      "label": "ge()",
-      "file_type": "code",
-      "source_file": "scripts/vendor/pdf-lib.min.js",
-      "source_location": "L15",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_ge",
-      "community": 37,
-      "community_name": "i",
-      "norm_label": "ge()"
     },
     {
       "label": "Gr()",
@@ -12400,6 +12328,18 @@
       "norm_label": "i()"
     },
     {
+      "label": "is()",
+      "file_type": "code",
+      "source_file": "scripts/vendor/pdf-lib.min.js",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_vendor_pdf_lib_min_is",
+      "community": 37,
+      "community_name": "i",
+      "norm_label": "is()"
+    },
+    {
       "label": "Kr()",
       "file_type": "code",
       "source_file": "scripts/vendor/pdf-lib.min.js",
@@ -12422,6 +12362,18 @@
       "community": 37,
       "community_name": "i",
       "norm_label": "le()"
+    },
+    {
+      "label": "Ms()",
+      "file_type": "code",
+      "source_file": "scripts/vendor/pdf-lib.min.js",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_vendor_pdf_lib_min_ms",
+      "community": 37,
+      "community_name": "i",
+      "norm_label": "ms()"
     },
     {
       "label": "n()",
@@ -12460,16 +12412,16 @@
       "norm_label": "o()"
     },
     {
-      "label": "pe()",
+      "label": "os()",
       "file_type": "code",
       "source_file": "scripts/vendor/pdf-lib.min.js",
       "source_location": "L15",
       "_callable": true,
       "_origin": "ast",
-      "id": "scripts_vendor_pdf_lib_min_pe",
+      "id": "scripts_vendor_pdf_lib_min_os",
       "community": 37,
       "community_name": "i",
-      "norm_label": "pe()"
+      "norm_label": "os()"
     },
     {
       "label": "r()",
@@ -12482,6 +12434,18 @@
       "community": 37,
       "community_name": "i",
       "norm_label": "r()"
+    },
+    {
+      "label": "rs()",
+      "file_type": "code",
+      "source_file": "scripts/vendor/pdf-lib.min.js",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_vendor_pdf_lib_min_rs",
+      "community": 37,
+      "community_name": "i",
+      "norm_label": "rs()"
     },
     {
       "label": "$t()",
@@ -14056,6 +14020,234 @@
       "norm_label": "verticalbars()"
     },
     {
+      "label": "applyCollectionPayment()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L310",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_applycollectionpayment",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "applycollectionpayment()"
+    },
+    {
+      "label": "approvePaymentRequest()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L336",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_approvepaymentrequest",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "approvepaymentrequest()"
+    },
+    {
+      "label": "canApprovePaymentRequests()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L1167",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_canapprovepaymentrequests",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "canapprovepaymentrequests()"
+    },
+    {
+      "label": "cancelPaymentRequest()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L405",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_cancelpaymentrequest",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "cancelpaymentrequest()"
+    },
+    {
+      "label": "collectionStatusActions()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2826",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_collectionstatusactions",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "collectionstatusactions()"
+    },
+    {
+      "label": "collectionStatusHistory()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2896",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_collectionstatushistory",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "collectionstatushistory()"
+    },
+    {
+      "label": "collectionTagForType()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L271",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_collectiontagfortype",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "collectiontagfortype()"
+    },
+    {
+      "label": "findSaleByDocumentInput()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L489",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_findsalebydocumentinput",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "findsalebydocumentinput()"
+    },
+    {
+      "label": "paymentRequestActionsCell()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L276",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_paymentrequestactionscell",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "paymentrequestactionscell()"
+    },
+    {
+      "label": "paymentRequestHistory()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L272",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_paymentrequesthistory",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "paymentrequesthistory()"
+    },
+    {
+      "label": "renderCollections()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2766",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_rendercollections",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "rendercollections()"
+    },
+    {
+      "label": "renderCollectionsTotalSummary()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2744",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_rendercollectionstotalsummary",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "rendercollectionstotalsummary()"
+    },
+    {
+      "label": "renderCollectionsWorkflowTabs()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2811",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_rendercollectionsworkflowtabs",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "rendercollectionsworkflowtabs()"
+    },
+    {
+      "label": "resetCollectionsTotalToAnnual()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2738",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_resetcollectionstotaltoannual",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "resetcollectionstotaltoannual()"
+    },
+    {
+      "label": "reverseCollectionPayment()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L323",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_reversecollectionpayment",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "reversecollectionpayment()"
+    },
+    {
+      "label": "saleCollectionTimeline()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2708",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_salecollectiontimeline",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "salecollectiontimeline()"
+    },
+    {
+      "label": "saleForPayment()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L306",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_saleforpayment",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "saleforpayment()"
+    },
+    {
+      "label": "syncPostedCollectionReminders()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2900",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_syncpostedcollectionreminders",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "syncpostedcollectionreminders()"
+    },
+    {
+      "label": "updateCollectionPaymentStatus()",
+      "file_type": "code",
+      "source_file": "scripts/modules.js",
+      "source_location": "L2849",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_modules_updatecollectionpaymentstatus",
+      "community": 45,
+      "community_name": "renderCollections",
+      "norm_label": "updatecollectionpaymentstatus()"
+    },
+    {
       "label": "beginSaveOperation()",
       "file_type": "code",
       "source_file": "public/scripts/state.js",
@@ -14292,32 +14484,8 @@
       "_origin": "ast",
       "id": "scripts_modules_calendarstate",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "calendarstate()"
-    },
-    {
-      "label": "collectionStatusActions()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2826",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_collectionstatusactions",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "collectionstatusactions()"
-    },
-    {
-      "label": "contactActionCard()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3173",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_contactactioncard",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "contactactioncard()"
     },
     {
       "label": "lineChart()",
@@ -14328,7 +14496,7 @@
       "_origin": "ast",
       "id": "scripts_modules_linechart",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "linechart()"
     },
     {
@@ -14340,7 +14508,7 @@
       "_origin": "ast",
       "id": "scripts_modules_monthlabel",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "monthlabel()"
     },
     {
@@ -14352,7 +14520,7 @@
       "_origin": "ast",
       "id": "scripts_modules_multiserieschart",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "multiserieschart()"
     },
     {
@@ -14364,44 +14532,8 @@
       "_origin": "ast",
       "id": "scripts_modules_navigatecalendarwidget",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "navigatecalendarwidget()"
-    },
-    {
-      "label": "notificationItem()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L5249",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_notificationitem",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "notificationitem()"
-    },
-    {
-      "label": "openContactRegion()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3507",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_opencontactregion",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "opencontactregion()"
-    },
-    {
-      "label": "openMasterEditModal()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L5913",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_openmastereditmodal",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "openmastereditmodal()"
     },
     {
       "label": "registerCalendarWidget()",
@@ -14412,7 +14544,7 @@
       "_origin": "ast",
       "id": "scripts_modules_registercalendarwidget",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "registercalendarwidget()"
     },
     {
@@ -14424,7 +14556,7 @@
       "_origin": "ast",
       "id": "scripts_modules_renderanalytics",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "renderanalytics()"
     },
     {
@@ -14436,7 +14568,7 @@
       "_origin": "ast",
       "id": "scripts_modules_rendercalendarsection",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "rendercalendarsection()"
     },
     {
@@ -14448,56 +14580,8 @@
       "_origin": "ast",
       "id": "scripts_modules_rendercalendarwidget",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "rendercalendarwidget()"
-    },
-    {
-      "label": "renderCollectionContactMap()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3165",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_rendercollectioncontactmap",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "rendercollectioncontactmap()"
-    },
-    {
-      "label": "renderCollections()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2766",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_rendercollections",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "rendercollections()"
-    },
-    {
-      "label": "renderCollectionsTotalSummary()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2744",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_rendercollectionstotalsummary",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "rendercollectionstotalsummary()"
-    },
-    {
-      "label": "renderCollectionsWorkflowTabs()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2811",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_rendercollectionsworkflowtabs",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "rendercollectionsworkflowtabs()"
     },
     {
       "label": "renderDashboard()",
@@ -14508,7 +14592,7 @@
       "_origin": "ast",
       "id": "scripts_modules_renderdashboard",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "renderdashboard()"
     },
     {
@@ -14520,32 +14604,8 @@
       "_origin": "ast",
       "id": "scripts_modules_rendergrowthanalytics",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "rendergrowthanalytics()"
-    },
-    {
-      "label": "renderNotifications()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L5252",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_rendernotifications",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "rendernotifications()"
-    },
-    {
-      "label": "resetCollectionsTotalToAnnual()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2738",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_resetcollectionstotaltoannual",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "resetcollectionstotaltoannual()"
     },
     {
       "label": "showCalendarDayDetail()",
@@ -14556,7 +14616,7 @@
       "_origin": "ast",
       "id": "scripts_modules_showcalendardaydetail",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "showcalendardaydetail()"
     },
     {
@@ -14568,44 +14628,8 @@
       "_origin": "ast",
       "id": "scripts_modules_synccollectioncontactsforbalances",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "synccollectioncontactsforbalances()"
-    },
-    {
-      "label": "syncPostedCollectionReminders()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L2900",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_syncpostedcollectionreminders",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "syncpostedcollectionreminders()"
-    },
-    {
-      "label": "toggleContactChannel()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3517",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_togglecontactchannel",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "togglecontactchannel()"
-    },
-    {
-      "label": "updateCollectionContact()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3529",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_updatecollectioncontact",
-      "community": 47,
-      "community_name": "renderCollections",
-      "norm_label": "updatecollectioncontact()"
     },
     {
       "label": "verticalBars()",
@@ -14616,7 +14640,7 @@
       "_origin": "ast",
       "id": "scripts_modules_verticalbars",
       "community": 47,
-      "community_name": "renderCollections",
+      "community_name": "renderDashboard",
       "norm_label": "verticalbars()"
     },
     {
@@ -14800,6 +14824,18 @@
       "norm_label": "adddemorequestline()"
     },
     {
+      "label": "applyReconciliationHistory()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5712",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_applyreconciliationhistory",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "applyreconciliationhistory()"
+    },
+    {
       "label": "bir2307DrawBoxedDigits()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -14956,30 +14992,6 @@
       "norm_label": "canapproveinventorychanges()"
     },
     {
-      "label": "changeReportPreviewTemplate()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3355",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_changereportpreviewtemplate",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "changereportpreviewtemplate()"
-    },
-    {
-      "label": "clearPrintTarget()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3281",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_clearprinttarget",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "clearprinttarget()"
-    },
-    {
       "label": "clientMapPosition()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -14990,18 +15002,6 @@
       "community": 5,
       "community_name": "public/scripts/modules.js",
       "norm_label": "clientmapposition()"
-    },
-    {
-      "label": "closeReportPreview()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3305",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_closereportpreview",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "closereportpreview()"
     },
     {
       "label": "collectProductIssueParameters()",
@@ -15136,6 +15136,30 @@
       "norm_label": "generatebir2307pdf()"
     },
     {
+      "label": "getReconciliationFindings()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5651",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_getreconciliationfindings",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "getreconciliationfindings()"
+    },
+    {
+      "label": "getReconciliationSuccesses()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5684",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_getreconciliationsuccesses",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "getreconciliationsuccesses()"
+    },
+    {
       "label": "getReconRange()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -15146,6 +15170,30 @@
       "community": 5,
       "community_name": "public/scripts/modules.js",
       "norm_label": "getreconrange()"
+    },
+    {
+      "label": "getReconScope()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5639",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_getreconscope",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "getreconscope()"
+    },
+    {
+      "label": "getScopedClientBalance()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5647",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_getscopedclientbalance",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "getscopedclientbalance()"
     },
     {
       "label": "inventoryTouchedBySale()",
@@ -15160,6 +15208,18 @@
       "norm_label": "inventorytouchedbysale()"
     },
     {
+      "label": "isWithinReconRange()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5633",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_iswithinreconrange",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "iswithinreconrange()"
+    },
+    {
       "label": "loadMoreUserAuditLog()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -15170,42 +15230,6 @@
       "community": 5,
       "community_name": "public/scripts/modules.js",
       "norm_label": "loadmoreuserauditlog()"
-    },
-    {
-      "label": "memoAudienceLabel()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3096",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_memoaudiencelabel",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "memoaudiencelabel()"
-    },
-    {
-      "label": "memoPrintableHtml()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3228",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_memoprintablehtml",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "memoprintablehtml()"
-    },
-    {
-      "label": "memoPrintDateLabel()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3222",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_memoprintdatelabel",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "memoprintdatelabel()"
     },
     {
       "label": "moduleWorkflowItems()",
@@ -15304,6 +15328,18 @@
       "norm_label": "paymentrequestpayments()"
     },
     {
+      "label": "periodKey()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5693",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_periodkey",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "periodkey()"
+    },
+    {
       "label": "preventSameTransferBranch()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -15316,30 +15352,6 @@
       "norm_label": "preventsametransferbranch()"
     },
     {
-      "label": "previewInventoryPurchaseOrder()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L6880",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_previewinventorypurchaseorder",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "previewinventorypurchaseorder()"
-    },
-    {
-      "label": "previewProductIssue()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L4569",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_previewproductissue",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "previewproductissue()"
-    },
-    {
       "label": "previewSoa()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -15350,54 +15362,6 @@
       "community": 5,
       "community_name": "public/scripts/modules.js",
       "norm_label": "previewsoa()"
-    },
-    {
-      "label": "printInvoice()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3312",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_printinvoice",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "printinvoice()"
-    },
-    {
-      "label": "printMemo()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3235",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_printmemo",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "printmemo()"
-    },
-    {
-      "label": "printReportPreview()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3335",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_printreportpreview",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "printreportpreview()"
-    },
-    {
-      "label": "printReportPreviewNoDate()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3347",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_printreportpreviewnodate",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "printreportpreviewnodate()"
     },
     {
       "label": "printTemplateRecord()",
@@ -15520,6 +15484,18 @@
       "norm_label": "recordlabel()"
     },
     {
+      "label": "recordReconciliationRun()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5725",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_recordreconciliationrun",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "recordreconciliationrun()"
+    },
+    {
       "label": "refreshTransferDispatchModalRow()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -15602,6 +15578,42 @@
       "community": 5,
       "community_name": "public/scripts/modules.js",
       "norm_label": "renderpurchasehistory()"
+    },
+    {
+      "label": "renderReconciliation()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5735",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_renderreconciliation",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "renderreconciliation()"
+    },
+    {
+      "label": "renderReconciliationHistory()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5703",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_renderreconciliationhistory",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "renderreconciliationhistory()"
+    },
+    {
+      "label": "renderReconciliationTabs()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L5707",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_renderreconciliationtabs",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "renderreconciliationtabs()"
     },
     {
       "label": "renderSettingsTutorial()",
@@ -15700,6 +15712,18 @@
       "norm_label": "restorecancelledstock()"
     },
     {
+      "label": "runReconciliationWorkflow()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L6287",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_runreconciliationworkflow",
+      "community": 5,
+      "community_name": "public/scripts/modules.js",
+      "norm_label": "runreconciliationworkflow()"
+    },
+    {
       "label": "saleBrandSummary()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -15758,18 +15782,6 @@
       "community": 5,
       "community_name": "public/scripts/modules.js",
       "norm_label": "showexpensedetail()"
-    },
-    {
-      "label": "showReportPreviewLoading()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L3287",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_showreportpreviewloading",
-      "community": 5,
-      "community_name": "public/scripts/modules.js",
-      "norm_label": "showreportpreviewloading()"
     },
     {
       "label": "showStockReceiptDetail()",
@@ -16888,54 +16900,6 @@
       "norm_label": "closereportpreview()"
     },
     {
-      "label": "collectionContactsGeoJson()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3183",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_collectioncontactsgeojson",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "collectioncontactsgeojson()"
-    },
-    {
-      "label": "collectionRegionCount()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3252",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_collectionregioncount",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "collectionregioncount()"
-    },
-    {
-      "label": "collectionRegionSource()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3248",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_collectionregionsource",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "collectionregionsource()"
-    },
-    {
-      "label": "collectionRegionSummaries()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3190",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_collectionregionsummaries",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "collectionregionsummaries()"
-    },
-    {
       "label": "collectProductIssueParameters()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -17020,18 +16984,6 @@
       "norm_label": "expenseapprovalaction()"
     },
     {
-      "label": "featureRegionName()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3402",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_featureregionname",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "featureregionname()"
-    },
-    {
       "label": "formDocumentNo()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -17066,30 +17018,6 @@
       "community": 6,
       "community_name": "scripts/modules.js",
       "norm_label": "generatebir2307pdf()"
-    },
-    {
-      "label": "geoJsonBounds()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3312",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_geojsonbounds",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "geojsonbounds()"
-    },
-    {
-      "label": "geoRegionName()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3256",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_georegionname",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "georegionname()"
     },
     {
       "label": "getReconRange()",
@@ -17128,18 +17056,6 @@
       "norm_label": "isclientassignedtoagent()"
     },
     {
-      "label": "loadLeafletAssets()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3364",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_loadleafletassets",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "loadleafletassets()"
-    },
-    {
       "label": "loadMoreUserAuditLog()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -17150,18 +17066,6 @@
       "community": 6,
       "community_name": "scripts/modules.js",
       "norm_label": "loadmoreuserauditlog()"
-    },
-    {
-      "label": "loadPhilippinesRegionsGeoJson()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3435",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_loadphilippinesregionsgeojson",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "loadphilippinesregionsgeojson()"
     },
     {
       "label": "masterlistModuleKey()",
@@ -17186,18 +17090,6 @@
       "community": 6,
       "community_name": "scripts/modules.js",
       "norm_label": "masterlistrecordkey()"
-    },
-    {
-      "label": "normalizeRegionName()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3407",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_normalizeregionname",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "normalizeregionname()"
     },
     {
       "label": "openPaymentRequestMoreMenu()",
@@ -17282,18 +17174,6 @@
       "community": 6,
       "community_name": "scripts/modules.js",
       "norm_label": "paymentrequestpayments()"
-    },
-    {
-      "label": "philippinesGeoJson()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3419",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_philippinesgeojson",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "philippinesgeojson()"
     },
     {
       "label": "preventSameTransferBranch()",
@@ -17488,42 +17368,6 @@
       "norm_label": "refreshtransferdispatchmodalrow()"
     },
     {
-      "label": "regionMapLabel()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3235",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_regionmaplabel",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "regionmaplabel()"
-    },
-    {
-      "label": "regionStatusColor()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3394",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_regionstatuscolor",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "regionstatuscolor()"
-    },
-    {
-      "label": "regionTrackingStatus()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3381",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_regiontrackingstatus",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "regiontrackingstatus()"
-    },
-    {
       "label": "removeInventorySheetRow()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -17536,18 +17380,6 @@
       "norm_label": "removeinventorysheetrow()"
     },
     {
-      "label": "renderCollectionMapVisual()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3344",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_rendercollectionmapvisual",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "rendercollectionmapvisual()"
-    },
-    {
       "label": "renderDemoRequestSheet()",
       "file_type": "code",
       "source_file": "scripts/modules.js",
@@ -17558,18 +17390,6 @@
       "community": 6,
       "community_name": "scripts/modules.js",
       "norm_label": "renderdemorequestsheet()"
-    },
-    {
-      "label": "renderLeafletCollectionMap()",
-      "file_type": "code",
-      "source_file": "scripts/modules.js",
-      "source_location": "L3443",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "scripts_modules_renderleafletcollectionmap",
-      "community": 6,
-      "community_name": "scripts/modules.js",
-      "norm_label": "renderleafletcollectionmap()"
     },
     {
       "label": "renderPlatformSettings()",
@@ -18758,6 +18578,114 @@
       "community": 68,
       "community_name": "Ir",
       "norm_label": "zr()"
+    },
+    {
+      "label": "changeReportPreviewTemplate()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3355",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_changereportpreviewtemplate",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "changereportpreviewtemplate()"
+    },
+    {
+      "label": "clearPrintTarget()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3281",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_clearprinttarget",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "clearprinttarget()"
+    },
+    {
+      "label": "closeReportPreview()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3305",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_closereportpreview",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "closereportpreview()"
+    },
+    {
+      "label": "previewInventoryPurchaseOrder()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L6880",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_previewinventorypurchaseorder",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "previewinventorypurchaseorder()"
+    },
+    {
+      "label": "previewProductIssue()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L4569",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_previewproductissue",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "previewproductissue()"
+    },
+    {
+      "label": "printInvoice()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3312",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_printinvoice",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "printinvoice()"
+    },
+    {
+      "label": "printReportPreview()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3335",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_printreportpreview",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "printreportpreview()"
+    },
+    {
+      "label": "printReportPreviewNoDate()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3347",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_printreportpreviewnodate",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "printreportpreviewnodate()"
+    },
+    {
+      "label": "showReportPreviewLoading()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3287",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_showreportpreviewloading",
+      "community": 69,
+      "community_name": "clearPrintTarget",
+      "norm_label": "showreportpreviewloading()"
     },
     {
       "label": "public/scripts/vendor/pdf-lib.min.js",
@@ -21340,10 +21268,70 @@
       "norm_label": "trackercard()"
     },
     {
+      "label": "de()",
+      "file_type": "code",
+      "source_file": "scripts/vendor/pdf-lib.min.js",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_vendor_pdf_lib_min_de",
+      "community": 90,
+      "community_name": "pe",
+      "norm_label": "de()"
+    },
+    {
+      "label": "ee()",
+      "file_type": "code",
+      "source_file": "scripts/vendor/pdf-lib.min.js",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_vendor_pdf_lib_min_ee",
+      "community": 90,
+      "community_name": "pe",
+      "norm_label": "ee()"
+    },
+    {
+      "label": "fe()",
+      "file_type": "code",
+      "source_file": "scripts/vendor/pdf-lib.min.js",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_vendor_pdf_lib_min_fe",
+      "community": 90,
+      "community_name": "pe",
+      "norm_label": "fe()"
+    },
+    {
+      "label": "ge()",
+      "file_type": "code",
+      "source_file": "scripts/vendor/pdf-lib.min.js",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_vendor_pdf_lib_min_ge",
+      "community": 90,
+      "community_name": "pe",
+      "norm_label": "ge()"
+    },
+    {
+      "label": "pe()",
+      "file_type": "code",
+      "source_file": "scripts/vendor/pdf-lib.min.js",
+      "source_location": "L15",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "scripts_vendor_pdf_lib_min_pe",
+      "community": 90,
+      "community_name": "pe",
+      "norm_label": "pe()"
+    },
+    {
       "label": "moveInk()",
       "file_type": "code",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L78",
+      "source_location": "L89",
       "_callable": true,
       "_origin": "ast",
       "id": "public_scripts_landing_motion_moveink",
@@ -21355,7 +21343,7 @@
       "label": "onScroll()",
       "file_type": "code",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L62",
+      "source_location": "L72",
       "_callable": true,
       "_origin": "ast",
       "id": "public_scripts_landing_motion_onscroll",
@@ -21367,7 +21355,7 @@
       "label": "setActive()",
       "file_type": "code",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L84",
+      "source_location": "L95",
       "_callable": true,
       "_origin": "ast",
       "id": "public_scripts_landing_motion_setactive",
@@ -21379,7 +21367,7 @@
       "label": "updateScrollUi()",
       "file_type": "code",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L53",
+      "source_location": "L54",
       "_callable": true,
       "_origin": "ast",
       "id": "public_scripts_landing_motion_updatescrollui",
@@ -21520,6 +21508,30 @@
       "norm_label": "pe()"
     },
     {
+      "label": "acknowledgeMemo()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L3205",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_acknowledgememo",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "acknowledgememo()"
+    },
+    {
+      "label": "advancePurchaseOrderStatus()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1323",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_advancepurchaseorderstatus",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "advancepurchaseorderstatus()"
+    },
+    {
       "label": "applyRole()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -21556,6 +21568,30 @@
       "norm_label": "approvefinancialrequest()"
     },
     {
+      "label": "approvePurchaseOrder()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1307",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_approvepurchaseorder",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "approvepurchaseorder()"
+    },
+    {
+      "label": "approveStockReceipt()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1403",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_approvestockreceipt",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "approvestockreceipt()"
+    },
+    {
       "label": "archiveMasterlistRecord()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -21580,6 +21616,30 @@
       "norm_label": "canapprovemigrations()"
     },
     {
+      "label": "canApprovePurchaseOrders()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1261",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_canapprovepurchaseorders",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "canapprovepurchaseorders()"
+    },
+    {
+      "label": "canApproveStockReceipts()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1264",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_canapprovestockreceipts",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "canapprovestockreceipts()"
+    },
+    {
       "label": "cancelFinancialRequest()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -21590,6 +21650,42 @@
       "community": 97,
       "community_name": "renderAll",
       "norm_label": "cancelfinancialrequest()"
+    },
+    {
+      "label": "cancelPurchaseOrder()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1338",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_cancelpurchaseorder",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "cancelpurchaseorder()"
+    },
+    {
+      "label": "cancelStockReceipt()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1426",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_cancelstockreceipt",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "cancelstockreceipt()"
+    },
+    {
+      "label": "canManagePoReceiving()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1263",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_canmanageporeceiving",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "canmanageporeceiving()"
     },
     {
       "label": "confirmDetailsModal()",
@@ -21652,18 +21748,6 @@
       "norm_label": "confirmtransferreceive()"
     },
     {
-      "label": "editPurchaseOrder()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L2995",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_editpurchaseorder",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "editpurchaseorder()"
-    },
-    {
       "label": "financialRequestDetailFields()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -21676,28 +21760,16 @@
       "norm_label": "financialrequestdetailfields()"
     },
     {
-      "label": "getReportDefinitions()",
+      "label": "findItemByCodeOrName()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5773",
+      "source_location": "L282",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_getreportdefinitions",
+      "id": "public_scripts_modules_finditembycodeorname",
       "community": 97,
       "community_name": "renderAll",
-      "norm_label": "getreportdefinitions()"
-    },
-    {
-      "label": "handleWorkflowAction()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L6302",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_handleworkflowaction",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "handleworkflowaction()"
+      "norm_label": "finditembycodeorname()"
     },
     {
       "label": "importRevertBlockers()",
@@ -21712,28 +21784,16 @@
       "norm_label": "importrevertblockers()"
     },
     {
-      "label": "isClientAssignedToAgent()",
+      "label": "inventoryPoActionsCell()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L2871",
+      "source_location": "L1273",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_isclientassignedtoagent",
+      "id": "public_scripts_modules_inventorypoactionscell",
       "community": 97,
       "community_name": "renderAll",
-      "norm_label": "isclientassignedtoagent()"
-    },
-    {
-      "label": "isClientAssignedToCurrentUser()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L2866",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_isclientassignedtocurrentuser",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "isclientassignedtocurrentuser()"
+      "norm_label": "inventorypoactionscell()"
     },
     {
       "label": "masterlistDisplayLabel()",
@@ -21784,16 +21844,16 @@
       "norm_label": "masterlistrecordopenactivity()"
     },
     {
-      "label": "openReportPreview()",
+      "label": "poStatusLabel()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L5790",
+      "source_location": "L1271",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_openreportpreview",
+      "id": "public_scripts_modules_postatuslabel",
       "community": 97,
       "community_name": "renderAll",
-      "norm_label": "openreportpreview()"
+      "norm_label": "postatuslabel()"
     },
     {
       "label": "previewFinancialRequest()",
@@ -21868,18 +21928,6 @@
       "norm_label": "renderbranchfilter()"
     },
     {
-      "label": "renderImportCheck()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5035",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_renderimportcheck",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "renderimportcheck()"
-    },
-    {
       "label": "renderImports()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -21890,78 +21938,6 @@
       "community": 97,
       "community_name": "renderAll",
       "norm_label": "renderimports()"
-    },
-    {
-      "label": "renderInvoiceFlowDetail()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L4306",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_renderinvoiceflowdetail",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "renderinvoiceflowdetail()"
-    },
-    {
-      "label": "renderReceivablesTracker()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L4250",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_renderreceivablestracker",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "renderreceivablestracker()"
-    },
-    {
-      "label": "renderReportPage()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5614",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_renderreportpage",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "renderreportpage()"
-    },
-    {
-      "label": "renderReports()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L5600",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_renderreports",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "renderreports()"
-    },
-    {
-      "label": "renderSales()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L2900",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_rendersales",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "rendersales()"
-    },
-    {
-      "label": "renderSalesTargetPanel()",
-      "file_type": "code",
-      "source_file": "public/scripts/modules.js",
-      "source_location": "L2885",
-      "_callable": true,
-      "_origin": "ast",
-      "id": "public_scripts_modules_rendersalestargetpanel",
-      "community": 97,
-      "community_name": "renderAll",
-      "norm_label": "rendersalestargetpanel()"
     },
     {
       "label": "renderSection()",
@@ -21988,6 +21964,18 @@
       "norm_label": "rendersecurity()"
     },
     {
+      "label": "renderStockReceipts()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1361",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_renderstockreceipts",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "renderstockreceipts()"
+    },
+    {
       "label": "renderUserMenu()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
@@ -22012,16 +22000,28 @@
       "norm_label": "renderusersettings()"
     },
     {
-      "label": "renderWarranty()",
+      "label": "replacePoRecord()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L4476",
+      "source_location": "L1296",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_renderwarranty",
+      "id": "public_scripts_modules_replaceporecord",
       "community": 97,
       "community_name": "renderAll",
-      "norm_label": "renderwarranty()"
+      "norm_label": "replaceporecord()"
+    },
+    {
+      "label": "replaceStockReceiptRecord()",
+      "file_type": "code",
+      "source_file": "public/scripts/modules.js",
+      "source_location": "L1396",
+      "_callable": true,
+      "_origin": "ast",
+      "id": "public_scripts_modules_replacestockreceiptrecord",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "replacestockreceiptrecord()"
     },
     {
       "label": "requestRecord()",
@@ -22060,28 +22060,28 @@
       "norm_label": "revertimportbatch()"
     },
     {
-      "label": "salesTargetProgress()",
+      "label": "saveDemoRequest()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L2876",
+      "source_location": "L2374",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_salestargetprogress",
+      "id": "public_scripts_modules_savedemorequest",
       "community": 97,
       "community_name": "renderAll",
-      "norm_label": "salestargetprogress()"
+      "norm_label": "savedemorequest()"
     },
     {
-      "label": "saleSummary()",
+      "label": "saveStockSheet()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L262",
+      "source_location": "L2565",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_salesummary",
+      "id": "public_scripts_modules_savestocksheet",
       "community": 97,
       "community_name": "renderAll",
-      "norm_label": "salesummary()"
+      "norm_label": "savestocksheet()"
     },
     {
       "label": "saveTransferSheet()",
@@ -22108,28 +22108,28 @@
       "norm_label": "showpaymentrequestpreviewloading()"
     },
     {
-      "label": "showSection()",
+      "label": "stockReceiptActionsCell()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L795",
+      "source_location": "L1355",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_showsection",
+      "id": "public_scripts_modules_stockreceiptactionscell",
       "community": 97,
       "community_name": "renderAll",
-      "norm_label": "showsection()"
+      "norm_label": "stockreceiptactionscell()"
     },
     {
-      "label": "trackerCard()",
+      "label": "syncInvoiceRowLot()",
       "file_type": "code",
       "source_file": "public/scripts/modules.js",
-      "source_location": "L4285",
+      "source_location": "L689",
       "_callable": true,
       "_origin": "ast",
-      "id": "public_scripts_modules_trackercard",
+      "id": "public_scripts_modules_syncinvoicerowlot",
       "community": 97,
       "community_name": "renderAll",
-      "norm_label": "trackercard()"
+      "norm_label": "syncinvoicerowlot()"
     },
     {
       "label": "confirmCloseDialog()",
@@ -23158,28 +23158,6 @@
       "community": 20,
       "community_name": "Implementation Plan: 003-scheduled-digest-backup-reliability",
       "norm_label": "verification (no local env)"
-    },
-    {
-      "label": "public/scripts/api-client.js",
-      "file_type": "code",
-      "source_file": "public/scripts/api-client.js",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "public_scripts_api_client",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "public/scripts/api-client.js"
-    },
-    {
-      "label": "MedlaneAPI",
-      "file_type": "code",
-      "source_file": "public/scripts/api-client.js",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "public_scripts_api_client_medlaneapi",
-      "community": 21,
-      "community_name": "renderInventory",
-      "norm_label": "medlaneapi"
     },
     {
       "label": "003-scheduled-digest-backup-reliability/spec.md",
@@ -26274,6 +26252,28 @@
       "norm_label": "public/scripts/landing-motion.js"
     },
     {
+      "label": "public/scripts/api-client.js",
+      "file_type": "code",
+      "source_file": "public/scripts/api-client.js",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "public_scripts_api_client",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "public/scripts/api-client.js"
+    },
+    {
+      "label": "MedlaneAPI",
+      "file_type": "code",
+      "source_file": "public/scripts/api-client.js",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "public_scripts_api_client_medlaneapi",
+      "community": 97,
+      "community_name": "renderAll",
+      "norm_label": "medlaneapi"
+    },
+    {
       "label": "scripts/landing-motion.js",
       "file_type": "code",
       "source_file": "scripts/landing-motion.js",
@@ -27227,7 +27227,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L88",
+      "source_location": "L99",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_scripts_landing_motion_setactive",
@@ -55600,7 +55600,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L53",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_scripts_landing_motion",
@@ -55611,7 +55611,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L62",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_scripts_landing_motion",
@@ -55622,7 +55622,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L78",
+      "source_location": "L89",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_scripts_landing_motion",
@@ -55633,7 +55633,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L84",
+      "source_location": "L95",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_scripts_landing_motion",
@@ -77639,7 +77639,7 @@
       "context": "argument",
       "confidence": "INFERRED",
       "source_file": "public/scripts/landing-motion.js",
-      "source_location": "L65",
+      "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast",
       "source": "public_scripts_landing_motion_onscroll",
@@ -80564,5 +80564,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "f009f73d43b6e8dc6c10806e84ddaa8f5c38bce5"
+  "built_at_commit": "42d4669786f75f525f86459b3ef0873ec573b6fd"
 }

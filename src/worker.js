@@ -2696,7 +2696,8 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   if (demoLines.length) fields.push({ name: `🧪 Demo Requests (${activeDemos.length + closedDemos.length})`, value: discordFieldValue(demoLines.map(discordBullet), 300, activeDemos.length + closedDemos.length) });
   if (newlyPaidPos.length) fields.push({ name: `✅ Purchase Orders Fully Paid (${newlyPaidPos.length})`, value: discordFieldValue(newlyPaidPos.map((po) => discordBullet(`${po.id} — ${po.client}`)), 300, newlyPaidPos.length) });
   if (newClientNames.length) fields.push({ name: `🆕 New Clients Onboarded (${newClientNames.length})`, value: discordFieldValue(newClientNames.map((name) => `▸ ${name}`), 300, newClientNames.length) });
-  if (blockedImports.length) fields.push({ name: `📥 Import Issues (${blockedImports.length})`, value: discordFieldValue(blockedImports.map((item) => discordBullet(`${item.date} ${item.module} ${item.file} — ${item.status}`)), 300, blockedImports.length) });
+  // Import Issues are excluded from the Daily Discord post (too noisy day-to-day); still surfaced on the Weekly digest.
+  if (blockedImports.length && periodLabel !== "Daily") fields.push({ name: `📥 Import Issues (${blockedImports.length})`, value: discordFieldValue(blockedImports.map((item) => discordBullet(`${item.date} ${item.module} ${item.file} — ${item.status}`)), 300, blockedImports.length) });
   if (latestRecon?.high > 0) fields.push({ name: "🧭 Reconciliation Risk", value: `${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"} (${latestRecon.date || "latest run"})` });
   fields.push({ name: `📜 Audit Log (${auditLimitLabel})`, value: `${auditRows.length} recorded action${auditRows.length === 1 ? "" : "s"} — see the Audit Logs page for details.` });
 
