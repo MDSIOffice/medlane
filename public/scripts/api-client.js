@@ -97,6 +97,10 @@ const MedlaneAPI = (() => {
     return payload;
   }
 
+  async function forgotPassword(email) {
+    return request("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
+  }
+
   async function loadAppState() {
     return request("/api/modules/state");
   }
@@ -389,5 +393,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, setSession, request, refreshSession, login, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, listGameLeaderboard, fetchAppVersion };
+  return { session, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, listGameLeaderboard, fetchAppVersion };
 })();
