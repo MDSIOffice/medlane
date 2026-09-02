@@ -661,7 +661,7 @@
       <section class="section" id="sales">
         <div class="section-header"><div><p class="eyebrow">Sales Review</p><h2>SI and TS by client, area, sales person, and payment status</h2></div></div>
         <div class="near-expiry-banner" id="near-expiry-sales-alert"></div>
-        <div class="toolbar"><select id="sales-client" aria-label="Filter by client"><option value="all">All Clients</option></select><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select><button class="ghost-button" id="clear-sales-filters" type="button">Clear Filters</button></div>
+        <div class="toolbar"><input id="sales-client" list="sales-client-options" type="text" autocomplete="off" placeholder="Filter by client…" aria-label="Filter by client" /><datalist id="sales-client-options"></datalist><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select><button class="ghost-button" id="clear-sales-filters" type="button">Clear Filters</button></div>
         <div id="sales-target-panel"></div>
         <div class="table-card"><table id="sales-table"></table></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="sales-summary-grid"></div></article>

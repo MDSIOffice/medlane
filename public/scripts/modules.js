@@ -2897,14 +2897,11 @@ function renderSalesTargetPanel() {
   target.innerHTML = agents.length ? `<article class="panel"><div class="panel-header"><div><p class="eyebrow">${new Date().getFullYear()} Sales Targets</p><h2>${agents.length} agent${agents.length === 1 ? "" : "s"} with a target set</h2></div></div><div class="table-card compact-table"><table><thead><tr><th>Agent</th><th>Target</th><th>Current Year Sales</th><th>% Complete</th></tr></thead><tbody>${agents.map((a) => `<tr><td data-label="Agent">${escapeHtml(a.agent)}</td><td data-label="Target">${peso.format(a.target)}</td><td data-label="Current Year Sales">${peso.format(a.currentSales)}</td><td data-label="% Complete"><span class="pill ${a.pct >= 100 ? "green" : a.pct >= 60 ? "orange" : "red"}">${a.pct}%</span></td></tr>`).join("")}</tbody></table></div></article>` : "";
 }
 
-function populateSalesClientFilter(sales, preserve) {
-  const select = qs("#sales-client");
-  if (!select) return "all";
+function populateSalesClientFilter(sales) {
+  const list = qs("#sales-client-options");
+  if (!list) return;
   const clients = [...new Set(sales.map((s) => s.client).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
-  const desired = preserve === "all" || clients.includes(preserve) ? preserve : "all";
-  select.innerHTML = [`<option value="all">All Clients</option>`, ...clients.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)].join("");
-  select.value = desired;
-  return desired;
+  list.innerHTML = clients.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
 }
 
 function renderSales() {
@@ -2912,8 +2909,9 @@ function renderSales() {
   const type = qs("#sales-type").value;
   const canViewAllSales = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
   const scoped = byBranch(data.sales, "area").filter((s) => ["SI", "TS"].includes(documentType(s.type))).filter((s) => canViewAllSales || isClientAssignedToCurrentUser(s.client));
-  const client = populateSalesClientFilter(scoped, qs("#sales-client").value);
-  const rows = scoped.filter((s) => client === "all" || s.client === client).filter((s) => status === "all" || statusForSale(s) === status).filter((s) => type === "all" || documentType(s.type) === type).filter((s) => includesSearch(Object.values(s))).reverse();
+  populateSalesClientFilter(scoped);
+  const clientQuery = String(qs("#sales-client")?.value || "").trim().toLowerCase();
+  const rows = scoped.filter((s) => !clientQuery || String(s.client || "").toLowerCase().includes(clientQuery)).filter((s) => status === "all" || statusForSale(s) === status).filter((s) => type === "all" || documentType(s.type) === type).filter((s) => includesSearch(Object.values(s))).reverse();
   const nearExpiry = byBranch(data.inventory).filter((item) => inventoryStatus(item) === "Near Expiry");
   const firstNearExpiry = nearExpiry[0];
   qs("#near-expiry-sales-alert").innerHTML = nearExpiry.length
