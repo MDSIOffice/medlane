@@ -1319,12 +1319,16 @@ qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
 qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
 qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
 qs("#inventory-status").addEventListener("change", renderInventory);
-qs("#sales-client").addEventListener("change", renderSales);
+let salesClientFilterTimer = null;
+qs("#sales-client").addEventListener("input", () => {
+  clearTimeout(salesClientFilterTimer);
+  salesClientFilterTimer = setTimeout(renderSales, 150);
+});
 qs("#sales-status").addEventListener("change", renderSales);
 qs("#product-issue-status").addEventListener("change", renderProductIssues);
 qs("#sales-type").addEventListener("change", renderSales);
 qs("#clear-sales-filters").addEventListener("click", () => {
-  qs("#sales-client").value = "all";
+  qs("#sales-client").value = "";
   qs("#sales-status").value = "all";
   qs("#sales-type").value = "all";
   renderSales();

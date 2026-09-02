@@ -1394,7 +1394,8 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .invoice-type-icon.type-TS, .invoice-type-badge.type-TS span { border-color: var(--green); background: var(--tint-green); color: var(--green); }
 .invoice-type-icon.type-DR, .invoice-type-icon.type-DRS, .invoice-type-badge.type-DR span, .invoice-type-badge.type-DRS span { border-color: var(--orange); background: var(--tint-orange); color: var(--orange); }
 .invoice-type-icon.type-PO, .invoice-type-badge.type-PO span { border-color: var(--purple); background: var(--chip-purple-bg); color: var(--purple); }
-#sales-client { max-width: min(260px, 100%); }
+#sales-client { min-height: 42px; width: min(260px, 100%); border: 1px solid var(--line); border-radius: 8px; background: var(--tint); color: var(--ink); padding: 0 14px; }
+#sales-client:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; border-color: var(--accent); }
 .sales-total-panel { margin-top: 16px; margin-bottom: 16px; }
 .sales-summary-grid { display: grid; gap: 14px; }
 .sales-summary-hero { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 14px; }
