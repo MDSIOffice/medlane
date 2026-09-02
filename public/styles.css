@@ -618,8 +618,11 @@ body[data-active-section="notifications"] #export-demo { display: none; }
 .notification-button.has-unread { background: var(--tint-red); color: var(--red); border-color: var(--red); box-shadow: none; }
 .notification-button[aria-expanded="true"], .user-chip[aria-expanded="true"] { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); box-shadow: none; }
 .notification-symbol { display: block; font-size: 18px; font-weight: 900; line-height: 1; }
-#notification-count, #memo-count { position: absolute; top: -6px; right: -6px; display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 2px solid var(--panel-solid); border-radius: 999px; background: var(--red); color: #fff; font-size: 10px; font-weight: 800; line-height: 1; }
-#memo-toggle.has-unread #memo-count { background: var(--accent-strong); }
+/* Badge red is a fixed vivid crimson (not the softer --red token) so the count stays
+   loud against the pale --tint-red button halo and in both themes; ring + drop shadow
+   lift the 19px pill off the icon. */
+#notification-count, #memo-count { position: absolute; top: -7px; right: -7px; display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border: 2px solid var(--panel-solid); border-radius: 999px; background: #e11020; color: #fff; font-size: 11px; font-weight: 900; line-height: 1; box-shadow: 0 0 0 1px rgba(225, 16, 32, 0.4), 0 2px 7px rgba(225, 16, 32, 0.5); }
+#memo-toggle.has-unread #memo-count { background: var(--accent-strong); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-strong) 40%, transparent), 0 2px 7px color-mix(in srgb, var(--accent-strong) 50%, transparent); }
 .notification-popover { position: absolute; top: calc(100% + 12px); right: -8px; z-index: 20; width: min(390px, calc(100vw - 28px)); border: 1px solid var(--line); border-radius: 18px; background: var(--panel-solid); color: var(--ink); padding: 12px; box-shadow: var(--shadow); }
 .notification-popover::before, .user-popover::before { content: ""; position: absolute; top: -8px; right: 25px; width: 14px; height: 14px; transform: rotate(45deg); background: var(--panel-solid); border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
 .popover-source-hint { position: relative; z-index: 1; margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .01em; }
