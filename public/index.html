@@ -323,47 +323,62 @@
     </section>
 
     <section class="login-screen hidden" id="login-screen">
-      <div class="login-bg-effects" aria-hidden="true">
-        <span class="login-grid-orb orb-a"></span>
-        <span class="login-grid-orb orb-b"></span>
-        <span class="login-grid-orb orb-c"></span>
-        <span class="login-circuit circuit-a"></span>
-        <span class="login-circuit circuit-b"></span>
-        <span class="login-metric metric-a"><strong>AR</strong><small>Live</small></span>
-        <span class="login-metric metric-b"><strong>Lot</strong><small>Trace</small></span>
-        <span class="login-metric metric-c"><strong>SI</strong><small>Ready</small></span>
-        <span class="login-metric metric-d"><strong>PO</strong><small>Queue</small></span>
-        <span class="login-metric metric-e"><strong>₱</strong><small>Cash</small></span>
-        <span class="login-metric metric-f"><strong>DR</strong><small>Ship</small></span>
-        <span class="login-metric metric-g"><strong>Rx</strong><small>Stock</small></span>
-        <span class="login-icon-badge icon-a">🧾</span>
-        <span class="login-icon-badge icon-b">📦</span>
-        <span class="login-icon-badge icon-c">💳</span>
-        <span class="login-icon-badge icon-d">📊</span>
-        <span class="login-icon-badge icon-e">🔔</span>
-        <span class="login-icon-badge icon-f">✅</span>
-        <span class="login-color-ribbon ribbon-a"></span>
-        <span class="login-color-ribbon ribbon-b"></span>
-      </div>
-      <div class="login-card">
-        <div class="brand login-brand">
-          <img class="brand-logo" src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" />
-          <div>
-            <strong>Medlane</strong>
-            <span>Diagnostic Solutions System</span>
+      <div class="login-hero">
+        <div class="login-hero-dots" aria-hidden="true"></div>
+        <span class="login-hero-glow login-hero-glow--teal" aria-hidden="true"></span>
+        <span class="login-hero-glow login-hero-glow--orange" aria-hidden="true"></span>
+        <div class="login-hero-top">
+          <div class="login-hero-brand">
+            <img class="login-hero-logo" src="medlane.jpg" alt="" />
+            <div>
+              <strong>MEDLANE</strong>
+              <span>Diagnostic Solutions, Inc.</span>
+            </div>
+          </div>
+          <div class="login-hero-copy">
+            <span class="login-hero-pill">Licensed Importer &amp; Distributor Since 1997</span>
+            <h2>Precision diagnostics,<br />delivered.</h2>
+            <p>Sign in to Medlane OS to coordinate equipment, reagents, and field service across every branch — in real time.</p>
           </div>
         </div>
-        <div>
-          <h1>Sign in to Medlane OS</h1>
+        <div class="login-hero-stats">
+          <div><strong>29+</strong><span>Years of operation</span></div>
+          <div><strong>2</strong><span>Branches, NCR &amp; Bicol</span></div>
+          <div><strong>FDA</strong><span>Licensed &amp; compliant</span></div>
         </div>
-        <form id="login-form" class="login-form">
-          <label for="login-email">Email</label>
-          <input id="login-email" type="email" autocomplete="email" placeholder="name@medlane.local" required />
-          <label for="login-password">Password</label>
-          <input id="login-password" type="password" autocomplete="current-password" required />
-          <label class="remember-login-row"><input id="remember-login" type="checkbox" /> <span>Remember email and password on this device</span></label>
-          <button class="primary-button" type="submit">Login</button>
-        </form>
+      </div>
+
+      <div class="login-panel">
+        <div class="login-card">
+          <div class="brand login-brand">
+            <img class="brand-logo" src="medlane.jpg" alt="Medlane Diagnostic Solutions logo" />
+            <div>
+              <strong>Medlane OS</strong>
+              <span>Diagnostic Solutions System</span>
+            </div>
+          </div>
+          <div class="login-card-head">
+            <h1>Sign in to your account</h1>
+            <p>Enter your credentials to access your workspace.</p>
+          </div>
+          <form id="login-form" class="login-form">
+            <div class="login-field">
+              <label for="login-email">Email</label>
+              <input id="login-email" type="email" autocomplete="email" placeholder="name@medlane.local" required />
+            </div>
+            <div class="login-field">
+              <div class="login-field-row">
+                <label for="login-password">Password</label>
+                <button type="button" class="login-forgot" id="login-forgot">Forgot password?</button>
+              </div>
+              <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+            </div>
+            <label class="remember-login-row"><input id="remember-login" type="checkbox" /> <span>Remember my email on this device</span></label>
+            <button class="primary-button login-submit" type="submit">Login</button>
+          </form>
+          <div class="login-accent-bar" aria-hidden="true"></div>
+          <p class="login-foot">© 2026 Medlane Diagnostic Solutions, Inc. · Licensed Importer</p>
+        </div>
       </div>
     </section>
 
@@ -646,7 +661,7 @@
       <section class="section" id="sales">
         <div class="section-header"><div><p class="eyebrow">Sales Review</p><h2>SI and TS by client, area, sales person, and payment status</h2></div></div>
         <div class="near-expiry-banner" id="near-expiry-sales-alert"></div>
-        <div class="toolbar"><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select></div>
+        <div class="toolbar"><select id="sales-client" aria-label="Filter by client"><option value="all">All Clients</option></select><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select><button class="ghost-button" id="clear-sales-filters" type="button">Clear Filters</button></div>
         <div id="sales-target-panel"></div>
         <div class="table-card"><table id="sales-table"></table></div>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="sales-summary-grid"></div></article>

@@ -1319,9 +1319,17 @@ qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
 qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
 qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
 qs("#inventory-status").addEventListener("change", renderInventory);
+qs("#sales-client").addEventListener("change", renderSales);
 qs("#sales-status").addEventListener("change", renderSales);
 qs("#product-issue-status").addEventListener("change", renderProductIssues);
 qs("#sales-type").addEventListener("change", renderSales);
+qs("#clear-sales-filters").addEventListener("click", () => {
+  qs("#sales-client").value = "all";
+  qs("#sales-status").value = "all";
+  qs("#sales-type").value = "all";
+  renderSales();
+  toast("Sales filters cleared.");
+});
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
 qs("#export-demo")?.addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export logged."); });
 qs("#print-report").addEventListener("click", () => window.print());
@@ -1627,6 +1635,10 @@ qs("#login-form").addEventListener("submit", async (event) => {
     return toast(error.message || "Invalid email or password.");
   }
   currentUser = payload.user;
+  // "Remember email" — persist just the address locally; the browser's own credential manager
+  // keeps the password (the inputs carry autocomplete hints and the autofill-submit wiring above).
+  if (qs("#remember-login")?.checked) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+  else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
   try {
     const serverState = await MedlaneAPI.loadAppState();
     if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state.");
@@ -1660,6 +1672,29 @@ qs("#login-form").addEventListener("submit", async (event) => {
     maybeShowPasswordKycModal();
     startAppVersionWatch();
   });
+});
+
+qs("#login-forgot")?.addEventListener("click", async () => {
+  const button = qs("#login-forgot");
+  const emailInput = qs("#login-email");
+  let email = String(emailInput?.value || "").trim().toLowerCase();
+  if (!email) {
+    email = String(prompt("Enter your account email and we'll send you a password reset link:") || "").trim().toLowerCase();
+    if (!email) return;
+    if (emailInput) emailInput.value = email;
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter a valid email address first.");
+  if (button?.dataset.sending === "true") return;
+  const originalLabel = button?.textContent || "Forgot password?";
+  if (button) { button.dataset.sending = "true"; button.disabled = true; button.textContent = "Sending..."; }
+  try {
+    await MedlaneAPI.forgotPassword(email);
+    toast("If that email has a Medlane OS account, a password reset link is on its way. Check your inbox.");
+  } catch (error) {
+    toast(error.message || "Could not start the password reset. Please try again.");
+  } finally {
+    if (button) { button.dataset.sending = ""; button.disabled = false; button.textContent = originalLabel; }
+  }
 });
 
 function playLoginSuccessSound() {
@@ -1889,8 +1924,13 @@ function stopAppVersionWatch() {
   appUpdateNoticeShown = false;
 }
 
+const REMEMBERED_EMAIL_KEY = "medlane-remembered-email";
 function restoreRememberedLogin() {
-  qs("#remember-login")?.closest("label")?.remove();
+  const remembered = String(localStorage.getItem(REMEMBERED_EMAIL_KEY) || "").trim();
+  const emailInput = qs("#login-email");
+  const rememberBox = qs("#remember-login");
+  if (rememberBox) rememberBox.checked = Boolean(remembered);
+  if (remembered && emailInput && !emailInput.value) emailInput.value = remembered;
 }
 
 qs("#branch-filter").value = data.branch;

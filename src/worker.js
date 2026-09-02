@@ -236,6 +236,11 @@ function brandedInviteEmailHtml({ fullName, email, role, actionLink, origin }) {
   return brandedEmailHtml({ title: "Welcome to Medlane OS", intro: "Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.", bodyHtml: body, origin });
 }
 
+function passwordResetEmailHtml({ fullName, email, actionLink, origin }) {
+  const body = `<p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">We received a request to reset the password for your Medlane OS account. Use the button below to choose a new password.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:900;font-size:15px;border-radius:999px;">Reset Password</a></td></tr></table><div style="background:#f3fbff;border:1px solid #bfe7fb;border-left:5px solid #0077bd;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#003f73;">Account</strong><div>Email: ${escapeHtml(email)}</div></div><p style="margin:18px 0 0;color:#4f6b86;font-size:13px;line-height:1.55;">If the button does not work, open this secure link:<br><a href="${escapeHtml(actionLink)}" style="color:#0077bd;word-break:break-all;">${escapeHtml(actionLink)}</a></p><p style="margin:14px 0 0;color:#4f6b86;font-size:13px;line-height:1.55;">This link expires shortly. If you did not request a password reset, you can safely ignore this email &mdash; your password will not change.</p>`;
+  return brandedEmailHtml({ title: "Reset your Medlane OS password", intro: "Choose a new password to get back into your workspace.", bodyHtml: body, origin });
+}
+
 function inviteEmailHtml({ fullName, email, role, actionLink, origin }) {
   const year = new Date().getFullYear();
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to Medlane OS</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:12px 0 6px;font-size:34px;line-height:1.05;">Welcome to Medlane OS</h1><p style="margin:0;font-size:16px;line-height:1.6;opacity:.96;">Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.</p></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#fff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f4f9ff;border:1px solid #d8ebfb;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#005a9c;">Security reminder</strong><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Create a password with at least 8 characters, one letter, one number, and one special character. Never share your password or invitation link.</p></div><p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#4c6280;">If the button does not work, copy and paste this link into your browser:</p><p style="word-break:break-all;margin:0 0 18px;font-size:13px;line-height:1.6;color:#0077bd;">${escapeHtml(actionLink)}</p><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Account email: <strong>${escapeHtml(email)}</strong><br>Login site: <a href="${escapeHtml(origin)}" style="color:#0077bd;">${escapeHtml(origin)}</a></p></td></tr><tr><td style="padding:22px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. This message was sent for account access setup. If you did not expect this invitation, ignore this email or contact your administrator.</td></tr></table></td></tr></table></body></html>`;
@@ -2817,6 +2822,43 @@ export default {
         }
         const user = await profileForUser(env, session.user.id, session.user.email).catch(() => null);
         return json({ session, user });
+      }
+
+      if (url.pathname === "/api/auth/forgot-password") {
+        if (request.method !== "POST") return methodNotAllowed();
+        requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+        const { email: rawEmail } = await request.json().catch(() => ({}));
+        const email = cleanEmail(rawEmail);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        // Always answer with the same 200 body regardless of whether the account exists, so this
+        // endpoint can't be used to probe which emails are registered. Failures are logged server-side.
+        try {
+          const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id,full_name`);
+          if (profiles[0]) {
+            const options = { redirect_to: `${requestOrigin(request)}/?login=1` };
+            const recoveryPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
+              method: "POST",
+              body: JSON.stringify({ type: "recovery", email, options }),
+            }).catch((error) => ({ _error: error.message }));
+            const recovery = extractLinkResult(recoveryPayload);
+            if (recovery?.actionLink) {
+              const fullName = profiles[0].full_name || email;
+              const delivery = await sendResendEmail(env, {
+                to: email,
+                subject: "Reset your Medlane OS password",
+                html: passwordResetEmailHtml({ fullName, email, actionLink: wrapAuthActionLink(recovery.actionLink, requestOrigin(request)), origin: requestOrigin(request) }),
+              }).catch((error) => ({ sent: false, reason: error.message }));
+              await recordSystemLog(env, delivery.sent
+                ? { action: "Sent password reset email", module: "Authentication", record: email }
+                : { action: "Password reset email not sent", module: "Authentication", record: `${email}: ${delivery.reason || "unknown error"}` });
+            } else {
+              await recordSystemLog(env, { action: "Password reset link generation failed", module: "Authentication", record: `${email}: ${recoveryPayload?._error || "no action_link returned"}` });
+            }
+          }
+        } catch (error) {
+          await recordSystemLog(env, { action: "Password reset request errored", module: "Authentication", record: `${email}: ${error.message}` }).catch(() => null);
+        }
+        return json({ ok: true });
       }
 
       if (url.pathname === "/api/auth/me") {
