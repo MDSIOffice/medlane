@@ -1865,7 +1865,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .si-registered { left: 1.6in; top: 1.61in; width: 3.45in; }
 .si-tin { left: 1.15in; top: 1.7in; width: 2.0in; }
 .si-address { left: 1.6in; top: 2.08in; width: 5.7in; }
-.si-row { position: absolute; left: 0.55in; right: 0.45in; top: calc(2.78in + (var(--row) * 0.31in)); height: 0.3in; }
+.si-row { position: absolute; left: 0.55in; right: 0.45in; top: calc(2.78in + (var(--row) * 0.34in)); height: 0.33in; }
 .si-item { position: absolute; left: 0.23in; width: 4.4in; }
 .si-lot { left: 0.23in; top: 0.2in; width: 4.4in; }
 .si-qty { position: absolute; left: 4.64in; width: 0.7in; text-align: center; }
@@ -1884,7 +1884,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .ts-terms { left: 6.0in; top: 1.48in; width: 1.5in; text-align: center; }
 .ts-client { left: 1.7in; top: 1.26in; width: 4.35in; }
 .ts-address { left: 1.1in; top: 1.48in; width: 5.1in; }
-.ts-row { position: absolute; left: 0.18in; right: 0.25in; top: calc(2.16in + (var(--row) * 0.34in)); height: 0.32in; }
+.ts-row { position: absolute; left: 0.18in; right: 0.25in; top: calc(2.16in + (var(--row) * 0.38in)); height: 0.36in; }
 .ts-code { position: absolute; left: 0.53in; width: 1.1in; text-align: center; }
 .ts-item { position: absolute; left: 1.65in; width: 4.1in; }
 .ts-lot { left: 1.65in; top: 0.22in; width: 4.1in; }
@@ -1900,7 +1900,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .dr-po { left: 6.5in; top: 1.2in; width: 1.25in; text-align: center; }
 .dr-client { left: 1.05in; top: 0.78in; width: 4.25in; }
 .dr-address { left: 1.05in; top: 1.02in; width: 4.65in; }
-.dr-row { position: absolute; left: 0.22in; right: 0.22in; top: calc(1.75in + (var(--row) * 0.38in)); height: 0.36in; }
+.dr-row { position: absolute; left: 0.22in; right: 0.22in; top: calc(1.75in + (var(--row) * 0.42in)); height: 0.4in; }
 .dr-qty { position: absolute; left: 1.55in; width: 1.0in; text-align: center; }
 .dr-item { position: absolute; left: 2.28in; width: 3.9in; }
 .dr-lot { left: 2.28in; top: 0.24in; width: 3.9in; }
