@@ -10,6 +10,7 @@
 - A correct dry run should read static files from the repo root.
 - Publish with `npx wrangler deploy`; GitHub-connected Cloudflare deploys use the same Wrangler config.
 - Required Worker secrets for production are `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
+- Optional Discord webhook secrets (each drives one auto-updating channel message; unset = that board is skipped): `DISCORD_WEBHOOK_URL` (workflow events), `DISCORD_INVENTORY_WEBHOOK_URL` (per-branch stock boards), `DISCORD_PENDING_WEBHOOK_URL` (pending items), `DISCORD_LUKSONG_WEBHOOK_URL` (Luksong Medlane leaderboard, refreshed every 15 min). Set with `npx wrangler secret put DISCORD_LUKSONG_WEBHOOK_URL`.
 
 ## Editing Gotchas
 - Proposal HTML is `medlane-system-proposal.html` in the repo root.

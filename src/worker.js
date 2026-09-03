@@ -1385,12 +1385,14 @@ function printableRows(sale, variant, templateOverrides) {
   const row = templateOverrides?.row || null;
   return lines.slice(0, variant === "si" ? 10 : 8).map((line, index) => {
     const expiry = line.expiry && line.expiry !== "N/A" ? ` · Exp ${escapeHtml(line.expiry)}` : "";
-    const lotExpiry = `<small>Lot ${escapeHtml(line.lot || "-")}${expiry}</small>`;
+    // Lot / expiry is its own positioned field (si-lot / ts-lot / dr-lot) so it can be moved
+    // independently in the custom print-layout editor — no longer a <small> glued under the name.
+    const lotText = `Lot ${escapeHtml(line.lot || "-")}${expiry}`;
     const name = `<span class="tmpl-name">${escapeHtml(line.item)}</span>`;
     const rowStyle = rowOverrideStyle(row, index);
-    if (variant === "si") return `<div class="si-row"${rowStyle}><span class="si-item"${fieldOverrideStyle(fields["si-item"])}>${name}${lotExpiry}</span><span class="si-qty"${fieldOverrideStyle(fields["si-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="si-price"${fieldOverrideStyle(fields["si-price"])}>${formMoney(line.price)}</span><span class="si-amount"${fieldOverrideStyle(fields["si-amount"])}>${formMoney(lineAmount(line))}</span></div>`;
-    if (variant === "ts") return `<div class="ts-row"${rowStyle}><span class="ts-code"${fieldOverrideStyle(fields["ts-code"])}>${escapeHtml(line.code || "")}</span><span class="ts-item"${fieldOverrideStyle(fields["ts-item"])}>${name}${lotExpiry}</span><span class="ts-qty"${fieldOverrideStyle(fields["ts-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="ts-amount"${fieldOverrideStyle(fields["ts-amount"])}>${formMoney(lineAmount(line))}</span></div>`;
-    return `<div class="dr-row"${rowStyle}><span class="dr-qty"${fieldOverrideStyle(fields["dr-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item"${fieldOverrideStyle(fields["dr-item"])}>${name}${lotExpiry}</span><span class="dr-price"${fieldOverrideStyle(fields["dr-price"])}></span><span class="dr-amount"${fieldOverrideStyle(fields["dr-amount"])}></span></div>`;
+    if (variant === "si") return `<div class="si-row"${rowStyle}><span class="si-item"${fieldOverrideStyle(fields["si-item"])}>${name}</span><span class="si-lot"${fieldOverrideStyle(fields["si-lot"])}>${lotText}</span><span class="si-qty"${fieldOverrideStyle(fields["si-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="si-price"${fieldOverrideStyle(fields["si-price"])}>${formMoney(line.price)}</span><span class="si-amount"${fieldOverrideStyle(fields["si-amount"])}>${formMoney(lineAmount(line))}</span></div>`;
+    if (variant === "ts") return `<div class="ts-row"${rowStyle}><span class="ts-code"${fieldOverrideStyle(fields["ts-code"])}>${escapeHtml(line.code || "")}</span><span class="ts-item"${fieldOverrideStyle(fields["ts-item"])}>${name}</span><span class="ts-lot"${fieldOverrideStyle(fields["ts-lot"])}>${lotText}</span><span class="ts-qty"${fieldOverrideStyle(fields["ts-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="ts-amount"${fieldOverrideStyle(fields["ts-amount"])}>${formMoney(lineAmount(line))}</span></div>`;
+    return `<div class="dr-row"${rowStyle}><span class="dr-qty"${fieldOverrideStyle(fields["dr-qty"])}>${Number(line.qty || 0)} ${escapeHtml(line.uom || "")}</span><span class="dr-item"${fieldOverrideStyle(fields["dr-item"])}>${name}</span><span class="dr-lot"${fieldOverrideStyle(fields["dr-lot"])}>${lotText}</span><span class="dr-price"${fieldOverrideStyle(fields["dr-price"])}></span><span class="dr-amount"${fieldOverrideStyle(fields["dr-amount"])}></span></div>`;
   }).join("");
 }
 
@@ -1410,10 +1412,10 @@ function printableInvoiceHtml({ sale, client, approvals, preparedBy, noDate, tem
   const approvedBy = escapeHtml(approvals?.[type] || "ECTOSOC");
   const f = templateOverrides?.fields || {};
   const fs = (key) => fieldOverrideStyle(f[key]);
-  if (type === "TS") return `<section class="template-overlay template-ts">${templateBranding()}${noDate ? "" : `<span class="field ts-date"${fs("ts-date")}>${formDate(new Date().toISOString())}</span>`}<span class="field ts-po"${fs("ts-po")}>${escapeHtml(sale.po || "")}</span><span class="field ts-terms"${fs("ts-terms")}>Terms: ${Number(sale.terms || 30)} Days</span><span class="field ts-client"${fs("ts-client")}>${escapeHtml(sale.client)}</span><span class="field ts-address"${fs("ts-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "ts", templateOverrides)}<span class="field ts-tax-label"${fs("ts-tax-label")}>NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total"${fs("ts-total")}>${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared"${fs("ts-prepared")}>${escapeHtml(preparedBy)}</span><span class="field ts-approved"${fs("ts-approved")}>${approvedBy}</span><span class="field ts-received"></span></section>`;
-  if (type === "DR") return `<section class="template-overlay template-dr">${templateBranding()}${noDate ? "" : `<span class="field dr-date"${fs("dr-date")}>${formDate(new Date().toISOString())}</span>`}<span class="field dr-po"${fs("dr-po")}>${escapeHtml(sale.po || "")}</span><span class="field dr-terms"${fs("dr-terms")}>${Number(sale.terms || 30)} Days</span><span class="field dr-client"${fs("dr-client")}>${escapeHtml(sale.client)}</span><span class="field dr-address"${fs("dr-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "dr", templateOverrides)}<span class="field dr-prepared"${fs("dr-prepared")}>${escapeHtml(preparedBy)}</span><span class="field dr-recorded"${fs("dr-recorded")}></span><span class="field dr-approved"${fs("dr-approved")}>${approvedBy}</span><span class="field dr-received"${fs("dr-received")}></span></section>`;
+  if (type === "TS") return `<section class="template-overlay template-ts">${noDate ? "" : `<span class="field ts-date"${fs("ts-date")}>${formDate(new Date().toISOString())}</span>`}<span class="field ts-po"${fs("ts-po")}>${escapeHtml(sale.po || "")}</span><span class="field ts-terms"${fs("ts-terms")}>Terms: ${Number(sale.terms || 30)} Days</span><span class="field ts-client"${fs("ts-client")}>${escapeHtml(sale.client)}</span><span class="field ts-address"${fs("ts-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "ts", templateOverrides)}<span class="field ts-tax-label"${fs("ts-tax-label")}>NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total"${fs("ts-total")}>${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared"${fs("ts-prepared")}>${escapeHtml(preparedBy)}</span><span class="field ts-approved"${fs("ts-approved")}>${approvedBy}</span><span class="field ts-received"></span></section>`;
+  if (type === "DR") return `<section class="template-overlay template-dr">${noDate ? "" : `<span class="field dr-date"${fs("dr-date")}>${formDate(new Date().toISOString())}</span>`}<span class="field dr-po"${fs("dr-po")}>${escapeHtml(sale.po || "")}</span><span class="field dr-terms"${fs("dr-terms")}>${Number(sale.terms || 30)} Days</span><span class="field dr-client"${fs("dr-client")}>${escapeHtml(sale.client)}</span><span class="field dr-address"${fs("dr-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "dr", templateOverrides)}<span class="field dr-prepared"${fs("dr-prepared")}>${escapeHtml(preparedBy)}</span><span class="field dr-recorded"${fs("dr-recorded")}></span><span class="field dr-approved"${fs("dr-approved")}>${approvedBy}</span><span class="field dr-received"${fs("dr-received")}></span></section>`;
   const breakdown = saleTaxBreakdown(sale);
-  return `<section class="template-overlay template-si">${templateBranding()}${noDate ? "" : `<span class="field si-date"${fs("si-date")}>${formDate(sale.date)}</span>`}<span class="field si-po"${fs("si-po")}>${escapeHtml(sale.po || "")}</span><span class="field si-terms"${fs("si-terms")}>Terms of Payment ${Number(sale.terms || 30)} Days</span><span class="field si-sold"${fs("si-sold")}>${escapeHtml(sale.client)}</span><span class="field si-registered"${fs("si-registered")}>${escapeHtml(sale.client)}</span><span class="field si-tin"${fs("si-tin")}>${escapeHtml(client.tin || "")}</span><span class="field si-address"${fs("si-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "si", templateOverrides)}<span class="field si-total-sales"${fs("si-total-sales")}>${formMoney(breakdown.totalSalesVatInclusive)}</span><span class="field si-net-vat"${fs("si-net-vat")}>${formMoney(breakdown.amountNetVat)}</span><span class="field si-discount"${fs("si-discount")}>${formMoney(sale.discount || 0)}</span><span class="field si-vat"${fs("si-vat")}>${formMoney(breakdown.addVat)}</span><span class="field si-amount-due"${fs("si-amount-due")}>${formMoney(breakdown.totalAmountDue)}</span><span class="field si-prepared"${fs("si-prepared")}>${escapeHtml(preparedBy)}</span><span class="field si-approved"${fs("si-approved")}>${approvedBy}</span></section>`;
+  return `<section class="template-overlay template-si">${noDate ? "" : `<span class="field si-date"${fs("si-date")}>${formDate(sale.date)}</span>`}<span class="field si-po"${fs("si-po")}>${escapeHtml(sale.po || "")}</span><span class="field si-terms"${fs("si-terms")}>Terms of Payment ${Number(sale.terms || 30)} Days</span><span class="field si-sold"${fs("si-sold")}>${escapeHtml(sale.client)}</span><span class="field si-registered"${fs("si-registered")}>${escapeHtml(sale.client)}</span><span class="field si-tin"${fs("si-tin")}>${escapeHtml(client.tin || "")}</span><span class="field si-address"${fs("si-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "si", templateOverrides)}<span class="field si-total-sales"${fs("si-total-sales")}>${formMoney(breakdown.totalSalesVatInclusive)}</span><span class="field si-net-vat"${fs("si-net-vat")}>${formMoney(breakdown.amountNetVat)}</span><span class="field si-discount"${fs("si-discount")}>${formMoney(sale.discount || 0)}</span><span class="field si-vat"${fs("si-vat")}>${formMoney(breakdown.addVat)}</span><span class="field si-amount-due"${fs("si-amount-due")}>${formMoney(breakdown.totalAmountDue)}</span><span class="field si-prepared"${fs("si-prepared")}>${escapeHtml(preparedBy)}</span><span class="field si-approved"${fs("si-approved")}>${approvedBy}</span></section>`;
 }
 
 function paymentRequestPrintableHtml(request) {
@@ -1999,6 +2001,47 @@ async function runInventoryStatusMonitor(env) {
   await saveMonitoringState(env, "discord-inventory-branches", { keys: [...activeKeys] }).catch((error) => recordSystemLog(env, { action: "Discord inventory registry save failed", module: "Discord", record: error.message }));
 }
 
+const GAME_BADGE_EMOJI = { Bronze: "🥉", Silver: "🥈", Gold: "🥇", Platinum: "💎" };
+
+function discordSafeText(value, fallback = "Player") {
+  // Strip Discord markdown control chars so a player name can't italicise / spoiler the row.
+  return webhookText(String(value ?? "").replace(/[*_~`|\\>]/g, ""), fallback).slice(0, 60);
+}
+
+// One always-current "🏆 Luksong Medlane — Leaderboard" message in its own Discord channel,
+// edited in place on the same 15-minute cadence as the inventory boards (skips the 18:00 hour
+// reserved for digests/backups). Mirrors postInventoryBranchBoard: edit the tracked message,
+// fall back to posting a fresh one and re-tracking its id.
+async function runLuksongLeaderboardMonitor(env) {
+  if (!env.DISCORD_LUKSONG_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord Luksong leaderboard skipped", module: "Discord", record: "DISCORD_LUKSONG_WEBHOOK_URL not configured" });
+  const stateKey = appStateKey(env);
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&select=data`);
+  const entries = rows.map((row) => row.data).filter((entry) => entry && Number(entry.score) > 0)
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .slice(0, 15);
+  const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const medal = (i) => ["🥇", "🥈", "🥉"][i] || `**${i + 1}.**`;
+  const lines = entries.map((entry, i) => {
+    const badge = gameBadgeForScore(entry.score);
+    const level = gameLevelForXp(entry.totalXp || 0);
+    return `${medal(i)} ${discordSafeText(entry.name)} — **${Number(entry.score || 0).toLocaleString("en-US")}** · Lv.${level}${badge ? ` ${GAME_BADGE_EMOJI[badge] || ""}` : ""}`;
+  });
+  const description = (entries.length
+    ? `${lines.join("\n")}\n\n🕒 **Latest update:** ${updatedAt} PHT`
+    : `No runs on the board yet — open **User Settings → Play Game** to set the first score.\n\n🕒 **Latest update:** ${updatedAt} PHT`).slice(0, 4000);
+  const embed = { title: "🏆 Luksong Medlane — Leaderboard", color: 0x0077bd, description, timestamp: new Date().toISOString() };
+  const stored = await monitoringState(env, "discord-luksong-leaderboard").catch(() => ({}));
+  if (stored.messageId) {
+    const edited = await editDiscordWebhookMessage(env.DISCORD_LUKSONG_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
+    if (edited?.edited) return saveMonitoringState(env, "discord-luksong-leaderboard", { ...stored, updatedAt: new Date().toISOString() });
+    await recordSystemLog(env, { action: "Discord Luksong leaderboard edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
+  }
+  const sent = await sendDiscordWebhookUrl(env, env.DISCORD_LUKSONG_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
+  if (sent.error) return recordSystemLog(env, { action: "Discord Luksong leaderboard failed", module: "Discord", record: sent.error.message });
+  if (sent.messageId) await saveMonitoringState(env, "discord-luksong-leaderboard", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
+  else await recordSystemLog(env, { action: "Discord Luksong leaderboard message id missing", module: "Discord", record: "Post succeeded but no message ID returned" });
+}
+
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 function isTransientJwtClockSkew(error) {
@@ -2297,7 +2340,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // Keep the heavier analytics/pending/inventory monitors out of the 18:00 hour entirely —
   // that hour is reserved for the digest/backup jobs below, and stacking the monitors on the
   // same invocation is part of what used to blow the CPU/subrequest budget.
-  if (!inDigestHour && ["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env));
+  if (!inDigestHour && ["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env), runLuksongLeaderboardMonitor(env));
   // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
   // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
@@ -3274,46 +3317,75 @@ export default {
         if (!token) return json({ error: "Missing game session token. Start a new game to submit a score." }, { status: 400 });
         const sessionRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-sessions&record_key=eq.${encodeURIComponent(token)}&select=data`);
         const gameSession = sessionRows[0]?.data;
-        if (!gameSession || gameSession.userId !== authUser.id || gameSession.used) return json({ error: "Invalid or already-used game session token." }, { status: 400 });
-        // Mark the token used via the same upsert the rest of this file already relies
-        // on (the service role has INSERT/UPDATE on app_records but not DELETE) — this
-        // is what makes the token single-use, not a row deletion.
+        if (!gameSession || gameSession.userId !== authUser.id) return json({ error: "Invalid game session token. Start a new game to submit a score." }, { status: 400 });
+        // Idempotent replay: if the run was already scored under this token, hand back the same
+        // result instead of an error. This is what lets the client safely retry when a response
+        // was lost after the server had already saved (the #1 way a genuine high score "wasn't
+        // saved" — it was, the client just never heard back and gave up).
+        if (gameSession.used) {
+          if (gameSession.result) return json({ ...gameSession.result, replayed: true });
+          return json({ error: "That game session was already used. Play again to submit a score." }, { status: 400 });
+        }
+        const elapsedMs = Date.now() - Number(gameSession.startedAt || 0);
+        if (elapsedMs > 30 * 60 * 1000) return json({ error: "Game session expired. Play again to submit a score." }, { status: 400 });
+        // Claim the token up front so two overlapping submits of the same token can't both run
+        // the scoring path and double-count XP. The result is written back onto it at the end;
+        // a retry that lands here sees used:true and replays that stored result.
         await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
           method: "POST",
           headers: { prefer: "resolution=merge-duplicates,return=minimal" },
           body: JSON.stringify([{ state_key: stateKey, module_name: "game-sessions", record_key: token, data: { ...gameSession, used: true }, updated_by: authUser.id }]),
         });
-        const elapsedMs = Date.now() - Number(gameSession.startedAt || 0);
-        if (elapsedMs > 30 * 60 * 1000) return json({ error: "Game session expired. Play again to submit a score." }, { status: 400 });
         const elapsedSeconds = Math.max(elapsedMs / 1000, 0.5);
         // Top speed and spawn-rate difficulty both now scale with score (see game.js),
         // pushing the realistic ceiling to roughly ~185 pts/sec at max difficulty —
         // keep this comfortably above that so genuine high-skill runs never get clamped.
         const maxPlausibleScore = Math.ceil(elapsedSeconds * 230) + 30;
         const score = Math.min(Math.max(0, Math.floor(Number(body.score) || 0)), maxPlausibleScore);
-        const existingRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&record_key=eq.${encodeURIComponent(authUser.id)}&select=data`);
-        const existing = existingRows[0]?.data || null;
-        const isNewBest = !existing || score > existing.score;
-        const best = isNewBest ? score : existing.score;
-        // XP is cumulative across every run (grinding builds level even without a new
-        // best), while best/date only move on an actual personal best.
-        const prevTotalXp = Number(existing?.totalXp || 0);
-        const prevLevel = gameLevelForXp(prevTotalXp);
-        const totalXp = prevTotalXp + score;
-        const level = gameLevelForXp(totalXp);
-        const entry = {
-          name: profile.name || profile.email || "System User",
-          score: best,
-          date: isNewBest ? manilaTimestamp() : (existing?.date || manilaTimestamp()),
-          totalXp,
-          level,
-        };
+        let result;
+        try {
+          const existingRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&record_key=eq.${encodeURIComponent(authUser.id)}&select=data`);
+          const existing = existingRows[0]?.data || null;
+          const isNewBest = !existing || score > existing.score;
+          const best = isNewBest ? score : existing.score;
+          // XP is cumulative across every run (grinding builds level even without a new
+          // best), while best/date only move on an actual personal best.
+          const prevTotalXp = Number(existing?.totalXp || 0);
+          const prevLevel = gameLevelForXp(prevTotalXp);
+          const totalXp = prevTotalXp + score;
+          const level = gameLevelForXp(totalXp);
+          const entry = {
+            name: profile.name || profile.email || "System User",
+            score: best,
+            date: isNewBest ? manilaTimestamp() : (existing?.date || manilaTimestamp()),
+            totalXp,
+            level,
+          };
+          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+            method: "POST",
+            headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+            body: JSON.stringify([{ state_key: stateKey, module_name: "game-scores", record_key: authUser.id, data: entry, updated_by: authUser.id }]),
+          });
+          result = { ok: true, best, isNewBest, badge: gameBadgeForScore(best), totalXp, level, leveledUp: level > prevLevel, xpToNextLevel: gameXpForLevel(level + 1) - totalXp };
+        } catch (scoreError) {
+          // The score write failed after we claimed the token — release the claim so the
+          // client's automatic retry can actually go through instead of hitting "already used".
+          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+            method: "POST",
+            headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+            body: JSON.stringify([{ state_key: stateKey, module_name: "game-sessions", record_key: token, data: { ...gameSession, used: false }, updated_by: authUser.id }]),
+          }).catch(() => null);
+          throw scoreError;
+        }
+        // Store the result on the (already-claimed) token so a later retry can replay it instead
+        // of erroring. If this write is lost the score still persisted; the retry just gets the
+        // "already used" message rather than the celebratory card — the best/XP are safe.
         await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
           method: "POST",
           headers: { prefer: "resolution=merge-duplicates,return=minimal" },
-          body: JSON.stringify([{ state_key: stateKey, module_name: "game-scores", record_key: authUser.id, data: entry, updated_by: authUser.id }]),
-        });
-        return json({ ok: true, best, isNewBest, badge: gameBadgeForScore(best), totalXp, level, leveledUp: level > prevLevel, xpToNextLevel: gameXpForLevel(level + 1) - totalXp });
+          body: JSON.stringify([{ state_key: stateKey, module_name: "game-sessions", record_key: token, data: { ...gameSession, used: true, result }, updated_by: authUser.id }]),
+        }).catch(() => null);
+        return json(result);
       }
 
       if (url.pathname === "/api/game/score/me" && request.method === "GET") {

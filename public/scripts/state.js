@@ -57,21 +57,21 @@ const PRINT_TEMPLATE_FIELDS = {
       ["si-total-sales", "Total Sales (VAT Incl.)"], ["si-net-vat", "Amount Net of VAT"], ["si-discount", "Discount"],
       ["si-vat", "VAT"], ["si-amount-due", "Total Amount Due"], ["si-prepared", "Prepared By"], ["si-approved", "Approved By"],
     ],
-    rowCols: [["si-item", "Item"], ["si-qty", "Qty"], ["si-price", "Price"], ["si-amount", "Amount"]],
+    rowCols: [["si-item", "Item"], ["si-lot", "Lot / Expiry"], ["si-qty", "Qty"], ["si-price", "Price"], ["si-amount", "Amount"]],
   },
   TS: {
     point: [
       ["ts-date", "Date"], ["ts-po", "P.O. No."], ["ts-terms", "Terms"], ["ts-client", "Client"], ["ts-address", "Address"],
       ["ts-tax-label", "Tax Label"], ["ts-total", "Total"], ["ts-prepared", "Prepared By"], ["ts-approved", "Approved By"],
     ],
-    rowCols: [["ts-code", "Code"], ["ts-item", "Item"], ["ts-qty", "Qty"], ["ts-amount", "Amount"]],
+    rowCols: [["ts-code", "Code"], ["ts-item", "Item"], ["ts-lot", "Lot / Expiry"], ["ts-qty", "Qty"], ["ts-amount", "Amount"]],
   },
   DR: {
     point: [
       ["dr-date", "Date"], ["dr-terms", "Terms"], ["dr-po", "P.O. No."], ["dr-client", "Client"], ["dr-address", "Address"],
       ["dr-prepared", "Prepared By"], ["dr-recorded", "Recorded By"], ["dr-approved", "Approved By"], ["dr-received", "Received By"],
     ],
-    rowCols: [["dr-qty", "Qty"], ["dr-item", "Item"], ["dr-price", "Price"], ["dr-amount", "Amount"]],
+    rowCols: [["dr-qty", "Qty"], ["dr-item", "Item"], ["dr-lot", "Lot / Expiry"], ["dr-price", "Price"], ["dr-amount", "Amount"]],
   },
 };
 let pendingServerSave = null;
