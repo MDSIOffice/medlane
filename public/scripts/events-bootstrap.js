@@ -1590,27 +1590,88 @@ window.addEventListener("afterprint", clearPrintTarget);
 window.addEventListener("resize", updateTableScrollHints);
 document.addEventListener("scroll", (event) => { if (event.target?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
 let loginAutofillSubmitTimer = null;
+let loginUserTyped = false;
+let loginBiometricTried = false;
 function isAuthenticatedRoute() {
   return Boolean(currentUser) || document.body.classList.contains("app-route");
 }
+function submitLoginIfReady() {
+  const form = qs("#login-form");
+  const email = qs("#login-email");
+  const password = qs("#login-password");
+  if (!form || !email || !password) return false;
+  if (form.dataset.submitting === "true" || isAuthenticatedRoute()) return false;
+  if (!String(email.value || "").trim() || !String(password.value || "")) return false;
+  form.requestSubmit();
+  return true;
+}
+// After the browser autofills the login — on a Mac this is the Touch ID / Keychain prompt the
+// user already sees — submit for them instead of making them reach for the Login button.
 function scheduleAutofillLoginSubmit() {
   const form = qs("#login-form");
   const email = qs("#login-email");
   const password = qs("#login-password");
   if (!form || !email || !password || form.dataset.submitting === "true" || isAuthenticatedRoute()) return;
   clearTimeout(loginAutofillSubmitTimer);
-  loginAutofillSubmitTimer = setTimeout(() => {
+  let attempts = 0;
+  const tick = () => {
+    if (form.dataset.submitting === "true" || isAuthenticatedRoute()) return;
+    attempts += 1;
     const filled = String(email.value || "").trim() && String(password.value || "");
     const autofilled = [email, password].some((input) => {
       try { return input.matches(":-webkit-autofill"); } catch { return false; }
     });
-    if (filled && autofilled && form.dataset.submitting !== "true" && !isAuthenticatedRoute()) form.requestSubmit();
-  }, 650);
+    // Any fill the user didn't type counts as an autofill — covers Safari (where :-webkit-autofill
+    // on the value is unreliable) and Chrome's Google Password Manager fill.
+    if (filled && (autofilled || !loginUserTyped)) { submitLoginIfReady(); return; }
+    if (attempts < 12) loginAutofillSubmitTimer = setTimeout(tick, 300);
+  };
+  loginAutofillSubmitTimer = setTimeout(tick, 250);
 }
-window.addEventListener("pageshow", () => setTimeout(scheduleAutofillLoginSubmit, 350));
+// Chrome/Edge: proactively ask the browser for a stored password credential. This pops the
+// account chooser + Touch ID prompt and, on success, signs in with no clicks at all.
+async function tryBiometricLogin() {
+  if (loginBiometricTried || isAuthenticatedRoute()) return;
+  loginBiometricTried = true;
+  if (!("credentials" in navigator) || typeof window.PasswordCredential !== "function") return;
+  let cred;
+  try {
+    cred = await navigator.credentials.get({ password: true, mediation: "optional" });
+  } catch { return; }
+  if (!cred || cred.type !== "password") return;
+  const email = qs("#login-email");
+  const password = qs("#login-password");
+  if (email && cred.id) email.value = cred.id;
+  if (password && cred.password) password.value = cred.password;
+  if (password && cred.password) submitLoginIfReady();
+  else scheduleAutofillLoginSubmit();
+}
+function startLoginAutoSignIn() {
+  if (isAuthenticatedRoute()) return;
+  loginUserTyped = false;
+  loginBiometricTried = false;
+  tryBiometricLogin();
+  scheduleAutofillLoginSubmit();
+}
+window.addEventListener("pageshow", () => setTimeout(startLoginAutoSignIn, 300));
 qsa("#login-email, #login-password").forEach((input) => {
+  input.addEventListener("keydown", (event) => {
+    if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key && event.key.length === 1) loginUserTyped = true;
+  });
   input.addEventListener("change", scheduleAutofillLoginSubmit);
+  input.addEventListener("input", scheduleAutofillLoginSubmit);
   input.addEventListener("animationstart", scheduleAutofillLoginSubmit);
+});
+qs("#login-pw-toggle")?.addEventListener("click", () => {
+  const input = qs("#login-password");
+  const btn = qs("#login-pw-toggle");
+  if (!input || !btn) return;
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  btn.classList.toggle("is-on", show);
+  btn.setAttribute("aria-pressed", String(show));
+  btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+  input.focus();
 });
 qs("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1639,6 +1700,15 @@ qs("#login-form").addEventListener("submit", async (event) => {
     return toast(error.message || "Invalid email or password.");
   }
   currentUser = payload.user;
+  // Hand the credential to the browser's password manager so the next visit can offer the
+  // Touch ID / Keychain prompt (and our auto-sign-in above can act on it).
+  try {
+    if (typeof window.PasswordCredential === "function" && navigator.credentials?.store) {
+      navigator.credentials
+        .store(new window.PasswordCredential({ id: email, password, name: payload.user?.name || email }))
+        .catch(() => {});
+    }
+  } catch { /* PasswordCredential unsupported */ }
   // "Remember email" — persist just the address locally; the browser's own credential manager
   // keeps the password (the inputs carry autocomplete hints and the autofill-submit wiring above).
   if (qs("#remember-login")?.checked) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);

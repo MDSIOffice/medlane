@@ -169,7 +169,14 @@ function platformBranches() { return data?.platformBranches?.length ? data.platf
 function branchAddresses() { return data?.branchAddresses || {}; }
 function invoiceApprovals() { return data?.invoiceApprovals || { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" }; }
 function isDevEnvironment() { return ["localhost", "127.0.0.1", ""].includes(location.hostname) || location.protocol === "file:"; }
-function effectiveModules() { return currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || []; }
+function effectiveModules() {
+  // Superadmin/CEO are hard-allowed on every module server-side (canAccessKey in worker.js), so a
+  // stale or partial custom-permission set must never hide nav from them — e.g. a Superadmin whose
+  // stored per-module permission rows predate a newer module like "print-templates" would otherwise
+  // lose the Print Templates nav item while other Superadmins (no custom rows) keep it.
+  if (["Superadmin", "CEO"].includes(currentUser?.role)) return accounts[currentUser.role]?.modules || currentUser?.modules || [];
+  return currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || [];
+}
 const roleEditableModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
   Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
@@ -181,7 +188,12 @@ const roleEditableModules = {
   Engineering: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
   HR: ["replenishments", "reports", "notifications", "user-settings", "memos"],
 };
-function editableModules() { return currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || []; }
+function editableModules() {
+  // Same reasoning as effectiveModules(): Superadmin/CEO always get their full editable set so a
+  // partial stored permission set can't strip edit access the server would still grant them.
+  if (["Superadmin", "CEO"].includes(currentUser?.role)) return roleEditableModules[currentUser.role] || [];
+  return currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || [];
+}
 function canEditModule(sectionId) { return editableModules().includes(sectionId); }
 function canEditActiveSection() { return editableModules().includes(qs(".section.active")?.id || "dashboard"); }
 // Directly correcting a stored stock row's quantity / expiry / note is a higher bar than the
