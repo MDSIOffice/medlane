@@ -3343,21 +3343,25 @@ async function printInvoice(invoiceId, noDate = false, templateId = null) {
   if (qs("#report-preview-template")) qs("#report-preview-template").value = currentPrintTemplateId;
 }
 
-// The SI/TS/DR overlays print onto a pre-printed form whose line rows are a fixed height, so a
-// long product name that wraps would bleed over the lot/expiry line and the row beneath it.
-// Shrink the item cell's font per row until the name fits on one line; at the floor size the CSS
-// ellipsis takes over. Runs on preview render and again right before every print.
+// The SI/TS/DR overlays print onto a pre-printed form whose line rows sit at fixed offsets. The
+// CSS already uses a smaller item font and clamps the name to two lines; this is the safety net
+// for the rare name that, even clamped, would still overrun into the next row — step its font
+// down until the name + lot/expiry fit the gap before the next row (floor 7px).
 function fitPrintTemplateRows(root) {
   const scope = root || qs("#report-preview-content");
   if (!scope) return;
-  scope.querySelectorAll(".si-item, .ts-item, .dr-item").forEach((item) => {
+  const rows = [...scope.querySelectorAll(".si-row, .ts-row, .dr-row")];
+  rows.forEach((row, i) => {
+    const item = row.querySelector(".si-item, .ts-item, .dr-item");
+    if (!item) return;
     const original = item.style.fontSize;
     item.style.fontSize = "";
-    const overflowing = () => item.scrollWidth > item.clientWidth + 1;
-    if (!overflowing()) { item.style.fontSize = original; return; }
-    let size = parseFloat(getComputedStyle(item).fontSize) || 14;
+    const next = rows[i + 1];
+    const limit = (next ? next.offsetTop - row.offsetTop : parseFloat(getComputedStyle(row).height) || 30) - 2;
+    if (item.scrollHeight <= limit) { item.style.fontSize = original; return; }
+    let size = parseFloat(getComputedStyle(item).fontSize) || 11.5;
     let guard = 0;
-    while (overflowing() && size > 8 && guard++ < 40) {
+    while (item.scrollHeight > limit && size > 7 && guard++ < 30) {
       size -= 0.5;
       item.style.fontSize = `${size}px`;
     }
