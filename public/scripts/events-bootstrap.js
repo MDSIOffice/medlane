@@ -1587,6 +1587,11 @@ qs("#run-import").addEventListener("click", async () => {
   }
 });
 window.addEventListener("afterprint", clearPrintTarget);
+window.addEventListener("beforeprint", () => {
+  // Catch Cmd/Ctrl+P too, not just the in-app Print button, so long product names still get
+  // shrunk to fit their pre-printed form row.
+  if (document.body.classList.contains("print-template-overlay")) fitPrintTemplateRows();
+});
 window.addEventListener("resize", updateTableScrollHints);
 document.addEventListener("scroll", (event) => { if (event.target?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
 let loginAutofillSubmitTimer = null;

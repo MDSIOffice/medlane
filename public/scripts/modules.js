@@ -3335,6 +3335,7 @@ async function printInvoice(invoiceId, noDate = false, templateId = null) {
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
   qs("#report-preview-content").innerHTML = printable.html;
+  fitPrintTemplateRows(qs("#report-preview-content"));
   document.body.classList.add("print-template-overlay", `print-template-${type}`);
   if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
@@ -3342,8 +3343,29 @@ async function printInvoice(invoiceId, noDate = false, templateId = null) {
   if (qs("#report-preview-template")) qs("#report-preview-template").value = currentPrintTemplateId;
 }
 
+// The SI/TS/DR overlays print onto a pre-printed form whose line rows are a fixed height, so a
+// long product name that wraps would bleed over the lot/expiry line and the row beneath it.
+// Shrink the item cell's font per row until the name fits on one line; at the floor size the CSS
+// ellipsis takes over. Runs on preview render and again right before every print.
+function fitPrintTemplateRows(root) {
+  const scope = root || qs("#report-preview-content");
+  if (!scope) return;
+  scope.querySelectorAll(".si-item, .ts-item, .dr-item").forEach((item) => {
+    const original = item.style.fontSize;
+    item.style.fontSize = "";
+    const overflowing = () => item.scrollWidth > item.clientWidth + 1;
+    if (!overflowing()) { item.style.fontSize = original; return; }
+    let size = parseFloat(getComputedStyle(item).fontSize) || 14;
+    let guard = 0;
+    while (overflowing() && size > 8 && guard++ < 40) {
+      size -= 0.5;
+      item.style.fontSize = `${size}px`;
+    }
+  });
+}
+
 function printReportPreview() {
-  if (document.body.classList.contains("print-template-overlay")) return window.print();
+  if (document.body.classList.contains("print-template-overlay")) { fitPrintTemplateRows(); return window.print(); }
   if (currentReportSaleId) return printInvoice(currentReportSaleId);
   window.print();
 }
@@ -3359,6 +3381,7 @@ async function printReportPreviewNoDate() {
   const title = qs("#report-preview-title")?.textContent || "";
   const sale = data.sales.find((item) => item.id === currentReportSaleId || title.includes(item.documentNo || item.id));
   if (sale || currentReportSaleId) await printInvoice(sale?.id || currentReportSaleId, true);
+  fitPrintTemplateRows();
   window.print();
 }
 

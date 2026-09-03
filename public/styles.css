@@ -1829,7 +1829,12 @@ button.calendar-cell:hover { background: var(--tint); }
 .template-print-footer { position: absolute; left: .35in; right: .35in; bottom: .18in; color: #111827; font-size: 10px; line-height: 1.25; text-align: center; z-index: 0; }
 .template-overlay::before { content: "Data-only print overlay. Use with pre-printed form."; position: absolute; inset: 12px auto auto 12px; color: #94a3b8; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
 .template-overlay .field { position: absolute; display: block; white-space: nowrap; overflow: hidden; color: #111827; font-weight: 700; }
-.template-overlay small { display: block; margin-top: 4px; color: #111827; font-size: 11px; font-weight: 700; }
+.template-overlay small { display: block; margin-top: 4px; color: #111827; font-size: 0.78em; font-weight: 700; }
+/* Each line row sits at a fixed offset calibrated to the pre-printed form, so a long product
+   name that wrapped would collide with its own lot/expiry line and the row beneath it. Keep the
+   name and the lot/expiry line to one line each; fitPrintTemplateRows() then shrinks the cell's
+   font per row until the name fits its column, falling back to an ellipsis at the floor size. */
+.si-item, .ts-item, .dr-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* SI/TS/DR field coordinates are calibrated against real printed reference
    copies in docs/reference supplied by the user — all three physical forms
    are 8.5x11in portrait, not the previously-assumed 9.25x8.5in landscape for
