@@ -3345,8 +3345,8 @@ async function printInvoice(invoiceId, noDate = false, templateId = null) {
 
 // The SI/TS/DR overlays print onto a pre-printed form whose line rows sit at fixed offsets. The
 // CSS already uses a smaller item font and clamps the name to two lines; this is the safety net
-// for the rare name that, even clamped, would still overrun into the next row — step its font
-// down until the name + lot/expiry fit the gap before the next row (floor 7px).
+// for the rare name that, even clamped, would still overrun. Step its font down until the name
+// clears both the lot/expiry line below it and the start of the next row (floor 7px).
 function fitPrintTemplateRows(root) {
   const scope = root || qs("#report-preview-content");
   if (!scope) return;
@@ -3357,7 +3357,12 @@ function fitPrintTemplateRows(root) {
     const original = item.style.fontSize;
     item.style.fontSize = "";
     const next = rows[i + 1];
-    const limit = (next ? next.offsetTop - row.offsetTop : parseFloat(getComputedStyle(row).height) || 30) - 2;
+    const rowGap = (next ? next.offsetTop - row.offsetTop : parseFloat(getComputedStyle(row).height) || 30) - 2;
+    // Keep the name above the lot line when the lot sits below it (the default layout); if the
+    // user has moved the lot elsewhere, fall back to the whole row gap.
+    const lot = row.querySelector(".si-lot, .ts-lot, .dr-lot");
+    const lotTop = lot ? lot.offsetTop - item.offsetTop : Infinity;
+    const limit = Math.max(Math.min(lotTop, rowGap), rowGap * 0.5);
     if (item.scrollHeight <= limit) { item.style.fontSize = original; return; }
     let size = parseFloat(getComputedStyle(item).fontSize) || 11.5;
     let guard = 0;

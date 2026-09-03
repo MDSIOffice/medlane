@@ -99,7 +99,25 @@
   function startMusic() {
     if (!soundEnabled) return;
     musicAudio.currentTime = 0;
-    musicAudio.play().catch((error) => console.error("[Luksong Medlane] music play failed:", error));
+    musicAudio.play().catch((error) => {
+      console.error("[Luksong Medlane] music play failed:", error);
+      // Two common causes when a run starts "immediately": the loop file wasn't buffered enough
+      // yet, or the gesture-based unlock from primeAllAudio() hadn't resolved. Retry once it can
+      // play through, and again on the very next input (a jump/duck is gesture-backed) — as long
+      // as the run is still going and sound is still on.
+      const retry = () => {
+        cleanup();
+        if (soundEnabled && gameRunning && musicAudio.paused) musicAudio.play().catch(() => {});
+      };
+      const cleanup = () => {
+        musicAudio.removeEventListener("canplaythrough", retry);
+        window.removeEventListener("pointerdown", retry, true);
+        window.removeEventListener("keydown", retry, true);
+      };
+      musicAudio.addEventListener("canplaythrough", retry, { once: true });
+      window.addEventListener("pointerdown", retry, { once: true, capture: true });
+      window.addEventListener("keydown", retry, { once: true, capture: true });
+    });
   }
   function stopMusic() {
     musicAudio.pause();
@@ -519,6 +537,9 @@
 
   async function startRun() {
     const startButton = document.getElementById("game-start-button");
+    if (startButton) delete startButton.dataset.retryScore;
+    // Best-effort: get any still-unsaved previous run in before this one starts.
+    flushPendingScoreQuietly();
     if (startButton) startButton.disabled = true;
     try {
       const session = await MedlaneAPI.startGameSession();
@@ -554,57 +575,116 @@
     submitScoreAndShowResult();
   }
 
+  // A finished run is written to localStorage BEFORE the network call, so a failed or lost
+  // submit (the usual reason a genuine high score "didn't save") survives — it can be retried
+  // from the result card, or silently on the next game open. Cleared the moment the server
+  // confirms (or replays) it.
+  const PENDING_SCORE_KEY = "medlane-game-pending-score";
+  let pendingScoreRetry = null;
+  let scoreSubmitInFlight = false;
+  function readPendingScore() {
+    try { return JSON.parse(localStorage.getItem(PENDING_SCORE_KEY) || "null"); } catch { return null; }
+  }
+  function writePendingScore(value) {
+    try {
+      if (value) localStorage.setItem(PENDING_SCORE_KEY, JSON.stringify(value));
+      else localStorage.removeItem(PENDING_SCORE_KEY);
+    } catch { /* storage unavailable — retry-in-memory still works for this session */ }
+  }
+
   async function submitScoreAndShowResult() {
     const finalScore = gameScore;
     const token = gameSessionToken;
     gameSessionToken = null;
+    pendingScoreRetry = { score: finalScore, token };
+    writePendingScore({ score: finalScore, token, at: Date.now() });
     showOverlay({ tone: "neutral", title: "Saving your run…", message: `You scored <strong>${finalScore}</strong>.`, buttonLabel: "Play Again" });
+    await attemptScoreSubmit(finalScore, token, { announce: true });
+  }
+
+  async function attemptScoreSubmit(finalScore, token, { announce } = {}) {
+    // Background flushes yield to anything already submitting; the announce=true path (the
+    // result card / Retry Save button) always runs so its overlay never gets stuck.
+    if (scoreSubmitInFlight && !announce) return false;
+    scoreSubmitInFlight = true;
+    const startBtn = document.getElementById("game-start-button");
     try {
       const result = await MedlaneAPI.submitGameScore(finalScore, token);
-      const bestEl = document.getElementById("game-best");
-      if (bestEl) bestEl.textContent = String(result.best);
-      const levelEl = document.getElementById("game-level");
-      if (levelEl) levelEl.textContent = String(result.level);
-      const badgeChip = document.getElementById("game-hud-badge");
-      if (badgeChip && result.badge) {
-        badgeChip.hidden = false;
-        badgeChip.textContent = `${GAME_BADGE_ICON[result.badge] || "🏆"} ${result.badge}`;
-      }
-      updateSettingsBadgeChip(result.best, result.badge);
-      updateLevelChip(result.level);
-      if (result.leveledUp) sfxNewBest();
-      if (result.isNewBest || result.leveledUp) spawnCelebrationParticles();
-      if (result.isNewBest || result.leveledUp) drawGame();
-      if (result.leveledUp) {
-        toast(`Level up! You're now Level ${result.level}.`);
-        showOverlay({
-          tone: "win",
-          title: `Level Up! You're Level ${result.level}`,
-          message: `You scored <strong>${finalScore}</strong>${result.isNewBest ? " — a new personal best!" : ""} ${result.xpToNextLevel} XP to Level ${result.level + 1}.`,
-          buttonLabel: "Play Again",
-        });
-      } else if (result.isNewBest) {
-        sfxNewBest();
-        toast(finalScore === result.best ? `New personal best: ${finalScore}!` : "New personal best!");
-        showOverlay({
-          tone: "win",
-          title: "New Personal Best!",
-          message: `You scored <strong>${finalScore}</strong>${result.badge ? ` and earned the <strong>${GAME_BADGE_ICON[result.badge]} ${result.badge}</strong> badge` : ""}.`,
-          buttonLabel: "Play Again",
-        });
-      } else {
-        showOverlay({
-          tone: "lose",
-          title: "Caught by the Audit!",
-          message: `You scored <strong>${finalScore}</strong>. Your best is <strong>${result.best}</strong> — Level ${result.level}, ${result.xpToNextLevel} XP to next level.`,
-          buttonLabel: "Play Again",
-        });
-      }
-      // Every finished run shows how it stacks up — no extra click needed.
-      renderOverlayLeaderboard();
+      writePendingScore(null);
+      pendingScoreRetry = null;
+      if (startBtn) delete startBtn.dataset.retryScore;
+      applyScoreResult(finalScore, result, { announce });
+      return true;
     } catch (error) {
-      showOverlay({ tone: "error", title: "Score not saved", message: escapeHtml(error.message || "Something went wrong."), buttonLabel: "Play Again" });
+      pendingScoreRetry = { score: finalScore, token };
+      if (announce) {
+        showOverlay({
+          tone: "error",
+          title: "Score not saved yet",
+          message: `${escapeHtml(error.message || "Network problem.")}<br>Your run of <strong>${finalScore}</strong> is safe — press <strong>Retry Save</strong>.`,
+          buttonLabel: "Retry Save",
+        });
+        if (startBtn) startBtn.dataset.retryScore = "1";
+        renderOverlayLeaderboard();
+      }
+      return false;
+    } finally {
+      scoreSubmitInFlight = false;
     }
+  }
+
+  // Try to push a still-unsaved run without interrupting whatever's on screen (used on game
+  // open). The server is idempotent per token, so this is safe even if the run did save.
+  async function flushPendingScoreQuietly() {
+    const pending = pendingScoreRetry || readPendingScore();
+    if (!pending || !pending.token) return;
+    if (pending.at && Date.now() - pending.at > 35 * 60 * 1000) { writePendingScore(null); pendingScoreRetry = null; return; }
+    await attemptScoreSubmit(pending.score, pending.token, { announce: false });
+  }
+
+  function applyScoreResult(finalScore, result, { announce } = {}) {
+    const bestEl = document.getElementById("game-best");
+    if (bestEl) bestEl.textContent = String(result.best);
+    const levelEl = document.getElementById("game-level");
+    if (levelEl) levelEl.textContent = String(result.level);
+    updateSettingsBadgeChip(result.best, result.badge);
+    updateLevelChip(result.level);
+    if (!announce) return;
+    const badgeChip = document.getElementById("game-hud-badge");
+    if (badgeChip && result.badge) {
+      badgeChip.hidden = false;
+      badgeChip.textContent = `${GAME_BADGE_ICON[result.badge] || "🏆"} ${result.badge}`;
+    }
+    if (result.leveledUp) sfxNewBest();
+    if (result.isNewBest || result.leveledUp) spawnCelebrationParticles();
+    if (result.isNewBest || result.leveledUp) drawGame();
+    if (result.leveledUp) {
+      toast(`Level up! You're now Level ${result.level}.`);
+      showOverlay({
+        tone: "win",
+        title: `Level Up! You're Level ${result.level}`,
+        message: `You scored <strong>${finalScore}</strong>${result.isNewBest ? " — a new personal best!" : ""} ${result.xpToNextLevel} XP to Level ${result.level + 1}.`,
+        buttonLabel: "Play Again",
+      });
+    } else if (result.isNewBest) {
+      sfxNewBest();
+      toast(finalScore === result.best ? `New personal best: ${finalScore}!` : "New personal best!");
+      showOverlay({
+        tone: "win",
+        title: "New Personal Best!",
+        message: `You scored <strong>${finalScore}</strong>${result.badge ? ` and earned the <strong>${GAME_BADGE_ICON[result.badge]} ${result.badge}</strong> badge` : ""}.`,
+        buttonLabel: "Play Again",
+      });
+    } else {
+      showOverlay({
+        tone: "lose",
+        title: "Caught by the Audit!",
+        message: `You scored <strong>${finalScore}</strong>. Your best is <strong>${result.best}</strong> — Level ${result.level}, ${result.xpToNextLevel} XP to next level.`,
+        buttonLabel: "Play Again",
+      });
+    }
+    // Every finished run shows how it stacks up — no extra click needed.
+    renderOverlayLeaderboard();
   }
 
   function hideOverlayLeaderboard() {
@@ -659,6 +739,7 @@
 
   async function loadGameBestBadge() {
     if (typeof MedlaneAPI === "undefined" || !MedlaneAPI.session()) return;
+    flushPendingScoreQuietly();
     try {
       const result = await MedlaneAPI.myGameScore();
       const bestEl = document.getElementById("game-best");
@@ -734,6 +815,11 @@
 
   document.getElementById("open-game-modal")?.addEventListener("click", () => {
     primeAllAudio();
+    // Give the music loop a head start on downloading now (the Play Game click is a user
+    // gesture) so it's buffered by the time the countdown ends and startMusic() fires —
+    // "played immediately" was catching it mid-download.
+    musicAudio.preload = "auto";
+    if (musicAudio.readyState === 0) musicAudio.load();
     const modal = document.getElementById("game-modal");
     resetGameState();
     showOverlay({ tone: "neutral", title: "Luksong Medlane", message: `<kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners. It gets faster the higher you score.`, buttonLabel: "Start Game" });
@@ -759,7 +845,18 @@
   // normal backdrop/Escape close behavior; this restriction is game-only.)
   document.getElementById("game-modal")?.addEventListener("cancel", (event) => event.preventDefault());
 
-  document.getElementById("game-start-button")?.addEventListener("click", () => { primeAllAudio(); startRun(); });
+  document.getElementById("game-start-button")?.addEventListener("click", () => {
+    primeAllAudio();
+    const btn = document.getElementById("game-start-button");
+    // "Retry Save" state — this click resubmits the kept run instead of starting a new one.
+    if (btn?.dataset.retryScore && pendingScoreRetry) {
+      delete btn.dataset.retryScore;
+      showOverlay({ tone: "neutral", title: "Saving your run…", message: `Retrying…`, buttonLabel: "Play Again" });
+      attemptScoreSubmit(pendingScoreRetry.score, pendingScoreRetry.token, { announce: true });
+      return;
+    }
+    startRun();
+  });
   document.getElementById("game-canvas")?.addEventListener("click", () => { if (gameRunning) doJump(); });
   const CROUCH_KEYS = new Set(["ArrowDown", "KeyS"]);
   document.addEventListener("keydown", (event) => {

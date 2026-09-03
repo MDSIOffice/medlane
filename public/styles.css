@@ -1831,15 +1831,25 @@ button.calendar-cell:hover { background: var(--tint); }
 .template-overlay .field { position: absolute; display: block; white-space: nowrap; overflow: hidden; color: #111827; font-weight: 700; }
 .template-overlay small { display: block; margin-top: 3px; color: #111827; font-size: 0.82em; font-weight: 700; }
 /* Each line row sits at a fixed offset calibrated to the pre-printed form, so a long product
-   name that wrapped past two lines would collide with its own lot/expiry line and the row
-   beneath it. Use a smaller item font so most names sit on one line, clamp the name to two
-   lines, and let fitPrintTemplateRows() nudge the font down further only when a row would still
-   overrun into the next one. */
+   name that wrapped past two lines would collide with the row beneath it. Use a smaller item
+   font so most names sit on one line, clamp the name to two lines, and let fitPrintTemplateRows()
+   nudge the font down further only when a row would still overrun into the next one. The lot /
+   expiry line is now its own positioned field (.si-lot / .ts-lot / .dr-lot) — smaller still, and
+   sitting a little lower by default — so it can be moved on its own in the custom-layout editor. */
 .si-item, .ts-item, .dr-item { font-size: 11.5px; line-height: 1.1; overflow: hidden; }
 .si-item .tmpl-name, .ts-item .tmpl-name, .dr-item .tmpl-name {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.si-lot, .ts-lot, .dr-lot {
+  position: absolute;
+  font-size: 8.5px;
+  line-height: 1;
+  font-weight: 700;
+  color: #111827;
+  white-space: nowrap;
   overflow: hidden;
 }
 /* SI/TS/DR field coordinates are calibrated against real printed reference
@@ -1857,6 +1867,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .si-address { left: 1.6in; top: 2.08in; width: 5.7in; }
 .si-row { position: absolute; left: 0.55in; right: 0.45in; top: calc(2.78in + (var(--row) * 0.31in)); height: 0.3in; }
 .si-item { position: absolute; left: 0.23in; width: 4.4in; }
+.si-lot { left: 0.23in; top: 0.2in; width: 4.4in; }
 .si-qty { position: absolute; left: 4.64in; width: 0.7in; text-align: center; }
 .si-price { position: absolute; left: 5.37in; width: 0.75in; text-align: right; }
 .si-amount { position: absolute; left: 6.47in; width: 0.85in; text-align: right; }
@@ -1876,6 +1887,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .ts-row { position: absolute; left: 0.18in; right: 0.25in; top: calc(2.16in + (var(--row) * 0.34in)); height: 0.32in; }
 .ts-code { position: absolute; left: 0.53in; width: 1.1in; text-align: center; }
 .ts-item { position: absolute; left: 1.65in; width: 4.1in; }
+.ts-lot { left: 1.65in; top: 0.22in; width: 4.1in; }
 .ts-qty { position: absolute; left: 5.82in; width: 0.8in; text-align: center; }
 .ts-amount { position: absolute; left: 6.99in; width: 0.75in; text-align: right; }
 .ts-tax-label { left: 1.28in; top: 5.03in; width: 3.4in; font-size: 15px; }
@@ -1891,6 +1903,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .dr-row { position: absolute; left: 0.22in; right: 0.22in; top: calc(1.75in + (var(--row) * 0.38in)); height: 0.36in; }
 .dr-qty { position: absolute; left: 1.55in; width: 1.0in; text-align: center; }
 .dr-item { position: absolute; left: 2.28in; width: 3.9in; }
+.dr-lot { left: 2.28in; top: 0.24in; width: 3.9in; }
 .dr-price { position: absolute; left: 7.95in; width: 0.6in; text-align: right; }
 .dr-amount { position: absolute; left: 8.55in; width: 0.6in; text-align: right; }
 .dr-prepared { left: 0in; top: 5.7in; width: 1.6in; text-align: center; }

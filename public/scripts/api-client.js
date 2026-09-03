@@ -372,7 +372,23 @@ const MedlaneAPI = (() => {
   }
 
   async function submitGameScore(score, token) {
-    return request("/api/game/score", { method: "POST", body: JSON.stringify({ score, token }) });
+    // Retry transient failures (offline blip, 5xx, wifi handoff after a long run) a few times —
+    // the server treats a repeat submit of the same token as idempotent and returns the stored
+    // result, so a retry never double-counts. A definitive rejection (bad/expired/used token,
+    // auth) is thrown straight through without retrying.
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await request("/api/game/score", { method: "POST", body: JSON.stringify({ score, token }) });
+      } catch (error) {
+        lastError = error;
+        const message = String(error?.message || "");
+        const transient = /failed to fetch|networkerror|network error|load failed|request failed: 5\d\d|timed? ?out/i.test(message);
+        if (!transient) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+      }
+    }
+    throw lastError;
   }
 
   async function myGameScore() {
