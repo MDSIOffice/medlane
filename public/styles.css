@@ -389,6 +389,30 @@ dialog.save-guard-dialog[open] { display: grid; }
   border-color: var(--blue);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent);
 }
+.login-password-wrap { position: relative; }
+.login-password-wrap input { padding-right: 46px; }
+.login-pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  min-height: 0;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: #6b8199;
+  cursor: pointer;
+}
+.login-pw-toggle:hover { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); }
+.login-pw-toggle svg { width: 18px; height: 18px; }
+.login-pw-toggle .eye-off { display: none; }
+.login-pw-toggle.is-on .eye-on { display: none; }
+.login-pw-toggle.is-on .eye-off { display: block; }
 .login-form input:-webkit-autofill, .login-form input:-webkit-autofill:hover, .login-form input:-webkit-autofill:focus, .login-form input:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 1000px #fbfcfd inset;
   -webkit-text-fill-color: #0a2540;

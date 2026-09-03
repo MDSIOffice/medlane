@@ -371,7 +371,13 @@
                 <label for="login-password">Password</label>
                 <button type="button" class="login-forgot" id="login-forgot">Forgot password?</button>
               </div>
-              <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+              <div class="login-password-wrap">
+                <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+                <button type="button" class="login-pw-toggle" id="login-pw-toggle" aria-label="Show password" aria-pressed="false">
+                  <svg class="eye-on" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z"/><circle cx="10" cy="10" r="2.75"/></svg>
+                  <svg class="eye-off" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.2 4.24A8.3 8.3 0 0 1 10 4c5.5 0 8.5 6 8.5 6a15.6 15.6 0 0 1-2.4 3.16M4.5 5.9A15.7 15.7 0 0 0 1.5 10s3 6 8.5 6a8.2 8.2 0 0 0 4-1M8.4 8.4a2.75 2.75 0 0 0 3.85 3.92"/><path d="m2.5 2.5 15 15"/></svg>
+                </button>
+              </div>
             </div>
             <label class="remember-login-row"><input id="remember-login" type="checkbox" /> <span>Remember my email on this device</span></label>
             <button class="primary-button login-submit" type="submit">Login</button>
