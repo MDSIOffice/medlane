@@ -47,10 +47,10 @@ is unchanged, so the server's `maxPlausibleScore` guard is untouched.
   white flash. No score effect (a scoring combo is explicitly out of scope).
 - **FR-B3**: **Death**: larger shake (`~9, 24`) applied in `endGame()` before the final
   draw.
-- **FR-B4**: Shake is applied as a CSS `transform` on the `<canvas>` (a small always-on
-  `scale(1.04)` so the shake translate never reveals a stage edge). The DOM HUD overlay is
-  unaffected. `prefers-reduced-motion` MUST disable shake and the flash (particles/hue/night
-  still run).
+- **FR-B4**: Shake is applied with `ctx.translate` inside `drawGame()` (not a CSS transform
+  — that forced a permanent GPU compositor layer and stuttered). The sky, ground and washes
+  are drawn ~14 px past every edge so a shake never opens a gap. `prefers-reduced-motion`
+  MUST disable shake and the flash (particles/hue/night still run).
 
 ## Part C — Overdrive (speed lines + hue wash)
 

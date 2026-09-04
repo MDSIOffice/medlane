@@ -77,10 +77,22 @@ never sees the fallback flash. A brand-new device for one frame is acceptable.
 **Q11. Adding `pickups` to `updateGame`/`drawGame` — perf on a long high-speed run where the
 existing comment notes per-frame cost already matters (theme colour caching, sfx pooling)?**
 A. `pickups` holds 0 or 1 element by design (Q7). The milestone scan is a ≤4-iteration
-array check. Speed lines are ~4 `fillRect`s. Star field is capped (~40 dots, only above
-`nightT > 0.4`) with precomputed positions. `lerpColor` runs a handful of times per frame on
-the sky/skyline only. Net additional work is small and constant — it does not grow with run
-length the way an un-pooled `cloneNode()` or per-frame `getComputedStyle()` would.
+array check. Net logic work is small and constant. **But the first draft shipped three
+per-frame regressions that caused visible FPS stutter — fixed:**
+- `effectiveSkin()` (called every frame in `drawGame`) did a `localStorage.getItem` per
+  frame. Now the chosen skin is read from storage once at load and kept in `selectedSkin`;
+  `resolvedSkin` is recomputed only on a skin change / unlock refresh.
+- The night overlay allocated a fresh `createLinearGradient` every frame; the star field
+  did 42 separate `beginPath`/`arc`/`fill` calls. Now: one flat `rgba` fill, and all stars
+  in a single path/fill. The (pre-existing) sky gradient is now cached too, invalidated
+  with `cachedThemeColors` on theme flip.
+- The canvas carried a permanent `transform: scale(1.04)` + `will-change: transform`,
+  forcing a GPU compositor layer and a scaled-texture composite every frame. Removed —
+  the shake offset is now applied with `ctx.translate` inside `drawGame` (the canvas is
+  fully repainted every frame regardless, so it's free), and the sky / ground / washes
+  are drawn ~14 px past every edge so a shake never opens a gap.
+- `reducedMotion()` now reads a cached boolean updated by an MQ `change` listener instead
+  of hitting `matchMedia().matches` twice per frame.
 
 **Q12. `milestone.wav` — you are generating it. How is it verified / does it match house
 style (volume, format)?**
