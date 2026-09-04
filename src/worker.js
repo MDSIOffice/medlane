@@ -1590,7 +1590,9 @@ async function createBackup(env, backupType = "manual", actor = null) {
   if (env.ENVIRONMENT !== "production") throw new Error("Backups are disabled outside production");
   if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
   const stateKey = appStateKey(env);
-  const records = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+  // Skip `game-sessions` — single-use expiring tokens, nothing to restore, and it's the
+  // one module that grows without bound.
+  const records = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(["game-sessions"]))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
   const createdAt = new Date().toISOString();
   const payload = { app: "medlane", stateKey, backupType, mode: "compressed-full", sinceAt: null, createdAt, records };
   const bytes = await gzipBytes(JSON.stringify(payload));
@@ -1714,6 +1716,16 @@ function salesPoStatusServer(po, sales) {
 }
 
 const digestStateModules = ["inventory", "sales", "clients", "warranties", "inventoryPurchaseOrders", "inventoryDemoRequests", "pendingTransfers", "collectionContacts", "purchaseOrders", "paymentRequests", "payables", "replenishments", "productIssues", "payments", "imports", "reconHistory"];
+
+// The mini-game's own records — never part of app state or reports. `game-sessions` grows
+// one row per play and is never read outside /api/game/session/*; `game-scores` is served
+// by /api/game/*. Loading these into every client's state was paging through thousands of
+// dead session rows on each refresh.
+const GAME_MODULES = ["game-sessions", "game-scores"];
+// App-state blob exclusions: the game modules plus `logs` (fetched on its own paged endpoint).
+const NON_STATE_MODULES = ["logs", ...GAME_MODULES];
+// Session tokens older than this are past every use (30-min expiry) and are swept.
+const GAME_SESSION_TTL_MS = 3 * 60 * 60 * 1000;
 
 async function loadDigestState(env, modules = digestStateModules) {
   const stateKey = appStateKey(env);
@@ -2033,6 +2045,18 @@ const GAME_SKIN_EMOJI = { hardhat: "👷", shades: "😎", cape: "🦸", gold: "
 function discordSafeText(value, fallback = "Player") {
   // Strip Discord markdown control chars so a player name can't italicise / spoiler the row.
   return webhookText(String(value ?? "").replace(/[*_~`|\\>]/g, ""), fallback).slice(0, 60);
+}
+
+// `game-sessions` holds single-use run tokens (30-min expiry). Nothing reads a row older
+// than its run, but they were never deleted — the pile grew one row per play and dragged
+// every bulk app_records read. One filtered DELETE per tick clears whatever has aged out.
+async function pruneGameSessions(env) {
+  const stateKey = appStateKey(env);
+  const cutoff = new Date(Date.now() - GAME_SESSION_TTL_MS).toISOString();
+  await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-sessions&updated_at=lt.${encodeURIComponent(cutoff)}`, {
+    method: "DELETE",
+    headers: { prefer: "return=minimal" },
+  });
 }
 
 // One always-current "🏆 Luksong Medlane — Leaderboard" message in its own Discord channel,
@@ -2369,7 +2393,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // Keep the heavier analytics/pending/inventory monitors out of the 18:00 hour entirely —
   // that hour is reserved for the digest/backup jobs below, and stacking the monitors on the
   // same invocation is part of what used to blow the CPU/subrequest budget.
-  if (!inDigestHour && ["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env), runLuksongLeaderboardMonitor(env));
+  if (!inDigestHour && ["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env), runLuksongLeaderboardMonitor(env), pruneGameSessions(env));
   // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
   // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
@@ -2652,14 +2676,30 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   // same period does not double-post.
   let discordResult = { sent: false, reason: "Already posted for this period" };
   if (!progress.discordSent) {
-    discordResult = await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }).catch(async (error) => {
-      console.error(JSON.stringify({ message: "Discord digest failed", error: error.message }));
-      await recordSystemLog(env, { action: "Discord digest failed", module: "Discord", record: `${periodLabel}: ${error.message}` }).catch(() => null);
-      return { sent: false, reason: error.message };
-    });
-    if (discordResult?.sent) {
-      progress.discordSent = true;
-      await saveDigestProgress(env, periodLabel, progress);
+    // Claim the Discord slot in the ledger BEFORE posting, and only post if that write
+    // lands. The digest embed @everyone-pings the channel, so a duplicate is far worse
+    // than a miss: if the ledger is briefly unreachable we skip this tick and a later one
+    // retries, rather than posting now and risking a second post when the "sent" flag
+    // fails to persist (the cause of the 18:00 + 18:30 double-post).
+    progress.discordSent = true;
+    let claimed = false;
+    try {
+      await saveMonitoringState(env, digestProgressStateKey(periodLabel), {
+        periodKey: progress.periodKey, discordSent: true, sentEmails: [...progress.sentEmails], updatedAt: new Date().toISOString(),
+      });
+      claimed = true;
+    } catch (error) {
+      console.error(JSON.stringify({ message: "Digest Discord claim not persisted — skipping post this tick", periodLabel, error: error.message }));
+    }
+    if (!claimed) {
+      progress.discordSent = false;
+      discordResult = { sent: false, reason: "Ledger write failed; a later tick retries" };
+    } else {
+      discordResult = await sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }).catch(async (error) => {
+        console.error(JSON.stringify({ message: "Discord digest failed", error: error.message }));
+        await recordSystemLog(env, { action: "Discord digest failed (post claimed, not retried)", module: "Discord", record: `${periodLabel}: ${error.message}` }).catch(() => null);
+        return { sent: false, reason: error.message };
+      });
     }
   }
 
@@ -3102,7 +3142,11 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         const stateKey = appStateKey(env);
         if (request.method === "GET") {
-          const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=neq.logs&select=module_name,record_key,data&order=updated_at.asc`);
+          // The mini-game keeps its own records (`game-sessions` grows one row per play and
+          // is never part of app state; `game-scores` is served by /api/game/*) — excluding
+          // them here keeps this load, which every client runs, from paging through
+          // thousands of dead session rows.
+          const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data&order=updated_at.asc`);
           return json({ data: stateFromRecords(filterRecordsForProfile(rows, profile, "view")), revision: Date.now() });
         }
         if (request.method === "PUT") {
@@ -3786,7 +3830,7 @@ export default {
         const { profile } = await authenticatedProfile(request, env);
         if (request.method !== "GET") return methodNotAllowed();
         if (!profile.customPermissions?.view?.includes("reports") && !["Superadmin", "CEO"].includes(profile.role)) throw new Error("You do not have permission to view reports");
-        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data&order=updated_at.asc`);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=not.in.${encodeURIComponent(postgrestIn(GAME_MODULES))}&select=module_name,record_key,data&order=updated_at.asc`);
         const state = stateFromRecords(filterRecordsForProfile(rows, profile, "view"));
         return json({ reports: generateReportsFromState(state, url.searchParams.get("branch") || "all") });
       }
