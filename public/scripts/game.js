@@ -23,6 +23,12 @@
   function reducedMotion() { return reducedMotionOn; }
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
+  // "Lite mode" kill-switch for the added visual layer (day/night, overdrive wash +
+  // speed lines, screen shake, impact flash). Milestones, skins and the shield still
+  // work. Toggle from the console: localStorage.setItem("medlane-game-lite","1") (or "0").
+  let liteMode = false;
+  try { liteMode = localStorage.getItem("medlane-game-lite") === "1"; } catch { /* ignore */ }
+
   // Cosmetic runner skins — drawn procedurally over the logo badge in drawGame(), no
   // image assets. Unlocks are monotonic (badge = best score, level = cumulative XP;
   // neither ever decreases), so the unlocked set only grows and is safe to cache.
@@ -234,6 +240,9 @@
   // <html data-theme> flips, so cache the result and recompute solely on that.
   let cachedThemeColors = null;
   let cachedSkyGradient = null; // invalidated with cachedThemeColors on theme flip
+  // Per-frame effects quantise their intensity into buckets and memoise the rgba
+  // strings — building `rgba(… ${x.toFixed(3)})` 60×/s was GC-churning enough to stutter.
+  const fxStyle = { nightBucket: -1, nightWash: "", stars: "", moonShade: "", odBucket: -1, speedLine: "", flashBucket: -1, flash: "" };
   function computeThemeColors() {
     const styles = getComputedStyle(document.documentElement);
     const get = (name, fallback) => (styles.getPropertyValue(name) || "").trim() || fallback;
@@ -341,7 +350,7 @@
   // offset is applied inside drawGame() via ctx.translate (the canvas is already fully
   // repainted every frame, so this is free — no CSS transform / compositor layer).
   function addShake(mag, frames) {
-    if (reducedMotion()) return;
+    if (reducedMotion() || liteMode) return;
     if (shakeFrames > 0 && mag <= shakeMag) return;
     shakeMag = mag;
     shakeFrames = frames;
@@ -539,17 +548,23 @@
     // Day -> night: a blue wash that deepens with score, then stars + a moon fade in on
     // a strong run. Painted over the sky/skyline but under the foreground so obstacles
     // and the runner stay readable. Independent of the app light/dark theme.
-    const nightT = clamp01(gameScore / 30000);
+    const nightT = liteMode ? 0 : clamp01(gameScore / 30000);
     if (nightT > 0.02) {
-      // One flat wash (a gradient here cost an allocation every frame for a barely
-      // visible difference).
-      ctx2d.fillStyle = `rgba(6, 14, 32, ${(nightT * 0.7).toFixed(3)})`;
+      const b = Math.round(nightT * 16);
+      if (fxStyle.nightBucket !== b) {
+        fxStyle.nightBucket = b;
+        const nt = b / 16;
+        fxStyle.nightWash = `rgba(6,14,32,${(nt * 0.7).toFixed(3)})`;
+        const sa = clamp01((nt - 0.4) / 0.35);
+        fxStyle.stars = `rgba(255,255,255,${(sa * 0.9).toFixed(3)})`;
+        fxStyle.moonShade = `rgba(10,22,46,${(0.5 * nt).toFixed(3)})`;
+      }
+      ctx2d.fillStyle = fxStyle.nightWash; // one flat wash, no per-frame gradient/string
       ctx2d.fillRect(-14, -14, GAME_W + 28, GROUND_Y + 34);
     }
     if (nightT > 0.4) {
       const starA = clamp01((nightT - 0.4) / 0.35);
-      // All stars in one path / one fill instead of 42 draw calls a frame.
-      ctx2d.fillStyle = `rgba(255, 255, 255, ${(starA * 0.9).toFixed(3)})`;
+      ctx2d.fillStyle = fxStyle.stars; // all stars in one path / one fill
       ctx2d.beginPath();
       for (const star of STARS) {
         let sx = (star.x + bgOffset * 0.12) % GAME_W;
@@ -563,7 +578,7 @@
       ctx2d.beginPath();
       ctx2d.arc(GAME_W - 86, 56, 15, 0, Math.PI * 2);
       ctx2d.fill();
-      ctx2d.fillStyle = `rgba(10, 22, 46, ${(0.5 * nightT).toFixed(3)})`;
+      ctx2d.fillStyle = fxStyle.moonShade;
       ctx2d.beginPath();
       ctx2d.arc(GAME_W - 80, 52, 13, 0, Math.PI * 2);
       ctx2d.fill();
@@ -572,7 +587,7 @@
 
     // Overdrive — a warm wash once the run is really moving (speed lines are added over
     // the foreground later, near the end of the frame).
-    const overdrive = clamp01((speed - 14) / 7);
+    const overdrive = liteMode ? 0 : clamp01((speed - 14) / 7);
     if (overdrive > 0) {
       ctx2d.fillStyle = c.orange;
       ctx2d.globalAlpha = 0.12 * overdrive;
@@ -735,7 +750,12 @@
     // Overdrive speed lines — motion streaks over the foreground (skipped for reduced
     // motion). All strokes in one path.
     if (overdrive > 0 && !reducedMotion()) {
-      ctx2d.strokeStyle = `rgba(255, 255, 255, ${(0.26 * overdrive).toFixed(3)})`;
+      const ob = Math.round(overdrive * 10);
+      if (fxStyle.odBucket !== ob) {
+        fxStyle.odBucket = ob;
+        fxStyle.speedLine = `rgba(255,255,255,${(0.26 * (ob / 10)).toFixed(3)})`;
+      }
+      ctx2d.strokeStyle = fxStyle.speedLine;
       ctx2d.lineWidth = 2;
       const lineCount = 3 + Math.round(overdrive * 4);
       ctx2d.beginPath();
@@ -767,8 +787,10 @@
     }
 
     // Impact flash (near-miss / shield break) — full-canvas white, decays fast.
-    if (flashAlpha > 0.01 && !reducedMotion()) {
-      ctx2d.fillStyle = `rgba(255, 255, 255, ${flashAlpha.toFixed(3)})`;
+    if (flashAlpha > 0.01 && !reducedMotion() && !liteMode) {
+      const fb = Math.round(flashAlpha * 20);
+      if (fxStyle.flashBucket !== fb) { fxStyle.flashBucket = fb; fxStyle.flash = `rgba(255,255,255,${(fb / 20).toFixed(3)})`; }
+      ctx2d.fillStyle = fxStyle.flash;
       ctx2d.fillRect(-14, -14, GAME_W + 28, GAME_H + 28);
     }
 
