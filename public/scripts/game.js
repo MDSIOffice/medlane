@@ -932,7 +932,11 @@
     }
   }
 
-  function showOverlay({ tone = "neutral", title, message, buttonLabel }) {
+  // `busy` disables the button and shows "Saving…" instead of the passed label — used
+  // while a score submit is actually in flight, so a click can't fire off a new run (or a
+  // second retry) on top of one still saving. Every other showOverlay call omits it, which
+  // re-enables the button as soon as the save resolves either way.
+  function showOverlay({ tone = "neutral", title, message, buttonLabel, busy = false }) {
     const overlay = document.getElementById("game-overlay");
     const iconEl = document.getElementById("game-overlay-icon");
     const titleEl = document.getElementById("game-overlay-title");
@@ -941,7 +945,7 @@
     if (iconEl) iconEl.dataset.tone = tone;
     if (titleEl) titleEl.textContent = title;
     if (msgEl) msgEl.innerHTML = message;
-    if (btn) btn.textContent = buttonLabel;
+    if (btn) { btn.textContent = busy ? "Saving…" : buttonLabel; btn.disabled = busy; }
     if (overlay) overlay.hidden = false;
     hideOverlayLeaderboard();
   }
@@ -1054,7 +1058,7 @@
     gameSessionToken = null;
     pendingScoreRetry = { score: finalScore, token };
     writePendingScore({ score: finalScore, token, at: Date.now() });
-    showOverlay({ tone: "neutral", title: "Saving your run…", message: `You scored <strong>${finalScore}</strong>.`, buttonLabel: "Play Again" });
+    showOverlay({ tone: "neutral", title: "Saving your run…", message: `You scored <strong>${finalScore}</strong>.`, buttonLabel: "Play Again", busy: true });
     await attemptScoreSubmit(finalScore, token, { announce: true });
   }
 
@@ -1372,7 +1376,7 @@
     // "Retry Save" state — this click resubmits the kept run instead of starting a new one.
     if (btn?.dataset.retryScore && pendingScoreRetry) {
       delete btn.dataset.retryScore;
-      showOverlay({ tone: "neutral", title: "Saving your run…", message: `Retrying…`, buttonLabel: "Play Again" });
+      showOverlay({ tone: "neutral", title: "Saving your run…", message: `Retrying…`, buttonLabel: "Play Again", busy: true });
       attemptScoreSubmit(pendingScoreRetry.score, pendingScoreRetry.token, { announce: true });
       return;
     }
