@@ -13,8 +13,14 @@
   // rising in-canvas text). Only the highest crossed in a given frame fires.
   const MILESTONES = [2000, 5000, 10000, 20000];
 
+  // Cached, not re-read every frame — matchMedia.matches is a live property but
+  // drawGame()/the loop hit these ~60×/s.
   const reducedMotionMQ = window.matchMedia("(prefers-reduced-motion: reduce)");
-  function reducedMotion() { return reducedMotionMQ.matches; }
+  let reducedMotionOn = reducedMotionMQ.matches;
+  const onReducedMotionChange = (e) => { reducedMotionOn = e.matches; };
+  if (reducedMotionMQ.addEventListener) reducedMotionMQ.addEventListener("change", onReducedMotionChange);
+  else if (reducedMotionMQ.addListener) reducedMotionMQ.addListener(onReducedMotionChange);
+  function reducedMotion() { return reducedMotionOn; }
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
   // Cosmetic runner skins — drawn procedurally over the logo badge in drawGame(), no
@@ -227,6 +233,7 @@
   // costs more the longer a run goes. The theme only actually changes when
   // <html data-theme> flips, so cache the result and recompute solely on that.
   let cachedThemeColors = null;
+  let cachedSkyGradient = null; // invalidated with cachedThemeColors on theme flip
   function computeThemeColors() {
     const styles = getComputedStyle(document.documentElement);
     const get = (name, fallback) => (styles.getPropertyValue(name) || "").trim() || fallback;
@@ -247,7 +254,7 @@
     if (!cachedThemeColors) cachedThemeColors = computeThemeColors();
     return cachedThemeColors;
   }
-  new MutationObserver(() => { cachedThemeColors = null; })
+  new MutationObserver(() => { cachedThemeColors = null; cachedSkyGradient = null; })
     .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   function resetGameState() {
@@ -274,7 +281,6 @@
     shakeFrames = 0;
     flashAlpha = 0;
     milestoneFlash = null;
-    if (gameCanvas) gameCanvas.style.transform = "scale(1.04)";
     const shieldChip = document.getElementById("game-hud-shield");
     if (shieldChip) shieldChip.hidden = true;
   }
@@ -331,7 +337,9 @@
     milestoneFlash = { text: value.toLocaleString(), life: 56, maxLife: 56 };
   }
 
-  // Impulse-style shake: a stronger hit overrides a weaker one still in progress.
+  // Impulse-style shake: a stronger hit overrides a weaker one still in progress. The
+  // offset is applied inside drawGame() via ctx.translate (the canvas is already fully
+  // repainted every frame, so this is free — no CSS transform / compositor layer).
   function addShake(mag, frames) {
     if (reducedMotion()) return;
     if (shakeFrames > 0 && mag <= shakeMag) return;
@@ -340,32 +348,15 @@
     shakeFramesMax = frames;
   }
 
-  // Applied as a CSS transform on the <canvas> (which sits at a constant scale(1.04) so
-  // the translate never bares a stage edge). The DOM HUD is a sibling overlay, untouched.
-  function stepShake(dt) {
-    if (!gameCanvas) return;
-    if (shakeFrames <= 0) return;
-    shakeFrames -= dt;
-    const p = Math.max(shakeFrames / shakeFramesMax, 0);
-    const amt = shakeMag * p;
-    if (p <= 0) { shakeMag = 0; gameCanvas.style.transform = "scale(1.04)"; return; }
-    const dx = (Math.random() * 2 - 1) * amt;
-    const dy = (Math.random() * 2 - 1) * amt;
-    gameCanvas.style.transform = `scale(1.04) translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
-  }
-
-  // The loop stops the instant a run ends, so the death shake gets its own short rAF.
+  // The loop stops the instant a run ends, so the death shake gets its own short rAF
+  // that keeps re-drawing while the offset decays.
   function runShakeOut() {
-    if (!gameCanvas || reducedMotion() || shakeFrames <= 0) return;
+    if (reducedMotion() || shakeFrames <= 0) return;
     const tick = () => {
       shakeFrames -= 1;
-      const p = Math.max(shakeFrames / shakeFramesMax, 0);
-      const amt = shakeMag * p;
-      gameCanvas.style.transform = p > 0
-        ? `scale(1.04) translate(${((Math.random() * 2 - 1) * amt).toFixed(1)}px, ${((Math.random() * 2 - 1) * amt).toFixed(1)}px)`
-        : "scale(1.04)";
-      if (p > 0) requestAnimationFrame(tick);
-      else shakeMag = 0;
+      drawGame();
+      if (shakeFrames > 0) requestAnimationFrame(tick);
+      else { shakeMag = 0; shakeFrames = 0; }
     };
     requestAnimationFrame(tick);
   }
@@ -390,6 +381,7 @@
     if (onGround && crouching) playerY = GROUND_Y - CROUCH_H;
 
     if (invulnFrames > 0) invulnFrames -= dt;
+    if (shakeFrames > 0) shakeFrames -= dt;
 
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
@@ -512,11 +504,25 @@
     const c = themeColors();
     ctx2d.clearRect(0, 0, GAME_W, GAME_H);
 
-    const sky = ctx2d.createLinearGradient(0, 0, 0, GROUND_Y + 20);
-    sky.addColorStop(0, c.skyTop);
-    sky.addColorStop(1, c.panel);
-    ctx2d.fillStyle = sky;
-    ctx2d.fillRect(0, 0, GAME_W, GAME_H);
+    // Screen-shake offset, applied in canvas space (free — the canvas is fully
+    // repainted every frame anyway). Restored at the end of the function.
+    let shaking = false;
+    if (shakeFrames > 0 && shakeMag > 0) {
+      const p = Math.max(shakeFrames / shakeFramesMax, 0);
+      const amt = shakeMag * p;
+      ctx2d.save();
+      ctx2d.translate((Math.random() * 2 - 1) * amt, (Math.random() * 2 - 1) * amt);
+      shaking = true;
+    }
+
+    if (!cachedSkyGradient) {
+      cachedSkyGradient = ctx2d.createLinearGradient(0, 0, 0, GROUND_Y + 20);
+      cachedSkyGradient.addColorStop(0, c.skyTop);
+      cachedSkyGradient.addColorStop(1, c.panel);
+    }
+    ctx2d.fillStyle = cachedSkyGradient;
+    // Oversized so a shake translate never bares an edge.
+    ctx2d.fillRect(-14, -14, GAME_W + 28, GAME_H + 28);
 
     // Distant office skyline (parallax)
     ctx2d.fillStyle = c.line;
@@ -534,23 +540,24 @@
     // a strong run. Painted over the sky/skyline but under the foreground so obstacles
     // and the runner stay readable. Independent of the app light/dark theme.
     const nightT = clamp01(gameScore / 30000);
-    if (nightT > 0) {
-      const night = ctx2d.createLinearGradient(0, 0, 0, GROUND_Y + 20);
-      night.addColorStop(0, `rgba(4, 10, 26, ${(nightT * 0.9).toFixed(3)})`);
-      night.addColorStop(1, `rgba(10, 22, 46, ${(nightT * 0.55).toFixed(3)})`);
-      ctx2d.fillStyle = night;
-      ctx2d.fillRect(0, 0, GAME_W, GROUND_Y + 20);
+    if (nightT > 0.02) {
+      // One flat wash (a gradient here cost an allocation every frame for a barely
+      // visible difference).
+      ctx2d.fillStyle = `rgba(6, 14, 32, ${(nightT * 0.7).toFixed(3)})`;
+      ctx2d.fillRect(-14, -14, GAME_W + 28, GROUND_Y + 34);
     }
     if (nightT > 0.4) {
       const starA = clamp01((nightT - 0.4) / 0.35);
+      // All stars in one path / one fill instead of 42 draw calls a frame.
       ctx2d.fillStyle = `rgba(255, 255, 255, ${(starA * 0.9).toFixed(3)})`;
+      ctx2d.beginPath();
       for (const star of STARS) {
         let sx = (star.x + bgOffset * 0.12) % GAME_W;
         if (sx < 0) sx += GAME_W;
-        ctx2d.beginPath();
+        ctx2d.moveTo(sx + star.r, star.y);
         ctx2d.arc(sx, star.y, star.r, 0, Math.PI * 2);
-        ctx2d.fill();
       }
+      ctx2d.fill();
       ctx2d.globalAlpha = starA;
       ctx2d.fillStyle = "rgba(240, 244, 255, 0.95)";
       ctx2d.beginPath();
@@ -569,16 +576,16 @@
     if (overdrive > 0) {
       ctx2d.fillStyle = c.orange;
       ctx2d.globalAlpha = 0.12 * overdrive;
-      ctx2d.fillRect(0, 0, GAME_W, GROUND_Y + 20);
+      ctx2d.fillRect(-14, -14, GAME_W + 28, GROUND_Y + 34);
       ctx2d.globalAlpha = 1;
     }
 
-    // Ground
+    // Ground (drawn a bit past both edges so a shake translate never opens a gap)
     ctx2d.strokeStyle = c.muted;
     ctx2d.lineWidth = 2;
     ctx2d.beginPath();
-    ctx2d.moveTo(0, GROUND_Y + 1);
-    ctx2d.lineTo(GAME_W, GROUND_Y + 1);
+    ctx2d.moveTo(-14, GROUND_Y + 1);
+    ctx2d.lineTo(GAME_W + 14, GROUND_Y + 1);
     ctx2d.stroke();
     ctx2d.strokeStyle = c.line;
     ctx2d.lineWidth = 3;
@@ -586,8 +593,8 @@
     const dashOffset = -(distance % 30);
     ctx2d.lineDashOffset = dashOffset;
     ctx2d.beginPath();
-    ctx2d.moveTo(0, GROUND_Y + 10);
-    ctx2d.lineTo(GAME_W, GROUND_Y + 10);
+    ctx2d.moveTo(-14, GROUND_Y + 10);
+    ctx2d.lineTo(GAME_W + 14, GROUND_Y + 10);
     ctx2d.stroke();
     ctx2d.setLineDash([]);
 
@@ -725,20 +732,21 @@
     }
     ctx2d.globalAlpha = 1;
 
-    // Overdrive speed lines — motion streaks over the foreground (skipped for reduced motion).
+    // Overdrive speed lines — motion streaks over the foreground (skipped for reduced
+    // motion). All strokes in one path.
     if (overdrive > 0 && !reducedMotion()) {
       ctx2d.strokeStyle = `rgba(255, 255, 255, ${(0.26 * overdrive).toFixed(3)})`;
       ctx2d.lineWidth = 2;
       const lineCount = 3 + Math.round(overdrive * 4);
+      ctx2d.beginPath();
       for (let i = 0; i < lineCount; i++) {
         const ly = Math.random() * (GROUND_Y - 20) + 10;
         const lx = Math.random() * GAME_W;
         const ll = 40 + Math.random() * 80 * overdrive;
-        ctx2d.beginPath();
         ctx2d.moveTo(lx, ly);
         ctx2d.lineTo(lx - ll, ly);
-        ctx2d.stroke();
       }
+      ctx2d.stroke();
     }
 
     // Milestone callout — bold number rising and fading near the top of the stage.
@@ -761,8 +769,10 @@
     // Impact flash (near-miss / shield break) — full-canvas white, decays fast.
     if (flashAlpha > 0.01 && !reducedMotion()) {
       ctx2d.fillStyle = `rgba(255, 255, 255, ${flashAlpha.toFixed(3)})`;
-      ctx2d.fillRect(0, 0, GAME_W, GAME_H);
+      ctx2d.fillRect(-14, -14, GAME_W + 28, GAME_H + 28);
     }
+
+    if (shaking) ctx2d.restore();
   }
 
   // Procedural cosmetic overlay on the logo badge — no image assets, no gameplay
@@ -890,7 +900,6 @@
     updateGame(dt);
     if (gameRunning) {
       drawGame();
-      stepShake(dt);
       gameAnimationFrame = requestAnimationFrame(gameLoop);
     }
   }
@@ -1148,24 +1157,31 @@
   // ---------------------------------------------------------------------
   // Cosmetic runner skins (picked in User Settings > Break Time)
   // ---------------------------------------------------------------------
-  function getSelectedSkin() {
-    try { return localStorage.getItem(SKIN_CHOICE_KEY) || "classic"; } catch { return "classic"; }
-  }
+  // Read from localStorage exactly once at load, then kept in memory — drawGame() calls
+  // effectiveSkin() every frame and localStorage.getItem() is a synchronous, jank-prone
+  // call to hit ~60×/s.
+  let selectedSkin = "classic";
+  try { selectedSkin = localStorage.getItem(SKIN_CHOICE_KEY) || "classic"; } catch { /* ignore */ }
+  function getSelectedSkin() { return selectedSkin; }
   function setSelectedSkin(id) {
+    selectedSkin = id;
+    recomputeResolvedSkin();
     try { localStorage.setItem(SKIN_CHOICE_KEY, id); } catch { /* ignore */ }
   }
   // The stored choice is honoured only while it is actually unlocked — a stale/locked
-  // value is never wiped but never rendered either.
-  function effectiveSkin() {
-    const id = getSelectedSkin();
-    return unlockedSkinIds.has(id) ? id : "classic";
-  }
+  // value is never wiped but never rendered either. Resolved once per skin change, not
+  // per frame.
+  let resolvedSkin = "classic";
+  function recomputeResolvedSkin() { resolvedSkin = unlockedSkinIds.has(selectedSkin) ? selectedSkin : "classic"; }
+  function effectiveSkin() { return resolvedSkin; }
+  recomputeResolvedSkin();
   function refreshUnlockedSkins(level, badge, serverSkin) {
     const tier = GAME_BADGE_TIER[badge] || 0;
     for (const skin of SKINS) if (skin.test(level || 1, tier)) unlockedSkinIds.add(skin.id);
     // The server is the cross-device source of truth for the current choice — adopt it
     // when it's set and actually unlocked here.
     if (serverSkin && unlockedSkinIds.has(serverSkin) && getSelectedSkin() !== serverSkin) setSelectedSkin(serverSkin);
+    recomputeResolvedSkin(); // a newly-unlocked skin may make the stored choice valid
     try { localStorage.setItem(SKIN_UNLOCK_KEY, JSON.stringify([...unlockedSkinIds])); } catch { /* ignore */ }
     renderSkinPicker();
   }
@@ -1299,7 +1315,6 @@
     if (gameAnimationFrame) cancelAnimationFrame(gameAnimationFrame);
     stopMusic();
     shakeFrames = 0; shakeMag = 0;
-    if (gameCanvas) gameCanvas.style.transform = "scale(1.04)";
     const countdownEl = document.getElementById("game-countdown");
     if (countdownEl) countdownEl.hidden = true;
     document.getElementById("game-modal")?.close();
