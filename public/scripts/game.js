@@ -76,7 +76,6 @@
     click: sound("click.wav", 0.5),
     newbest: sound("newbest.wav", 0.85),
     milestone: sound("milestone.wav", 0.7),
-    shield: sound("newbest.wav", 0.5), // reused cue at a lower volume — collect + break
     countdownBeep: sound("countdown-beep.wav", 0.8),
     countdownGo: sound("countdown-go.wav", 0.9),
   };
@@ -84,18 +83,18 @@
   musicAudio.loop = true;
 
   // A shared <audio> element can't overlap itself — starting play() while it's
-  // already playing just restarts it, cutting the previous sound short (very
-  // noticeable for rapid dodges). A small round-robin pool of pre-cloned nodes
-  // gives every play its own instance without re-fetching/re-decoding the file
-  // on every single call — dodges fire more and more often as a run's speed
-  // ramps up, so a fresh cloneNode() per play gets measurably more expensive
-  // the longer/better a run goes. Pools are built eagerly (not on first play)
-  // so primeAllAudio() can unlock every node from the same gesture — Safari
-  // ties playback permission to the element, not the page.
-  const SFX_POOL_SIZE = 4;
+  // already playing just restarts it, cutting the previous sound short. Only jump and
+  // dodge fire fast enough to overlap, so only those get a round-robin pool; every other
+  // cue is a one-shot that always finishes before it's asked again. Each pooled node is
+  // an independent media element that must be fetched + decoded on its own, and priming
+  // ~40 of them on the Play click was contending badly enough to hitch the first jumps —
+  // this keeps the total near a dozen. Pools are built eagerly so primeAllAudio() can
+  // unlock every node from the same gesture (Safari ties playback permission to the element).
+  const SFX_POOL_SIZES = { jump: 3, dodge: 3 };
   const sfxPools = {};
   for (const [key, audio] of Object.entries(sfxAudio)) {
-    sfxPools[key] = { nodes: Array.from({ length: SFX_POOL_SIZE }, () => audio.cloneNode()), next: 0 };
+    const size = SFX_POOL_SIZES[key] || 1;
+    sfxPools[key] = { nodes: size === 1 ? [audio] : Array.from({ length: size }, () => audio.cloneNode()), next: 0 };
   }
   function playSfx(key) {
     if (!soundEnabled) return;
@@ -104,7 +103,10 @@
       const node = pool.nodes[pool.next];
       pool.next = (pool.next + 1) % pool.nodes.length;
       node.volume = sfxAudio[key].volume;
-      node.currentTime = 0;
+      // play() on an ended element restarts it on its own; only force a rewind to cut off a
+      // sound that's still playing, and only when the element can seek without blocking —
+      // a currentTime write on a not-ready element was hitching every jump.
+      if (!node.ended && node.currentTime > 0.02 && node.readyState >= 3) node.currentTime = 0;
       node.play().catch(() => { /* blocked outside a gesture — silently skip */ });
     } catch (error) { console.error("[Luksong Medlane] playSfx failed:", error); }
   }
@@ -139,7 +141,11 @@
 
   function startMusic() {
     if (!soundEnabled) return;
-    musicAudio.currentTime = 0;
+    // No `currentTime = 0` here — primeAllAudio() already rewinds the loop on the Play
+    // click, and setting currentTime on an element that isn't fully ready can block the
+    // main thread synchronously (this was the freeze right after "Talon!"). Starting a
+    // loop track a fraction of a second in is imperceptible anyway.
+    if (!musicAudio.paused) return;
     musicAudio.play().catch((error) => {
       console.error("[Luksong Medlane] music play failed:", error);
       // Two common causes when a run starts "immediately": the loop file wasn't buffered enough
@@ -439,7 +445,7 @@
           hasShield = false;
           invulnFrames = 35;
           obstacle.passed = true;
-          playSfx("shield");
+          playSfx("newbest");
           addShake(8, 20);
           flashAlpha = Math.max(flashAlpha, 0.7);
           const chip = document.getElementById("game-hud-shield");
@@ -461,7 +467,7 @@
       if (grabbed) {
         pickup.taken = true;
         hasShield = true;
-        playSfx("shield");
+        playSfx("newbest");
         spawnCelebrationParticles({ count: 8, x: pickup.x + pickup.w / 2, y: py, power: 0.55 });
         const chip = document.getElementById("game-hud-shield");
         if (chip) chip.hidden = false;
