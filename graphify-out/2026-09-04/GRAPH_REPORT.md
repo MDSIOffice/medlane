@@ -1,7 +1,7 @@
 # Graph Report - medlane  (2026-09-04)
 
 ## Corpus Check
-- 63 files · ~337,070 words
+- 63 files · ~337,135 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -111,6 +111,7 @@
 - Implementation Plan: 002-inventory-stock-edit-history
 - public/scripts/landing-motion.js
 - normalizePayableWithholding
+- pe
 - renderAll
 - guardedDialogClose
 - scripts/landing-motion.js
@@ -128,7 +129,6 @@
 - workflowCard
 - renderProductIssues
 - money
-- is
 - arTrackerStage
 - canSeeNotification
 - clientBalance
@@ -310,8 +310,8 @@ Cohesion: 0.07
 Nodes (48): buildInventoryPurchaseOrder(), buildPurchaseOrder(), buildSale(), collectInvoiceEditorLines(), competingPurchaseOrdersForItem(), discountNeedsApproval(), documentExists(), editPurchaseOrder() (+40 more)
 
 ### Community 36 - "i"
-Cohesion: 0.18
-Nodes (17): a(), ae(), de(), _e(), ee(), fe(), ge(), Gr() (+9 more)
+Cohesion: 0.20
+Nodes (17): a(), ae(), as(), _e(), Gr(), i(), is(), Kr() (+9 more)
 
 ### Community 37 - "i"
 Cohesion: 0.20
@@ -541,6 +541,10 @@ Nodes (4): moveInk(), onScroll(), setActive(), updateScrollUi()
 Cohesion: 0.60
 Nodes (6): hasWithholding(), itemGross(), normalizePayableWithholding(), normalizePaymentRequestWithholding(), roundCurrency(), withholdingBaseFromGross()
 
+### Community 96 - "pe"
+Cohesion: 0.40
+Nodes (5): de(), ee(), fe(), ge(), pe()
+
 ### Community 97 - "renderAll"
 Cohesion: 0.06
 Nodes (49): MedlaneAPI, acknowledgeMemo(), advancePurchaseOrderStatus(), applyRole(), approveExpense(), approveFinancialRequest(), approvePurchaseOrder(), approveStockReceipt() (+41 more)
@@ -572,10 +576,6 @@ Nodes (26): canActOnProductIssue(), clientInvoicesExportRows(), clientInvoicesFi
 ### Community 113 - "money"
 Cohesion: 0.14
 Nodes (22): addDays(), backupDigestLines(), buildBusinessSummaryLines(), computeBusinessMetrics(), dashboardAnalyticsFields(), detectThresholdsAndApprovals(), digestClientBalance(), digestDaysUntil() (+14 more)
-
-### Community 114 - "is"
-Cohesion: 0.50
-Nodes (5): as(), is(), Ms(), os(), rs()
 
 ### Community 124 - "sendResendEmail"
 Cohesion: 0.50
