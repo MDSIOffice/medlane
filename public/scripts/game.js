@@ -999,7 +999,19 @@
     if (badgeChip) badgeChip.hidden = true;
     drawGame();
     const myGeneration = gameRunGeneration;
+    // Keep repainting the (static) scene every frame through the countdown so the GPU
+    // allocates and warms the canvas's compositor layer NOW — otherwise that ~190ms
+    // texture/layer setup lands as a one-off hitch the instant gameplay starts ("it
+    // freezes right after Talon"). drawGame at score 0 is ~0.03ms, negligible over 2 s.
+    let warming = true;
+    const warmLoop = () => {
+      if (!warming || myGeneration !== gameRunGeneration) return;
+      drawGame();
+      requestAnimationFrame(warmLoop);
+    };
+    requestAnimationFrame(warmLoop);
     const ok = await runCountdown(myGeneration);
+    warming = false;
     if (!ok) return;
     gameRunning = true;
     gameLastTime = performance.now();
