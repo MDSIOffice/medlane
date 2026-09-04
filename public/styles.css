@@ -2717,6 +2717,9 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--lr-navy-2); font-family: var(--lr-body); font-size: 13px; }
 .lr-footer-bottom p { margin: 0; color: var(--lr-muted); }
 .lr-footer-badges { display: flex; gap: 12px; }
+.lr-footer-credit { margin: 16px 0 0; font-family: var(--lr-body); font-size: 12px; color: var(--lr-muted); }
+.lr-footer-credit a { color: var(--lr-muted); text-decoration: none; border-bottom: 1px solid var(--lr-navy-2); }
+.lr-footer-credit a:hover { color: var(--lr-light); }
 .lr-fb--cyan { color: var(--lr-cyan); }
 .lr-fb--orange { color: var(--lr-orange); }
 
