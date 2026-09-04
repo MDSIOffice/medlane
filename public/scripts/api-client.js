@@ -371,7 +371,7 @@ const MedlaneAPI = (() => {
     return request("/api/game/session/start", { method: "POST" });
   }
 
-  async function submitGameScore(score, token) {
+  async function submitGameScore(score, token, skin) {
     // Retry transient failures (offline blip, 5xx, wifi handoff after a long run) a few times —
     // the server treats a repeat submit of the same token as idempotent and returns the stored
     // result, so a retry never double-counts. A definitive rejection (bad/expired/used token,
@@ -379,7 +379,7 @@ const MedlaneAPI = (() => {
     let lastError;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        return await request("/api/game/score", { method: "POST", body: JSON.stringify({ score, token }) });
+        return await request("/api/game/score", { method: "POST", body: JSON.stringify({ score, token, skin }) });
       } catch (error) {
         lastError = error;
         const message = String(error?.message || "");
@@ -393,6 +393,10 @@ const MedlaneAPI = (() => {
 
   async function myGameScore() {
     return request("/api/game/score/me");
+  }
+
+  async function setGameSkin(skin) {
+    return request("/api/game/skin", { method: "POST", body: JSON.stringify({ skin }) });
   }
 
   async function listGameLeaderboard(by = "score") {
@@ -409,5 +413,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, listGameLeaderboard, fetchAppVersion };
+  return { session, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();
