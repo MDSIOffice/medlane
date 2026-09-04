@@ -9,6 +9,33 @@
   const GAME_BADGE_ICON = { Bronze: "🥉", Silver: "🥈", Gold: "🥇", Platinum: "💎" };
   const GAME_BADGE_TIER = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
 
+  // Score points at which a run fires a one-time celebratory callout (chime + burst +
+  // rising in-canvas text). Only the highest crossed in a given frame fires.
+  const MILESTONES = [2000, 5000, 10000, 20000];
+
+  const reducedMotionMQ = window.matchMedia("(prefers-reduced-motion: reduce)");
+  function reducedMotion() { return reducedMotionMQ.matches; }
+  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+  // Cosmetic runner skins — drawn procedurally over the logo badge in drawGame(), no
+  // image assets. Unlocks are monotonic (badge = best score, level = cumulative XP;
+  // neither ever decreases), so the unlocked set only grows and is safe to cache.
+  const SKINS = [
+    { id: "classic", label: "Classic", req: null, test: () => true },
+    { id: "hardhat", label: "Hard Hat", req: "Level 3", test: (lv) => lv >= 3 },
+    { id: "shades", label: "Cool Shades", req: "Level 6", test: (lv) => lv >= 6 },
+    { id: "cape", label: "Caped Auditor", req: "Silver badge", test: (lv, tier) => tier >= 2 },
+    { id: "gold", label: "Gold Standard", req: "Gold badge", test: (lv, tier) => tier >= 3 },
+    { id: "platinum", label: "Platinum Aura", req: "Platinum badge", test: (lv, tier) => tier >= 4 },
+  ];
+  const SKIN_UNLOCK_KEY = "medlane-game-unlocked-skins";
+  const SKIN_CHOICE_KEY = "medlane-game-skin";
+  let unlockedSkinIds = new Set(["classic"]);
+  try {
+    const cached = JSON.parse(localStorage.getItem(SKIN_UNLOCK_KEY) || "[]");
+    if (Array.isArray(cached)) cached.forEach((id) => { if (SKINS.some((s) => s.id === id)) unlockedSkinIds.add(id); });
+  } catch { /* ignore */ }
+
   // ---------------------------------------------------------------------
   // Audio — plain <audio> elements playing pre-rendered WAV files, not live
   // Web Audio synthesis. Safari (desktop and iOS) has repeatedly proven
@@ -36,6 +63,8 @@
     gameover: sound("gameover.wav", 0.85),
     click: sound("click.wav", 0.5),
     newbest: sound("newbest.wav", 0.85),
+    milestone: sound("milestone.wav", 0.7),
+    shield: sound("newbest.wav", 0.5), // reused cue at a lower volume — collect + break
     countdownBeep: sound("countdown-beep.wav", 0.8),
     countdownGo: sound("countdown-go.wav", 0.9),
   };
@@ -147,6 +176,14 @@
   const FLYING_TOP = 40;
   const FLYING_GAP = 24; // clearance above ground a crouching player fits under
 
+  // Deterministic star field for the day->night effect (positions fixed; a slight
+  // horizontal parallax is applied at draw time off bgOffset).
+  const STARS = Array.from({ length: 42 }, (_, i) => ({
+    x: (i * 137.5) % GAME_W,
+    y: 12 + ((i * 53) % 150),
+    r: 0.6 + (i % 3) * 0.5,
+  }));
+
   const playerLogoImg = new Image();
   playerLogoImg.src = "medlane.jpg";
 
@@ -171,6 +208,19 @@
   let spawnTimer = 0;
   let bgOffset = 0;
   let particles = [];
+
+  // Juice + shield state — all reset per run in resetGameState().
+  let hasShield = false;
+  let invulnFrames = 0;   // hit checks skipped while > 0 (after a shield break)
+  let pickups = [];        // 0 or 1 "approved stamp" at a time (see spawn guard)
+  let stampTimer = 0;
+  let lastStampScore = 0;
+  let lastMilestoneIdx = -1;
+  let shakeMag = 0;
+  let shakeFrames = 0;
+  let shakeFramesMax = 1;
+  let flashAlpha = 0;      // full-canvas white flash, decays fast
+  let milestoneFlash = null; // { text, life, maxLife } rising callout
 
   // getComputedStyle() forces a style recalculation — cheap once, but drawGame()
   // calls this on every animation frame (~60/sec), so a naive per-call read
@@ -214,6 +264,19 @@
     speed = 6.2;
     spawnTimer = 40;
     bgOffset = 0;
+    hasShield = false;
+    invulnFrames = 0;
+    pickups = [];
+    stampTimer = 320;
+    lastStampScore = 0;
+    lastMilestoneIdx = -1;
+    shakeMag = 0;
+    shakeFrames = 0;
+    flashAlpha = 0;
+    milestoneFlash = null;
+    if (gameCanvas) gameCanvas.style.transform = "scale(1.04)";
+    const shieldChip = document.getElementById("game-hud-shield");
+    if (shieldChip) shieldChip.hidden = true;
   }
 
   function setupCanvasDPR() {
@@ -255,6 +318,58 @@
     }
   }
 
+  // A collectible "approved stamp" — grabbing it grants a one-hit shield. Spawned at
+  // jump-apex height with nothing else there, so the risk is breaking rhythm / a jump
+  // you didn't need and landing badly. Only one at a time, none while already shielded.
+  function spawnStamp() {
+    pickups.push({ type: "stamp", x: GAME_W + 30, y: GROUND_Y - PLAYER_H - 52, w: 32, h: 24, bob: Math.random() * Math.PI * 2, taken: false });
+  }
+
+  function fireMilestone(value) {
+    playSfx("milestone");
+    spawnCelebrationParticles({ count: 16, y: 70, power: 0.85 });
+    milestoneFlash = { text: value.toLocaleString(), life: 56, maxLife: 56 };
+  }
+
+  // Impulse-style shake: a stronger hit overrides a weaker one still in progress.
+  function addShake(mag, frames) {
+    if (reducedMotion()) return;
+    if (shakeFrames > 0 && mag <= shakeMag) return;
+    shakeMag = mag;
+    shakeFrames = frames;
+    shakeFramesMax = frames;
+  }
+
+  // Applied as a CSS transform on the <canvas> (which sits at a constant scale(1.04) so
+  // the translate never bares a stage edge). The DOM HUD is a sibling overlay, untouched.
+  function stepShake(dt) {
+    if (!gameCanvas) return;
+    if (shakeFrames <= 0) return;
+    shakeFrames -= dt;
+    const p = Math.max(shakeFrames / shakeFramesMax, 0);
+    const amt = shakeMag * p;
+    if (p <= 0) { shakeMag = 0; gameCanvas.style.transform = "scale(1.04)"; return; }
+    const dx = (Math.random() * 2 - 1) * amt;
+    const dy = (Math.random() * 2 - 1) * amt;
+    gameCanvas.style.transform = `scale(1.04) translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+  }
+
+  // The loop stops the instant a run ends, so the death shake gets its own short rAF.
+  function runShakeOut() {
+    if (!gameCanvas || reducedMotion() || shakeFrames <= 0) return;
+    const tick = () => {
+      shakeFrames -= 1;
+      const p = Math.max(shakeFrames / shakeFramesMax, 0);
+      const amt = shakeMag * p;
+      gameCanvas.style.transform = p > 0
+        ? `scale(1.04) translate(${((Math.random() * 2 - 1) * amt).toFixed(1)}px, ${((Math.random() * 2 - 1) * amt).toFixed(1)}px)`
+        : "scale(1.04)";
+      if (p > 0) requestAnimationFrame(tick);
+      else shakeMag = 0;
+    };
+    requestAnimationFrame(tick);
+  }
+
   function updateGame(dt) {
     distance += speed * dt;
     // Difficulty is tied to score (not just survival time), so a run that racks
@@ -274,6 +389,8 @@
     }
     if (onGround && crouching) playerY = GROUND_Y - CROUCH_H;
 
+    if (invulnFrames > 0) invulnFrames -= dt;
+
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnObstacle();
@@ -281,21 +398,75 @@
       spawnTimer = (58 - difficulty * 34) + Math.random() * (28 - difficulty * 12);
     }
 
+    // Approved-stamp shield pickup — rare, never before ~1,500, spaced out, and only
+    // when it can actually matter (no shield held, none already on screen).
+    stampTimer -= dt;
+    if (stampTimer <= 0) {
+      stampTimer = 90 + Math.random() * 70;
+      if (!hasShield && pickups.length === 0 && gameScore > 1500 && gameScore - lastStampScore > 1200 && Math.random() < 0.5) {
+        spawnStamp();
+        lastStampScore = gameScore;
+      }
+    }
+
     const playerBox = { x: PLAYER_X + 5, y: playerY + playerH * 0.1, w: PLAYER_W - 10, h: playerH * 0.85 };
     for (const obstacle of obstacles) {
       obstacle.x -= speed * dt;
+      const obstacleBox = obstacle.type === "flying"
+        ? { x: obstacle.x + 3, y: FLYING_TOP, w: obstacle.w - 6, h: (GROUND_Y - FLYING_GAP) - FLYING_TOP }
+        : { x: obstacle.x + 3, y: GROUND_Y - obstacle.h, w: obstacle.w - 6, h: obstacle.h };
+
+      // Track the tightest vertical clearance while the obstacle is in the player's
+      // lane — a small positive gap on pass is a "near-miss" (shake + flash, no score).
+      if (!obstacle.passed && obstacle.x < PLAYER_X + PLAYER_W && obstacle.x + obstacle.w > PLAYER_X - 4) {
+        const gap = obstacle.type === "flying"
+          ? playerBox.y - (obstacleBox.y + obstacleBox.h)
+          : obstacleBox.y - (playerBox.y + playerBox.h);
+        if (gap >= 0) obstacle.minGap = Math.min(obstacle.minGap ?? Infinity, gap);
+      }
+
       if (!obstacle.passed && obstacle.x + obstacle.w < PLAYER_X) {
         obstacle.passed = true;
         dodged++;
         sfxDodge();
+        if ((obstacle.minGap ?? Infinity) <= 14) { addShake(2.6, 8); flashAlpha = Math.max(flashAlpha, 0.42); }
       }
-      const obstacleBox = obstacle.type === "flying"
-        ? { x: obstacle.x + 3, y: FLYING_TOP, w: obstacle.w - 6, h: (GROUND_Y - FLYING_GAP) - FLYING_TOP }
-        : { x: obstacle.x + 3, y: GROUND_Y - obstacle.h, w: obstacle.w - 6, h: obstacle.h };
+
       const hit = playerBox.x < obstacleBox.x + obstacleBox.w && playerBox.x + playerBox.w > obstacleBox.x && playerBox.y < obstacleBox.y + obstacleBox.h && playerBox.y + playerBox.h > obstacleBox.y;
-      if (hit) { endGame(); return; }
+      if (hit && invulnFrames <= 0) {
+        if (hasShield) {
+          hasShield = false;
+          invulnFrames = 35;
+          obstacle.passed = true;
+          playSfx("shield");
+          addShake(8, 20);
+          flashAlpha = Math.max(flashAlpha, 0.7);
+          const chip = document.getElementById("game-hud-shield");
+          if (chip) chip.hidden = true;
+        } else {
+          endGame();
+          return;
+        }
+      }
     }
     obstacles = obstacles.filter((obstacle) => obstacle.x + obstacle.w > -10);
+
+    for (const pickup of pickups) {
+      pickup.x -= speed * dt;
+      const py = pickup.y + Math.sin((distance + pickup.bob) / 14) * 4;
+      const grabbed = !pickup.taken
+        && playerBox.x < pickup.x + pickup.w && playerBox.x + playerBox.w > pickup.x
+        && playerBox.y < py + pickup.h && playerBox.y + playerBox.h > py;
+      if (grabbed) {
+        pickup.taken = true;
+        hasShield = true;
+        playSfx("shield");
+        spawnCelebrationParticles({ count: 8, x: pickup.x + pickup.w / 2, y: py, power: 0.55 });
+        const chip = document.getElementById("game-hud-shield");
+        if (chip) chip.hidden = false;
+      }
+    }
+    pickups = pickups.filter((pickup) => !pickup.taken && pickup.x + pickup.w > -10);
 
     for (const particle of particles) {
       particle.x += particle.vx * dt;
@@ -308,6 +479,14 @@
     bgOffset -= speed * dt * 0.35;
 
     gameScore = Math.floor(distance / 8) + dodged * 10;
+
+    // Milestone callout — fire only the highest threshold newly crossed this frame.
+    for (let i = MILESTONES.length - 1; i > lastMilestoneIdx; i--) {
+      if (gameScore >= MILESTONES[i]) { lastMilestoneIdx = i; fireMilestone(MILESTONES[i]); break; }
+    }
+    if (flashAlpha > 0) flashAlpha = Math.max(0, flashAlpha - 0.06 * dt);
+    if (milestoneFlash) { milestoneFlash.life -= dt; if (milestoneFlash.life <= 0) milestoneFlash = null; }
+
     // The on-screen counter climbs toward the real score in small steps instead of
     // snapping straight to it — a sudden +10 dodge bonus used to look like the
     // number jumping around; this keeps it reading as a smooth, controlled climb.
@@ -318,15 +497,16 @@
     if (scoreEl) scoreEl.textContent = String(Math.floor(displayedScore));
   }
 
-  function drawRoundedRect(x, y, w, h, r) {
-    ctx2d.beginPath();
-    ctx2d.moveTo(x + r, y);
-    ctx2d.arcTo(x + w, y, x + w, y + h, r);
-    ctx2d.arcTo(x + w, y + h, x, y + h, r);
-    ctx2d.arcTo(x, y + h, x, y, r);
-    ctx2d.arcTo(x, y, x + w, y, r);
-    ctx2d.closePath();
+  function roundRectPath(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
   }
+  function drawRoundedRect(x, y, w, h, r) { roundRectPath(ctx2d, x, y, w, h, r); }
 
   function drawGame() {
     const c = themeColors();
@@ -349,6 +529,49 @@
       ctx2d.fill();
     }
     ctx2d.globalAlpha = 1;
+
+    // Day -> night: a blue wash that deepens with score, then stars + a moon fade in on
+    // a strong run. Painted over the sky/skyline but under the foreground so obstacles
+    // and the runner stay readable. Independent of the app light/dark theme.
+    const nightT = clamp01(gameScore / 30000);
+    if (nightT > 0) {
+      const night = ctx2d.createLinearGradient(0, 0, 0, GROUND_Y + 20);
+      night.addColorStop(0, `rgba(4, 10, 26, ${(nightT * 0.9).toFixed(3)})`);
+      night.addColorStop(1, `rgba(10, 22, 46, ${(nightT * 0.55).toFixed(3)})`);
+      ctx2d.fillStyle = night;
+      ctx2d.fillRect(0, 0, GAME_W, GROUND_Y + 20);
+    }
+    if (nightT > 0.4) {
+      const starA = clamp01((nightT - 0.4) / 0.35);
+      ctx2d.fillStyle = `rgba(255, 255, 255, ${(starA * 0.9).toFixed(3)})`;
+      for (const star of STARS) {
+        let sx = (star.x + bgOffset * 0.12) % GAME_W;
+        if (sx < 0) sx += GAME_W;
+        ctx2d.beginPath();
+        ctx2d.arc(sx, star.y, star.r, 0, Math.PI * 2);
+        ctx2d.fill();
+      }
+      ctx2d.globalAlpha = starA;
+      ctx2d.fillStyle = "rgba(240, 244, 255, 0.95)";
+      ctx2d.beginPath();
+      ctx2d.arc(GAME_W - 86, 56, 15, 0, Math.PI * 2);
+      ctx2d.fill();
+      ctx2d.fillStyle = `rgba(10, 22, 46, ${(0.5 * nightT).toFixed(3)})`;
+      ctx2d.beginPath();
+      ctx2d.arc(GAME_W - 80, 52, 13, 0, Math.PI * 2);
+      ctx2d.fill();
+      ctx2d.globalAlpha = 1;
+    }
+
+    // Overdrive — a warm wash once the run is really moving (speed lines are added over
+    // the foreground later, near the end of the frame).
+    const overdrive = clamp01((speed - 14) / 7);
+    if (overdrive > 0) {
+      ctx2d.fillStyle = c.orange;
+      ctx2d.globalAlpha = 0.12 * overdrive;
+      ctx2d.fillRect(0, 0, GAME_W, GROUND_Y + 20);
+      ctx2d.globalAlpha = 1;
+    }
 
     // Ground
     ctx2d.strokeStyle = c.muted;
@@ -424,6 +647,31 @@
       ctx2d.fillText("!", ox + ow - 8, oy - 7.5);
     }
 
+    // Approved-stamp shield pickups (0 or 1 on screen).
+    for (const pickup of pickups) {
+      const py = pickup.y + Math.sin((distance + pickup.bob) / 14) * 4;
+      ctx2d.save();
+      ctx2d.globalAlpha = 0.25 + 0.15 * Math.sin(distance / 8);
+      ctx2d.strokeStyle = c.green;
+      ctx2d.lineWidth = 4;
+      drawRoundedRect(pickup.x - 3, py - 3, pickup.w + 6, pickup.h + 6, 8);
+      ctx2d.stroke();
+      ctx2d.globalAlpha = 1;
+      ctx2d.fillStyle = c.panel;
+      drawRoundedRect(pickup.x, py, pickup.w, pickup.h, 5);
+      ctx2d.fill();
+      ctx2d.strokeStyle = c.green;
+      ctx2d.lineWidth = 2.5;
+      drawRoundedRect(pickup.x, py, pickup.w, pickup.h, 5);
+      ctx2d.stroke();
+      ctx2d.fillStyle = c.green;
+      ctx2d.font = "bold 15px 'Segoe UI', system-ui, sans-serif";
+      ctx2d.textAlign = "center";
+      ctx2d.textBaseline = "middle";
+      ctx2d.fillText("✓", pickup.x + pickup.w / 2, py + pickup.h / 2 + 1);
+      ctx2d.restore();
+    }
+
     // Player — the Medlane logo as a running "avatar" badge, with two small
     // legs underneath so the run/jump/crouch animation still reads clearly.
     const isCrouchingNow = onGround && crouching;
@@ -452,7 +700,22 @@
       ctx2d.fill();
     }
 
-    // Particles (new-best celebration)
+    // Cosmetic skin overlay (never affects the hitbox) + the shield ring.
+    drawSkinOn(ctx2d, effectiveSkin(), badgeX, badgeY, badgeW, badgeH, isCrouchingNow, distance);
+    if (hasShield || invulnFrames > 0) {
+      const ringA = invulnFrames > 0
+        ? 0.3 + 0.45 * Math.abs(Math.sin(distance / 4))
+        : 0.45 + 0.3 * Math.sin(distance / 10);
+      ctx2d.globalAlpha = clamp01(ringA);
+      ctx2d.strokeStyle = c.blue;
+      ctx2d.lineWidth = 2.5;
+      ctx2d.beginPath();
+      ctx2d.ellipse(px + PLAYER_W / 2, badgeY + badgeH / 2, badgeW * 0.9, badgeH * 0.95, 0, 0, Math.PI * 2);
+      ctx2d.stroke();
+      ctx2d.globalAlpha = 1;
+    }
+
+    // Particles (new-best / milestone celebration)
     for (const particle of particles) {
       ctx2d.globalAlpha = Math.max(particle.life / particle.maxLife, 0);
       ctx2d.fillStyle = particle.color;
@@ -461,16 +724,157 @@
       ctx2d.fill();
     }
     ctx2d.globalAlpha = 1;
+
+    // Overdrive speed lines — motion streaks over the foreground (skipped for reduced motion).
+    if (overdrive > 0 && !reducedMotion()) {
+      ctx2d.strokeStyle = `rgba(255, 255, 255, ${(0.26 * overdrive).toFixed(3)})`;
+      ctx2d.lineWidth = 2;
+      const lineCount = 3 + Math.round(overdrive * 4);
+      for (let i = 0; i < lineCount; i++) {
+        const ly = Math.random() * (GROUND_Y - 20) + 10;
+        const lx = Math.random() * GAME_W;
+        const ll = 40 + Math.random() * 80 * overdrive;
+        ctx2d.beginPath();
+        ctx2d.moveTo(lx, ly);
+        ctx2d.lineTo(lx - ll, ly);
+        ctx2d.stroke();
+      }
+    }
+
+    // Milestone callout — bold number rising and fading near the top of the stage.
+    if (milestoneFlash) {
+      const p = milestoneFlash.life / milestoneFlash.maxLife;
+      ctx2d.save();
+      ctx2d.globalAlpha = clamp01(p < 0.25 ? p / 0.25 : (p > 0.85 ? (1 - p) / 0.15 : 1));
+      ctx2d.fillStyle = c.orange;
+      ctx2d.font = "900 42px 'Segoe UI', system-ui, sans-serif";
+      ctx2d.textAlign = "center";
+      ctx2d.textBaseline = "middle";
+      const fy = 118 - (1 - p) * 44;
+      ctx2d.lineWidth = 3;
+      ctx2d.strokeStyle = "rgba(255, 255, 255, 0.65)";
+      ctx2d.strokeText(milestoneFlash.text, GAME_W / 2, fy);
+      ctx2d.fillText(milestoneFlash.text, GAME_W / 2, fy);
+      ctx2d.restore();
+    }
+
+    // Impact flash (near-miss / shield break) — full-canvas white, decays fast.
+    if (flashAlpha > 0.01 && !reducedMotion()) {
+      ctx2d.fillStyle = `rgba(255, 255, 255, ${flashAlpha.toFixed(3)})`;
+      ctx2d.fillRect(0, 0, GAME_W, GAME_H);
+    }
   }
 
-  function spawnCelebrationParticles() {
+  // Procedural cosmetic overlay on the logo badge — no image assets, no gameplay
+  // effect. Sized off the badge box (bw/bh) so the same routine renders both the live
+  // runner (ctx2d, phase = distance) and the leaderboard thumbnails (offscreen ctx,
+  // phase = 0). `phase` drives the cape/platinum animation.
+  function drawSkinOn(g, id, bx, by, bw, bh, crouch, phase) {
+    if (!id || id === "classic") return;
+    const cx = bx + bw / 2;
+    g.save();
+    if (id === "hardhat") {
+      g.fillStyle = "#f4b400";
+      g.beginPath();
+      g.ellipse(cx, by, bw * 0.52, Math.max(bh * 0.24, 6), 0, Math.PI, Math.PI * 2);
+      g.fill();
+      g.fillRect(cx - bw * 0.62, by - 2, bw * 1.24, 3);
+      g.fillRect(cx - 2, by - Math.max(bh * 0.22, 7), 4, Math.max(bh * 0.22, 7));
+    } else if (id === "shades") {
+      const gy = by + bh * (crouch ? 0.52 : 0.4);
+      const gh = Math.max(bh * 0.16, 5);
+      g.fillStyle = "rgba(10, 12, 20, 0.92)";
+      g.fillRect(cx - bw * 0.44, gy, bw * 0.36, gh);
+      g.fillRect(cx + bw * 0.08, gy, bw * 0.36, gh);
+      g.fillRect(cx - bw * 0.08, gy + 1.5, bw * 0.16, 2);
+    } else if (id === "cape") {
+      const wave = Math.sin(phase / 8) * (bw * 0.12);
+      g.fillStyle = "#d71920";
+      g.beginPath();
+      g.moveTo(bx + 2, by + 2);
+      g.lineTo(bx - bw * 0.42 - wave, by + bh + bh * 0.24);
+      g.lineTo(bx + bw * 0.24, by + bh);
+      g.closePath();
+      g.fill();
+    } else if (id === "gold") {
+      g.strokeStyle = "#e8b923";
+      g.lineWidth = 3;
+      roundRectPath(g, bx - 1.5, by - 1.5, bw + 3, bh + 3, 9);
+      g.stroke();
+      g.fillStyle = "#e8b923";
+      const s = bw * 0.14;
+      g.beginPath();
+      g.moveTo(cx - s * 2.2, by - 2);
+      g.lineTo(cx - s * 1.1, by - s * 2);
+      g.lineTo(cx, by - 2);
+      g.lineTo(cx + s * 1.1, by - s * 2);
+      g.lineTo(cx + s * 2.2, by - 2);
+      g.closePath();
+      g.fill();
+    } else if (id === "platinum") {
+      g.globalAlpha = 0.45 + 0.3 * Math.sin(phase / 6);
+      g.strokeStyle = "#bfe3ff";
+      g.lineWidth = 2;
+      roundRectPath(g, bx - 2.5, by - 2.5, bw + 5, bh + 5, 10);
+      g.stroke();
+      g.globalAlpha = 1;
+      for (let i = 0; i < 3; i++) {
+        const a = phase / 20 + i * 2.1;
+        g.fillStyle = "rgba(205, 235, 255, 0.9)";
+        g.beginPath();
+        g.arc(cx + Math.cos(a) * bw * 0.72, by + bh / 2 + Math.sin(a) * bh * 0.72, Math.max(bw * 0.05, 1.5), 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    g.restore();
+  }
+
+  // A small badge+skin avatar for the leaderboard ("show off your custom design").
+  // Computed once per skin id and cached — at most six ever exist.
+  const skinThumbCache = {};
+  function skinThumbDataUrl(id) {
+    const key = SKINS.some((s) => s.id === id) ? id : "classic";
+    if (skinThumbCache[key]) return skinThumbCache[key];
+    const size = 48, pad = 5, bw = size - pad * 2, bh = size - pad * 2, bx = pad, by = pad;
+    const cv = document.createElement("canvas");
+    cv.width = size; cv.height = size;
+    const g = cv.getContext("2d");
+    roundRectPath(g, bx, by, bw, bh, 10);
+    g.fillStyle = "#ffffff"; g.fill();
+    if (playerLogoImg.complete && playerLogoImg.naturalWidth) {
+      g.save();
+      roundRectPath(g, bx, by, bw, bh, 10);
+      g.clip();
+      g.drawImage(playerLogoImg, bx, by, bw, bh);
+      g.restore();
+    }
+    g.strokeStyle = "#006eb6"; g.lineWidth = 2;
+    roundRectPath(g, bx, by, bw, bh, 10); g.stroke();
+    drawSkinOn(g, key, bx, by, bw, bh, false, 0);
+    const url = cv.toDataURL();
+    skinThumbCache[key] = url;
+    return url;
+  }
+  // The logo often isn't decoded yet on first paint — drop the (logoless) cache once
+  // it loads so thumbnails regenerate with the badge image.
+  playerLogoImg.addEventListener("load", () => { for (const k of Object.keys(skinThumbCache)) delete skinThumbCache[k]; }, { once: true });
+
+  const RARE_SKINS = new Set(["cape", "gold", "platinum"]);
+  function leaderboardAvatar(skin, size) {
+    const id = SKINS.some((s) => s.id === skin) ? skin : "classic";
+    const rare = RARE_SKINS.has(id) ? ` data-rare="${id}"` : "";
+    return `<img class="game-lb-avatar" src="${skinThumbDataUrl(id)}" alt="" width="${size}" height="${size}"${rare}>`;
+  }
+
+  function spawnCelebrationParticles(opts) {
+    const { count = 26, x = GAME_W / 2, y = 90, power = 1 } = opts || {};
     const c = themeColors();
     const colors = [c.blue, c.orange, c.green, c.red];
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < count; i++) {
       particles.push({
-        x: GAME_W / 2, y: 90,
-        vx: (Math.random() - 0.5) * 9,
-        vy: -Math.random() * 6 - 2,
+        x, y,
+        vx: (Math.random() - 0.5) * 9 * power,
+        vy: (-Math.random() * 6 - 2) * power,
         r: 2 + Math.random() * 2.5,
         life: 50 + Math.random() * 20,
         maxLife: 70,
@@ -486,6 +890,7 @@
     updateGame(dt);
     if (gameRunning) {
       drawGame();
+      stepShake(dt);
       gameAnimationFrame = requestAnimationFrame(gameLoop);
     }
   }
@@ -571,7 +976,9 @@
     if (gameAnimationFrame) cancelAnimationFrame(gameAnimationFrame);
     stopMusic();
     sfxGameOver();
+    addShake(9, 24);
     drawGame();
+    runShakeOut(); // the loop has stopped — animate the death shake on its own rAF
     submitScoreAndShowResult();
   }
 
@@ -609,7 +1016,7 @@
     scoreSubmitInFlight = true;
     const startBtn = document.getElementById("game-start-button");
     try {
-      const result = await MedlaneAPI.submitGameScore(finalScore, token);
+      const result = await MedlaneAPI.submitGameScore(finalScore, token, effectiveSkin());
       writePendingScore(null);
       pendingScoreRetry = null;
       if (startBtn) delete startBtn.dataset.retryScore;
@@ -649,6 +1056,7 @@
     if (levelEl) levelEl.textContent = String(result.level);
     updateSettingsBadgeChip(result.best, result.badge);
     updateLevelChip(result.level);
+    refreshUnlockedSkins(result.level, result.badge, result.skin);
     if (!announce) return;
     const badgeChip = document.getElementById("game-hud-badge");
     if (badgeChip && result.badge) {
@@ -706,7 +1114,7 @@
       const myName = typeof currentUser !== "undefined" ? currentUser?.name : null;
       list.innerHTML = entries.slice(0, 5).map((entry, index) => {
         const isMe = myName && entry.name === myName;
-        return `<li class="${isMe ? "is-me" : ""}"><span>${leaderboardRankLabel(index)} ${escapeHtml(entry.name || "Player")}</span><strong>${Number(entry.score || 0)}</strong></li>`;
+        return `<li class="${isMe ? "is-me" : ""}">${leaderboardAvatar(entry.skin || "classic", 22)}<span>${leaderboardRankLabel(index)} ${escapeHtml(entry.name || "Player")}</span><strong>${Number(entry.score || 0)}</strong></li>`;
       }).join("");
     } catch {
       list.innerHTML = `<li>Could not load leaderboard.</li>`;
@@ -737,6 +1145,53 @@
     if (text) text.textContent = `Lv. ${level}`;
   }
 
+  // ---------------------------------------------------------------------
+  // Cosmetic runner skins (picked in User Settings > Break Time)
+  // ---------------------------------------------------------------------
+  function getSelectedSkin() {
+    try { return localStorage.getItem(SKIN_CHOICE_KEY) || "classic"; } catch { return "classic"; }
+  }
+  function setSelectedSkin(id) {
+    try { localStorage.setItem(SKIN_CHOICE_KEY, id); } catch { /* ignore */ }
+  }
+  // The stored choice is honoured only while it is actually unlocked — a stale/locked
+  // value is never wiped but never rendered either.
+  function effectiveSkin() {
+    const id = getSelectedSkin();
+    return unlockedSkinIds.has(id) ? id : "classic";
+  }
+  function refreshUnlockedSkins(level, badge, serverSkin) {
+    const tier = GAME_BADGE_TIER[badge] || 0;
+    for (const skin of SKINS) if (skin.test(level || 1, tier)) unlockedSkinIds.add(skin.id);
+    // The server is the cross-device source of truth for the current choice — adopt it
+    // when it's set and actually unlocked here.
+    if (serverSkin && unlockedSkinIds.has(serverSkin) && getSelectedSkin() !== serverSkin) setSelectedSkin(serverSkin);
+    try { localStorage.setItem(SKIN_UNLOCK_KEY, JSON.stringify([...unlockedSkinIds])); } catch { /* ignore */ }
+    renderSkinPicker();
+  }
+  function renderSkinPicker() {
+    const wrap = document.getElementById("game-skin-options");
+    if (!wrap) return;
+    const selected = effectiveSkin();
+    wrap.innerHTML = SKINS.map((skin) => {
+      const unlocked = unlockedSkinIds.has(skin.id);
+      const title = unlocked ? skin.label : `${skin.label} — unlock at ${skin.req}`;
+      return `<button type="button" class="game-skin-swatch${skin.id === selected ? " selected" : ""}${unlocked ? "" : " locked"}" data-skin="${skin.id}" ${unlocked ? "" : "disabled"} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><span class="game-skin-dot" data-skin-dot="${skin.id}"></span><span>${unlocked ? escapeHtml(skin.label) : `🔒 ${escapeHtml(skin.label)}`}</span></button>`;
+    }).join("");
+    wrap.querySelectorAll(".game-skin-swatch:not([disabled])").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setSelectedSkin(btn.dataset.skin);
+        sfxClick();
+        renderSkinPicker();
+        // Persist so it shows on the leaderboard — fire-and-forget; only unlocked
+        // swatches are clickable, and the server re-checks the unlock anyway.
+        if (typeof MedlaneAPI !== "undefined" && MedlaneAPI.session()) {
+          MedlaneAPI.setGameSkin(btn.dataset.skin).catch(() => {});
+        }
+      });
+    });
+  }
+
   async function loadGameBestBadge() {
     if (typeof MedlaneAPI === "undefined" || !MedlaneAPI.session()) return;
     flushPendingScoreQuietly();
@@ -748,6 +1203,7 @@
       if (levelEl) levelEl.textContent = String(result.level || 1);
       updateSettingsBadgeChip(result.best || 0, result.badge);
       updateLevelChip(result.level || 1);
+      refreshUnlockedSkins(result.level || 1, result.badge, result.skin);
     } catch { /* quiet — this is a background nicety, not core functionality */ }
   }
 
@@ -762,19 +1218,23 @@
   let leaderboardTab = "score";
 
   function leaderboardRow(entry, index) {
+    const nameCell = `<span class="game-lb-name">${leaderboardAvatar(entry.skin || "classic", 28)}<span>${escapeHtml(entry.name || "Player")}</span></span>`;
+    const badgeCell = entry.badge
+      ? `<span class="game-badge-chip" data-tier="${GAME_BADGE_TIER[entry.badge] || 0}"><span>${GAME_BADGE_ICON[entry.badge]}</span><span>${escapeHtml(entry.badge)}</span></span>`
+      : "—";
     const cells = leaderboardTab === "level"
       ? [
           leaderboardRankLabel(index),
-          escapeHtml(entry.name || "Player"),
+          nameCell,
           `<strong>${Number(entry.level || 1)}</strong>`,
           Number(entry.totalXp || 0).toLocaleString(),
-          entry.badge ? `<span class="game-badge-chip" data-tier="${GAME_BADGE_TIER[entry.badge] || 0}"><span>${GAME_BADGE_ICON[entry.badge]}</span><span>${escapeHtml(entry.badge)}</span></span>` : "—",
+          badgeCell,
         ]
       : [
           leaderboardRankLabel(index),
-          escapeHtml(entry.name || "Player"),
+          nameCell,
           `<strong>${Number(entry.score || 0)}</strong>`,
-          entry.badge ? `<span class="game-badge-chip" data-tier="${GAME_BADGE_TIER[entry.badge] || 0}"><span>${GAME_BADGE_ICON[entry.badge]}</span><span>${escapeHtml(entry.badge)}</span></span>` : "—",
+          badgeCell,
           escapeHtml(entry.date || ""),
         ];
     return { cells, attrs: index < 3 ? { class: "game-leaderboard-top" } : {} };
@@ -813,6 +1273,10 @@
     soundToggleBtn.addEventListener("click", () => setSoundEnabled(!soundEnabled));
   }
 
+  // Render the skin picker immediately from the cached unlock set; loadGameBestBadge()
+  // refreshes its lock state against the live API on modal / Settings open.
+  renderSkinPicker();
+
   document.getElementById("open-game-modal")?.addEventListener("click", () => {
     primeAllAudio();
     // Give the music loop a head start on downloading now (the Play Game click is a user
@@ -834,6 +1298,8 @@
     gameRunGeneration++; // cancels any in-flight countdown
     if (gameAnimationFrame) cancelAnimationFrame(gameAnimationFrame);
     stopMusic();
+    shakeFrames = 0; shakeMag = 0;
+    if (gameCanvas) gameCanvas.style.transform = "scale(1.04)";
     const countdownEl = document.getElementById("game-countdown");
     if (countdownEl) countdownEl.hidden = true;
     document.getElementById("game-modal")?.close();

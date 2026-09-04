@@ -1229,6 +1229,32 @@ function gameLevelForXp(xp) {
   return Math.floor(Math.sqrt(Math.max(xp, 0) / 1800)) + 1;
 }
 
+const GAME_BADGE_TIER = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
+
+// Cosmetic runner skins — mirrors SKINS in public/scripts/game.js. The server is the
+// authority for the leaderboard "flex": a skin is stored and shown only if the
+// player's level (cumulative XP) or badge tier (best score) actually unlocks it, so a
+// spoofed submit can't parade a skin that wasn't earned.
+const GAME_SKIN_RULES = {
+  classic: () => true,
+  hardhat: (level) => level >= 3,
+  shades: (level) => level >= 6,
+  cape: (level, tier) => tier >= 2,
+  gold: (level, tier) => tier >= 3,
+  platinum: (level, tier) => tier >= 4,
+};
+function gameSkinAllowed(id, level, badge) {
+  const rule = GAME_SKIN_RULES[id];
+  return rule ? !!rule(level || 1, GAME_BADGE_TIER[badge] || 0) : false;
+}
+// Pick the skin to persist: the requested one if unlocked, else keep the stored one if
+// it is still unlocked, else fall back to classic.
+function gameResolveSkin(requested, stored, level, badge) {
+  if (requested && gameSkinAllowed(requested, level, badge)) return requested;
+  if (stored && gameSkinAllowed(stored, level, badge)) return stored;
+  return "classic";
+}
+
 // Writes directly to the "logs" module so a save's trail survives even if the
 // save that produced it gets rejected — never routed through the same
 // delete-then-insert path used for regular module state.
@@ -2002,6 +2028,7 @@ async function runInventoryStatusMonitor(env) {
 }
 
 const GAME_BADGE_EMOJI = { Bronze: "🥉", Silver: "🥈", Gold: "🥇", Platinum: "💎" };
+const GAME_SKIN_EMOJI = { hardhat: "👷", shades: "😎", cape: "🦸", gold: "👑", platinum: "🔷" };
 
 function discordSafeText(value, fallback = "Player") {
   // Strip Discord markdown control chars so a player name can't italicise / spoiler the row.
@@ -2024,7 +2051,9 @@ async function runLuksongLeaderboardMonitor(env) {
   const lines = entries.map((entry, i) => {
     const badge = gameBadgeForScore(entry.score);
     const level = gameLevelForXp(entry.totalXp || 0);
-    return `${medal(i)} ${discordSafeText(entry.name)} — **${Number(entry.score || 0).toLocaleString("en-US")}** · Lv.${level}${badge ? ` ${GAME_BADGE_EMOJI[badge] || ""}` : ""}`;
+    const skin = gameResolveSkin(null, entry.skin, level, badge);
+    const skinTag = GAME_SKIN_EMOJI[skin] ? ` ${GAME_SKIN_EMOJI[skin]}` : "";
+    return `${medal(i)} ${discordSafeText(entry.name)} — **${Number(entry.score || 0).toLocaleString("en-US")}** · Lv.${level}${badge ? ` ${GAME_BADGE_EMOJI[badge] || ""}` : ""}${skinTag}`;
   });
   const description = (entries.length
     ? `${lines.join("\n")}\n\n🕒 **Latest update:** ${updatedAt} PHT`
@@ -3354,19 +3383,22 @@ export default {
           const prevLevel = gameLevelForXp(prevTotalXp);
           const totalXp = prevTotalXp + score;
           const level = gameLevelForXp(totalXp);
+          const badge = gameBadgeForScore(best);
+          const skin = gameResolveSkin(body.skin != null ? String(body.skin) : null, existing?.skin, level, badge);
           const entry = {
             name: profile.name || profile.email || "System User",
             score: best,
             date: isNewBest ? manilaTimestamp() : (existing?.date || manilaTimestamp()),
             totalXp,
             level,
+            skin,
           };
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
             method: "POST",
             headers: { prefer: "resolution=merge-duplicates,return=minimal" },
             body: JSON.stringify([{ state_key: stateKey, module_name: "game-scores", record_key: authUser.id, data: entry, updated_by: authUser.id }]),
           });
-          result = { ok: true, best, isNewBest, badge: gameBadgeForScore(best), totalXp, level, leveledUp: level > prevLevel, xpToNextLevel: gameXpForLevel(level + 1) - totalXp };
+          result = { ok: true, best, isNewBest, badge, skin, totalXp, level, leveledUp: level > prevLevel, xpToNextLevel: gameXpForLevel(level + 1) - totalXp };
         } catch (scoreError) {
           // The score write failed after we claimed the token — release the claim so the
           // client's automatic retry can actually go through instead of hitting "already used".
@@ -3392,10 +3424,45 @@ export default {
         const { authUser } = await authenticatedProfile(request, env);
         const stateKey = appStateKey(env);
         const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&record_key=eq.${encodeURIComponent(authUser.id)}&select=data`);
-        const best = rows[0]?.data?.score || 0;
-        const totalXp = Number(rows[0]?.data?.totalXp || 0);
+        const data = rows[0]?.data || {};
+        const best = data.score || 0;
+        const totalXp = Number(data.totalXp || 0);
         const level = gameLevelForXp(totalXp);
-        return json({ best, badge: gameBadgeForScore(best), totalXp, level, xpToNextLevel: gameXpForLevel(level + 1) - totalXp });
+        const badge = gameBadgeForScore(best);
+        return json({ best, badge, totalXp, level, xpToNextLevel: gameXpForLevel(level + 1) - totalXp, skin: gameResolveSkin(null, data.skin, level, badge) });
+      }
+
+      // Persist a cosmetic skin choice without a run — validated the same way as a
+      // score submit, so an un-earned skin never lands on the leaderboard.
+      if (url.pathname === "/api/game/skin" && request.method === "POST") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const body = await request.json().catch(() => ({}));
+        const wanted = String(body.skin || "classic");
+        if (!GAME_SKIN_RULES[wanted]) return json({ error: "Unknown skin." }, { status: 400 });
+        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&record_key=eq.${encodeURIComponent(authUser.id)}&select=data`);
+        const existing = rows[0]?.data || null;
+        // Nothing to store for a never-played player choosing the default skin.
+        if (!existing && wanted === "classic") return json({ ok: true, skin: "classic" });
+        const best = existing?.score || 0;
+        const totalXp = Number(existing?.totalXp || 0);
+        const level = gameLevelForXp(totalXp);
+        const badge = gameBadgeForScore(best);
+        if (!gameSkinAllowed(wanted, level, badge)) return json({ error: "That skin isn't unlocked yet." }, { status: 403 });
+        const entry = {
+          name: profile.name || profile.email || "System User",
+          score: best,
+          date: existing?.date || manilaTimestamp(),
+          totalXp,
+          level,
+          skin: wanted,
+        };
+        await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+          method: "POST",
+          headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify([{ state_key: stateKey, module_name: "game-scores", record_key: authUser.id, data: entry, updated_by: authUser.id }]),
+        });
+        return json({ ok: true, skin: wanted });
       }
 
       if (url.pathname === "/api/game/leaderboard" && request.method === "GET") {
@@ -3406,7 +3473,11 @@ export default {
         const entries = rows.map((row) => row.data).filter(Boolean)
           .sort((a, b) => byLevel ? (b.totalXp || 0) - (a.totalXp || 0) : (b.score || 0) - (a.score || 0))
           .slice(0, 20)
-          .map((entry) => ({ ...entry, badge: gameBadgeForScore(entry.score), level: gameLevelForXp(entry.totalXp || 0) }));
+          .map((entry) => {
+            const badge = gameBadgeForScore(entry.score);
+            const level = gameLevelForXp(entry.totalXp || 0);
+            return { ...entry, badge, level, skin: gameResolveSkin(null, entry.skin, level, badge) };
+          });
         return json({ entries });
       }
 

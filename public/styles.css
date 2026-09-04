@@ -2485,6 +2485,33 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .game-overlay-card .primary-button { min-width: 160px; }
 .game-leaderboard-top td { font-weight: 800; }
 #game-leaderboard-table td:first-child, #game-leaderboard-table th:first-child { text-align: center; width: 54px; }
+.game-lb-name { display: inline-flex; align-items: center; gap: 9px; }
+.game-lb-avatar { border-radius: 7px; flex: 0 0 auto; vertical-align: middle; background: #fff; }
+.game-lb-avatar[data-rare="cape"] { box-shadow: 0 0 0 2px #d71920; }
+.game-lb-avatar[data-rare="gold"] { box-shadow: 0 0 0 2px #e8b923, 0 0 8px -1px rgba(232, 185, 35, .8); }
+.game-lb-avatar[data-rare="platinum"] { box-shadow: 0 0 0 2px #bfe3ff, 0 0 10px -1px rgba(191, 227, 255, .9); }
+.game-overlay-leaderboard li .game-lb-avatar { border-radius: 6px; }
+
+/* Constant slight upscale so the JS screen-shake transform never bares a stage edge;
+   .game-stage keeps overflow:hidden. The DOM HUD is a sibling, unaffected. */
+.game-stage canvas { transform: scale(1.04); transform-origin: center center; will-change: transform; }
+.game-hud-shield { background: rgba(0, 110, 182, .82); color: #d6ecff; border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 800; letter-spacing: .02em; backdrop-filter: blur(4px); }
+
+.game-skin-row { display: flex; align-items: center; gap: 12px 14px; margin-top: 14px; flex-wrap: wrap; }
+.game-skin-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.game-skin-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.game-skin-swatch { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--panel-solid); color: var(--ink); border-radius: 999px; padding: 6px 12px 6px 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.game-skin-swatch:hover:not([disabled]) { border-color: var(--blue); }
+.game-skin-swatch.selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(0, 110, 182, .25); }
+.game-skin-swatch.locked { opacity: .55; cursor: not-allowed; }
+.game-skin-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); }
+.game-skin-dot[data-skin-dot="classic"] { background: #006eb6; }
+.game-skin-dot[data-skin-dot="hardhat"] { background: #f4b400; }
+.game-skin-dot[data-skin-dot="shades"] { background: #10141e; }
+.game-skin-dot[data-skin-dot="cape"] { background: #d71920; }
+.game-skin-dot[data-skin-dot="gold"] { background: #e8b923; }
+.game-skin-dot[data-skin-dot="platinum"] { background: linear-gradient(120deg, #dbeafe, #ede9fe); }
+
 @media (max-width: 640px) {
   .game-modal-inner { padding: 16px; }
   .game-overlay-card { padding: 20px 16px; }
