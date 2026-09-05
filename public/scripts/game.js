@@ -402,7 +402,15 @@
     if (spawnTimer <= 0) {
       spawnObstacle();
       const difficulty = Math.min(gameScore / 25000, 1);
-      spawnTimer = (58 - difficulty * 34) + Math.random() * (28 - difficulty * 12);
+      // spawnTimer counts down in frames regardless of speed, so without a speed
+      // correction the *time* between obstacles barely tightens even as speed
+      // triples toward its cap — obstacles end up farther apart (not closer) at
+      // high speed, and it reads as one obstacle at a time. Dividing by how far
+      // above base speed we are keeps pacing tied to how fast the game feels,
+      // so faster/higher levels genuinely spawn more often, not just scroll faster.
+      const speedFactor = speed / 6.2;
+      const base = (58 - difficulty * 34) + Math.random() * (28 - difficulty * 12);
+      spawnTimer = Math.max(16, base / speedFactor);
     }
 
     // Approved-stamp shield pickup — rare, never before ~1,500, spaced out, and only
