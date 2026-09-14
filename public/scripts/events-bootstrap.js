@@ -1256,6 +1256,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
   if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
   if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
+  if (event.target.id === "skipPo" && modalType === "invoice") toggleInvoiceSkipPoField();
   if (event.target.id === "method" && modalType === "payable") togglePayableFields();
   if (event.target.id === "paymentType" && modalType === "paymentRequest") togglePaymentRequestChequeFields();
   if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
