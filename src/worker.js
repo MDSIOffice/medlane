@@ -856,8 +856,10 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     const sale = row.data || {};
     // Historical backfills from the Sales/Collections migration importer (buildMigratedSale in
     // modules.js) carry their own net/tax formula and never touch live inventory — they aren't
-    // the live invoice-creation path this validation targets, so leave them alone.
-    if (sale.migrated) continue;
+    // the live invoice-creation path this validation targets, so leave them alone. Same for a
+    // skip-PO invoice (buildSale's skipPo path): it's a record-keeping/collections-only entry
+    // with no PO and no real stock movement behind it, so it never touches inventory either.
+    if (sale.migrated || sale.noPo) continue;
     const label = sale.documentNo || row.record_key;
     const lines = Array.isArray(sale.lines) && sale.lines.length
       ? sale.lines

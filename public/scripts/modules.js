@@ -378,8 +378,11 @@ async function approvePaymentRequest(cvNo) {
   const hasPerInvoiceAmounts = perInvoiceItems.length > 0;
   const combinedBalance = sales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
   const requestedAmount = Number(request.total || request.amount || 0);
-  if (requestedAmount > combinedBalance) return toast(`Cannot approve: requested ${peso.format(requestedAmount)} exceeds the combined remaining balance of ${peso.format(combinedBalance)}.`);
-  const isFull = requestedAmount >= combinedBalance;
+  // Compare rounded to the centavo: combinedBalance is built from chained float subtraction/addition
+  // across invoices, so a request for the "exact" balance can land a fraction of a centavo over it
+  // (e.g. 3642.8600000000001) and wrongly trip a strict > comparison.
+  if (roundMoney(requestedAmount) - roundMoney(combinedBalance) > 0.01) return toast(`Cannot approve: requested ${peso.format(requestedAmount)} exceeds the combined remaining balance of ${peso.format(combinedBalance)}.`);
+  const isFull = roundMoney(combinedBalance) - roundMoney(requestedAmount) <= 0.01;
   const ok = await confirmDetailsModal({
     eyebrow: "Confirm Approval",
     title: `Approve ${request.cvNo}`,
@@ -394,6 +397,9 @@ async function approvePaymentRequest(cvNo) {
     if (applied <= 0) return;
     const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: "", chequeDate: request.chequeDate || "", transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo };
     data.payments.push(payment);
+    // Applied as soon as it's posted (queued for deposition), not gated on deposit confirmation,
+    // so the receivable balance reflects partial payments right away. Bounced reverses it back.
+    applyCollectionPayment(payment);
     newPayments.push(payment);
   };
   if (hasPerInvoiceAmounts) {
@@ -419,7 +425,7 @@ async function approvePaymentRequest(cvNo) {
   request.approvedBy = by;
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
-  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updates only after deposit.`, by });
+  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updated now; it reverses only if the deposit later bounces.`, by });
   const saveResult = await persistRecords({ paymentRequests: [request], payments: newPayments });
   if (!saveResult?.ok) return;
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
@@ -3267,7 +3273,7 @@ function renderInvoicing() {
   ensureUploadedFilesLoaded(renderInvoicing);
   const rows = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).reverse();
   const deliveryControl = (s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
-  const actionCell = (s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button><button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button><button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
+  const actionCell = (s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
   qsa("#invoice-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.invoiceView === invoiceViewMode));
   qs("#invoice-table-view").hidden = invoiceViewMode !== "table";
   qs("#invoice-grid").hidden = invoiceViewMode !== "card";
@@ -3284,7 +3290,7 @@ function renderInvoicing() {
     const pending = Math.max(Number(s.net || 0) - paid, 0);
     const balanceLine = paid > 0 ? `<small class="invoice-balance-line">Paid ${peso.format(paid)} · Pending ${peso.format(pending)}</small>` : "";
     const taxSummary = saleTaxSummary(s);
-    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><span class="pill ${deliveryStatusPillClass(s.deliveryStatus)}">${escapeHtml(s.deliveryStatus || "Pending")}</span><small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p>${taxSummary ? `<small>${escapeHtml(taxSummary)}</small>` : ""}${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${deliveryControl(s)}</div>${attachedFilesHtml("sale", s.id)}${actionCell(s)}</div></details>`;
+    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><span class="pill ${deliveryStatusPillClass(s.deliveryStatus)}">${escapeHtml(s.deliveryStatus || "Pending")}</span>${s.noPo ? `<span class="pill warning">No PO · Not Printed</span>` : ""}<small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p>${taxSummary ? `<small>${escapeHtml(taxSummary)}</small>` : ""}${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${deliveryControl(s)}</div>${attachedFilesHtml("sale", s.id)}${actionCell(s)}</div></details>`;
   }).join("");
 }
 
@@ -3320,6 +3326,8 @@ function closeReportPreview() {
 }
 
 async function printInvoice(invoiceId, noDate = false, templateId = null) {
+  const sale = data.sales.find((entry) => entry.id === invoiceId || entry.documentNo === invoiceId);
+  if (sale?.noPo) return toast("This invoice skipped its PO and is record-keeping only — it isn't meant to be printed.");
   clearPrintTarget();
   currentPrintNoDate = noDate;
   currentPrintTemplateId = templateId || currentPrintTemplateId || "default";
@@ -3421,7 +3429,7 @@ function showSaleDetail(invoiceId) {
   qs("#report-preview-content").innerHTML = `
     <div class="report-preview-grid">
       <div class="report-preview-card"><small>Document No.</small><strong>${escapeHtml(sale.documentNo || sale.id)}</strong></div>
-      <div class="report-preview-card"><small>PO / Replacement</small><strong>${escapeHtml(sale.po || "-")}${sale.cancelledFrom ? ` / ${escapeHtml(sale.cancelledFrom)}` : ""}</strong></div>
+      <div class="report-preview-card"><small>PO / Replacement</small><strong>${escapeHtml(sale.noPo ? "No PO" : (sale.po || "-"))}${sale.cancelledFrom ? ` / ${escapeHtml(sale.cancelledFrom)}` : ""}</strong></div>
       <div class="report-preview-card"><small>Total Amount Due</small><strong>${peso.format(breakdown.totalAmountDue)}</strong></div>
     </div>
     <p><strong>Tax treatment:</strong> ${escapeHtml(saleTaxSummary(sale))}</p>
@@ -3587,8 +3595,11 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
   const postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payments[0].postedDate || fmtDate(today)) || "" : "";
   if (!(await confirmFinalSave(`Mark ${receiptNo} as ${status}?`))) return;
   payments.forEach((payment) => {
-    if (status === "Deposited") applyCollectionPayment(payment);
-    else reverseCollectionPayment(payment);
+    // The invoice's paid amount is applied as soon as the payment is posted (see approvePaymentRequest),
+    // not gated on deposit confirmation. Only a bounced deposit reverses it; every other status here
+    // (Deposited, Posted Date) just confirms/records the bank status without touching the balance again.
+    if (status === "Bounced") reverseCollectionPayment(payment);
+    else applyCollectionPayment(payment);
     payment.collectionStatus = status;
     payment.postedDate = status === "Posted Date" ? postedDate : "";
     payment.statusHistory ||= [];
@@ -3603,11 +3614,11 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
       request.status = "Completed";
       request.completedAt = fmtDate(today);
       request.completedBy = by;
-      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Completed", note: `Marked Deposited by ${by}. Invoice paid amount updated.`, by });
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Completed", note: `Marked Deposited by ${by}.`, by });
     } else {
       request.requestStatus = "Approved";
       request.status = "Approved";
-      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, note: `${status} recorded by ${by}. Invoice paid amount was not updated.`, by });
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, note: status === "Bounced" ? `Bounced recorded by ${by}. Invoice paid amount reversed.` : `${status} recorded by ${by}.`, by });
     }
   }
   const affectedSales = [...new Map(payments.map((payment) => saleForPayment(payment)).filter(Boolean).map((sale) => [sale.documentNo || sale.id, sale])).values()];
@@ -4331,7 +4342,7 @@ function trackerCard(sale, detailed = false) {
     const payment = data.payments.find((entry) => entry.invoice === sale.id || entry.invoice === sale.documentNo);
     const due = fmtDate(addDays(sale.date, sale.terms));
     const steps = [
-      ["PO", "Order placed", sale.po || `PO-${sale.id}`, `${sale.salesperson} created order for ${sale.client}`, sale.date, "done", "sales", sale.documentNo || sale.id],
+      ["PO", "Order placed", sale.noPo ? "No PO — record-keeping" : (sale.po || `PO-${sale.id}`), `${sale.salesperson} created order for ${sale.client}`, sale.date, "done", "sales", sale.documentNo || sale.id],
       [invoiceTypeIcon(sale.type), "Invoice issued", sale.documentNo || sale.id, `${invoiceTypeLabel(sale.type)} prepared by ${sale.salesperson}`, sale.date, "done", "invoicing", sale.documentNo || sale.id],
       ["PK", "Packed / delivered", `${sale.qty} item(s) from ${warehouseForArea(sale.area)}`, `Delivery address: ${client.address || sale.area}`, sale.date, "done", "inventory", sale.item],
       ["₱", "Payment posted", peso.format(sale.paid), payment ? `${payment.method} ${payment.receiptNo || "receipt"} via ${payment.bank || "cash"}` : "Waiting for collection posting", payment?.dateRecorded || "Waiting", sale.paid > 0 ? "done" : "pending", "collections", sale.documentNo || sale.id],
@@ -4339,7 +4350,7 @@ function trackerCard(sale, detailed = false) {
     ];
     if (sale.status === "Cancelled") steps.push(["↻", "Replacement", sale.replacementId || "No replacement", sale.cancelReason || "Cancellation review required", sale.date, sale.replacementId ? "done" : "blocked", "invoicing"]);
     if (sale.cancelledFrom) steps.unshift(["×", "Cancelled Source", sale.cancelledFrom, "This document replaced a cancelled source invoice", sale.date, "done", "invoicing"]);
-    const summaryCards = [["Salesperson", sale.salesperson], ["Client Area", sale.area], ["PO", sale.po || "-"], ["Balance", peso.format(balance)]];
+    const summaryCards = [["Salesperson", sale.salesperson], ["Client Area", sale.area], ["PO", sale.noPo ? "No PO" : (sale.po || "-")], ["Balance", peso.format(balance)]];
     const collectionHistoryButton = saleLinkedPaymentRequests(sale).length ? `<button class="ghost-button" data-view-collection-history="${escapeHtml(sale.id)}" type="button">View Collection</button>` : "";
     if (!detailed) return `<article class="tracker-card compact-order-card" data-focus-record="${escapeHtml(sale.documentNo || sale.id)}"><div class="panel-header tracker-card-header"><div><p class="eyebrow">${escapeHtml(sale.documentNo || sale.id)}</p><h2><span class="invoice-type-badge type-${escapeHtml(sale.type)}"><span>${invoiceTypeIcon(sale.type)}</span>${invoiceTypeLabel(sale.type)}</span> ${peso.format(sale.net)}</h2><p class="tracker-item-summary">${escapeHtml(sale.client)} · ${escapeHtml(sale.salesperson)} · Due ${due}</p></div><span class="pill ${statusClass(status)}">${status}</span></div><div class="modal-actions"><button class="primary-button" data-invoice-flow="${escapeHtml(sale.id)}">View Details</button>${collectionHistoryButton}</div></article>`;
     return `<article class="tracker-card" data-focus-record="${escapeHtml(sale.documentNo || sale.id)}"><div class="panel-header tracker-card-header"><div><p class="eyebrow">${escapeHtml(sale.documentNo || sale.id)}</p><h2><span class="invoice-type-badge type-${escapeHtml(sale.type)}"><span>${invoiceTypeIcon(sale.type)}</span>${invoiceTypeLabel(sale.type)}</span> ${peso.format(sale.net)}</h2><p class="tracker-item-summary">${escapeHtml(saleSummary(sale))}</p></div><span class="pill ${statusClass(status)}">${status}</span></div><div class="order-detail-layout"><aside class="delivery-address"><h3>Delivery Address</h3><strong>${escapeHtml(sale.client)}</strong><span>${escapeHtml(client.contact || "No contact recorded")}</span><small>${escapeHtml(client.address || sale.area)}</small><small>Salesperson: ${escapeHtml(sale.salesperson)}</small></aside><div><div class="report-preview-grid invoice-mini-grid">${summaryCards.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>${sale.cancelReason ? `<p><strong>Cancel reason:</strong> ${escapeHtml(sale.cancelReason)}</p>` : ""}${collectionHistoryButton ? `<div class="modal-actions">${collectionHistoryButton}</div>` : ""}<div class="tracker-flow order-flow">${steps.map(([icon, title, note, detail, date, state, section, focus]) => `<button class="tracker-step ${state}" data-go-section="${section}" data-focus-record="${escapeHtml(focus || note)}"><i>${escapeHtml(icon)}</i><strong>${escapeHtml(title)}</strong><span>${escapeHtml(note)}</span><small>${escapeHtml(date)}</small><em>${escapeHtml(detail)}</em></button>`).join("")}</div><details class="full-event-details" open><summary>Full order timeline</summary><div class="event-timeline">${steps.map(([icon, title, note, detail, date, state]) => `<div class="event-item ${state}"><span>${escapeHtml(icon)}</span><time>${escapeHtml(date)}</time><div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p><small>${escapeHtml(note)}</small></div></div>`).join("")}</div></details></div></div></article>`;
@@ -4359,6 +4370,9 @@ function clientInvoicesFilteredSales(invoices) {
   const from = qs("#client-invoices-from")?.value || "";
   const to = qs("#client-invoices-to")?.value || "";
   return invoices.filter((sale) => {
+    // "All Open Invoices" is the receivables view, so a fully paid invoice drops out of it by
+    // default once settled — pick the explicit "Paid" filter to look up settled invoices.
+    if (status === "all" && paymentStatusForSale(sale) === "Paid") return false;
     if (status !== "all" && paymentStatusForSale(sale) !== status) return false;
     if (from && sale.date < from) return false;
     if (to && sale.date > to) return false;
@@ -6425,7 +6439,7 @@ const modalConfigs = {
   supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(activeItems().map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
-  invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
+  invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist-optional", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["skipPo", "Skip PO — record-keeping only, this invoice won't be printed", "checkbox"], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["department", "Department"], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
@@ -6503,6 +6517,7 @@ function openModal(type, edit = null) {
     qs("#discountReason").required = false;
     updateDocumentLabel();
     syncInvoicePurchaseOrders();
+    toggleInvoiceSkipPoField();
   }
   if (type === "cancelReplace") {
     const oldSale = data.sales.find((sale) => sale.id === edit?.oldInvoice);
@@ -6984,34 +6999,44 @@ function buildSale(values, replacementOf = null) {
   if (!documentNo) throw new Error("Manual document number is required.");
   if (documentExists(documentNo)) throw new Error(`Duplicate document number: ${documentNo}`);
   values.type = documentType(values.type);
-  const po = data.purchaseOrders.find((entry) => entry.id === values.po);
-  if (!po) throw new Error("Choose an incomplete or unserved Purchase Order for this account.");
-  if (po.client !== client.name) throw new Error("Purchase Order does not belong to this client.");
+  // Skip-PO invoices are a record-keeping/collections-only entry: no PO to match against, no
+  // stock reservation or deduction, no credit-limit or discount-approval gate, and (see the
+  // "Print" action gating) never printed since there's no real PO or stock movement behind them.
+  const skipPo = Boolean(values.skipPo);
+  const po = skipPo ? null : data.purchaseOrders.find((entry) => entry.id === values.po);
+  if (!skipPo) {
+    if (!po) throw new Error("Choose an incomplete or unserved Purchase Order for this account.");
+    if (po.client !== client.name) throw new Error("Purchase Order does not belong to this client.");
+  }
   if (!platformBranches().includes(values.sourceBranch)) throw new Error("Choose one valid stock source branch for this invoice.");
   // Serving a PO: the "line must be on the PO" check below is the real gate, so an archived
   // item that was ordered before it was archived can still be invoiced/delivered.
   const lines = parseInvoiceLines(values.itemsText || "", { allowArchivedItems: true }).map((line) => ({ ...line, sourceBranch: values.sourceBranch, branch: values.sourceBranch }));
   if (!lines.length) throw new Error("At least one invoice line is required.");
-  for (const line of lines) {
-    const ordered = (po.lines || []).find((entry) => entry.code === line.code);
-    if (!ordered) throw new Error(`${line.item} is not in ${po.id}.`);
-    const pending = poLineStatus(po, ordered).pending;
-    if (line.qty > pending) throw new Error(`${line.item} exceeds pending PO quantity (${pending}).`);
+  if (!skipPo) {
+    for (const line of lines) {
+      const ordered = (po.lines || []).find((entry) => entry.code === line.code);
+      if (!ordered) throw new Error(`${line.item} is not in ${po.id}.`);
+      const pending = poLineStatus(po, ordered).pending;
+      if (line.qty > pending) throw new Error(`${line.item} exceeds pending PO quantity (${pending}).`);
+    }
   }
   const canAuthorize = ["Superadmin", "Admin", "CEO"].includes(currentUser?.role);
   const discount = Number(values.discount || 0);
   if (discount < 0) throw new Error("Discount cannot be negative.");
-  if (discountNeedsApproval(discount) && !canAuthorize) throw new Error("Discounts need Admin/CEO approval.");
-  for (const line of lines) {
-    if (line.expiry !== "N/A" && daysUntil(line.expiry) < 0) throw new Error(`Expired lot blocked for ${line.item}.`);
-    const stock = matchInvoiceLineStock(line);
-    if (!stock) throw new Error(`No sufficient ${line.item} stock in ${line.sourceBranch}${line.lot ? ` for lot ${line.lot}` : ""}.`);
-    const otherDemand = pendingPoDemandForItem(line.code, line.sourceBranch, po.id);
-    if (otherDemand > 0) {
-      const available = invoiceItemStockQty({ code: line.code, name: line.item }, line.sourceBranch);
-      if (available - line.qty < otherDemand) {
-        const competitor = competingPurchaseOrdersForItem(line.code, line.sourceBranch, po.id)[0];
-        throw new Error(`${line.item} is already reserved for ${competitor?.po.id || "another purchase order"}${competitor ? ` (${competitor.po.client})` : ""} — only ${Math.max(available - otherDemand, 0)} unit${Math.max(available - otherDemand, 0) === 1 ? "" : "s"} free to invoice here.`);
+  if (!skipPo && discountNeedsApproval(discount) && !canAuthorize) throw new Error("Discounts need Admin/CEO approval.");
+  if (!skipPo) {
+    for (const line of lines) {
+      if (line.expiry !== "N/A" && daysUntil(line.expiry) < 0) throw new Error(`Expired lot blocked for ${line.item}.`);
+      const stock = matchInvoiceLineStock(line);
+      if (!stock) throw new Error(`No sufficient ${line.item} stock in ${line.sourceBranch}${line.lot ? ` for lot ${line.lot}` : ""}.`);
+      const otherDemand = pendingPoDemandForItem(line.code, line.sourceBranch, po.id);
+      if (otherDemand > 0) {
+        const available = invoiceItemStockQty({ code: line.code, name: line.item }, line.sourceBranch);
+        if (available - line.qty < otherDemand) {
+          const competitor = competingPurchaseOrdersForItem(line.code, line.sourceBranch, po.id)[0];
+          throw new Error(`${line.item} is already reserved for ${competitor?.po.id || "another purchase order"}${competitor ? ` (${competitor.po.client})` : ""} — only ${Math.max(available - otherDemand, 0)} unit${Math.max(available - otherDemand, 0) === 1 ? "" : "s"} free to invoice here.`);
+        }
       }
     }
   }
@@ -7019,22 +7044,36 @@ function buildSale(values, replacementOf = null) {
   if (discount > amount) throw new Error("Discount cannot exceed gross amount.");
   const totalSalesVatInclusive = amount - discount;
   const net = totalSalesVatInclusive;
-  const credit = clientCreditState(client.name, net);
+  const credit = skipPo ? { exceeded: false } : clientCreditState(client.name, net);
   if (credit.exceeded && !canAuthorize) throw new Error("Credit limit exceeded. Needs Admin/CEO authorization.");
-  lines.forEach((line) => {
-    const stock = matchInvoiceLineStock(line);
-    if (line.lot && !stock.lot) stock.lot = line.lot;
-    stock.qty -= line.qty;
-  });
+  if (!skipPo) {
+    lines.forEach((line) => {
+      const stock = matchInvoiceLineStock(line);
+      if (line.lot && !stock.lot) stock.lot = line.lot;
+      stock.qty -= line.qty;
+    });
+  }
   if (credit.exceeded) notify("Credit", `${currentUser.name} authorized ${client.name} to exceed credit limit: ${peso.format(credit.projected)} / ${peso.format(credit.limit)}.`, "masterlists", client.name);
   if (discount) notify("Approval", `${currentUser.name} approved ${peso.format(discount)} discount for ${documentNo}.`, "sales", documentNo);
-  po.completedType = values.type;
-  const remaining = (po.lines || []).reduce((sum, line) => sum + Math.max(line.qty - (poServedQty(po, line.code) + lines.filter((served) => served.code === line.code).reduce((lineSum, served) => lineSum + served.qty, 0)), 0), 0);
-  if (remaining > 0) notify("Pending Orders", `${po.id} still has ${remaining} item quantity pending after ${documentNo}.`, "purchase-orders", po.id);
-  else notify("Purchase Order", `${po.id} completely served by ${documentNo}.`, "purchase-orders", po.id);
+  if (!skipPo) {
+    po.completedType = values.type;
+    const remaining = (po.lines || []).reduce((sum, line) => sum + Math.max(line.qty - (poServedQty(po, line.code) + lines.filter((served) => served.code === line.code).reduce((lineSum, served) => lineSum + served.qty, 0)), 0), 0);
+    if (remaining > 0) notify("Pending Orders", `${po.id} still has ${remaining} item quantity pending after ${documentNo}.`, "purchase-orders", po.id);
+    else notify("Purchase Order", `${po.id} completely served by ${documentNo}.`, "purchase-orders", po.id);
+  }
   const primaryLine = lines[0];
   const terms = Number(client.terms || 30);
-  return { id: documentNo, documentNo, vatCode: values.vatCode || "VAT", po: values.po || `PO-${documentNo}`, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "System User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", net, terms, paid: 0, status: "Active", deliveryStatus: "Pending", cancelledFrom: replacementOf };
+  return { id: documentNo, documentNo, vatCode: values.vatCode || "VAT", po: skipPo ? "" : (values.po || `PO-${documentNo}`), noPo: skipPo || undefined, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "System User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", net, terms, paid: 0, status: "Active", deliveryStatus: "Pending", cancelledFrom: replacementOf };
+}
+
+function toggleInvoiceSkipPoField() {
+  const skip = Boolean(qs("#skipPo")?.checked);
+  const poField = qs("#po")?.closest(".field");
+  if (poField) poField.hidden = skip;
+  if (qs("#po")) {
+    qs("#po").required = !skip;
+    if (skip) qs("#po").value = "";
+  }
 }
 
 function togglePayableFields() {
