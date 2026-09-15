@@ -773,12 +773,34 @@
         </article></div>
         <div class="workflow-panel active" data-collections-panel="ledger"><div class="table-card"><table id="collections-table"></table></div></div>
         <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Received</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div></article></div>
-        <div class="workflow-panel" data-collections-panel="history"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Collections History</p><h2>All previous collection activity</h2></div></div><div class="table-card compact-table"><table id="collections-history-table"></table></div><button class="ghost-button" id="load-more-collections-history" type="button" hidden>Load More</button></article></div>
+        <div class="workflow-panel" data-collections-panel="history"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Collections History</p><h2>All previous collection activity</h2></div></div>
+          <div class="toolbar" id="collections-client-search-row" hidden>
+            <div class="field">
+              <label for="collections-client-search">Search Client History</label>
+              <input list="collections-client-search-list" id="collections-client-search" placeholder="Type a client name to view their full history..." autocomplete="off" />
+              <datalist id="collections-client-search-list"></datalist>
+            </div>
+            <button class="ghost-button" id="collections-client-search-clear" type="button" hidden>Clear Search</button>
+          </div>
+          <div id="collections-client-history-panel" hidden></div>
+          <div id="collections-history-log"><div class="table-card compact-table"><table id="collections-history-table"></table></div><button class="ghost-button" id="load-more-collections-history" type="button" hidden>Load More</button></div>
+        </article></div>
       </section>
 
       <section class="section" id="receivables-tracker">
         <div class="section-header"><div><p class="eyebrow">Receivables</p><h2>PO to invoice to collection flow</h2></div></div>
         <div class="order-status-tabs" id="ar-tracker-tabs"></div>
+        <div class="toolbar receivables-status-toolbar">
+          <div class="field">
+            <label for="ar-tracker-status-filter">Payment Status</label>
+            <select id="ar-tracker-status-filter">
+              <option value="all">All</option>
+              <option value="Near Due">Due</option>
+              <option value="Overdue">Overdue</option>
+              <option value="Unpaid">Unpaid</option>
+            </select>
+          </div>
+        </div>
         <div class="visual-grid" id="ar-tracker-visuals"></div>
         <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Client Receivables</p><h2>Open balance by client</h2></div></div><div class="table-card compact-table"><table id="client-receivables-table"></table></div></article>
         <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Regional Receivables</p><h2>Open client invoices grouped by region</h2></div></div><div class="table-card compact-table"><table id="regional-receivables-table"></table></div></article>
