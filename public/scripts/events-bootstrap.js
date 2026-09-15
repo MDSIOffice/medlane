@@ -1099,6 +1099,20 @@ qs("#ar-tracker-tabs").addEventListener("click", (event) => {
   arTrackerTab = button.dataset.arTab;
   renderReceivablesTracker();
 });
+qs("#ar-tracker-status-filter")?.addEventListener("change", (event) => {
+  arTrackerStatusFilter = event.target.value;
+  renderReceivablesTracker();
+});
+qs("#collections-client-search")?.addEventListener("input", (event) => {
+  collectionsClientSearch = event.target.value;
+  renderCollectionsClientHistoryPanel();
+});
+qs("#collections-client-search-clear")?.addEventListener("click", () => {
+  collectionsClientSearch = "";
+  const input = qs("#collections-client-search");
+  if (input) input.value = "";
+  renderCollectionsClientHistoryPanel();
+});
 qs("#invoice-grid").addEventListener("click", (event) => {
   const printButton = event.target.closest("[data-print-invoice]");
   const detailButton = event.target.closest("[data-sale-detail]");

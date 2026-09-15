@@ -4305,7 +4305,8 @@ function renderReceivablesTracker() {
   const allRows = byBranch(data.sales, "area").filter((sale) => Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).filter((sale) => canViewAllReceivables || isClientAssignedToCurrentUser(sale.client)).filter((sale) => includesSearch(Object.values(sale)));
   const tabs = arTrackerTabs(allRows);
   qs("#ar-tracker-tabs").innerHTML = tabs.map(([key, label, count]) => `<button class="order-status-tab ${arTrackerTab === key ? "active" : ""}" data-ar-tab="${key}">${escapeHtml(label)}${key === "all" ? "" : ` <span>(${count})</span>`}</button>`).join("");
-  const rows = arTrackerTab === "all" ? allRows : allRows.filter((sale) => arTrackerStage(sale) === arTrackerTab);
+  const stageRows = arTrackerTab === "all" ? allRows : allRows.filter((sale) => arTrackerStage(sale) === arTrackerTab);
+  const rows = arTrackerStatusFilter === "all" ? stageRows : stageRows.filter((sale) => statusForSale(sale) === arTrackerStatusFilter);
   const openBalance = rows.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
   qs("#ar-tracker-visuals").innerHTML = [
     visualCard("▦", "Current Tab", tabs.find(([key]) => key === arTrackerTab)?.[1] || "All", barRows(tabs.filter(([key]) => key !== "all").map(([, label, count]) => [label, count]), (value) => `${value} docs`, ["orange", "", "", "green", "red", "orange"]), "info", "Computed from invoice workflow status across PO, invoice, delivery, payment, and AR stages."),
@@ -6216,12 +6217,62 @@ async function loadMoreNotificationLogs() {
   renderNotificationLogTable();
 }
 let collectionsHistoryState = { entries: [], nextCursor: null, loading: false };
+function canSearchCollectionsClientHistory() { return currentUser?.role !== "Accounting"; }
+function renderCollectionsClientSearchUI() {
+  const row = qs("#collections-client-search-row");
+  if (!row) return;
+  const allowed = canSearchCollectionsClientHistory();
+  row.hidden = !allowed;
+  if (!allowed) collectionsClientSearch = "";
+  else {
+    const list = qs("#collections-client-search-list");
+    if (list) list.innerHTML = activeClients().map((client) => `<option value="${escapeHtml(client.name)}"></option>`).join("");
+    const input = qs("#collections-client-search");
+    if (input && input.value !== collectionsClientSearch) input.value = collectionsClientSearch;
+  }
+  renderCollectionsClientHistoryPanel();
+}
+function renderCollectionsClientHistoryPanel() {
+  const panel = qs("#collections-client-history-panel");
+  const log = qs("#collections-history-log");
+  const clearBtn = qs("#collections-client-search-clear");
+  if (!panel) return;
+  if (!canSearchCollectionsClientHistory() || !collectionsClientSearch.trim()) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+    if (log) log.hidden = false;
+    if (clearBtn) clearBtn.hidden = true;
+    return;
+  }
+  const query = collectionsClientSearch.trim().toLowerCase();
+  const client = data.clients.find((item) => item.name.toLowerCase() === query) || data.clients.find((item) => item.name.toLowerCase().includes(query));
+  if (clearBtn) clearBtn.hidden = false;
+  if (log) log.hidden = true;
+  panel.hidden = false;
+  if (!client) {
+    panel.innerHTML = `<article class="panel"><p>No client matches "${escapeHtml(collectionsClientSearch)}".</p></article>`;
+    return;
+  }
+  const invoices = data.sales.filter((sale) => sale.client === client.name).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const docs = new Set(invoices.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
+  const payments = data.payments.filter((payment) => docs.has(payment.invoice)).slice().sort((a, b) => String(b.dateRecorded || "").localeCompare(String(a.dateRecorded || "")));
+  const requests = data.paymentRequests.filter((request) => request.employee === client.name).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const followups = (data.collectionContactHistory || []).filter((entry) => entry.client === client.name);
+  const paid = invoices.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const balance = invoices.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  panel.innerHTML = `<article class="panel"><div class="panel-header"><div><p class="eyebrow">Client Collections History</p><h2>${escapeHtml(client.name)}</h2></div><span class="pill ${statusClass(balance ? "Overdue" : "Paid")}">${balance ? "Open AR" : "Cleared"}</span></div><div class="report-preview-grid"><div class="report-preview-card"><small>Invoices</small><strong>${invoices.length}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(paid)}</strong></div><div class="report-preview-card"><small>Open Balance</small><strong>${peso.format(balance)}</strong></div><div class="report-preview-card"><small>Payment Requests</small><strong>${requests.length}</strong></div><div class="report-preview-card"><small>Follow-ups Logged</small><strong>${followups.length}</strong></div></div></article><article class="panel"><h3>Invoices</h3><div class="table-card compact-table"><table id="collections-client-history-invoices"></table></div></article><article class="panel"><h3>Payments Received</h3><div class="table-card compact-table"><table id="collections-client-history-payments"></table></div></article><article class="panel"><h3>Payment Requests</h3><div class="table-card compact-table"><table id="collections-client-history-requests"></table></div></article><article class="panel"><h3>Follow-up History</h3><div class="table-card compact-table"><table id="collections-client-history-followups"></table></div></article>`;
+  table("#collections-client-history-invoices", ["Document", "Type", "Date", "Net", "Paid", "Balance", "Status"], invoices.map((sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.date, peso.format(sale.net), peso.format(sale.paid), peso.format(Math.max(sale.net - sale.paid, 0)), statusForSale(sale)]));
+  table("#collections-client-history-payments", ["Date", "Invoice", "Amount", "Method", "Receipt No", "Status"], payments.map((payment) => [payment.dateRecorded || "-", payment.invoice || "-", peso.format(Number(payment.amount || 0)), payment.method || "-", payment.receiptNo || "-", payment.collectionStatus || "-"]));
+  table("#collections-client-history-requests", ["CR/PR No.", "Date", "Invoice", "Payment", "Total", "Status"], requests.map((request) => [request.cvNo, request.date, request.invoice || "-", request.paymentType, peso.format(Number(request.total || 0)), request.requestStatus || request.status || "-"]));
+  table("#collections-client-history-followups", ["Date", "Area", "Invoice", "Status", "Employee", "Notes"], followups.map((entry) => [entry.date, entry.area, entry.invoice || "-", entry.status, entry.employee, entry.notes || "-"]));
+}
 function renderCollectionsHistoryTable() {
   table("#collections-history-table", ["Date", "User", "Role", "Action", "Details"], collectionsHistoryState.entries.map((l) => ({ focus: [l.record, l.action, l.user].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(l.user), formatLogCell(l.role), formatLogCell(l.action), formatLogRecord(l.record)] })));
   const loadMoreButton = qs("#load-more-collections-history");
   if (loadMoreButton) loadMoreButton.hidden = !collectionsHistoryState.nextCursor;
 }
 async function renderCollectionsHistory() {
+  renderCollectionsClientSearchUI();
   collectionsHistoryState = { entries: [], nextCursor: null, loading: true };
   tableSkeleton("#collections-history-table", ["Date", "User", "Role", "Action", "Details"], 6);
   try {
