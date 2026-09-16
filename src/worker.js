@@ -3350,19 +3350,22 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         const id = decodeURIComponent(url.pathname.split("/")[3]);
         const stateKey = appStateKey(env);
-        const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.memos&record_key=eq.${encodeURIComponent(id)}&select=data`);
+        // Single RPC round trip (atomic read-check-write in Postgres) instead of a separate
+        // SELECT then POST -- see docs/migrations/2026-09-16-acknowledge-memo-rpc.sql.
+        const rows = await supabaseFetch(env, "/rest/v1/rpc/acknowledge_memo", {
+          method: "POST",
+          body: JSON.stringify({
+            p_state_key: stateKey,
+            p_record_key: id,
+            p_email: cleanEmail(profile.email),
+            p_name: profile.name || profile.email || "System User",
+            p_role: profile.role,
+            p_at: manilaTimestamp(),
+            p_actor: authUser.id,
+          }),
+        });
         const memo = rows[0]?.data;
         if (!memo) return json({ error: "Memo not found" }, { status: 404 });
-        const email = cleanEmail(profile.email);
-        memo.acknowledgments = memo.acknowledgments || [];
-        if (!memo.acknowledgments.some((entry) => cleanEmail(entry.email) === email)) {
-          memo.acknowledgments.push({ name: profile.name || profile.email || "System User", email: profile.email, role: profile.role, at: manilaTimestamp() });
-          await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
-            method: "POST",
-            headers: { prefer: "resolution=merge-duplicates,return=minimal" },
-            body: JSON.stringify([{ state_key: stateKey, module_name: "memos", record_key: id, data: memo, updated_by: authUser.id }]),
-          });
-        }
         return json({ ok: true, memo });
       }
 
@@ -4342,7 +4345,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission/.test(error.message) ? 403 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission/.test(error.message) ? 403 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },

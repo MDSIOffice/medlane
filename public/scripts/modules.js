@@ -3219,19 +3219,33 @@ async function submitMemoCompose() {
 }
 
 async function acknowledgeMemo(id) {
-  const card = document.querySelector(`.memo-card[data-focus-record="${CSS.escape(id)}"]`);
-  showActionLoading(card, "Acknowledging...");
+  const index = data.memos.findIndex((entry) => entry.id === id);
+  if (index < 0) return;
+  const memo = data.memos[index];
+  if (memoAcknowledgedByCurrentUser(memo)) return;
+  // Optimistic update: reflect the acknowledgment instantly instead of making the user
+  // wait on the Supabase round trip — the server call below reconciles in the background.
+  const previousAcknowledgments = memo.acknowledgments ? memo.acknowledgments.slice() : [];
+  memo.acknowledgments = [...previousAcknowledgments, {
+    name: currentUser?.name || currentUser?.email || "You",
+    email: currentUser?.email,
+    role: currentUser?.role,
+    at: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }),
+  }];
+  renderMemos();
+  toast("Memo acknowledged.");
   try {
     const result = await MedlaneAPI.acknowledgeMemo(id);
-    const index = data.memos.findIndex((entry) => entry.id === id);
-    if (index >= 0) data.memos[index] = result.memo;
+    const freshIndex = data.memos.findIndex((entry) => entry.id === id);
+    if (freshIndex >= 0) data.memos[freshIndex] = result.memo;
     clearPendingSaveQueueKeys(["memos"]);
     log("Acknowledged memo", "Memos", id, { save: false });
     renderMemos();
-    toast("Memo acknowledged.");
   } catch (error) {
-    toast(error.message || "Unable to acknowledge memo.");
-    hideActionLoading(card);
+    const failIndex = data.memos.findIndex((entry) => entry.id === id);
+    if (failIndex >= 0) data.memos[failIndex].acknowledgments = previousAcknowledgments;
+    renderMemos();
+    toast(error.message || "Unable to acknowledge memo. Please try again.");
   }
 }
 
@@ -4316,11 +4330,19 @@ function renderReceivablesTracker() {
     .map(([client, invoices]) => [client, invoices, invoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
     .sort((a, b) => b[2] - a[2]);
   table("#client-receivables-table", ["Client", "Open Invoices", "Total Receivables", "Actions"], byClientReceivables.map(([client, invoices, total]) => [escapeHtml(client), invoices.length, peso.format(total), `<button class="mini-button" data-client-invoices="${escapeHtml(client)}">View</button>`]));
-  const regional = Object.entries(allRows.filter((sale) => Math.max(sale.net - sale.paid, 0) > 0).reduce((acc, sale) => { acc[sale.area] ||= []; acc[sale.area].push(sale); return acc; }, {}));
-  table("#regional-receivables-table", ["Region", "Clients", "Pending Invoices", "Open AR", "Invoices"], regional.map(([area, invoices]) => {
-    const clients = [...new Set(invoices.map((sale) => sale.client))];
-    return [area, clients.join("<br>"), invoices.length, peso.format(invoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)), invoices.map((sale) => `${sale.documentNo || sale.id}<small>${sale.client} · ${peso.format(Math.max(sale.net - sale.paid, 0))}</small>`).join("")];
-  }));
+  const regional = Object.entries(allRows.filter((sale) => Math.max(sale.net - sale.paid, 0) > 0).reduce((acc, sale) => { acc[sale.area] ||= []; acc[sale.area].push(sale); return acc; }, {}))
+    .map(([area, invoices]) => [area, invoices, invoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
+    .sort((a, b) => b[2] - a[2]);
+  qs("#regional-receivables-groups").innerHTML = regional.map(([area, invoices, regionBalance], index) => {
+    const byClientInArea = Object.entries(invoices.reduce((acc, sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
+      .map(([client, clientInvoices]) => [client, clientInvoices, clientInvoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
+      .sort((a, b) => b[2] - a[2]);
+    const overdueClients = byClientInArea.filter(([, clientInvoices]) => clientInvoices.some((sale) => statusForSale(sale) === "Overdue")).length;
+    return `<details class="region-contact-group" ${index === 0 ? "open" : ""} data-focus-text="${escapeHtml(area)}"><summary><strong>${escapeHtml(area)}</strong><span>${byClientInArea.length} client${byClientInArea.length === 1 ? "" : "s"} · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}${overdueClients ? ` · ${overdueClients} overdue` : ""}</span><span class="pill ${overdueClients ? "red" : "orange"}">${peso.format(regionBalance)} open</span></summary><div class="region-client-list region-client-chip-list">${byClientInArea.map(([client, clientInvoices, balance]) => {
+      const overdue = clientInvoices.some((sale) => statusForSale(sale) === "Overdue");
+      return `<button type="button" class="region-client-chip ${overdue ? "overdue" : ""}" data-client-invoices="${escapeHtml(client)}" data-focus-text="${escapeHtml(`${client} ${area}`)}"><strong>${escapeHtml(client)}</strong><small>${clientInvoices.length} invoice${clientInvoices.length === 1 ? "" : "s"}${overdue ? " · overdue" : ""}</small><span class="pill ${overdue ? "red" : "orange"}">${peso.format(balance)}</span></button>`;
+    }).join("")}</div></details>`;
+  }).join("") || `<article class="panel"><p>No open regional receivables — everything is collected.</p></article>`;
   const byClient = Object.entries(rows.reduce((acc, sale) => {
     acc[sale.client] ||= [];
     acc[sale.client].push(sale);
