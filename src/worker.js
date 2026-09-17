@@ -2289,22 +2289,46 @@ function randomBirthdayGifUrl() {
   return `https://media.giphy.com/media/${id}/giphy.gif`;
 }
 
-// Runs once per day inside the 08:00 Manila hour (see runFiveMinuteScheduledTasks). Employee
-// birthday is stored as an ISO "YYYY-MM-DD" string; comparing the "MM-DD" tail against today's
-// Manila date catches the birthday regardless of what year the record was created in.
-async function runBirthdayGreetings(env) {
-  if (!env.DISCORD_BIRTHDAY_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord birthday monitor skipped", module: "Discord", record: "DISCORD_BIRTHDAY_WEBHOOK_URL not configured" });
+// Runs once per day inside the 08:00 Manila hour (see runFiveMinuteScheduledTasks), retried
+// every 15 minutes for the rest of the day on failure. Employee birthday is stored as an ISO
+// "YYYY-MM-DD" string; comparing the "MM-DD" tail against today's Manila date catches the
+// birthday regardless of what year the record was created in.
+// `force` (used by the manual /api/discord/birthday-test trigger, which bypasses the once-per-
+// day lock entirely) sends one synthetic test greeting when nobody's real birthday is today, so
+// an admin can confirm the webhook is wired up correctly without waiting for one.
+// Throws on anything that should make runOncePerPeriod retry on the next 15-minute tick
+// (missing config, a failed Discord post); "no birthdays today" is a normal, non-retried result.
+async function runBirthdayGreetings(env, { force = false } = {}) {
+  if (!env.DISCORD_BIRTHDAY_WEBHOOK_URL) {
+    await recordSystemLog(env, { action: "Discord birthday monitor skipped", module: "Discord", record: "DISCORD_BIRTHDAY_WEBHOOK_URL not configured" }).catch(() => null);
+    throw new Error("DISCORD_BIRTHDAY_WEBHOOK_URL is not configured");
+  }
   const state = await loadDigestState(env, ["employees"]);
   const todayKey = manilaScheduleParts(Date.now());
   const monthDay = `${todayKey.month}-${todayKey.day}`;
-  const birthdays = (state.employees || []).filter((employee) => !employee.archived && String(employee.birthday || "").slice(5) === monthDay);
-  if (!birthdays.length) return;
+  let birthdays = (state.employees || []).filter((employee) => !employee.archived && String(employee.birthday || "").slice(5) === monthDay);
+  const isTest = force && !birthdays.length;
+  if (isTest) birthdays = [{ name: "Test Employee" }];
+  if (!birthdays.length) return { sent: false, reason: "No birthdays today" };
+  const sentTo = [];
   for (const employee of birthdays) {
-    const embed = { title: `🎉🎂 Happy Birthday, ${discordSafeText(employee.name, "Employee")}!`, description: "Wishing you a great day from the whole Medlane team! 🎈", color: 0xf472b6, image: { url: randomBirthdayGifUrl() }, timestamp: new Date().toISOString() };
+    const embed = {
+      title: `🎉🎂 Happy Birthday${isTest ? " (Test Post)" : ""}, ${discordSafeText(employee.name, "Employee")}!`,
+      description: isTest ? "This is a test post confirming the birthday webhook is configured correctly." : "Wishing you a great day from the whole Medlane team! 🎈",
+      color: 0xf472b6,
+      image: { url: randomBirthdayGifUrl() },
+      timestamp: new Date().toISOString(),
+    };
     const sent = await sendDiscordWebhookUrl(env, env.DISCORD_BIRTHDAY_WEBHOOK_URL, { embeds: [embed] }).catch((error) => ({ error }));
     if (sent?.error) await recordSystemLog(env, { action: "Discord birthday post failed", module: "Discord", record: `${employee.name}: ${sent.error.message}` });
+    else sentTo.push(employee.name);
   }
-  await recordSystemLog(env, { action: "Discord birthday greetings sent", module: "Discord", record: birthdays.map((employee) => employee.name).join(", ") });
+  // Some, but not all, birthdays posted: return success (today is marked done) rather than
+  // retrying — a retry would re-send the ones that already succeeded. The failed ones are
+  // already visible in the audit log above.
+  if (!sentTo.length) throw new Error("Discord post failed for every birthday today — see the audit log");
+  await recordSystemLog(env, { action: "Discord birthday greetings sent", module: "Discord", record: sentTo.join(", ") });
+  return { sent: true, recipients: sentTo, test: isTest };
 }
 
 async function runFiveMinuteDiscordMonitors(env) {
@@ -2455,9 +2479,11 @@ async function runFiveMinuteScheduledTasks(event, env) {
     // ticks :00 :10 :20 :30 :40 :50 → digest lane; ticks :05 :15 :25 :35 :45 :55 → backup lane
     tasks.push(runNextPendingAutomationJob(env, Number(scheduled.minute) % 10 === 0 ? digestJobs : backupJobs));
   }
-  // 08:00 Asia/Manila birthday greetings — same tolerant-window + once-per-day-lock pattern as
-  // the 18:00 digest/backup jobs above, just on its own hour so it never competes with them.
-  if (scheduled.hour === "08") {
+  // 08:00 Asia/Manila birthday greetings, retried every 15 minutes for the rest of the day if a
+  // send fails (Discord outage, transient error, etc.) — runOncePerPeriod's completion flag
+  // means it only actually posts once the greeting succeeds for today's dayKey, so a healthy
+  // run still only fires the one 08:00 attempt.
+  if (Number(scheduled.hour) >= 8 && ["00", "15", "30", "45"].includes(scheduled.minute)) {
     const { dayKey } = manilaPeriodKeys(scheduled);
     tasks.push(runOncePerPeriod(env, "birthday-greetings", dayKey, () => runBirthdayGreetings(env)));
   }
@@ -4254,6 +4280,21 @@ export default {
         // force:true to wipe that ledger and deliberately resend this period to everyone.
         const result = periodLabel === "Weekly" ? await runWeeklyDigest(env, { force: Boolean(force) }) : await runDailyDigest(env, { force: Boolean(force) });
         return json({ ok: true, forced: Boolean(force), recipients: result?.recipients ?? null, sent: result?.sent ?? null, discordConfigured: Boolean(env.DISCORD_WEBHOOK_URL), discord: result?.discord || { sent: false, reason: "Unknown" } });
+      }
+
+      // Bypasses the once-per-day cron lock entirely (unlike /api/digest/run's force flag,
+      // which just wipes a ledger) — this always fires immediately so an admin can confirm
+      // DISCORD_BIRTHDAY_WEBHOOK_URL works right after setting it, without waiting for 08:00
+      // Manila or a real birthday.
+      if (url.pathname === "/api/discord/birthday-test" && request.method === "POST") {
+        const { profile } = await authenticatedProfile(request, env);
+        requireDigestAdmin(profile);
+        try {
+          const result = await runBirthdayGreetings(env, { force: true });
+          return json({ ok: true, ...result });
+        } catch (error) {
+          return json({ ok: false, error: error.message }, { status: 502 });
+        }
       }
 
       if (url.pathname === "/api/backups/status" && request.method === "GET") {
