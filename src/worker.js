@@ -2271,6 +2271,24 @@ async function runPendingItemsMonitor(env) {
   else await recordSystemLog(env, { action: "Discord pending message id missing", module: "Discord", record: "Discord post succeeded but did not return a message ID" });
 }
 
+// Curated Giphy IDs (each verified to resolve at media.giphy.com/media/<id>/giphy.gif) so a
+// greeting never links to a dead/removed GIF — an API-backed "random gif" lookup would need
+// its own key/secret and an extra network call inside the once-per-day job for no real benefit
+// at this pool size.
+const BIRTHDAY_GIF_IDS = [
+  "3o7TKGYmeY2kDqhdU4", "fYqbt5cWBEZhKhqy3I", "l2JJB3GtJDex2DXdC", "VXL7EEt3m97oSIZpj4",
+  "iffUvWFEzzzP0frPtC", "ntretwLtH5GTZxS8lp", "rMsV3D1Fb7u2Va6KpC", "l0HlH5ru00SL0J1fy",
+  "feio2yIUMtdqWjRiaF", "MbaKm0hJtu4AJpjUr9", "3oEduMKlE8nTJrEa3e", "3ohzdHb9vMEkpuEy40",
+  "Sxp1NDnlaHJGWEVYRS", "nAELLSB7jV0wVejr1h", "wumLmqIVT4yDwsZiqD", "riVQBwB6yKFlNole29",
+  "uu3iMsjJno9e6NTijg", "4e5N7SJFpgO9GaC6PO", "T8ZaX6VoICGFxnlNsh", "26FPzWY5I6WqElJC0",
+  "3o6gaW2l0FJB0jt7MY",
+];
+
+function randomBirthdayGifUrl() {
+  const id = BIRTHDAY_GIF_IDS[Math.floor(Math.random() * BIRTHDAY_GIF_IDS.length)];
+  return `https://media.giphy.com/media/${id}/giphy.gif`;
+}
+
 // Runs once per day inside the 08:00 Manila hour (see runFiveMinuteScheduledTasks). Employee
 // birthday is stored as an ISO "YYYY-MM-DD" string; comparing the "MM-DD" tail against today's
 // Manila date catches the birthday regardless of what year the record was created in.
@@ -2282,8 +2300,8 @@ async function runBirthdayGreetings(env) {
   const birthdays = (state.employees || []).filter((employee) => !employee.archived && String(employee.birthday || "").slice(5) === monthDay);
   if (!birthdays.length) return;
   for (const employee of birthdays) {
-    const content = `🎉🎂 Happy Birthday, **${discordSafeText(employee.name, "Employee")}**! Wishing you a great day from the whole Medlane team! 🎈`;
-    const sent = await sendDiscordWebhookUrl(env, env.DISCORD_BIRTHDAY_WEBHOOK_URL, { content }).catch((error) => ({ error }));
+    const embed = { title: `🎉🎂 Happy Birthday, ${discordSafeText(employee.name, "Employee")}!`, description: "Wishing you a great day from the whole Medlane team! 🎈", color: 0xf472b6, image: { url: randomBirthdayGifUrl() }, timestamp: new Date().toISOString() };
+    const sent = await sendDiscordWebhookUrl(env, env.DISCORD_BIRTHDAY_WEBHOOK_URL, { embeds: [embed] }).catch((error) => ({ error }));
     if (sent?.error) await recordSystemLog(env, { action: "Discord birthday post failed", module: "Discord", record: `${employee.name}: ${sent.error.message}` });
   }
   await recordSystemLog(env, { action: "Discord birthday greetings sent", module: "Discord", record: birthdays.map((employee) => employee.name).join(", ") });
