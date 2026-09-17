@@ -2271,6 +2271,24 @@ async function runPendingItemsMonitor(env) {
   else await recordSystemLog(env, { action: "Discord pending message id missing", module: "Discord", record: "Discord post succeeded but did not return a message ID" });
 }
 
+// Runs once per day inside the 08:00 Manila hour (see runFiveMinuteScheduledTasks). Employee
+// birthday is stored as an ISO "YYYY-MM-DD" string; comparing the "MM-DD" tail against today's
+// Manila date catches the birthday regardless of what year the record was created in.
+async function runBirthdayGreetings(env) {
+  if (!env.DISCORD_BIRTHDAY_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord birthday monitor skipped", module: "Discord", record: "DISCORD_BIRTHDAY_WEBHOOK_URL not configured" });
+  const state = await loadDigestState(env, ["employees"]);
+  const todayKey = manilaScheduleParts(Date.now());
+  const monthDay = `${todayKey.month}-${todayKey.day}`;
+  const birthdays = (state.employees || []).filter((employee) => !employee.archived && String(employee.birthday || "").slice(5) === monthDay);
+  if (!birthdays.length) return;
+  for (const employee of birthdays) {
+    const content = `🎉🎂 Happy Birthday, **${discordSafeText(employee.name, "Employee")}**! Wishing you a great day from the whole Medlane team! 🎈`;
+    const sent = await sendDiscordWebhookUrl(env, env.DISCORD_BIRTHDAY_WEBHOOK_URL, { content }).catch((error) => ({ error }));
+    if (sent?.error) await recordSystemLog(env, { action: "Discord birthday post failed", module: "Discord", record: `${employee.name}: ${sent.error.message}` });
+  }
+  await recordSystemLog(env, { action: "Discord birthday greetings sent", module: "Discord", record: birthdays.map((employee) => employee.name).join(", ") });
+}
+
 async function runFiveMinuteDiscordMonitors(env) {
   const scheduled = manilaScheduleParts(Date.now());
   const tasks = [runApiHealthMonitor(env)];
@@ -2418,6 +2436,12 @@ async function runFiveMinuteScheduledTasks(event, env) {
     if (scheduled.month === "01" && scheduled.day === "01") backupJobs.push(["yearly-backup", yearKey, () => createBackup(env, "yearly", null)]);
     // ticks :00 :10 :20 :30 :40 :50 → digest lane; ticks :05 :15 :25 :35 :45 :55 → backup lane
     tasks.push(runNextPendingAutomationJob(env, Number(scheduled.minute) % 10 === 0 ? digestJobs : backupJobs));
+  }
+  // 08:00 Asia/Manila birthday greetings — same tolerant-window + once-per-day-lock pattern as
+  // the 18:00 digest/backup jobs above, just on its own hour so it never competes with them.
+  if (scheduled.hour === "08") {
+    const { dayKey } = manilaPeriodKeys(scheduled);
+    tasks.push(runOncePerPeriod(env, "birthday-greetings", dayKey, () => runBirthdayGreetings(env)));
   }
   const results = await Promise.allSettled(tasks);
   for (const result of results) {

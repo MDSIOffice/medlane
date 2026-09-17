@@ -6510,7 +6510,7 @@ const modalConfigs = {
   item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...activeItems().map((item) => item.brand), ...activeSuppliers().map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => activeSuppliers().map((supplier) => supplier.name)]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea-optional"]] },
   supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(activeItems().map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
-  employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
+  employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["birthday", "Birthday", "date"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist-optional", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["skipPo", "Skip PO — record-keeping only, this invoice won't be printed", "checkbox"], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
@@ -6564,7 +6564,7 @@ function openModal(type, edit = null) {
       return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${values.map((value) => `<label class="ios-check-row compact-doc-check"><input name="${name}Selected" type="checkbox" value="${escapeHtml(value)}" /><span></span><strong>${escapeHtml(value)}</strong></label>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /></div>`;
     }
     if (kind === "department-contacts") return `<div class="field full department-contacts-field"><label>${label}</label><p class="field-help">Format shown below is a guide, not required — leave any line blank if not applicable.</p><div class="department-contacts-grid">${clientContactDepartments.map(([key, deptLabel]) => `<fieldset class="department-contact-block"><legend>${escapeHtml(deptLabel)}</legend><div class="field"><label>Contact Person</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="person" /></div><div class="field"><label>Contact No.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="phone" /></div><div class="field"><label>E-mail Add.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="email" type="email" /></div></fieldset>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /><input id="contactDepartments" name="contactDepartments" type="hidden" /></div>`;
-    return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${kind}" ${kind === "date" && name.toLowerCase().includes("expiry") ? `min="${fmtDate(today)}"` : ""} ${kind !== "date" && name !== "creditLimit" ? "required" : ""} /></div>`;
+    return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${kind}" ${kind === "date" && name.toLowerCase().includes("expiry") ? `min="${fmtDate(today)}"` : ""} ${kind === "date" && name === "birthday" ? `max="${latestAllowedBirthday()}"` : ""} ${(kind !== "date" && name !== "creditLimit") || name === "birthday" ? "required" : ""} /></div>`;
   }).join("");
   editingPoId = type === "purchaseOrder" && edit?.poEdit ? edit.poEdit.id : null;
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor(edit?.poEdit?.lines?.length ? edit.poEdit.lines : [{}], { requireLot: false }));
@@ -6796,6 +6796,11 @@ function canManageEmployeeSalary() {
   return ["Superadmin", "CEO"].includes(currentUser?.role);
 }
 
+function latestAllowedBirthday() {
+  const [year, month, day] = fmtDate(today).split("-");
+  return `${Number(year) - 18}-${month}-${day}`;
+}
+
 function canManageEmployees() {
   return ["Admin", "Superadmin", "CEO"].includes(currentUser?.role);
 }
@@ -6976,6 +6981,10 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
     if (data.items.some((item, index) => index !== exceptIndex && !isArchived(item) && item.name.trim().toLowerCase() === name)) throw new Error("Duplicate item name detected.");
   }
   if (type === "bank" && data.banks.some((bank, index) => index !== exceptIndex && !isArchived(bank) && bank.name.trim().toLowerCase() === values.name?.trim().toLowerCase())) throw new Error("Duplicate bank name detected.");
+  if (type === "employee") {
+    if (!values.birthday?.trim()) throw new Error("Birthday is required.");
+    if (values.birthday > latestAllowedBirthday()) throw new Error("Employee must be at least 18 years old.");
+  }
 }
 
 function nextPurchaseOrderId() {

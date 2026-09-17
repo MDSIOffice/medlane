@@ -117,7 +117,7 @@ async function submitModal(event) {
     toast("Masterlist record updated.");
     return;
   }
-  if (["client", "item", "bank", "supplier"].includes(modalType)) {
+  if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) {
     if (modalType === "item" && values.classification) values.category = importedCategory(values.classification);
     try { validateMasterRecord(modalType, values); }
     catch (error) { return toast(error.message); }
