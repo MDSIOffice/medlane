@@ -2022,6 +2022,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .modal[open] > .toast.show { transform: translate(-50%, 0); }
 .toast.show { transform: translateY(0); opacity: 1; }
 .danger-button { border-color: rgba(215, 25, 32, 0.24); background: var(--tint-red); color: var(--red); }
+.danger-button:hover, .danger-button:focus-visible { background: var(--red); color: #fff; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

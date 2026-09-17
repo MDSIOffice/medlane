@@ -1403,6 +1403,7 @@ qs("#refresh-backups")?.addEventListener("click", () => { renderBackup(); toast(
 qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
 qs("#run-manual-digest-daily")?.addEventListener("click", () => runManualDigest("Daily"));
 qs("#run-manual-digest-weekly")?.addEventListener("click", () => runManualDigest("Weekly"));
+qs("#run-birthday-test")?.addEventListener("click", runManualBirthdayTest);
 qs("#print-value-report")?.addEventListener("click", printSystemValueReport);
 qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
 qs("#user-status-filter")?.addEventListener("change", (event) => { userStatusFilter = event.target.value; renderUsers(); });
@@ -1466,6 +1467,26 @@ async function runManualDigest(periodLabel) {
     log(`Sent manual ${periodLabel.toLowerCase()} digest`, "Discord", result.discord?.sent ? "Posted to Discord" : `Not posted: ${result.discord?.reason || "Unknown reason"}`);
   } catch (error) {
     toast(error.message || "Digest failed.");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
+async function runManualBirthdayTest() {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can test this.");
+  const button = qs("#run-birthday-test");
+  const original = button?.textContent || "Send Test Birthday Greeting Now";
+  if (button) { button.disabled = true; button.textContent = "Sending..."; }
+  try {
+    const result = await MedlaneAPI.runBirthdayGreetingTest();
+    if (result.sent) {
+      toast(result.test ? "Test birthday greeting posted to Discord." : `Birthday greeting posted for: ${(result.recipients || []).join(", ")}.`);
+    } else {
+      toast(`Discord did not post: ${result.reason || "Unknown reason"}`);
+    }
+    log("Sent test birthday greeting", "Discord", result.sent ? "Posted to Discord" : `Not posted: ${result.reason || "Unknown reason"}`);
+  } catch (error) {
+    toast(error.message || "Birthday greeting test failed.");
   } finally {
     if (button) { button.disabled = false; button.textContent = original; }
   }
