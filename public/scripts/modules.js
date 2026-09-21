@@ -7063,6 +7063,10 @@ function buildPurchaseOrder(values, options = {}) {
 }
 
 function inventoryTouchedBySale(sale) {
+  // Skip-PO sales never reserve or deduct stock (see buildSale()), so there's nothing to
+  // report as touched — including it anyway would ask the server to write an "inventory"
+  // record a role without Inventory access (e.g. Accounting) isn't allowed to write.
+  if (sale.noPo) return [];
   const warehouse = warehouseForArea(sale.area);
   const touched = (sale.lines || []).map((line) => data.inventory.find((item) => item.code === line.code && item.branch === (line.sourceBranch || line.branch || warehouse) && item.lot === line.lot)).filter(Boolean);
   return [...new Map(touched.map((item) => [`${item.code}|${item.branch}|${item.lot}`, item])).values()];
@@ -7169,6 +7173,9 @@ function togglePayableFields() {
 }
 
 function restoreCancelledStock(sale) {
+  // Skip-PO sales never deducted stock in the first place, so cancelling one must not add
+  // stock back — that would credit quantity that was never actually reserved.
+  if (sale.noPo) return;
   const warehouse = warehouseForArea(sale.area);
   (sale.lines || []).forEach((line) => {
     const existing = data.inventory.find((item) => item.code === line.code && item.branch === (line.sourceBranch || line.branch || warehouse) && item.lot === line.lot);
@@ -7177,6 +7184,7 @@ function restoreCancelledStock(sale) {
 }
 
 function deductSaleStock(sale) {
+  if (sale.noPo) return;
   const warehouse = warehouseForArea(sale.area);
   (sale.lines || []).forEach((line) => {
     const existing = data.inventory.find((item) => item.code === line.code && item.branch === (line.sourceBranch || line.branch || warehouse) && item.lot === line.lot);
