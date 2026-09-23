@@ -814,6 +814,7 @@ qs("#users-table").addEventListener("change", async (event) => {
 });
 document.addEventListener("input", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target);
+  if (event.target.matches(".transfer-lot")) updateTransferBalanceHint(event.target.closest("tr"));
 });
 document.addEventListener("blur", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
@@ -1049,6 +1050,8 @@ qs("#demo-request-modal")?.addEventListener("input", (event) => { if (event.targ
 qs("#demo-request-table")?.addEventListener("click", (event) => {
   const salesApprove = event.target.closest("[data-demo-sales-approve]");
   if (salesApprove) return updateDemoRequestStatus(salesApprove.dataset.demoSalesApprove, "For Management Approval");
+  const logisticsApprove = event.target.closest("[data-demo-logistics-approve]");
+  if (logisticsApprove) return updateDemoRequestStatus(logisticsApprove.dataset.demoLogisticsApprove, "For Management Approval");
   const managementApprove = event.target.closest("[data-demo-management-approve]");
   if (managementApprove) return updateDemoRequestStatus(managementApprove.dataset.demoManagementApprove, "Approved");
   const returned = event.target.closest("[data-demo-returned]");
@@ -1215,7 +1218,7 @@ qs("#modal-fields").addEventListener("click", (event) => {
     syncFinancialRequestTotal();
   }
   if (event.target.closest("#add-invoice-line")) {
-    qs("#invoice-line-list").insertAdjacentHTML("beforeend", invoiceLineTemplate({}, { requireLot: modalType !== "purchaseOrder", allowDiscount: modalType === "inventoryPurchaseOrder" }));
+    qs("#invoice-line-list").insertAdjacentHTML("beforeend", invoiceLineTemplate({}, { requireLot: !["purchaseOrder", "inventoryPurchaseOrder"].includes(modalType), allowDiscount: modalType === "inventoryPurchaseOrder", showCode: modalType === "inventoryPurchaseOrder" }));
     renderInvoiceComputePreview();
   }
   const remove = event.target.closest(".remove-invoice-line");
@@ -1283,6 +1286,7 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value);
   if (event.target.id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(event.target.value));
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
+  if (event.target.classList.contains("invoice-code-input")) syncInvoiceRowFromCode(event.target);
   if (["invoice", "cancelReplace"].includes(modalType)) renderInvoiceComputePreview();
 });
 qs("#modal-fields").addEventListener("blur", (event) => {
@@ -1967,6 +1971,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
 });
 function logoutCurrentUser() {
   stopAppVersionWatch();
+  stopLiveSync();
   currentUser = null;
   localStorage.removeItem("medlane-session");
   sessionStorage.removeItem("medlane-dashboard-sound-played");
@@ -2028,9 +2033,118 @@ document.addEventListener("visibilitychange", () => {
 });
 
 function startAppVersionWatch() {
+  startLiveSync();
   if (appVersionTimer) return;
   scheduleAppVersionCheck(APP_VERSION_POLL_MS);
 }
+
+// Live updates. The server pushes a tiny "these modules changed" ping over a WebSocket (LiveHub
+// Durable Object, hibernated between messages) the instant anyone saves; this tab then pulls just
+// the changed rows from /api/modules/changes. Polling remains only as a safety net: every 5 min
+// while the socket is up, every 30 s while it's down. Re-rendering is deferred while a dialog is
+// open or a save is in flight so it never disturbs a form mid-edit; it catches up once done.
+const LIVE_FALLBACK_POLL_CONNECTED_MS = 5 * 60 * 1000;
+const LIVE_FALLBACK_POLL_DISCONNECTED_MS = 30 * 1000;
+const LIVE_KEEPALIVE_MS = 45 * 1000;
+let liveSyncTimer = null;
+let liveSyncInFlight = false;
+let liveSyncQueued = false;
+let liveSyncRenderPending = false;
+let liveSyncDebounce = null;
+let liveSocket = null;
+let liveSocketRetry = 0;
+let liveSocketRetryTimer = null;
+let liveKeepaliveTimer = null;
+let liveSyncActive = false;
+function liveSyncCanRender() {
+  return qsa("dialog[open]").length === 0 && !activeSaveCount;
+}
+function flushLiveSyncRender() {
+  if (!liveSyncRenderPending || !liveSyncCanRender() || !currentUser) return;
+  liveSyncRenderPending = false;
+  renderAll();
+}
+async function runLiveSync() {
+  if (!currentUser || !navigator.onLine) return;
+  if (document.hidden) { liveSyncQueued = true; return; }
+  if (liveSyncInFlight) { liveSyncQueued = true; return; }
+  liveSyncInFlight = true;
+  liveSyncQueued = false;
+  try {
+    const payload = await MedlaneAPI.loadChanges().catch(() => null);
+    if (payload?.rows?.length && mergeLiveChanges(payload.rows).size) liveSyncRenderPending = true;
+    flushLiveSyncRender();
+  } finally {
+    liveSyncInFlight = false;
+    if (liveSyncQueued && !document.hidden) runLiveSync();
+  }
+}
+function scheduleLiveFallbackPoll() {
+  clearTimeout(liveSyncTimer);
+  if (!liveSyncActive) return;
+  const connected = liveSocket?.readyState === WebSocket.OPEN;
+  liveSyncTimer = setTimeout(() => { runLiveSync(); scheduleLiveFallbackPoll(); }, connected ? LIVE_FALLBACK_POLL_CONNECTED_MS : LIVE_FALLBACK_POLL_DISCONNECTED_MS);
+}
+function connectLiveSocket() {
+  if (!liveSyncActive || liveSocket || typeof WebSocket !== "function" || location.protocol === "file:") return;
+  const session = MedlaneAPI?.session();
+  if (!session?.access_token) return;
+  // The access token rides in the Sec-WebSocket-Protocol header (browsers can't set Authorization
+  // on a WebSocket) rather than the URL, so it never lands in request logs.
+  const params = new URLSearchParams();
+  if (session.app_session_id) params.set("sid", session.app_session_id);
+  const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/live?${params}`, ["medlane-live", session.access_token]);
+  liveSocket = socket;
+  socket.addEventListener("open", () => {
+    liveSocketRetry = 0;
+    clearInterval(liveKeepaliveTimer);
+    liveKeepaliveTimer = setInterval(() => { if (socket.readyState === WebSocket.OPEN) socket.send("ping"); }, LIVE_KEEPALIVE_MS);
+    runLiveSync(); // catch anything saved while we were disconnected
+    scheduleLiveFallbackPoll();
+  });
+  socket.addEventListener("message", (event) => {
+    if (event.data === "pong") return;
+    // Coalesce a burst of pings (one save can touch several modules) into a single fetch.
+    clearTimeout(liveSyncDebounce);
+    liveSyncDebounce = setTimeout(runLiveSync, 200);
+  });
+  socket.addEventListener("close", () => {
+    clearInterval(liveKeepaliveTimer);
+    if (liveSocket === socket) liveSocket = null;
+    if (!liveSyncActive) return;
+    scheduleLiveFallbackPoll();
+    // Back off 1s, 2s, 4s ... up to 30s. After a few failures the access token may simply have
+    // expired, so nudge a refresh through a normal API call (which refreshes on 401) first.
+    liveSocketRetry += 1;
+    const delay = Math.min(30000, 1000 * 2 ** Math.min(liveSocketRetry - 1, 5));
+    clearTimeout(liveSocketRetryTimer);
+    liveSocketRetryTimer = setTimeout(async () => {
+      if (liveSocketRetry >= 3) await MedlaneAPI.me().catch(() => null);
+      connectLiveSocket();
+    }, delay);
+  });
+}
+function startLiveSync() {
+  if (liveSyncActive) return;
+  liveSyncActive = true;
+  connectLiveSocket();
+  scheduleLiveFallbackPoll();
+}
+function stopLiveSync() {
+  liveSyncActive = false;
+  clearTimeout(liveSyncTimer);
+  clearTimeout(liveSocketRetryTimer);
+  clearTimeout(liveSyncDebounce);
+  clearInterval(liveKeepaliveTimer);
+  liveSyncRenderPending = false;
+  liveSocketRetry = 0;
+  const socket = liveSocket;
+  liveSocket = null;
+  try { socket?.close(1000, "logout"); } catch { /* already closed */ }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && liveSyncActive) { runLiveSync(); if (!liveSocket) connectLiveSocket(); } });
+window.addEventListener("online", () => { if (liveSyncActive && !liveSocket) connectLiveSocket(); });
+document.addEventListener("close", () => setTimeout(flushLiveSyncRender, 0), true);
 function stopAppVersionWatch() {
   clearTimeout(appVersionTimer);
   appVersionTimer = null;
@@ -2060,13 +2174,14 @@ function showAuthenticatedApp() {
   applyThemePreference(currentUser?.themePreference);
   syncThemeToggleLabel();
   const requestedSection = new URLSearchParams(location.search).get("section");
-  if (location.protocol !== "file:") history.replaceState(null, "", "/dashboard");
+  const restoreSection = requestedSection && requestedSection !== "security" && canRestoreSection(requestedSection) ? requestedSection : "";
+  if (location.protocol !== "file:") history.replaceState(null, "", restoreSection ? `/dashboard?section=${encodeURIComponent(restoreSection)}` : "/dashboard");
   document.body.classList.add("app-route");
   document.body.classList.remove("login-route", "public-landing");
   qs("#login-screen")?.classList.add("hidden");
   applyRole();
   renderAll();
-  if (requestedSection && requestedSection !== "security" && effectiveModules().includes(requestedSection)) showSection(requestedSection);
+  if (restoreSection) showSection(restoreSection);
   playDashboardLoginSound();
   startAppVersionWatch();
 }

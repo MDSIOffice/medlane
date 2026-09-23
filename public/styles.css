@@ -1330,6 +1330,9 @@ select, .search-input {
 .invoice-line-fields input, .invoice-line-fields select { min-width: 0; }
 .invoice-line-fields .lot-field { grid-column: span 2; }
 .invoice-line-fields .expiry-field { grid-column: span 2; }
+/* Inventory PO lines add an Item Code column: code · item · brand · qty · unit · price · discount on one row. */
+.invoice-line-fields:has(.code-field) { grid-template-columns: minmax(120px, 0.7fr) minmax(200px, 1.5fr) minmax(120px, 0.8fr) minmax(80px, 0.4fr) minmax(100px, 0.5fr) minmax(100px, 0.6fr) minmax(90px, 0.5fr); }
+@media (max-width: 1100px) { .invoice-line-fields:has(.code-field) { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); } }
 .invoice-brand-input { background: var(--tint-strong); color: var(--muted); }
 .invoice-stock-hint { display: block; margin-top: 4px; font-size: 12px; font-weight: 800; color: var(--muted); }
 .invoice-stock-hint-empty { color: var(--red); }
@@ -3038,3 +3041,18 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .lr-loc-link { transform: translateX(-50%) scaleY(1); }
   .lr-hero::before, .lr-section--dark::before { display: none; }
 }
+
+/* Engineering / Product Specialist: Inventory shows only the demo-request workflow. */
+#inventory.demo-only .toolbar,
+#inventory.demo-only #inventory-visuals,
+#inventory.demo-only .inventory-action-row > :not(#open-demo-request),
+#inventory.demo-only [data-inventory-workflow]:not([data-inventory-workflow="demos"]),
+#inventory.demo-only .inventory-workflow-panel:not([data-inventory-panel="demos"]) { display: none !important; }
+
+/* Logistics dashboard: hide the sales widgets (date filter/exports, sales KPIs, trend, region & record health). */
+#dashboard.logistics-dashboard > .dashboard-date-filter,
+#dashboard.logistics-dashboard > .stats-grid,
+#dashboard.logistics-dashboard > #dashboard-trend-panel,
+#dashboard.logistics-dashboard [data-sales-dashboard] { display: none !important; }
+#logistics-dashboard { display: grid; gap: 18px; margin-bottom: 18px; }
+#logistics-dashboard[hidden] { display: none; }
