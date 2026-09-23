@@ -1554,6 +1554,8 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .chart-multi-point { stroke: var(--panel-solid); stroke-width: 2; transition: r 0.15s ease; }
 .chart-multi-point:hover { r: 6.5; }
 .chart-legend-row { display: flex; flex-wrap: wrap; gap: 16px; justify-content: flex-end; margin-top: -6px; }
+.multi-series-chart { display: block; max-width: 100%; height: auto; }
+@media (max-width: 640px) { .chart-legend-row { justify-content: flex-start; gap: 10px 14px; margin-top: 4px; } }
 .chart-legend-item { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .chart-legend-item i { display: inline-block; width: 10px; height: 10px; border-radius: 999px; }
 
@@ -2023,6 +2025,9 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .toast.show { transform: translateY(0); opacity: 1; }
 .danger-button { border-color: rgba(215, 25, 32, 0.24); background: var(--tint-red); color: var(--red); }
 .danger-button:hover, .danger-button:focus-visible { background: var(--red); color: #fff; }
+/* Confirm-modal action button: always green — red read as "something went wrong" on routine saves. */
+.primary-button.confirm-button { background: var(--green); color: #fff; box-shadow: 0 10px 24px -10px color-mix(in srgb, var(--green) 60%, transparent); }
+.primary-button.confirm-button:hover, .primary-button.confirm-button:focus-visible { background: color-mix(in srgb, var(--green) 85%, #000); color: #fff; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

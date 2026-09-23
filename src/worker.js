@@ -3607,13 +3607,36 @@ export default {
         const records = body.records && typeof body.records === "object" ? body.records : {};
         const recordKeys = body.recordKeys && typeof body.recordKeys === "object" ? body.recordKeys : {};
         const allowedKeys = new Set(writableKeys(profile));
+        // Invoicing deducts stock, so buildSale() bundles the touched `inventory` rows with the
+        // sale. A role that can invoice but has no Inventory module (e.g. Accounting) may write
+        // those rows only as part of a sale save — validated below to be limited to the sale's
+        // own item codes and to quantity/lot changes, so this is not a general stock-edit grant.
+        const saleScopedInventory = !allowedKeys.has("inventory") && allowedKeys.has("sales") && Array.isArray(records.sales) && records.sales.length > 0;
         let rows = [];
         for (const [key, value] of Object.entries(records)) {
-          if (!allowedKeys.has(key)) throw new Error(`You do not have permission to edit ${key}`);
+          if (!allowedKeys.has(key) && !(key === "inventory" && saleScopedInventory)) throw new Error(`You do not have permission to edit ${key}`);
           if (!Array.isArray(value)) throw new Error(`Per-record saves require an array for ${key}`);
           value.forEach((record, index) => rows.push({ state_key: stateKey, module_name: key, record_key: String(recordKeys[key]?.[index] || recordKeyFor(key, record, index)), data: record, updated_by: authUser.id }));
         }
         rows = dedupeRowsByRecordKey(rows);
+
+        if (saleScopedInventory) {
+          const saleCodes = new Set(records.sales.flatMap((sale) => (sale?.lines || []).map((line) => String(line?.code || ""))).filter(Boolean));
+          const saleStockRows = rows.filter((row) => row.module_name === "inventory");
+          const storedStock = saleStockRows.length
+            ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(saleStockRows.map((row) => row.record_key)))}&select=record_key,data`)
+            : [];
+          const storedStockByKey = new Map(storedStock.map((entry) => [entry.record_key, entry.data || {}]));
+          for (const row of saleStockRows) {
+            const incoming = row.data || {};
+            if (!saleCodes.has(String(incoming.code || ""))) throw new Error("You do not have permission to edit inventory");
+            const prev = storedStockByKey.get(row.record_key);
+            if (!prev) continue;
+            const { qty: _prevQty, lot: _prevLot, ...prevRest } = prev;
+            const { qty: _nextQty, lot: _nextLot, ...nextRest } = incoming;
+            if (JSON.stringify(prevRest, Object.keys(prevRest).sort()) !== JSON.stringify(nextRest, Object.keys(nextRest).sort())) throw new Error("You do not have permission to edit inventory");
+          }
+        }
 
         // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
         // permission check above only gates *editing* the module, not flipping the `archived`
