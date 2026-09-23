@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -9,7 +11,7 @@ const roleModules = {
   Admin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   Accounting: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"],
   Sales: ["dashboard", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
-  Logistics: ["dashboard", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"],
+  Logistics: ["dashboard", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings"],
   "Product Specialist": ["dashboard", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"],
   Engineering: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
   HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
@@ -17,6 +19,17 @@ const roleModules = {
 // Every role can view memos (audience targeting is enforced per-memo, not per-module); only
 // requireMemoAdmin() gates who may post one.
 Object.values(roleModules).forEach((modules) => modules.push("memos"));
+
+// Modules a role may never see, even if an admin granted them in per-user module_permissions
+// (profileForUser strips them). Logistics has no business in the audit trail or support tracker.
+const ROLE_BLOCKED_MODULES = {
+  Logistics: ["logs", "product-issues"],
+};
+// Engineering and Product (Application) Specialists use Inventory only to file demo requests:
+// they keep read access to stock (for lot/serial pickers) but can write nothing in the
+// inventory group except inventoryDemoRequests. Enforced in canAccessKey().
+const DEMO_ONLY_ROLES = ["Engineering", "Product Specialist"];
+const DEMO_REQUESTER_ROLES = [...DEMO_ONLY_ROLES, "Superadmin", "CEO"];
 
 const DISCORD_ROLE_IDS = {
   nagaTeam: "1356861232480780421",
@@ -122,8 +135,15 @@ function supabaseHeaders(env, token = env.SUPABASE_SERVICE_ROLE_KEY) {
   };
 }
 
+// The public custom domain. Every link we put in an email (invites, password resets, digests)
+// must point here, never at the production workers.dev hostname — an admin who happens to be
+// using the workers.dev URL would otherwise stamp it into every invite they send.
+const PUBLIC_APP_ORIGIN = "https://medlanesolutions.com";
+const PRODUCTION_WORKERS_DEV_HOST = "medlane.tofllorin.workers.dev";
+
 function requestOrigin(request) {
-  return new URL(request.url).origin;
+  const url = new URL(request.url);
+  return url.hostname === PRODUCTION_WORKERS_DEV_HOST ? PUBLIC_APP_ORIGIN : url.origin;
 }
 
 async function supabaseFetchOnce(env, path, init = {}) {
@@ -138,6 +158,13 @@ async function supabaseFetchOnce(env, path, init = {}) {
 
 async function supabaseFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
+  const result = await supabaseFetchWithRetry(env, path, init);
+  const modules = liveModulesForWrite(path, init);
+  if (modules.length) await notifyLiveClients(env, modules);
+  return result;
+}
+
+async function supabaseFetchWithRetry(env, path, init) {
   try {
     return await supabaseFetchOnce(env, path, init);
   } catch (error) {
@@ -148,6 +175,72 @@ async function supabaseFetch(env, path, init = {}) {
     if (!isTransientJwtClockSkew(error)) throw error;
     await sleep(1500);
     return supabaseFetchOnce(env, path, init);
+  }
+}
+
+// ---- Live updates (instant, push-based) ------------------------------------------------------
+// Every successful write to app_records pings the LiveHub Durable Object with just the module
+// names that changed; LiveHub fans that tiny message out to every connected tab over a hibernated
+// WebSocket, and each tab then pulls the actual rows through /api/modules/changes (which applies
+// the user's view permissions). No record data ever travels over the socket.
+function liveModulesForWrite(path, init) {
+  if (!String(path).startsWith("/rest/v1/app_records")) return [];
+  const method = String(init?.method || "GET").toUpperCase();
+  if (!["POST", "PATCH", "DELETE"].includes(method)) return [];
+  let modules = [];
+  if (method === "POST") {
+    try {
+      const body = JSON.parse(init.body || "[]");
+      modules = (Array.isArray(body) ? body : [body]).map((row) => row?.module_name).filter(Boolean);
+    } catch { modules = []; }
+  } else {
+    const match = /[?&]module_name=eq\.([^&]+)/.exec(path);
+    if (match) modules = [decodeURIComponent(match[1])];
+  }
+  return [...new Set(modules)].filter((module) => !NON_STATE_MODULES.includes(module));
+}
+
+async function notifyLiveClients(env, modules) {
+  if (!env.LIVE_HUB || !modules.length) return;
+  try {
+    const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(appStateKey(env)));
+    await stub.fetch("https://live-hub/notify", { method: "POST", body: JSON.stringify({ modules }) });
+  } catch (error) {
+    // Live push is best-effort; clients still catch up through their fallback poll.
+    console.warn(JSON.stringify({ message: "Live notify failed", error: error.message }));
+  }
+}
+
+export class LiveHub extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    // Answered by the runtime itself, without waking this object — keepalives cost nothing.
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/notify" && request.method === "POST") {
+      const { modules = [] } = await request.json().catch(() => ({}));
+      const message = JSON.stringify({ type: "changed", modules });
+      for (const socket of this.ctx.getWebSockets()) {
+        try { socket.send(message); } catch { /* closing socket; ignore */ }
+      }
+      return new Response(null, { status: 204 });
+    }
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("Expected WebSocket", { status: 426 });
+    const { 0: client, 1: server } = new WebSocketPair();
+    // Hibernatable accept: the object can be evicted from memory between messages while the
+    // connection stays open, so idle tabs don't accrue duration or CPU.
+    this.ctx.acceptWebSocket(server);
+    // The browser requires the server to echo one of its offered subprotocols.
+    return new Response(null, { status: 101, webSocket: client, headers: { "sec-websocket-protocol": "medlane-live" } });
+  }
+
+  async webSocketMessage() { /* clients only send keepalive pings, auto-answered above */ }
+
+  async webSocketClose(socket, code) {
+    try { socket.close(code === 1005 ? 1000 : code, "closing"); } catch { /* already closed */ }
   }
 }
 
@@ -222,11 +315,11 @@ function wrapAuthActionLink(actionLink, origin) {
   }
 }
 
-function medlaneLogoUrl(origin = "https://medlane.tofllorin.workers.dev") {
-  return `${String(origin || "https://medlane.tofllorin.workers.dev").replace(/\/$/, "")}/medlane.jpg`;
+function medlaneLogoUrl(origin = PUBLIC_APP_ORIGIN) {
+  return `${String(origin || PUBLIC_APP_ORIGIN).replace(/\/$/, "")}/medlane.jpg`;
 }
 
-function brandedEmailHtml({ title, eyebrow = "Medlane Diagnostic Solutions", intro = "", bodyHtml = "", origin = "https://medlane.tofllorin.workers.dev" }) {
+function brandedEmailHtml({ title, eyebrow = "Medlane Diagnostic Solutions", intro = "", bodyHtml = "", origin = PUBLIC_APP_ORIGIN }) {
   const year = new Date().getFullYear();
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:#eaf7ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#dff4ff 0%,#f7fcff 55%,#fff7ec 100%);padding:34px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:720px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #bfe7fb;box-shadow:0 24px 70px rgba(0,46,93,.16);"><tr><td style="background:linear-gradient(120deg,#0b2f52 0%,#1d6fa5 100%);padding:28px 30px;color:#fff;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="width:62px;vertical-align:top;"><img src="${escapeHtml(medlaneLogoUrl(origin))}" width="52" height="52" alt="Medlane" style="display:block;border-radius:16px;background:#fff;padding:5px;box-shadow:0 10px 28px rgba(0,0,0,.18);"></td><td style="vertical-align:top;padding-left:14px;"><div style="font-size:12px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#e8c684;">${escapeHtml(eyebrow)}</div><h1 style="margin:8px 0 0;font-size:30px;line-height:1.08;letter-spacing:-.02em;color:#ffffff;">${escapeHtml(title)}</h1>${intro ? `<p style="margin:10px 0 0;font-size:15px;line-height:1.55;color:#dcedf9;">${escapeHtml(intro)}</p>` : ""}</td></tr></table></td></tr><tr><td style="padding:28px 30px;font-size:14px;line-height:1.65;border-top:4px solid #c98a1f;">${bodyHtml || "<p>Nothing to report.</p>"}</td></tr><tr><td style="padding:18px 30px;background:#f3fbff;border-top:1px solid #d8eef9;color:#4f6b86;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. Automated system email - do not reply.</td></tr></table></td></tr></table></body></html>`;
 }
@@ -778,6 +871,10 @@ async function profileForUser(env, userId, email) {
   // an admin-screen concern. Deliberately view-only and not overridable per-user: editing the
   // catalog still requires the real "masterlists" permission.
   if (!view.includes("catalog-reference")) view.push("catalog-reference");
+  const blocked = ROLE_BLOCKED_MODULES[profile[0].role] || [];
+  if (blocked.length) {
+    for (const list of [view, edit]) for (let i = list.length - 1; i >= 0; i -= 1) if (blocked.includes(list[i])) list.splice(i, 1);
+  }
   if (["Superadmin", "CEO"].includes(profile[0].role)) {
     if (!view.includes("backup")) view.push("backup");
     if (!edit.includes("backup")) edit.push("backup");
@@ -959,6 +1056,44 @@ function requirePaymentRequestApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve payment requests");
 }
 
+// Demo request workflow (see saveDemoRequest/updateDemoRequestStatus in modules.js):
+//   filed by Engineering / Product Specialist (or Superadmin/CEO)
+//   machines & spare parts only -> "For Management Approval" (Superadmin/CEO) -> "Approved"
+//   any consumable line        -> "For Logistics Approval" (Logistics) -> "For Management Approval" -> "Approved"
+//   "Approved" -> "Returned" / "To Sales" when the units come back.
+// "For Sales Approval" is the retired first step; it is still honoured for requests filed before it.
+function demoRequestInitialStatus(request) {
+  return (request?.lines || []).some((line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
+}
+
+const DEMO_TRANSITIONS = {
+  "For Logistics Approval": { "For Management Approval": ["Logistics", "Superadmin", "CEO"] },
+  "For Sales Approval": { "For Management Approval": ["Sales", "Admin", "Superadmin", "CEO"] },
+  "For Management Approval": { Approved: ["Superadmin", "CEO"] },
+  Approved: { Returned: ["Sales", "Admin", "Superadmin", "CEO", "Logistics"], "To Sales": ["Sales", "Admin", "Superadmin", "CEO", "Logistics"] },
+};
+
+async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows) {
+  const incoming = rows.filter((row) => row.module_name === "inventoryDemoRequests");
+  if (!incoming.length) return;
+  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryDemoRequests&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((row) => row.record_key)))}&select=record_key,data`);
+  const storedByKey = new Map(stored.map((row) => [row.record_key, row.data || {}]));
+  const role = profile?.role;
+  for (const row of incoming) {
+    const next = row.data || {};
+    const prev = storedByKey.get(row.record_key);
+    if (!prev) {
+      if (!DEMO_REQUESTER_ROLES.includes(role)) throw new Error("Only Engineering or Product Specialist can request a demo");
+      if (next.status !== demoRequestInitialStatus(next)) throw new Error(`New demo request ${row.record_key} must start at ${demoRequestInitialStatus(next)}`);
+      continue;
+    }
+    if (String(prev.status || "") === String(next.status || "")) continue;
+    const allowed = DEMO_TRANSITIONS[prev.status]?.[next.status];
+    if (!allowed) throw new Error(`Demo request ${row.record_key} cannot move from ${prev.status} to ${next.status}`);
+    if (!allowed.includes(role)) throw new Error(`Only ${allowed.join("/")} can move ${row.record_key} to ${next.status}`);
+  }
+}
+
 // Approving a payable or expense request is segregated from preparing it: payables are
 // Superadmin/CEO-only, and Accounting (who prepares both) can never approve either. Diffs each
 // incoming payables/replenishments row against the stored one so only an actual transition into
@@ -993,8 +1128,19 @@ function validateReceivingMeta(body) {
   return { orderNumber, dateReceived, source };
 }
 
+// Finds the PO line a received row posts against. The lot typed on the PO (if any) is only the
+// expected lot — the receiver records the lot actually delivered, so an exact lot match is
+// preferred but any open line for the same item code is accepted. `allocated` tracks quantity
+// already claimed by earlier rows in the same receipt, so one item split across several lots
+// can't over-receive a single PO line.
+function matchReceivingPoLine(po, code, lot, allocated) {
+  const open = (po.lines || []).filter((entry) => entry.code === code && Number(entry.qty || 0) - Number(entry.receivedQty || 0) - (allocated.get(entry) || 0) > 0);
+  return open.find((entry) => entry.lot && entry.lot === lot) || open.find((entry) => !entry.lot) || open[0] || null;
+}
+
 function validateReceivingLines(po, submittedLines, items) {
   if (!Array.isArray(submittedLines) || !submittedLines.length) throw new Error("No receiving lines provided");
+  const allocated = new Map();
   return submittedLines.map((submitted) => {
     const code = String(submitted.code || "").trim();
     if (!code) throw new Error("Item code is required for every receiving line");
@@ -1009,10 +1155,11 @@ function validateReceivingLines(po, submittedLines, items) {
     const expiry = equipment ? "N/A" : String(submitted.expiry || "").trim();
     let poLine = null;
     if (po) {
-      poLine = (po.lines || []).find((entry) => entry.code === code && (!entry.lot || entry.lot === lot) && Number(entry.qty || 0) > Number(entry.receivedQty || 0));
-      if (!poLine) throw new Error(`Line not found on this purchase order: ${code} / ${lot}`);
-      const remaining = Number(poLine.qty || 0) - Number(poLine.receivedQty || 0);
+      poLine = matchReceivingPoLine(po, code, lot, allocated);
+      if (!poLine) throw new Error(`${code} has nothing left to receive on this purchase order`);
+      const remaining = Number(poLine.qty || 0) - Number(poLine.receivedQty || 0) - (allocated.get(poLine) || 0);
       if (qty > remaining) throw new Error(`Cannot receive ${qty} of ${code} — only ${remaining} remain on this order`);
+      allocated.set(poLine, (allocated.get(poLine) || 0) + qty);
     }
     return { code, item: poLine?.item || item.name, brand: poLine?.brand || item.brand || "Medlane", branch, lot, expiry, qty };
   });
@@ -1022,8 +1169,9 @@ function applyReceivingLines(po, lines, inventory) {
   let totalReceived = 0;
   for (const entry of lines) {
     if (po) {
-      const poLine = (po.lines || []).find((line) => line.code === entry.code && (!line.lot || line.lot === entry.lot) && Number(line.qty || 0) > Number(line.receivedQty || 0));
-      if (!poLine) throw new Error(`Line not found on this purchase order: ${entry.code} / ${entry.lot}`);
+      // receivedQty is bumped as each row posts, so an empty `allocated` map is correct here.
+      const poLine = matchReceivingPoLine(po, entry.code, entry.lot, new Map());
+      if (!poLine) throw new Error(`${entry.code} has nothing left to receive on this purchase order`);
       const remaining = Number(poLine.qty || 0) - Number(poLine.receivedQty || 0);
       if (entry.qty > remaining) throw new Error(`Cannot receive ${entry.qty} of ${entry.code} — only ${remaining} remain on this order`);
       poLine.lot = poLine.lot || entry.lot;
@@ -1131,6 +1279,7 @@ function modulesForKey(key) {
 
 function canAccessKey(profile, key, mode = "view") {
   if (["Superadmin", "CEO"].includes(profile?.role)) return true;
+  if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
   const allowed = profile?.customPermissions?.[mode] || [];
   const modules = modulesForKey(key);
   return modules.some((module) => allowed.includes(module));
@@ -1677,6 +1826,7 @@ const DIGEST_ROLE_RECIPIENTS = {
   approvalPaymentRequest: ["Superadmin", "CEO"],
   approvalPayable: ["Superadmin", "CEO"],
   approvalDemoSales: ["Sales"],
+  approvalDemoLogistics: ["Logistics"],
   approvalDemoManagement: ["Superadmin", "CEO"],
   approvalProductIssue: ["Engineering"],
   digestBusiness: ["Accounting", "CEO", "Superadmin"],
@@ -1831,9 +1981,11 @@ function detectThresholdsAndApprovals(state) {
 
   const demoRequests = state.inventoryDemoRequests || [];
   const demoSalesApproval = demoRequests.filter((request) => request.status === "For Sales Approval");
+  const demoLogisticsApproval = demoRequests.filter((request) => request.status === "For Logistics Approval");
+  if (demoLogisticsApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoLogistics, "Demo Requests Awaiting Logistics Approval (Consumables)", demoLogisticsApproval.map((request) => `${request.id} — ${request.client}, ${request.lines?.length || 0} item(s)`));
   const demoManagementApproval = demoRequests.filter((request) => request.status === "For Management Approval");
   if (demoSalesApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoSales, "Demo Requests Awaiting Sales Approval", demoSalesApproval.map((request) => `${request.id} — ${request.client}, ${request.lines?.length || 0} item(s)`));
-  if (demoManagementApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoManagement, "Demo Requests Awaiting Management Approval", demoManagementApproval.map((request) => `${request.id} — ${request.client}, sales-approved by ${request.salesApprovedBy || "-"}`));
+  if (demoManagementApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoManagement, "Demo Requests Awaiting Management Approval", demoManagementApproval.map((request) => `${request.id} — ${request.client}, ${request.logisticsApprovedBy ? `logistics-approved by ${request.logisticsApprovedBy}` : request.salesApprovedBy ? `sales-approved by ${request.salesApprovedBy}` : `requested by ${request.requestedBy || "-"}`}`));
 
   const productIssues = state.productIssues || [];
   const passedIssues = productIssues.filter((report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status));
@@ -2756,7 +2908,7 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   const attentionHtml = digestAttentionBannerHtml(metrics, taskFailures);
   const statCardsHtml = digestStatCardsHtml(metrics, previousSnapshot);
   const operationalHtml = digestSectionHtml([{ title: `${periodLabel} Purchase Orders, Expenses & Backups`, lines: [...financialSummary, ...backupDigestLines(auditRows)] }]);
-  const ctaHtml = `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 4px;"><tr><td style="border-radius:999px;background:${DIGEST_COLORS.navy};"><a href="https://medlane.tofllorin.workers.dev/dashboard" style="display:inline-block;padding:13px 24px;color:#fff;text-decoration:none;font-weight:800;font-size:13.5px;border-radius:999px;">Open Medlane OS →</a></td></tr></table>`;
+  const ctaHtml = `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 4px;"><tr><td style="border-radius:999px;background:${DIGEST_COLORS.navy};"><a href="${PUBLIC_APP_ORIGIN}/dashboard" style="display:inline-block;padding:13px 24px;color:#fff;text-decoration:none;font-weight:800;font-size:13.5px;border-radius:999px;">Open Medlane OS →</a></td></tr></table>`;
 
   // Post to Discord BEFORE the per-recipient email fan-out — the embed is built entirely
   // from data already in hand, so putting it first means a slow or interrupted email loop
@@ -2945,6 +3097,24 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
+
+      // Live-update socket. Browsers can't set Authorization on a WebSocket, so the access token
+      // arrives as the second Sec-WebSocket-Protocol value (["medlane-live", token] — kept out of
+      // the URL so it never reaches request logs) and the app session id as a query param. Both
+      // are checked exactly like a normal API call before the connection is handed to the
+      // (hibernating) LiveHub Durable Object.
+      if (url.pathname === "/api/live") {
+        if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return json({ error: "Expected WebSocket" }, { status: 426 });
+        if (!env.LIVE_HUB) return json({ error: "Live updates are not configured" }, { status: 503 });
+        const protocols = (request.headers.get("sec-websocket-protocol") || "").split(",").map((part) => part.trim());
+        if (protocols[0] !== "medlane-live" || !protocols[1]) return json({ error: "Authentication required" }, { status: 401 });
+        const authHeaders = new Headers({ authorization: `Bearer ${protocols[1]}` });
+        const sid = url.searchParams.get("sid");
+        if (sid) authHeaders.set("x-medlane-session-id", sid);
+        await authenticatedProfile(new Request(request.url, { headers: authHeaders }), env);
+        const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(appStateKey(env)));
+        return stub.fetch(new Request("https://live-hub/connect", request));
+      }
 
       if (url.pathname === "/api/health") {
         if (request.method !== "GET") return methodNotAllowed();
@@ -3178,7 +3348,7 @@ export default {
 
       if (url.pathname === "/api/logs/digest-message" && request.method === "GET") {
         const { profile } = await authenticatedProfile(request, env);
-        if (!["Superadmin", "CEO"].includes(profile.role) && !profile.customPermissions?.view?.includes("logs")) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
+        if (!["Superadmin", "CEO"].includes(profile.role) && (!profile.customPermissions?.view?.includes("logs") || (ROLE_BLOCKED_MODULES[profile.role] || []).includes("logs"))) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
         const snapshot = await readDigestMessageSnapshot(env, url.searchParams.get("id"));
         if (!snapshot) return json({ error: "Digest message not found or no longer retained" }, { status: 404 });
         return json({ html: snapshot.html, subject: snapshot.meta.subject || "", role: snapshot.meta.role || "", periodLabel: snapshot.meta.periodLabel || "", createdAt: snapshot.meta.createdAt || "" });
@@ -3186,7 +3356,7 @@ export default {
 
       if (url.pathname === "/api/logs" && request.method === "GET") {
         const { profile } = await authenticatedProfile(request, env);
-        if (!["Superadmin", "CEO"].includes(profile.role) && !profile.customPermissions?.view?.includes("logs")) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
+        if (!["Superadmin", "CEO"].includes(profile.role) && (!profile.customPermissions?.view?.includes("logs") || (ROLE_BLOCKED_MODULES[profile.role] || []).includes("logs"))) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
         const stateKey = appStateKey(env);
         const now = new Date();
         const dateFrom = url.searchParams.get("dateFrom") || new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -3226,6 +3396,22 @@ export default {
         return json({ entries: entries.slice(0, limit), nextCursor });
       }
 
+      // Live updates without a page refresh: every record (visible to this user) updated at or after
+      // `since`, plus the next cursor. The client polls this every few seconds and merges rows in
+      // place. The window deliberately overlaps by a few seconds (merges are idempotent) so a
+      // write that committed slightly out of updated_at order is never skipped.
+      if (url.pathname === "/api/modules/changes" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const sinceMs = Date.parse(url.searchParams.get("since") || "");
+        if (!Number.isFinite(sinceMs)) return json({ error: "A valid `since` timestamp is required" }, { status: 400 });
+        const since = new Date(sinceMs - 10000).toISOString();
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&updated_at=gte.${encodeURIComponent(since)}&module_name=not.in.${encodeURIComponent(postgrestIn([...NON_STATE_MODULES, "branch", "masterTab", "logs"]))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+        const visible = filterRecordsForProfile(rows, profile, "view");
+        const cursor = rows.length ? rows[rows.length - 1].updated_at : new Date(sinceMs).toISOString();
+        return json({ rows: visible.map(({ module_name, record_key, data }) => ({ module: module_name, key: record_key, data })), cursor });
+      }
+
       if (url.pathname === "/api/modules/state") {
         const { authUser, profile } = await authenticatedProfile(request, env);
         const stateKey = appStateKey(env);
@@ -3234,8 +3420,10 @@ export default {
           // is never part of app state; `game-scores` is served by /api/game/*) — excluding
           // them here keeps this load, which every client runs, from paging through
           // thousands of dead session rows.
-          const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data&order=updated_at.asc`);
-          return json({ data: stateFromRecords(filterRecordsForProfile(rows, profile, "view")), revision: Date.now() });
+          const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+          // `changesCursor` seeds the client's live-update poll (/api/modules/changes). It's the
+          // database's own latest updated_at, so Worker/DB clock skew can't open a gap.
+          return json({ data: stateFromRecords(filterRecordsForProfile(rows, profile, "view")), revision: Date.now(), changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString() });
         }
         if (request.method === "PUT") {
           requireWriteAccess(profile);
@@ -3291,6 +3479,7 @@ export default {
             }
 
             await assertFinancialApprovalAllowed(env, stateKey, profile, rows);
+            await assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows);
 
             // Toggling a masterlist record's `archived` flag is CEO/Superadmin-only, even
             // through this bulk state PUT. Diff each incoming masterlist record against the
@@ -3659,6 +3848,7 @@ export default {
         }
 
         await assertFinancialApprovalAllowed(env, stateKey, profile, rows);
+        await assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows);
 
         // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
         // permission check above only gates *editing* the module, not flipping the `archived`

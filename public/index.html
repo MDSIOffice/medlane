@@ -538,6 +538,24 @@
           <article class="stat-card accent-red"><span class="card-icon">!</span><span>Stock Alerts</span><strong id="alert-total">0</strong><small>Low / expiring</small></article>
         </div>
 
+        <div id="logistics-dashboard" hidden>
+          <div class="stats-grid" id="logistics-stats"></div>
+          <div class="dashboard-grid">
+            <article class="panel wide">
+              <div class="panel-header"><div><p class="eyebrow">Purchase Orders</p><h2>Open Inventory POs</h2></div><button class="ghost-button" type="button" data-go-section="inventory">Open Inventory</button></div>
+              <div class="table-card compact-table"><table id="logistics-po-table"></table></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><div><p class="eyebrow">Inventory Risk</p><h2>Stock Health</h2></div></div>
+              <div class="chart-bars compact-chart" id="logistics-stock-health"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><div><p class="eyebrow">Expiry Watch</p><h2>Lots Expiring Soonest</h2></div></div>
+              <ul class="compact-list" id="logistics-expiry-list"></ul>
+            </article>
+          </div>
+        </div>
+
         <article class="panel" id="dashboard-trend-panel">
           <div class="panel-header"><div><p class="eyebrow">Performance</p><h2>Sales &amp; Collections Trend</h2></div></div>
           <div id="dashboard-trend-chart"></div>
@@ -548,11 +566,11 @@
             <div class="panel-header"><div><p class="eyebrow">Needs Attention</p><h2>Action Center</h2></div><span class="badge danger" id="urgent-count">0 urgent</span></div>
             <div class="alert-list" id="alerts-list"></div>
           </article>
-          <article class="panel">
+          <article class="panel" data-sales-dashboard>
             <div class="panel-header"><div><p class="eyebrow">Region Performance</p><h2>Regions I-V and dealer areas</h2></div></div>
             <div class="branch-bars" id="branch-bars"></div>
           </article>
-          <article class="panel">
+          <article class="panel" data-sales-dashboard>
             <div class="panel-header"><div><p class="eyebrow">Compliance</p><h2>Record Health</h2></div></div>
             <ul class="compact-list" id="health-list"></ul>
           </article>
@@ -669,7 +687,7 @@
         <div class="inventory-workflow-panel" data-inventory-panel="receipts"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Stock Receiving</p><h2>Awaiting Superadmin/CEO approval</h2></div></div><div class="table-card compact-table"><table id="stock-receipt-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="completed"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="transfers"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div></article></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="demos"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo Service Orders</p><h2>Sales and management approval</h2></div></div><div class="table-card compact-table"><table id="demo-request-table"></table></div></article><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo History</p><h2>Returned or converted to sales</h2></div></div><div class="table-card compact-table"><table id="demo-history-table"></table></div></article></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="demos"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo Service Orders</p><h2>Logistics (consumables) and management approval</h2></div></div><div class="table-card compact-table"><table id="demo-request-table"></table></div></article><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo History</p><h2>Returned or converted to sales</h2></div></div><div class="table-card compact-table"><table id="demo-history-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="stocks"><div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div><div class="table-card"><table id="inventory-table"></table></div></div>
       </section>
 

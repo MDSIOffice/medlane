@@ -131,7 +131,7 @@ const accounts = {
   CEO: { name: "CEO", role: "CEO", branch: "all", email: "ceo@medlane.local", phone: "+63 917 200 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
   Accounting: { name: "Joy Santos", role: "Accounting", branch: "all", email: "joy@medlane.local", phone: "+63 917 300 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"] },
   Sales: { name: "Ana Cruz", role: "Sales", branch: "Region IV-A", email: "ana@medlane.local", phone: "+63 917 400 0000", modules: ["dashboard", "calendar", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"] },
-  Logistics: { name: "Ramon Dela Cruz", role: "Logistics", branch: "all", email: "ramon@medlane.local", phone: "+63 917 500 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"] },
+  Logistics: { name: "Ramon Dela Cruz", role: "Logistics", branch: "all", email: "ramon@medlane.local", phone: "+63 917 500 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings"] },
   "Product Specialist": { name: "Product Specialist", role: "Product Specialist", branch: "all", email: "product.specialist@medlane.local", phone: "+63 917 700 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"] },
   Engineering: { name: "Service Engineer", role: "Engineering", branch: "all", email: "engineering@medlane.local", phone: "+63 917 800 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"] },
   HR: { name: "HR User", role: "HR", branch: "all", email: "hr@medlane.local", phone: "+63 917 600 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"] },
@@ -177,15 +177,19 @@ function effectiveModules() {
   // stored per-module permission rows predate a newer module like "print-templates" would otherwise
   // lose the Print Templates nav item while other Superadmins (no custom rows) keep it.
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return accounts[currentUser.role]?.modules || currentUser?.modules || [];
-  return currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || [];
+  const modules = currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || [];
+  const blocked = roleBlockedModules[currentUser?.role] || [];
+  return blocked.length ? modules.filter((module) => !blocked.includes(module)) : modules;
 }
+// Mirrors ROLE_BLOCKED_MODULES in worker.js (which also strips these from the server profile).
+const roleBlockedModules = { Logistics: ["logs", "product-issues"] };
 const roleEditableModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
   Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
   Accounting: ["purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings"],
   Sales: ["sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
-  Logistics: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
+  Logistics: ["inventory", "reports", "notifications", "user-settings"],
   "Product Specialist": ["inventory", "reports", "notifications", "user-settings", "product-issues"],
   Engineering: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
   HR: ["replenishments", "reports", "notifications", "user-settings", "memos"],
@@ -410,6 +414,40 @@ function saveRecordKeyFor(key, value, index) {
   if (key === "imports") return String(value.id || [value.date, value.module, value.file].filter(Boolean).join("|") || `${key}-${index}`);
   if (key === "reconHistory") return String(value.id || [value.date, value.range, value.period].filter(Boolean).join("|") || `${key}-${index}`);
   return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
+}
+
+// Merges rows from the live-update feed (/api/modules/changes) into `data` in place. Returns the
+// set of module keys that actually changed. Modules with unsaved local edits in the pending-save
+// queue are skipped so a background poll can never clobber work the user hasn't saved yet.
+const LIVE_SINGLETON_KEYS = ["branchAddresses", "invoiceApprovals"];
+function mergeLiveChanges(rows) {
+  const changed = new Set();
+  if (!Array.isArray(rows) || !rows.length || !data) return changed;
+  const pending = readPendingSaveQueue();
+  for (const { module, key, data: record } of rows) {
+    if (!module || pending[module] !== undefined || !record || typeof record !== "object") continue;
+    if (LIVE_SINGLETON_KEYS.includes(module)) {
+      if (JSON.stringify(data[module]) !== JSON.stringify(record.value)) { data[module] = record.value; changed.add(module); }
+      continue;
+    }
+    if (!Array.isArray(data[module])) continue;
+    const list = data[module];
+    // Match on the stored record_key first; fall back to the key the incoming record itself
+    // computes to (a save with an explicit/previous key can store it under a key that no longer
+    // matches its contents), so an edit replaces the local copy instead of duplicating it.
+    let index = list.findIndex((entry, i) => saveRecordKeyFor(module, entry, i) === key);
+    if (index < 0) {
+      const ownKey = saveRecordKeyFor(module, record, list.length);
+      if (ownKey && !ownKey.startsWith(`${module}-`)) index = list.findIndex((entry, i) => saveRecordKeyFor(module, entry, i) === ownKey);
+    }
+    if (index >= 0) {
+      if (JSON.stringify(list[index]) === JSON.stringify({ ...list[index], ...record })) continue;
+      list[index] = record;
+    } else list.push(record);
+    changed.add(module);
+  }
+  if (changed.size) data = normalizeData({ ...emptyProductionData(), ...data });
+  return changed;
 }
 
 function dedupeRecordsForSave(key, records, explicitKeys) {

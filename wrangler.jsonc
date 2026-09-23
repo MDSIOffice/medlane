@@ -10,6 +10,11 @@
     "binding": "ASSETS",
     "run_worker_first": ["/", "/index.html", "/login/*", "/dashboard/*", "/api/*", "/auth/*"]
   },
+  // Live updates: hibernating WebSocket hub (see LiveHub in src/worker.js).
+  "durable_objects": {
+    "bindings": [{ "name": "LIVE_HUB", "class_name": "LiveHub" }]
+  },
+  "migrations": [{ "tag": "v1-live-hub", "new_sqlite_classes": ["LiveHub"] }],
   "triggers": {
     "crons": ["*/5 * * * *"]
   },
@@ -38,6 +43,10 @@
     "preview": {
       "name": "medlane-preview",
       "workers_dev": true,
+      "durable_objects": {
+        "bindings": [{ "name": "LIVE_HUB", "class_name": "LiveHub" }]
+      },
+      "migrations": [{ "tag": "v1-live-hub", "new_sqlite_classes": ["LiveHub"] }],
       "triggers": {
         "crons": []
       },
@@ -62,6 +71,10 @@
     "production": {
       "name": "medlane",
       "workers_dev": true,
+      "durable_objects": {
+        "bindings": [{ "name": "LIVE_HUB", "class_name": "LiveHub" }]
+      },
+      "migrations": [{ "tag": "v1-live-hub", "new_sqlite_classes": ["LiveHub"] }],
       "triggers": {
         "crons": ["*/5 * * * *"]
       },

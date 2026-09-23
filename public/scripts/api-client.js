@@ -125,8 +125,26 @@ const MedlaneAPI = (() => {
     return request("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
   }
 
+  let changesCursor = null;
   async function loadAppState() {
-    return request("/api/modules/state");
+    const payload = await request("/api/modules/state");
+    if (payload?.changesCursor) changesCursor = payload.changesCursor;
+    return payload;
+  }
+
+  // Live-update feed: records changed since the last full load / poll. Silent (no global loading
+  // spinner) because it runs in the background every few seconds.
+  async function loadChanges() {
+    if (!changesCursor) return null;
+    const active = session();
+    if (!active?.access_token) return null;
+    const headers = { Authorization: `Bearer ${active.access_token}` };
+    if (active.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+    const response = await fetch(`/api/modules/changes?${new URLSearchParams({ since: changesCursor })}`, { headers });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    if (payload?.cursor) changesCursor = payload.cursor;
+    return payload;
   }
 
   async function me() {
@@ -441,5 +459,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
+  return { session, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();

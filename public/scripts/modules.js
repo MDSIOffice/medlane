@@ -577,6 +577,7 @@ function invoiceRowStockHintHtml(item, branch) {
 function invoiceLineTemplate(line = {}, options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
+  const showCode = Boolean(options.showCode);
   const item = findItemByCodeOrName(line.code || line.item || line.name);
   const equipment = isEquipmentItem(item);
   const selectedInvoiceBranch = qs("#sourceBranch")?.value || line.sourceBranch || line.branch || inventoryBranchTab || platformBranches()[0] || "";
@@ -587,6 +588,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
   const uid = ++invoiceRowUid;
   return `<div class="invoice-line-row">
     <div class="invoice-line-fields">
+      ${showCode ? `<div class="field code-field"><label>Item Code</label><input class="invoice-code-input" list="item-code-options" autocomplete="off" value="${escapeHtml(line.code || item?.code || "")}" placeholder="Type or pick a code" /></div>` : ""}
       <div class="field item-field"><label>Item</label><input class="invoice-item-input" list="item-master-options" autocomplete="off" value="${escapeHtml(line.item || item?.name || "")}" placeholder="Type item name or code" required />${invoiceRowStockHintHtml(item, preferredBranch)}</div>
       <input class="invoice-source-branch-input" type="hidden" value="${escapeHtml(selectedInvoiceBranch)}" />
       <div class="field brand-field"><label>Brand</label><input class="invoice-brand-input" value="${escapeHtml(line.brand || item?.brand || "")}" readonly /></div>
@@ -683,8 +685,9 @@ function openPurchaseOrdersForClient(clientName) {
 function renderInvoiceEditor(lines = [{}], options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
+  const showCode = Boolean(options.showCode);
   const help = requireLot ? "Search item name. Enter lot and expiry before creating SI, TS, or DR." : "Search item name. Lot and expiry will be entered during invoicing.";
-  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${activeItems().map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("")}</datalist><div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
+  return `<div class="field full invoice-editor"><label>Itemized Lines</label><datalist id="item-master-options">${activeItems().map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.code)} · ${escapeHtml(item.brand)}</option>`).join("")}</datalist>${showCode ? `<datalist id="item-code-options">${activeItems().map((item) => `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name)}</option>`).join("")}</datalist>` : ""}<div class="invoice-line-list" id="invoice-line-list">${lines.map((line) => invoiceLineTemplate(line, { requireLot, allowDiscount, showCode })).join("")}</div><div class="invoice-editor-actions"><button class="ghost-button" id="add-invoice-line" type="button">Add Item</button><small>${help}${allowDiscount ? " Each line can include discount." : ""}</small></div><input id="itemsText" name="itemsText" type="hidden" /><div class="invoice-compute-preview" id="invoice-compute-preview"></div></div>`;
 }
 
 function collectInvoiceEditorLines() {
@@ -702,6 +705,17 @@ function collectInvoiceEditorLines() {
     const discount = row.querySelector(".invoice-discount-input")?.value || 0;
     return `${itemValue}|${brand}|${qty}|${uom}|${price}|${sourceBranch}|${lot}|${expiry}|${discount}`;
   }).filter((line) => line.split("|")[0]).join("\n");
+}
+
+// Inventory PO lines carry an Item Code field: picking a code fills the item (and, through
+// syncInvoiceRowItem, its brand/unit) the same as picking the item name would.
+function syncInvoiceRowFromCode(input) {
+  const row = input?.closest(".invoice-line-row");
+  const item = data.items.find((entry) => String(entry.code || "").toLowerCase() === input.value.trim().toLowerCase());
+  if (!row || !item) return;
+  const itemInput = row.querySelector(".invoice-item-input");
+  itemInput.value = item.name;
+  syncInvoiceRowItem(itemInput);
 }
 
 function syncInvoiceRowLot(input) {
@@ -735,6 +749,8 @@ function syncInvoiceRowItem(input, options = {}) {
     lotInput.placeholder = lotTracked ? (isEquipmentItem(item) ? "Serial or lot number" : "Lot number") : "No lot on file — enter it here to record it";
   }
   row.querySelector(".invoice-brand-input").value = item.brand || "";
+  const codeInput = row.querySelector(".invoice-code-input");
+  if (codeInput) codeInput.value = item.code || "";
   // Skip when re-syncing a line whose unit was already set on purpose (e.g. carried over
   // from the source purchase order line, which can legitimately differ from the item's
   // default uom — a "box" PO line shouldn't get silently reset back to "piece").
@@ -810,8 +826,17 @@ function renderInvoiceComputePreview() {
   preview.innerHTML = `<div class="preview-tax-label">${escapeHtml(type === "DR" ? "Delivery Receipt: no price posted to Sales" : "Invoice totals exclude WTax/EWT; deductions are handled in Collections payment requests.")}</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>${salesLabel}</span><strong>${peso.format(billableTotal)}</strong></div><div class="invoice-meta total-line"><span>Total Amount Due</span><strong>${peso.format(billableTotal)}</strong></div></div>`;
 }
 
+// Sections a reload may land back on: the user's own modules plus the always-available pages.
+// Record-detail pages aren't restorable (they need the record chosen in memory).
+function canRestoreSection(sectionId) {
+  return Boolean(qs(`section.section#${CSS.escape(sectionId)}`)) && (effectiveModules().includes(sectionId) || ["notifications", "user-settings", "memos"].includes(sectionId));
+}
+
 function showSection(sectionId, options = {}) {
   document.body.dataset.activeSection = sectionId;
+  // Keep the URL on the current page so a browser refresh stays here instead of bouncing to the
+  // dashboard. Detail pages keep whatever list page the user came from.
+  if (location.protocol !== "file:" && document.body.classList.contains("app-route") && canRestoreSection(sectionId)) history.replaceState(null, "", sectionId === "dashboard" ? "/dashboard" : `/dashboard?section=${encodeURIComponent(sectionId)}`);
   qsa(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === sectionId));
   qsa(".section").forEach((section) => section.classList.toggle("active", section.id === sectionId));
   const activeButton = qs(`.nav-item[data-section="${sectionId}"]`);
@@ -1288,6 +1313,16 @@ const inventoryPoStatusEmoji = { "Sent to Supplier": "📤", "In Transit": "🚚
 const inventoryPoNextStatus = { Approved: "Sent to Supplier", "Sent to Supplier": "In Transit", "In Transit": "For Receiving" };
 function poStatusLabel(status) { return `${inventoryPoStatusEmoji[status] ? `${inventoryPoStatusEmoji[status]} ` : ""}${status}`; }
 
+// A PO whose stock receipt is waiting on Superadmin/CEO approval leaves "Receiving POs" right away
+// (it's listed under "Pending Receipts" instead) and comes back only if that receipt is cancelled
+// or the approval leaves quantity still to receive.
+function poHasPendingReceipt(po) {
+  return (data.stockReceipts || []).some((receipt) => receipt.poId === po.id && receipt.status === "Pending Approval");
+}
+function receivingPurchaseOrders() {
+  return (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status) && !poHasPendingReceipt(po));
+}
+
 function inventoryPoActionsCell(po, index) {
   const printBtn = `<button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`;
   const timelineBtn = `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button>`;
@@ -1537,7 +1572,52 @@ function dashboardVisibleSales(dashboardRange = getDashboardRange()) {
   return byBranch(data.sales, "area").filter((sale) => currentUser?.role !== "Sales" || sale.salesperson === currentUser?.name).filter((sale) => dateInRange(sale.date, dashboardRange.from, dashboardRange.to));
 }
 
+// Logistics gets an inventory/PO dashboard instead of the sales one: open POs by stage, receipts
+// and transfers awaiting action, stock health and expiring lots. The sales widgets are hidden.
+function isLogisticsDashboard() { return currentUser?.role === "Logistics"; }
+
+function renderLogisticsDashboard() {
+  const pos = data.inventoryPurchaseOrders || [];
+  const openPos = pos.filter((po) => !inventoryPoTerminalStatuses.includes(po.status));
+  const pendingApproval = openPos.filter((po) => po.status === "Pending Approval");
+  const inTransit = openPos.filter((po) => ["Approved", "Sent to Supplier", "In Transit"].includes(po.status));
+  const forReceiving = receivingPurchaseOrders().filter((po) => ["For Receiving", "Partially Received"].includes(po.status));
+  const pendingReceipts = (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval");
+  const openTransfers = (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status));
+  const demoForLogistics = (data.inventoryDemoRequests || []).filter((request) => request.status === "For Logistics Approval");
+  const stock = byBranch(data.inventory);
+  const invAlerts = stock.filter((item) => ["Low Stock", "Critical", "Near Expiry", "For Disposal"].includes(inventoryStatus(item)));
+  const stat = (accent, icon, label, value, note) => `<article class="stat-card accent-${accent}"><span class="card-icon">${icon}</span><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`;
+  qs("#logistics-stats").innerHTML = [
+    stat("orange", "◌", "Pending PO Approval", pendingApproval.length, "Awaiting Superadmin"),
+    stat("blue", "🚚", "POs In Transit", inTransit.length, "Approved → in transit"),
+    stat("green", "📦", "For Receiving", forReceiving.length, `${pendingReceipts.length} receipt${pendingReceipts.length === 1 ? "" : "s"} awaiting approval`),
+    stat("red", "!", "Stock Alerts", invAlerts.length, "Low / expiring lots"),
+  ].join("");
+  table("#logistics-po-table", ["PO", "Supplier", "Branch", "Date", "Lines", "Status"], openPos.slice().reverse().slice(0, 12).map((po) => ({ focus: po.id, cells: [po.id, po.supplier || "-", po.branch || "-", po.date || "-", String((po.lines || []).length), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(poHasPendingReceipt(po) ? "Receipt Pending Approval" : po.status)}</span>`] })));
+  qs("#logistics-stock-health").innerHTML = barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((status) => [status, stock.filter((item) => inventoryStatus(item) === status).length]), (value) => `${value} lot${value === 1 ? "" : "s"}`, ["green", "orange", "orange", "red", "red"]);
+  const expiring = stock.filter((item) => item.expiry && item.expiry !== "N/A" && Number(item.qty || 0) > 0).sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, 8);
+  qs("#logistics-expiry-list").innerHTML = expiring.map((item) => `<li><span>${escapeHtml(item.item)}<small>Lot ${escapeHtml(item.lot || "-")} · ${escapeHtml(item.branch)} · ${Number(item.qty || 0)} on hand</small></span><strong>${daysUntil(item.expiry) < 0 ? "Expired" : `${daysUntil(item.expiry)} days`}</strong></li>`).join("") || `<li><span>No dated lots on hand</span><strong>—</strong></li>`;
+  const alerts = [
+    ...pendingReceipts.map((receipt) => ({ color: "orange", title: "Receipt awaiting approval", text: `${receipt.id}${receipt.poId ? ` for ${receipt.poId}` : ""} — ${(receipt.lines || []).length} line(s).`, section: "inventory", record: receipt.id })),
+    ...forReceiving.map((po) => ({ color: "orange", title: `PO ${po.status.toLowerCase()}`, text: `${po.id} from ${po.supplier || "supplier"} is ready to receive.`, section: "inventory", record: po.id })),
+    ...demoForLogistics.map((request) => ({ color: "orange", title: "Demo consumables need your approval", text: `${request.id} for ${request.client}.`, section: "inventory", record: request.id })),
+    ...openTransfers.map((transfer) => ({ color: transfer.status === "For Receiving" ? "orange" : "green", title: `Transfer ${String(transfer.status || "open").toLowerCase()}`, text: `${transfer.id}: ${transfer.from} → ${transfer.to}.`, section: "inventory", record: transfer.id })),
+    ...invAlerts.filter((item) => ["Critical", "For Disposal"].includes(inventoryStatus(item))).map((item) => ({ color: "red", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot })),
+  ].slice(0, 8);
+  qs("#urgent-count").textContent = `${alerts.length} to action`;
+  qs("#alerts-list").innerHTML = alerts.map((a) => `<div class="alert-item clickable" data-go-section="${a.section}" data-focus-record="${escapeHtml(a.record || "")}"><span class="alert-dot ${a.color}"></span><div><strong>${escapeHtml(a.title)}</strong><span>${escapeHtml(a.text)}</span></div></div>`).join("") || `<p class="page-description">Nothing needs action right now.</p>`;
+  renderDashboardBackupStatus();
+  registerCalendarWidget("dash-cal", "#dashboard-calendar-widget", true);
+  renderCalendarWidget("dash-cal");
+}
+
 function renderDashboard() {
+  const logistics = isLogisticsDashboard();
+  const dashboard = qs("#dashboard");
+  dashboard?.classList.toggle("logistics-dashboard", logistics);
+  if (qs("#logistics-dashboard")) qs("#logistics-dashboard").hidden = !logistics;
+  if (logistics) return renderLogisticsDashboard();
   syncCollectionContactsForBalances();
   const dashboardRange = getDashboardRange();
   const visibleSales = dashboardVisibleSales(dashboardRange);
@@ -1735,7 +1815,7 @@ function renderAnalytics() {
   const resolvedIssues = data.productIssues.filter((report) => report.status === "Resolved");
   const avgIssueTurnaround = resolvedIssues.length ? Math.round(resolvedIssues.reduce((sum, report) => sum + (productIssueTurnaroundDays(report) || 0), 0) / resolvedIssues.length) : null;
   qs("#analytics-product-issues").innerHTML = barRows(issueCounts, (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "purple", "orange", "orange", "green"]) + graphNote(`Computed from support report status across all logged cases.${avgIssueTurnaround === null ? "" : ` Average turnaround: ${avgIssueTurnaround} day${avgIssueTurnaround === 1 ? "" : "s"}.`}`);
-  const demoCounts = ["For Sales Approval", "For Management Approval", "Approved", "Returned", "To Sales"].map((status) => [status, (data.inventoryDemoRequests || []).filter((request) => request.status === status).length]);
+  const demoCounts = ["For Logistics Approval", "For Management Approval", "Approved", "Returned", "To Sales"].map((status) => [status, (data.inventoryDemoRequests || []).filter((request) => request.status === status).length]);
   qs("#analytics-demo-requests").innerHTML = barRows(demoCounts, (value) => `${value} demo${value === 1 ? "" : "s"}`, ["orange", "red", "green", "", "green"]) + graphNote("Computed from inventory demo service orders, including approval, returned, and routed-to-sales outcomes.");
 
   const overdue = visibleSales.filter((sale) => statusForSale(sale) === "Overdue");
@@ -2045,8 +2125,23 @@ function demoRequestLineSummary(request) {
   return itemizedSummary((request.lines || []).map((line) => ({ particulars: `${line.type}: ${line.item || line.code || "Item"} (${line.qty || 0})${line.lot ? ` Lot ${line.lot}` : ""}${line.notes ? ` · ${line.notes}` : ""}`, amount: Number(line.qty || 0) })));
 }
 
+// Mirrors DEMO_TRANSITIONS / demoRequestInitialStatus in worker.js. Engineering and Product
+// Specialists file demo requests; machines/spare parts go straight to Superadmin/CEO, anything
+// with a consumable line needs Logistics first. "For Sales Approval" is the retired first step,
+// kept so requests filed before the change can still move forward.
+const demoRequesterRoles = ["Engineering", "Product Specialist", "Superadmin", "CEO"];
+function canRequestDemo() { return demoRequesterRoles.includes(currentUser?.role); }
+function isDemoOnlyRole() { return ["Engineering", "Product Specialist"].includes(currentUser?.role); }
+function demoRequestInitialStatus(lines) {
+  return (lines || []).some((line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
+}
+
 function canApproveDemoSales(request) {
   return request.status === "For Sales Approval" && ["Sales", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
+}
+
+function canApproveDemoLogistics(request) {
+  return request.status === "For Logistics Approval" && ["Logistics", "Superadmin", "CEO"].includes(currentUser?.role);
 }
 
 function canApproveDemoManagement(request) {
@@ -2060,6 +2155,7 @@ function canCloseDemoRequest(request) {
 function demoRequestActions(request) {
   const actions = [];
   if (canApproveDemoSales(request)) actions.push(`<button class="mini-button" data-demo-sales-approve="${escapeHtml(request.id)}">Sales Approve</button>`);
+  if (canApproveDemoLogistics(request)) actions.push(`<button class="mini-button" data-demo-logistics-approve="${escapeHtml(request.id)}">Logistics Approve</button>`);
   if (canApproveDemoManagement(request)) actions.push(`<button class="mini-button" data-demo-management-approve="${escapeHtml(request.id)}">Mgmt Approve</button>`);
   if (canCloseDemoRequest(request)) actions.push(`<button class="mini-button" data-demo-returned="${escapeHtml(request.id)}">Returned</button><button class="mini-button" data-demo-to-sales="${escapeHtml(request.id)}">To Sales</button>`);
   return actions.join("") || "Waiting";
@@ -2071,6 +2167,13 @@ function demoRequestHistoryCard(request) {
 }
 
 function renderInventory() {
+  // Engineering / Product Specialist see only the demo-request workflow; Request Demo itself is
+  // limited to those roles (and Superadmin/CEO). Server-side, canAccessKey() limits their writes.
+  const demoOnly = isDemoOnlyRole();
+  qs("#inventory")?.classList.toggle("demo-only", demoOnly);
+  if (demoOnly) inventoryWorkflowTab = "demos";
+  const demoButton = qs("#open-demo-request");
+  if (demoButton) demoButton.style.display = canRequestDemo() ? "" : "none";
   const status = qs("#inventory-status").value;
   renderInventoryWorkflowTabs();
   renderInventoryBranchTabs();
@@ -2101,14 +2204,14 @@ function renderInventory() {
     return { focus: i.lot, cells: inventoryCompactView ? fullCells.slice(3) : fullCells };
   }));
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
-  table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
+  table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], receivingPurchaseOrders().reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
   renderStockReceipts();
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
   table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, (transfer.lines || []).reduce((sum, line) => sum + transferLineQty(line), 0), (transfer.lines || []).map((line) => `${escapeHtml(transferLineLot(line))}<small>${escapeHtml(transferLineExpiry(line))}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View Details</button><button class="mini-button" data-transfer-print="${escapeHtml(transfer.id)}">Print</button>`] })));
   const demoRequests = data.inventoryDemoRequests || [];
   const activeDemos = demoRequests.filter((request) => !["Returned", "To Sales", "Cancelled"].includes(request.status));
   const closedDemos = demoRequests.filter((request) => ["Returned", "To Sales", "Cancelled"].includes(request.status));
-  table("#demo-request-table", ["Request", "Client", "Demo Date", "Items", "Status", "Approvals", "Actions"], activeDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, `Sales: ${escapeHtml(request.salesApprovedBy || "Pending")}<small>Mgmt: ${escapeHtml(request.managementApprovedBy || "Pending")}</small>`, demoRequestActions(request)] })));
+  table("#demo-request-table", ["Request", "Client", "Demo Date", "Items", "Status", "Approvals", "Actions"], activeDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, `${request.salesApprovedBy ? `Sales: ${escapeHtml(request.salesApprovedBy)}` : request.status === "For Logistics Approval" || request.logisticsApprovedBy ? `Logistics: ${escapeHtml(request.logisticsApprovedBy || "Pending")}` : "Logistics: Not needed"}<small>Mgmt: ${escapeHtml(request.managementApprovedBy || "Pending")}</small>`, demoRequestActions(request)] })));
   table("#demo-history-table", ["Request", "Client", "Demo Date", "Items", "Closed As", "Closed By"], closedDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, escapeHtml(request.closedBy || "-")] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
 }
@@ -2154,7 +2257,7 @@ function renderInventoryWorkflowTabs() {
   const tabs = qs("#inventory-workflow-tabs");
   if (!tabs) return;
   const counts = {
-    receiving: (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status)).length,
+    receiving: receivingPurchaseOrders().length,
     receipts: (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval").length,
     completed: (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).length,
     transfers: (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status)).length,
@@ -2360,8 +2463,19 @@ function transferSheetRow() {
   return `<tr><td><input class="transfer-code" list="inventory-code-options" autocomplete="off" /></td><td><input class="transfer-item" list="inventory-item-options" autocomplete="off" /><small class="transfer-balance-hint"></small></td><td><input class="transfer-lot" list="transfer-lot-options-${uid}" autocomplete="off" /><datalist id="transfer-lot-options-${uid}"></datalist></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
-function itemBranchBalances(code) {
-  return platformBranches().map((branch) => `${branch}: ${data.inventory.filter((entry) => entry.code === code && entry.branch === branch).reduce((sum, entry) => sum + Number(entry.qty || 0), 0)}`).join(" · ");
+// Per-branch on-hand quantity for one item. With a lot, only that lot counts — the balance a
+// transfer can actually draw on — instead of every lot of the item added together.
+function itemBranchBalances(code, lot = "") {
+  const wantedLot = String(lot || "").trim();
+  return platformBranches().map((branch) => `${branch}: ${data.inventory.filter((entry) => entry.code === code && entry.branch === branch && (!wantedLot || entry.lot === wantedLot)).reduce((sum, entry) => sum + Number(entry.qty || 0), 0)}`).join(" · ");
+}
+
+function updateTransferBalanceHint(row) {
+  const hint = row?.querySelector(".transfer-balance-hint");
+  const code = row?.querySelector(".transfer-code")?.value.trim();
+  if (!hint || !code) return;
+  const lot = row.querySelector(".transfer-lot")?.value.trim() || "";
+  hint.textContent = lot ? `Lot ${lot} balance — ${itemBranchBalances(code, lot)}` : `Balance (all lots) — ${itemBranchBalances(code)}`;
 }
 
 function addTransferSheetRow() {
@@ -2413,12 +2527,14 @@ async function saveDemoRequest() {
   if (!client) return toast("Client is required for a demo request.");
   if (!qs("#demo-sales-agent")?.value.trim()) return toast("Sales agent is required.");
   if (!qs("#demo-date")?.value || !qs("#demo-return-date")?.value) return toast("Demo date and expected return date are required.");
-  if (!lines.length || lines.some((line) => !line.item || line.qty <= 0)) return toast("Add at least one complete machine or spare part line.");
+  if (!canRequestDemo()) return toast("Only Engineering or Product Specialist can request a demo.");
+  if (!lines.length || lines.some((line) => !line.item || line.qty <= 0)) return toast("Add at least one complete machine, spare part, or consumable line.");
+  const initialStatus = demoRequestInitialStatus(lines);
   if (!(await confirmFinalSave("Submit this demo request?"))) return;
-  const request = { id: nextId(data.inventoryDemoRequests || [], "DEMO"), date: fmtDate(today), requestedBy: currentUser?.name || "System User", client, salesAgent: qs("#demo-sales-agent").value.trim(), demoDate: qs("#demo-date").value, returnDate: qs("#demo-return-date").value, purpose: qs("#demo-purpose")?.value.trim(), location: qs("#demo-location")?.value.trim(), contactPerson: qs("#demo-contact-person")?.value.trim(), contactNumber: qs("#demo-contact-number")?.value.trim(), status: "For Sales Approval", history: [{ date: fmtDate(today), status: "Requested", by: currentUser?.name || "System User", note: `${lines.length} itemized demo line(s) requested.` }], lines };
+  const request = { id: nextId(data.inventoryDemoRequests || [], "DEMO"), date: fmtDate(today), requestedBy: currentUser?.name || "System User", client, salesAgent: qs("#demo-sales-agent").value.trim(), demoDate: qs("#demo-date").value, returnDate: qs("#demo-return-date").value, purpose: qs("#demo-purpose")?.value.trim(), location: qs("#demo-location")?.value.trim(), contactPerson: qs("#demo-contact-person")?.value.trim(), contactNumber: qs("#demo-contact-number")?.value.trim(), status: initialStatus, history: [{ date: fmtDate(today), status: "Requested", by: currentUser?.name || "System User", note: `${lines.length} itemized demo line(s) requested.` }], lines };
   data.inventoryDemoRequests ||= [];
   data.inventoryDemoRequests.push(request);
-  notify("Demo Request", `${request.id} needs sales approval for ${client}.`, "inventory", request.id);
+  notify("Demo Request", initialStatus === "For Logistics Approval" ? `${request.id} (consumables) needs Logistics approval for ${client}.` : `${request.id} needs Superadmin/CEO approval for ${client}.`, "inventory", request.id);
   const saveResult = await persistRecords({ inventoryDemoRequests: [request] });
   if (!saveResult?.ok) return;
   log("Created demo request", "Inventory", `${request.id}: ${client}`, { save: false });
@@ -2426,7 +2542,7 @@ async function saveDemoRequest() {
   qs("#demo-request-modal")?.close();
   inventoryWorkflowTab = "demos";
   renderAll();
-  toast(`${request.id} submitted for sales approval.`);
+  toast(`${request.id} submitted for ${initialStatus === "For Logistics Approval" ? "Logistics" : "Superadmin/CEO"} approval.`);
 }
 
 async function updateDemoRequestStatus(id, status) {
@@ -2435,9 +2551,13 @@ async function updateDemoRequestStatus(id, status) {
   if (!(await confirmFinalSave(`Mark ${request.id} as ${status}?`))) return;
   const user = currentUser?.name || "System User";
   if (status === "For Management Approval") {
-    if (!canApproveDemoSales(request)) return toast("Sales approval is required first.");
-    request.salesApprovedBy = user;
-    notify("Demo Request", `${request.id} sales-approved. Superadmin or CEO approval needed.`, "inventory", request.id);
+    if (canApproveDemoLogistics(request)) {
+      request.logisticsApprovedBy = user;
+      notify("Demo Request", `${request.id} logistics-approved. Superadmin or CEO approval needed.`, "inventory", request.id);
+    } else if (canApproveDemoSales(request)) {
+      request.salesApprovedBy = user;
+      notify("Demo Request", `${request.id} sales-approved. Superadmin or CEO approval needed.`, "inventory", request.id);
+    } else return toast("This demo request isn't waiting on your approval.");
   } else if (status === "Approved") {
     if (!canApproveDemoManagement(request)) return toast("Only Superadmin or CEO can approve demo release.");
     request.managementApprovedBy = user;
@@ -2511,8 +2631,7 @@ function syncStockSheetRow(input, allowPartial = false) {
   const matchingStock = data.inventory.filter((entry) => entry.code === match.code && (!from || entry.branch === from) && entry.qty > 0);
   if (lotDatalist) lotDatalist.innerHTML = matchingStock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
   if (lotInput && matchingStock[0] && !lotInput.value.trim()) lotInput.value = matchingStock[0].lot;
-  const balanceHint = row.querySelector(".transfer-balance-hint");
-  if (balanceHint) balanceHint.textContent = `Balance — ${itemBranchBalances(match.code)}`;
+  updateTransferBalanceHint(row);
 }
 
 // Autosaves the in-progress Receive Stock sheet to localStorage so a forced logout, a crashed
@@ -2594,7 +2713,9 @@ function restoreStockSheetDraftIfMatching(poId, editingReceiptId) {
 async function saveStockSheet() {
   const poId = qs("#inventory-po-receive-picker")?.value;
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
-  if (!canManagePoReceiving()) return toast("Receiving stock needs Logistics or Superadmin access.");
+  // Editing a pending receipt is a Superadmin/CEO action (server: requireStockReceiptApprover);
+  // submitting a new one is Logistics/Superadmin. CEO used to be blocked from saving an edit here.
+  if (editingStockReceiptId ? !canApproveStockReceipts() : !canManagePoReceiving()) return toast(editingStockReceiptId ? "Only Superadmin or CEO can edit stock receipts." : "Receiving stock needs Logistics or Superadmin access.");
   if (po && !["For Receiving", "Partially Received"].includes(po.status)) return toast(`${po.id} is not ready for receiving.`);
   const orderNumber = qs("#stock-sheet-order-number")?.value.trim();
   const dateReceived = qs("#stock-sheet-date-received")?.value;
@@ -6603,7 +6724,7 @@ function openModal(type, edit = null) {
   editingPoId = type === "purchaseOrder" && edit?.poEdit ? edit.poEdit.id : null;
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor(edit?.poEdit?.lines?.length ? edit.poEdit.lines : [{}], { requireLot: false }));
   if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
-  if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false, allowDiscount: true }));
+  if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false, allowDiscount: true, showCode: true }));
   if (type === "purchaseOrder" && editingPoId) {
     const po = edit.poEdit;
     qs("#modal-title").textContent = `Edit ${po.id}`;
