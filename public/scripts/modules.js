@@ -4550,7 +4550,10 @@ function printClientInvoicesReport() {
 
 function soaHtml(client) {
   const clientRecord = data.clients.find((item) => item.name === client) || {};
-  const invoices = data.sales.filter((sale) => sale.client === client && Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  // An invoice whose collection is marked "Posted Date" is already settled by a dated cheque in
+  // hand — it's awaiting the claim date, not the client, so it must not be billed again on the SOA.
+  const postedDateInvoices = new Set(data.payments.filter((payment) => payment.collectionStatus === "Posted Date").map((payment) => saleForPayment(payment)).filter(Boolean));
+  const invoices = data.sales.filter((sale) => sale.client === client && !postedDateInvoices.has(sale) && Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
   const totalBalance = invoices.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
   const shortDate = (value) => {
     const parsed = value instanceof Date ? value : new Date(`${value}T00:00:00`);
@@ -5558,7 +5561,15 @@ function employeeBenefitsSummary(employee) {
   return String(employee.benefits || "").split(",").map((benefit) => benefit.trim()).filter(Boolean).map((benefit) => `${escapeHtml(benefit)}${benefitIds[benefit] ? `<small>${escapeHtml(benefitIds[benefit])}</small>` : ""}`).join("") || "-";
 }
 
-function requestActions(type, index) { return `<div class="inline-actions"><button class="mini-button" data-request-preview="${type}:${index}">Print</button><button class="mini-button" data-request-approve="${type}:${index}">Approve</button><button class="mini-button danger-button" data-request-cancel="${type}:${index}">Cancel</button></div>`; }
+// Mirrors assertFinancialApprovalAllowed() in worker.js: payables are Superadmin/CEO-only, and
+// Accounting (who prepares payables and expenses) can't approve either.
+function canApproveFinancialRequest(type) {
+  if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
+  if (type === "payable") return false;
+  return currentUser?.role !== "Accounting";
+}
+
+function requestActions(type, index) { return `<div class="inline-actions"><button class="mini-button" data-request-preview="${type}:${index}">Print</button>${canApproveFinancialRequest(type) ? `<button class="mini-button" data-request-approve="${type}:${index}">Approve</button>` : `<small>Awaiting ${type === "payable" ? "Superadmin/CEO" : "approver"}</small>`}<button class="mini-button danger-button" data-request-cancel="${type}:${index}">Cancel</button></div>`; }
 
 function paymentConfirmActions(type, index) { return `<div class="inline-actions"><button class="mini-button" data-confirm-payment="${type}:${index}:Cash">Cash</button><button class="mini-button" data-confirm-payment="${type}:${index}:Bank Transfer">Bank</button><button class="mini-button" data-confirm-payment="${type}:${index}:Cheque">Cheque</button></div>`; }
 
@@ -5608,7 +5619,7 @@ function financialRequestDetailFields(record, type) {
 async function approveFinancialRequest(type, index) {
   const record = requestRecord(type, index);
   if (!record) return;
-  if (type === "payable" && !["Superadmin", "CEO"].includes(currentUser?.role)) return toast("Only Superadmin or CEO can approve payable requests.");
+  if (!canApproveFinancialRequest(type)) return toast(type === "payable" ? "Only Superadmin or CEO can approve payable requests." : "Accounting cannot approve expense requests.");
   const ok = await confirmDetailsModal({ eyebrow: "Confirm Approval", title: `Approve ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Approve" });
   if (!ok) return;
   record.requestStatus = "Approved"; record.status = "Approved"; record.approvedBy = currentUser?.name || "System User"; record.approvedAt = fmtDate(today);
@@ -5684,7 +5695,7 @@ function expenseApprovalAction(expense, index) {
 async function approveExpense(index, nextStatus) {
   const expense = data.replenishments[index];
   if (!expense) return;
-  const allowed = nextStatus === "Approved by HR" ? ["Superadmin", "HR", "Admin", "CEO"] : ["Superadmin", "Accounting", "Admin", "CEO"];
+  const allowed = nextStatus === "Approved by HR" ? ["Superadmin", "HR", "Admin", "CEO"] : ["Superadmin", "Admin", "CEO"];
   if (!allowed.includes(currentUser?.role)) return toast(`${nextStatus} requires ${nextStatus.includes("HR") ? "HR" : "Accounting"} approval.`);
   if (!(await confirmFinalSave(`Mark ${expense.id} as ${nextStatus}?`))) return;
   expense.status = nextStatus;

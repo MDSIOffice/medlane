@@ -959,6 +959,24 @@ function requirePaymentRequestApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve payment requests");
 }
 
+// Approving a payable or expense request is segregated from preparing it: payables are
+// Superadmin/CEO-only, and Accounting (who prepares both) can never approve either. Diffs each
+// incoming payables/replenishments row against the stored one so only an actual transition into
+// "Approved" is checked — ordinary edits and payment confirmation on already-approved rows pass.
+async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
+  if (["Superadmin", "CEO"].includes(profile?.role)) return;
+  const candidates = rows.filter((row) => ["payables", "replenishments"].includes(row.module_name) && row.data?.requestStatus === "Approved");
+  if (!candidates.length) return;
+  const modules = [...new Set(candidates.map((row) => row.module_name))];
+  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(modules))}&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=module_name,record_key,data`);
+  const storedStatus = new Map(stored.map((row) => [`${row.module_name}|${row.record_key}`, row.data?.requestStatus]));
+  for (const row of candidates) {
+    if (storedStatus.get(`${row.module_name}|${row.record_key}`) === "Approved") continue;
+    if (row.module_name === "payables") throw new Error("Only Superadmin or CEO can approve payable requests");
+    if (profile?.role === "Accounting") throw new Error("Accounting cannot approve expense requests");
+  }
+}
+
 function requireStockReceiptApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve stock receipts");
 }
@@ -3272,6 +3290,8 @@ export default {
               if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
             }
 
+            await assertFinancialApprovalAllowed(env, stateKey, profile, rows);
+
             // Toggling a masterlist record's `archived` flag is CEO/Superadmin-only, even
             // through this bulk state PUT. Diff each incoming masterlist record against the
             // stored row and reject any archived-flag transition by a non-admin actor.
@@ -3637,6 +3657,8 @@ export default {
             if (JSON.stringify(prevRest, Object.keys(prevRest).sort()) !== JSON.stringify(nextRest, Object.keys(nextRest).sort())) throw new Error("You do not have permission to edit inventory");
           }
         }
+
+        await assertFinancialApprovalAllowed(env, stateKey, profile, rows);
 
         // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
         // permission check above only gates *editing* the module, not flipping the `archived`
@@ -4451,7 +4473,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission/.test(error.message) ? 403 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },

@@ -86,8 +86,32 @@ const MedlaneAPI = (() => {
       forceSessionLogout("Your session has expired. Please log in again.");
       throw new Error("Your session has expired. Please log in again.");
     }
-    if (!response.ok) throw new Error(payload?.error || `Request failed: ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(payload?.error || `Request failed: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
     return payload;
+  }
+
+  // Saves are idempotent upserts keyed by record, so a transient failure (network blip, cold
+  // Worker, brief Supabase 5xx) is safe to resend. Without this the user saw "Server save failed"
+  // on the first click and success on the second. 4xx (permission/validation/conflict) and
+  // session errors are thrown straight through.
+  async function withTransientRetry(send, attempts = 3) {
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await send();
+      } catch (error) {
+        lastError = error;
+        const status = Number(error?.status || 0);
+        const networkFailure = !status && /failed to fetch|networkerror|network error|load failed|timed? ?out/i.test(String(error?.message || ""));
+        if (!(networkFailure || status >= 500 || status === 429) || attempt === attempts - 1) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+      }
+    }
+    throw lastError;
   }
 
   async function login(email, password) {
@@ -110,11 +134,11 @@ const MedlaneAPI = (() => {
   }
 
   async function saveAppState(nextData, revision) {
-    return request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }) });
+    return withTransientRetry(() => request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }) }));
   }
 
   async function saveRecords(records, recordKeys = {}) {
-    return request("/api/modules/records", { method: "POST", body: JSON.stringify({ records, recordKeys }) });
+    return withTransientRetry(() => request("/api/modules/records", { method: "POST", body: JSON.stringify({ records, recordKeys }) }));
   }
 
   async function uploadFile(file, metadata = {}) {
