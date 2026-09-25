@@ -364,7 +364,7 @@ function normalizeData(next) {
     const client = next.clients.find((c) => c.name === sale.client);
     const item = next.items.find((i) => i.name === sale.item);
     const stock = next.inventory.find((entry) => entry.code === item?.code || entry.item === sale.item) || {};
-    const line = { item: sale.item, code: item?.code || sale.code || sale.item, brand: sale.brand || item?.brand || "Medlane", qty: Number(sale.qty || 1), uom: sale.uom || item?.uom || "unit", price: sale.qty ? Math.round((sale.amount || 0) / sale.qty) : item?.price || 0, lot: sale.lot || stock.lot || "Manual", expiry: sale.expiry || stock.expiry || "N/A", discount: Number(sale.discount || 0), discountReason: sale.discountReason || "", terms: Number(sale.terms || item?.terms || 30) };
+    const line = { item: sale.item, code: item?.code || sale.code || sale.item, brand: sale.brand || item?.brand || "Medlane", qty: Number(sale.qty || 1), uom: sale.uom || item?.uom || "unit", price: sale.qty ? Math.round(((sale.amount || 0) / sale.qty) * 100) / 100 : item?.price || 0, lot: sale.lot || stock.lot || "Manual", expiry: sale.expiry || stock.expiry || "N/A", discount: Number(sale.discount || 0), discountReason: sale.discountReason || "", terms: Number(sale.terms || item?.terms || 30) };
     const amount = Number(sale.amount || 0);
     const manualDiscount = Number(sale.discount || 0);
     const withholdingTax = Boolean(sale.withholdingTax);
