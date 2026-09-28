@@ -203,31 +203,46 @@ const MedlaneAPI = (() => {
   }
 
   async function approvePurchaseOrder(id) {
-    return request(`/api/purchase-orders/${encodeURIComponent(id)}/approve`, { method: "POST" });
+    return withTransientRetry(() => request(`/api/purchase-orders/${encodeURIComponent(id)}/approve`, { method: "POST" }));
   }
 
+  // Not retried: "advance" steps a PO to whatever status follows its CURRENT one, so a resend
+  // after a genuinely successful-but-lost response would read the now-advanced status and step it
+  // forward a second time. Approve/cancel are safe to retry because they target a fixed end state.
   async function advancePurchaseOrder(id) {
     return request(`/api/purchase-orders/${encodeURIComponent(id)}/advance`, { method: "POST" });
   }
 
   async function cancelPurchaseOrder(id, reason) {
-    return request(`/api/purchase-orders/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+    return withTransientRetry(() => request(`/api/purchase-orders/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }));
+  }
+
+  // Generated once per submit and resent unchanged on every retry, so a dropped response after
+  // the server already committed re-upserts the same receipt instead of creating a duplicate
+  // (the server upserts stock receipts by id — see /api/stock-receipts in worker.js).
+  function generateStockReceiptId() {
+    return `SR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   }
 
   async function submitStockReceipt(poId, lines, meta = {}) {
-    return request("/api/stock-receipts", { method: "POST", body: JSON.stringify({ poId, lines, ...meta }) });
+    const id = generateStockReceiptId();
+    return withTransientRetry(() => request("/api/stock-receipts", { method: "POST", body: JSON.stringify({ id, poId, lines, ...meta }) }));
   }
 
   async function approveStockReceipt(id) {
+    // Not retried: approving posts to inventory across multiple non-atomic writes, so an
+    // automatic resend after a genuinely partial failure risks double-posting stock. The server
+    // does short-circuit a resend of an already-approved receipt to a safe success, covering the
+    // common "it actually worked, the response just got lost" case if the user clicks Approve again.
     return request(`/api/stock-receipts/${encodeURIComponent(id)}/approve`, { method: "POST" });
   }
 
   async function cancelStockReceipt(id, reason) {
-    return request(`/api/stock-receipts/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+    return withTransientRetry(() => request(`/api/stock-receipts/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }));
   }
 
   async function editStockReceipt(id, lines, meta = {}) {
-    return request(`/api/stock-receipts/${encodeURIComponent(id)}/edit`, { method: "POST", body: JSON.stringify({ lines, ...meta }) });
+    return withTransientRetry(() => request(`/api/stock-receipts/${encodeURIComponent(id)}/edit`, { method: "POST", body: JSON.stringify({ lines, ...meta }) }));
   }
 
   async function setUserPassword(email, password) {
