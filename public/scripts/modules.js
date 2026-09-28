@@ -3912,7 +3912,7 @@ function paymentRequestNetAmountExceeded(rows, netAmount) {
   return netAmount > 0 && rows.reduce((sum, row) => sum + Number(row.amount || 0), 0) > netAmount;
 }
 
-const EXPENSE_CLASSIFICATION_OPTIONS = ["Accommodation", "Advertising & Marketing", "Bidding Expenses", "Delivery Fee", "Fixed Assets", "Freight/Importation"];
+const EXPENSE_CLASSIFICATION_OPTIONS = ["Accommodation", "Advertising & Marketing", "Bidding Expenses", "Delivery Fee", "Fixed Assets", "Freight/Importation", "Per Diem"];
 
 function financialLineTemplate(line = {}, options = {}) {
   const vendorField = options.vendor === false ? "" : `<div class="field"><label>Vendor</label><input class="payment-request-vendor" list="financial-vendor-options" autocomplete="off" value="${escapeHtml(line.vendor || "")}" /></div>`;
