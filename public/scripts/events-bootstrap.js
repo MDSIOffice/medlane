@@ -1382,6 +1382,13 @@ qsa("#logs-tabs .tab").forEach((button) => button.addEventListener("click", () =
 }));
 qs("#clear-notification-log-filters").addEventListener("click", () => { qs("#notification-logs-date-from").value = ""; qs("#notification-logs-date-to").value = ""; qs("#notification-logs-channel-filter").value = "all"; renderNotificationLogs(); toast("Filters cleared."); });
 qs("#load-more-notification-logs").addEventListener("click", loadMoreNotificationLogs);
+qs("#load-more-sales").addEventListener("click", loadMoreSales);
+qs("#load-more-purchase-orders").addEventListener("click", loadMorePurchaseOrders);
+qs("#load-more-inventory-pos").addEventListener("click", loadMoreInventoryPurchaseOrders);
+qs("#load-more-transfers").addEventListener("click", loadMoreTransfers);
+qs("#load-more-payables").addEventListener("click", loadMorePayables);
+qs("#load-more-collections").addEventListener("click", loadMoreCollections);
+qs("#load-more-payment-requests").addEventListener("click", loadMorePaymentRequests);
 qs("#notification-logs-channel-filter").addEventListener("change", renderNotificationLogs);
 qs("#clear-notifications").addEventListener("click", () => {
   const dismissed = new Set(data.notificationsDismissed || []);
@@ -2194,6 +2201,7 @@ async function hydrateAuthenticatedSession() {
   if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state. Refusing to load blank data over it.");
   serverRevision = Number(serverState.revision || 0);
   data = normalizeData({ ...emptyProductionData(), ...serverState.data });
+  modulePagination = serverState.pagination || {};
   applyPendingSaveQueueToLocal();
   await syncBackendUsers();
   flushPendingSaveQueue();
