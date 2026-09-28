@@ -1,4 +1,8 @@
 let data;
+// Per-module { hasMore, cursor, loading } for the transactional modules /api/modules/state trims
+// to "open + most recent 50" — populated from the state payload's `pagination` field, read/written
+// by the loadMore<Module>() handlers in modules.js to drive each list's "Load previous" button.
+let modulePagination = {};
 let modalType = null;
 let editContext = null;
 let modalReadOnly = false;

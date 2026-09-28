@@ -683,10 +683,10 @@
           <button class="tab" data-inventory-workflow="demos">Demo Requests</button>
           <button class="tab" data-inventory-workflow="stocks">Stocks</button>
         </div>
-        <div class="inventory-workflow-panel active" data-inventory-panel="receiving"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div></article></div>
+        <div class="inventory-workflow-panel active" data-inventory-panel="receiving"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div><button class="ghost-button" id="load-more-inventory-pos" type="button" hidden>Load Previous</button></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="receipts"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Stock Receiving</p><h2>Awaiting Superadmin/CEO approval</h2></div></div><div class="table-card compact-table"><table id="stock-receipt-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="completed"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="transfers"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div></article></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="transfers"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div><button class="ghost-button" id="load-more-transfers" type="button" hidden>Load Previous</button></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="demos"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo Service Orders</p><h2>Logistics (consumables) and management approval</h2></div></div><div class="table-card compact-table"><table id="demo-request-table"></table></div></article><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo History</p><h2>Returned or converted to sales</h2></div></div><div class="table-card compact-table"><table id="demo-history-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="stocks"><div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div><div class="table-card"><table id="inventory-table"></table></div></div>
       </section>
@@ -697,6 +697,7 @@
         <div class="toolbar"><input id="sales-client" list="sales-client-options" type="text" autocomplete="off" placeholder="Filter by client…" aria-label="Filter by client" /><datalist id="sales-client-options"></datalist><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select><button class="ghost-button" id="clear-sales-filters" type="button">Clear Filters</button></div>
         <div id="sales-target-panel"></div>
         <div class="table-card"><table id="sales-table"></table></div>
+        <button class="ghost-button" id="load-more-sales" type="button" hidden>Load Previous</button>
         <article class="panel sales-total-panel"><div class="sales-summary-grid" id="sales-summary-grid"></div></article>
       </section>
 
@@ -746,6 +747,7 @@
         <div class="visual-grid" id="purchase-order-visuals"></div>
         <div class="table-card" id="purchase-order-table-view"><table id="purchase-order-table"></table></div>
         <div class="invoice-grid" id="purchase-order-grid"></div>
+        <button class="ghost-button" id="load-more-purchase-orders" type="button" hidden>Load Previous</button>
       </section>
 
       <section class="section" id="invoicing">
@@ -789,8 +791,8 @@
             </div>
           </div>
         </article></div>
-        <div class="workflow-panel active" data-collections-panel="ledger"><div class="table-card"><table id="collections-table"></table></div></div>
-        <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Received</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div></article></div>
+        <div class="workflow-panel active" data-collections-panel="ledger"><div class="table-card"><table id="collections-table"></table></div><button class="ghost-button" id="load-more-collections" type="button" hidden>Load Previous</button></div>
+        <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Received</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div><button class="ghost-button" id="load-more-payment-requests" type="button" hidden>Load Previous</button></article></div>
         <div class="workflow-panel" data-collections-panel="history"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Collections History</p><h2>All previous collection activity</h2></div></div>
           <div class="toolbar" id="collections-client-search-row" hidden>
             <div class="field">
@@ -924,7 +926,7 @@
         <div class="tabs workflow-tabs" id="payables-workflow-tabs"><button class="tab" data-payables-workflow="requests">Requests</button><button class="tab" data-payables-workflow="payment">For Payment</button><button class="tab active" data-payables-workflow="all">All Payables</button></div>
         <div class="workflow-panel active" data-payables-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payable Requests</p><h2>For approval</h2></div></div><div class="table-card compact-table"><table id="payable-requests-table"></table></div></article></div>
         <div class="workflow-panel" data-payables-panel="payment"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Final Payables</p><h2>Approved and ready for payment confirmation</h2></div></div><div class="table-card compact-table"><table id="final-payables-table"></table></div></article></div>
-        <div class="workflow-panel" data-payables-panel="all"><div class="table-card"><table id="payables-table"></table></div></div>
+        <div class="workflow-panel" data-payables-panel="all"><div class="table-card"><table id="payables-table"></table></div><button class="ghost-button" id="load-more-payables" type="button" hidden>Load Previous</button></div>
       </section>
 
       <section class="section" id="replenishments">

@@ -2214,6 +2214,10 @@ function renderInventory() {
   table("#demo-request-table", ["Request", "Client", "Demo Date", "Items", "Status", "Approvals", "Actions"], activeDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, `${request.salesApprovedBy ? `Sales: ${escapeHtml(request.salesApprovedBy)}` : request.status === "For Logistics Approval" || request.logisticsApprovedBy ? `Logistics: ${escapeHtml(request.logisticsApprovedBy || "Pending")}` : "Logistics: Not needed"}<small>Mgmt: ${escapeHtml(request.managementApprovedBy || "Pending")}</small>`, demoRequestActions(request)] })));
   table("#demo-history-table", ["Request", "Client", "Demo Date", "Items", "Closed As", "Closed By"], closedDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, escapeHtml(request.closedBy || "-")] })));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
+  const loadMoreInventoryPosButton = qs("#load-more-inventory-pos");
+  if (loadMoreInventoryPosButton) loadMoreInventoryPosButton.hidden = !modulePagination.inventoryPurchaseOrders?.hasMore;
+  const loadMoreTransfersButton = qs("#load-more-transfers");
+  if (loadMoreTransfersButton) loadMoreTransfersButton.hidden = !modulePagination.pendingTransfers?.hasMore;
 }
 
 let dashboardBackupStatusRequest = 0;
@@ -3091,6 +3095,8 @@ function renderSales() {
       <article class="sales-summary-group"><h3>Risk Amounts</h3><div class="summary-pairs"><span>Overdue <strong>${peso.format(overdueAmount)}</strong></span><span>Partial AR <strong>${peso.format(partialAmount)}</strong></span></div></article>
     </div>`;
   renderSalesTargetPanel();
+  const loadMoreSalesButton = qs("#load-more-sales");
+  if (loadMoreSalesButton) loadMoreSalesButton.hidden = !modulePagination.sales?.hasMore;
 }
 
 function renderFinancialSummary(target, heroCards, groups) {
@@ -3139,6 +3145,8 @@ function renderPurchaseOrders() {
     }).join("");
     return `<details class="invoice-card collapsible-invoice" data-focus-record="${escapeHtml(po.id)}"><summary><div class="invoice-type-icon type-PO">PO</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(po.client)}</strong><strong class="invoice-amount">${peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0))}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(status)}">${escapeHtml(status)}</span><small class="invoice-client-line">${escapeHtml(po.id)}</small><small>${escapeHtml(po.date)}</small></div></div></summary><div class="invoice-details"><ul class="compact-list">${lines}</ul><div class="modal-actions">${poCanEdit(po) ? `<button class="ghost-button" data-po-edit="${escapeHtml(po.id)}">Edit PO</button>` : ""}<button class="ghost-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button></div></div></details>`;
   }).join("");
+  const loadMorePurchaseOrdersButton = qs("#load-more-purchase-orders");
+  if (loadMorePurchaseOrdersButton) loadMorePurchaseOrdersButton.hidden = !modulePagination.purchaseOrders?.hasMore;
 }
 
 function openInvoiceForPurchaseOrder(poId) {
@@ -3706,6 +3714,10 @@ function renderCollections() {
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Collection Status", "Actions", "Balance", "AR Status"], rows);
   table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Department", "Payment", "Total", "Status", "Actions"], [...data.paymentRequests].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.department, r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
+  const loadMoreCollectionsButton = qs("#load-more-collections");
+  if (loadMoreCollectionsButton) loadMoreCollectionsButton.hidden = !modulePagination.payments?.hasMore;
+  const loadMorePaymentRequestsButton = qs("#load-more-payment-requests");
+  if (loadMorePaymentRequestsButton) loadMorePaymentRequestsButton.hidden = !modulePagination.paymentRequests?.hasMore;
 }
 
 function renderCollectionsWorkflowTabs() {
@@ -5425,6 +5437,8 @@ function renderPayables() {
   table("#payable-requests-table", ["ID", "Supplier", "Requested", "Items", "Gross", "Withholding", "Net Total", "Status", "Actions"], requests.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", itemizedSummary(p.items), peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill ${statusClass(p.requestStatus)}">${p.requestStatus}</span>`, requestActions("payable", data.payables.indexOf(p), p)] })));
   table("#final-payables-table", ["ID", "Supplier", "Requested", "Approved", "Gross", "Withholding", "Net Total", "Status", "Attachment", "2307", "Set payment type"], approved.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", p.approvedAt || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill success">Approved</span>`, payableAttachmentCell(p), payable2307Cell(p), paymentConfirmActions("payable", data.payables.indexOf(p))] })));
   table("#payables-table", ["ID", "Supplier", "Requested", "Approved", "Items/Service", "Method", "Gross", "Withholding", "Net Total", "Paid", "Balance", "Cheque Details", "Tag", "Attachment", "2307", "Voucher"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", p.approvedAt || "-", itemizedSummary(p.items), p.method || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`, payableAttachmentCell(p), payable2307Cell(p), `<button class="ghost-button" data-request-preview="payable:${data.payables.indexOf(p)}" type="button">Print Voucher</button>`] })));
+  const loadMorePayablesButton = qs("#load-more-payables");
+  if (loadMorePayablesButton) loadMorePayablesButton.hidden = !modulePagination.payables?.hasMore;
 }
 
 function payableWithholdingSummary(payable) {
@@ -6474,6 +6488,118 @@ async function loadMoreCollectionsHistory() {
   collectionsHistoryState.loading = false;
   renderCollectionsHistoryTable();
 }
+
+// "Load previous" for the transactional modules /api/modules/state trims to "open + most recent
+// 50" (see PAGINATED_MODULES in src/worker.js). Each merges the older page straight into
+// data[<module>] via mergeLiveChanges() — the same row shape and merge-by-key logic the live-sync
+// poll (/api/modules/changes) already uses — since these modules render directly from `data`
+// rather than a separate history list like loadMoreCollectionsHistory() above.
+async function loadMoreSales() {
+  const page = modulePagination.sales;
+  if (!page?.hasMore || page.loading) return;
+  page.loading = true;
+  try {
+    const result = await MedlaneAPI.loadModulePage({ module: "sales", before: page.cursor, limit: 50 });
+    mergeLiveChanges(result.rows || []);
+    page.hasMore = Boolean(result.hasMore);
+    page.cursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more sales history.");
+  }
+  page.loading = false;
+  renderSales();
+}
+async function loadMorePurchaseOrders() {
+  const page = modulePagination.purchaseOrders;
+  if (!page?.hasMore || page.loading) return;
+  page.loading = true;
+  try {
+    const result = await MedlaneAPI.loadModulePage({ module: "purchaseOrders", before: page.cursor, limit: 50 });
+    mergeLiveChanges(result.rows || []);
+    page.hasMore = Boolean(result.hasMore);
+    page.cursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more purchase orders.");
+  }
+  page.loading = false;
+  renderPurchaseOrders();
+}
+async function loadMoreInventoryPurchaseOrders() {
+  const page = modulePagination.inventoryPurchaseOrders;
+  if (!page?.hasMore || page.loading) return;
+  page.loading = true;
+  try {
+    const result = await MedlaneAPI.loadModulePage({ module: "inventoryPurchaseOrders", before: page.cursor, limit: 50 });
+    mergeLiveChanges(result.rows || []);
+    page.hasMore = Boolean(result.hasMore);
+    page.cursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more inventory purchase orders.");
+  }
+  page.loading = false;
+  renderInventory();
+}
+async function loadMoreTransfers() {
+  const page = modulePagination.pendingTransfers;
+  if (!page?.hasMore || page.loading) return;
+  page.loading = true;
+  try {
+    const result = await MedlaneAPI.loadModulePage({ module: "pendingTransfers", before: page.cursor, limit: 50 });
+    mergeLiveChanges(result.rows || []);
+    page.hasMore = Boolean(result.hasMore);
+    page.cursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more transfers.");
+  }
+  page.loading = false;
+  renderInventory();
+}
+async function loadMorePayables() {
+  const page = modulePagination.payables;
+  if (!page?.hasMore || page.loading) return;
+  page.loading = true;
+  try {
+    const result = await MedlaneAPI.loadModulePage({ module: "payables", before: page.cursor, limit: 50 });
+    mergeLiveChanges(result.rows || []);
+    page.hasMore = Boolean(result.hasMore);
+    page.cursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more payables.");
+  }
+  page.loading = false;
+  renderPayables();
+}
+async function loadMoreCollections() {
+  const page = modulePagination.payments;
+  if (!page?.hasMore || page.loading) return;
+  page.loading = true;
+  try {
+    const result = await MedlaneAPI.loadModulePage({ module: "payments", before: page.cursor, limit: 50 });
+    mergeLiveChanges(result.rows || []);
+    page.hasMore = Boolean(result.hasMore);
+    page.cursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more collections.");
+  }
+  page.loading = false;
+  renderCollections();
+}
+async function loadMorePaymentRequests() {
+  const page = modulePagination.paymentRequests;
+  if (!page?.hasMore || page.loading) return;
+  page.loading = true;
+  try {
+    const result = await MedlaneAPI.loadModulePage({ module: "paymentRequests", before: page.cursor, limit: 50 });
+    mergeLiveChanges(result.rows || []);
+    page.hasMore = Boolean(result.hasMore);
+    page.cursor = result.nextCursor || null;
+  } catch (error) {
+    toast(error.message || "Could not load more payment requests.");
+  }
+  page.loading = false;
+  renderCollections();
+}
+
 let userAuditLogState = { user: "", entries: [], nextCursor: null, loading: false };
 const userAuditLogWideDateFrom = "2020-01-01T00:00:00.000Z";
 function userAuditLogEventTone(action) {

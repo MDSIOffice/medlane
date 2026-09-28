@@ -1939,6 +1939,110 @@ const NON_STATE_MODULES = ["logs", ...GAME_MODULES];
 // Session tokens older than this are past every use (30-min expiry) and are swept.
 const GAME_SESSION_TTL_MS = 3 * 60 * 60 * 1000;
 
+// Historical/transactional modules whose row count only ever grows. /api/modules/state caps
+// these to "still open/pending" records (any age) plus the most recent PAGINATED_MODULE_PAGE_SIZE
+// closed/settled ones, instead of shipping every row ever created on every login. Older, closed
+// history is fetched on demand via /api/modules/page ("Load previous"). Current inventory stock
+// levels and every other module are not historical in this sense and are left untouched.
+const PAGINATED_MODULES = ["sales", "purchaseOrders", "inventoryPurchaseOrders", "pendingTransfers", "payables", "payments", "paymentRequests"];
+const PAGINATED_MODULE_PAGE_SIZE = 50;
+
+// How much of a client PO's line quantity has been invoiced, computed from `sales` rows the
+// same way the client's poServedQty()/poStatus() (public/scripts/modules.js) do — the PO's own
+// stored `status` field is frozen at creation and never rewritten to a terminal value, so it
+// cannot be used as a shortcut here.
+function buildServedQtyByPo(salesRows) {
+  const map = new Map();
+  for (const row of salesRows) {
+    const sale = row.data;
+    if (!sale || !sale.po || sale.status === "Cancelled") continue;
+    let byCode = map.get(sale.po);
+    if (!byCode) { byCode = new Map(); map.set(sale.po, byCode); }
+    for (const line of sale.lines || []) {
+      if (!line.code) continue;
+      byCode.set(line.code, (byCode.get(line.code) || 0) + Number(line.qty || 0));
+    }
+  }
+  return map;
+}
+
+function purchaseOrderIsOpen(po, servedQtyByPo) {
+  const byCode = servedQtyByPo.get(po?.id);
+  const lines = po?.lines || [];
+  let pending = 0;
+  for (const line of lines) pending += Math.max(Number(line.qty || 0) - (byCode?.get(line.code) || 0), 0);
+  // Epsilon tolerance matches poStatus()'s fractional-quantity floating-point guard.
+  return pending > 1e-9;
+}
+
+// Per-module "still open" predicate (kept regardless of age/page) and sort value (what "most
+// recent" and pagination cursors are measured against). pendingTransfers has no date field on
+// the record itself, so it falls back to the row's own `updated_at` column.
+function paginatedModulePredicates(servedQtyByPo) {
+  return {
+    sales: {
+      isOpen: (data) => data?.status !== "Cancelled" && Number(data?.net || 0) - Number(data?.paid || 0) > 0,
+      sortValue: (data) => data?.date || "",
+    },
+    purchaseOrders: {
+      isOpen: (data) => purchaseOrderIsOpen(data, servedQtyByPo),
+      sortValue: (data) => data?.date || "",
+    },
+    inventoryPurchaseOrders: {
+      isOpen: (data) => !["Fully Received", "Cancelled"].includes(data?.status),
+      sortValue: (data) => data?.date || "",
+    },
+    pendingTransfers: {
+      isOpen: (data) => !["Received", "Cancelled"].includes(data?.status),
+      sortValue: (data, updatedAt) => updatedAt || "",
+    },
+    payables: {
+      isOpen: (data) => data?.requestStatus !== "Cancelled" && !(data?.requestStatus === "Approved" && data?.paymentConfirmed === true),
+      sortValue: (data) => data?.date || "",
+    },
+    payments: {
+      isOpen: (data) => data?.collectionStatus !== "Deposited",
+      sortValue: (data) => data?.dateRecorded || data?.date || data?.postedDate || "",
+    },
+    paymentRequests: {
+      isOpen: (data) => !["Completed", "Cancelled"].includes(data?.requestStatus),
+      sortValue: (data) => data?.date || data?.createdAt || "",
+    },
+  };
+}
+
+// Trims the paginated modules in `rows` (app_records rows: {module_name, record_key, data,
+// updated_at}) down to "open ∪ most recent PAGINATED_MODULE_PAGE_SIZE", leaving every other
+// module untouched. Returns the trimmed row list plus per-module { hasMore, cursor } metadata
+// for the client's "Load previous" control (cursor = the `before` value for /api/modules/page).
+function trimPaginatedModuleRows(rows) {
+  const servedQtyByPo = buildServedQtyByPo(rows.filter((row) => row.module_name === "sales"));
+  const predicates = paginatedModulePredicates(servedQtyByPo);
+  const byModule = new Map();
+  for (const row of rows) {
+    if (!PAGINATED_MODULES.includes(row.module_name)) continue;
+    if (!byModule.has(row.module_name)) byModule.set(row.module_name, []);
+    byModule.get(row.module_name).push(row);
+  }
+  const pagination = {};
+  const kept = [];
+  for (const moduleName of PAGINATED_MODULES) {
+    const moduleRows = byModule.get(moduleName) || [];
+    const { isOpen, sortValue } = predicates[moduleName];
+    const sortOf = (row) => sortValue(row.data, row.updated_at) || "";
+    if (!moduleRows.length) { pagination[moduleName] = { hasMore: false, cursor: null }; continue; }
+    const sortedDesc = [...moduleRows].sort((a, b) => sortOf(b).localeCompare(sortOf(a)));
+    const recent = sortedDesc.slice(0, PAGINATED_MODULE_PAGE_SIZE);
+    const recentKeys = new Set(recent.map((row) => row.record_key));
+    const openRows = moduleRows.filter((row) => !recentKeys.has(row.record_key) && isOpen(row.data));
+    const finalRows = [...recent, ...openRows].sort((a, b) => sortOf(a).localeCompare(sortOf(b)));
+    kept.push(...finalRows);
+    pagination[moduleName] = { hasMore: finalRows.length < moduleRows.length, cursor: sortOf(recent[recent.length - 1]) || null };
+  }
+  const untouched = rows.filter((row) => !PAGINATED_MODULES.includes(row.module_name));
+  return { rows: [...untouched, ...kept], pagination };
+}
+
 async function loadDigestState(env, modules = digestStateModules) {
   const stateKey = appStateKey(env);
   const chunks = [];
@@ -2212,6 +2316,9 @@ async function postInventoryBranchBoard(env, branchLabel, branchInventory) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_INVENTORY_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
     if (edited?.edited) return saveMonitoringState(env, stateKey, { ...stored, updatedAt: new Date().toISOString() });
     await recordSystemLog(env, { action: "Discord inventory edit failed", module: "Discord", record: `${branchLabel}: ${edited?.error?.message || "Unknown edit failure"}` });
+    // Edit failed (message deleted/edited elsewhere, etc.) — clear the old message before
+    // posting a fresh one below so a still-live message doesn't linger as a duplicate.
+    await deleteDiscordWebhookMessage(env.DISCORD_INVENTORY_WEBHOOK_URL, stored.messageId).catch(() => null);
   }
   const sent = await sendDiscordWebhookUrl(env, env.DISCORD_INVENTORY_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
   if (sent.error) return recordSystemLog(env, { action: "Discord inventory monitor failed", module: "Discord", record: `${branchLabel}: ${sent.error.message}` });
@@ -2454,8 +2561,12 @@ async function runDashboardAnalyticsMonitor(env) {
   const embed = { title: "📊 Medlane Dashboard & Analytics", color: 0x0077bd, description: `📅 **Current month:** ${month.label}\n🕒 **Latest update:** ${updatedAt} PHT`, fields: dashboardAnalyticsFields(state, month.key), timestamp: new Date().toISOString() };
   const stored = await monitoringState(env, "discord-dashboard").catch(() => ({}));
   if (stored.messageId) {
-    const edited = await editDiscordWebhookMessage(env.DISCORD_DASHBOARD_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch(() => null);
+    const edited = await editDiscordWebhookMessage(env.DISCORD_DASHBOARD_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
     if (edited?.edited) return saveMonitoringState(env, "discord-dashboard", { ...stored, updatedAt: new Date().toISOString() });
+    await recordSystemLog(env, { action: "Discord dashboard edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
+    // Edit failed (message deleted/edited elsewhere, etc.) — clear the old message before
+    // posting a fresh one below so a still-live message doesn't linger as a duplicate.
+    await deleteDiscordWebhookMessage(env.DISCORD_DASHBOARD_WEBHOOK_URL, stored.messageId).catch(() => null);
   }
   const sent = await sendDiscordWebhookUrl(env, env.DISCORD_DASHBOARD_WEBHOOK_URL, { embeds: [embed], wait: true });
   if (sent.messageId) await saveMonitoringState(env, "discord-dashboard", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
@@ -3454,6 +3565,31 @@ export default {
         return json({ rows: visible.map(({ module_name, record_key, data }) => ({ module: module_name, key: record_key, data })), cursor });
       }
 
+      // "Load previous" — older records for one module that /api/modules/state trimmed out,
+      // strictly before `before` (that module's sort value from trimPaginatedModuleRows():
+      // data.date for most modules, updated_at for pendingTransfers). Response rows are shaped
+      // identically to /api/modules/changes so the client can merge them with mergeLiveChanges().
+      if (url.pathname === "/api/modules/page" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const moduleName = url.searchParams.get("module") || "";
+        if (!PAGINATED_MODULES.includes(moduleName)) return json({ error: `Unsupported module: ${moduleName}` }, { status: 400 });
+        const before = url.searchParams.get("before") || "";
+        if (!before) return json({ error: "A `before` cursor is required" }, { status: 400 });
+        const limit = Math.min(Number(url.searchParams.get("limit")) || PAGINATED_MODULE_PAGE_SIZE, 200);
+        const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+        const { sortValue } = paginatedModulePredicates(new Map())[moduleName];
+        const sortOf = (row) => sortValue(row.data, row.updated_at) || "";
+        const older = rows.filter((row) => sortOf(row) < before).sort((a, b) => sortOf(b).localeCompare(sortOf(a)));
+        const page = older.slice(0, limit);
+        const visible = filterRecordsForProfile(page, profile, "view");
+        return json({
+          rows: visible.map(({ module_name, record_key, data }) => ({ module: module_name, key: record_key, data })),
+          nextCursor: page.length ? sortOf(page[page.length - 1]) : null,
+          hasMore: older.length > limit,
+        });
+      }
+
       if (url.pathname === "/api/modules/state") {
         const { authUser, profile } = await authenticatedProfile(request, env);
         const stateKey = appStateKey(env);
@@ -3463,9 +3599,14 @@ export default {
           // them here keeps this load, which every client runs, from paging through
           // thousands of dead session rows.
           const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+          // Ship only what's still open/pending plus the most recent PAGINATED_MODULE_PAGE_SIZE
+          // for the modules whose history only ever grows — older closed records are fetched on
+          // demand via /api/modules/page. changesCursor is derived from the FULL row set (not the
+          // trimmed one) so an edit to an old, trimmed-out record still moves the live-sync cursor.
+          const { rows: trimmedRows, pagination } = trimPaginatedModuleRows(rows);
           // `changesCursor` seeds the client's live-update poll (/api/modules/changes). It's the
           // database's own latest updated_at, so Worker/DB clock skew can't open a gap.
-          return json({ data: stateFromRecords(filterRecordsForProfile(rows, profile, "view")), revision: Date.now(), changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString() });
+          return json({ data: stateFromRecords(filterRecordsForProfile(trimmedRows, profile, "view")), revision: Date.now(), changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString(), pagination });
         }
         if (request.method === "PUT") {
           requireWriteAccess(profile);
