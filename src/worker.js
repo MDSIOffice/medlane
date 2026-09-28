@@ -3094,7 +3094,7 @@ export default {
     if (env.ENVIRONMENT !== "production") return;
     ctx.waitUntil(runFiveMinuteScheduledTasks(event, env).catch((error) => console.error(JSON.stringify({ message: "Scheduled tasks failed", cron: event.cron || FIVE_MINUTE_MONITOR_CRON, error: error.message }))));
   },
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     try {
 
@@ -3958,6 +3958,10 @@ export default {
 
         if (action === "approve") {
           requirePoApprover(profile);
+          // Idempotent short-circuit: a retried approve (client resend after a dropped response)
+          // lands here once the first attempt already went through, so it returns success instead
+          // of the confusing "Cannot approve ... status Approved" error.
+          if (po.status === "Approved") return json({ ok: true, po });
           if (po.status !== "Pending Approval") throw new Error(`Cannot approve a purchase order with status "${po.status}"`);
           po.status = "Approved";
           po.approvedBy = by;
@@ -3971,6 +3975,7 @@ export default {
           po.history.push({ date: timestamp, status: next, note: `Marked ${next} by ${by}.`, by });
         } else if (action === "cancel") {
           requirePoReceiver(profile);
+          if (po.status === "Cancelled") return json({ ok: true, po });
           if (!poCancellableStatuses.includes(po.status)) throw new Error(`Cannot cancel a purchase order with status "${po.status}"`);
           const body = await request.json().catch(() => ({}));
           po.status = "Cancelled";
@@ -3984,7 +3989,10 @@ export default {
           body: JSON.stringify({ data: po, updated_by: authUser.id }),
         });
         if (action === "approve") {
-          await postWorkflowEventToDiscord(env, profile, {
+          // Discord post already swallows its own errors — it's pure notification, so it doesn't
+          // need to block the response. waitUntil lets the Worker finish sending it (including
+          // Discord's rate-limit backoff) after the client already has its answer.
+          ctx.waitUntil(postWorkflowEventToDiscord(env, profile, {
             title: "Inventory Purchase Order Approved", color: 0x22c55e, label: `Inventory PO approved ${poId}`,
             fields: [
               { name: "PO", value: webhookText(po.id || poId), inline: true },
@@ -3992,7 +4000,7 @@ export default {
               { name: "Total", value: money(inventoryPoTotal(po)), inline: true },
               { name: "Branch", value: webhookText(po.branch), inline: true },
             ],
-          });
+          }));
         }
         return json({ ok: true, po });
       }
@@ -4011,22 +4019,32 @@ export default {
           requirePoReceiver(profile);
           const body = await request.json().catch(() => ({}));
           const poId = body.poId ? String(body.poId).trim() : "";
-          let po = null;
+          // The PO lookup/duplicate-check and the items lookup are independent reads — running them
+          // together instead of one after another cuts a full network round trip off every submit,
+          // which matters most on itemized receipts where the extra latency made a transient network
+          // blip (cold Worker, wifi handoff) more likely to surface as "Failed to fetch".
+          const [po, openReceipt, itemRows] = await Promise.all([
+            poId
+              ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}&select=data`).then((rows) => rows[0]?.data || null)
+              : Promise.resolve(null),
+            poId
+              ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockReceipts&select=data`).then((rows) => rows.map((row) => row.data).find((entry) => entry.poId === poId && entry.status === "Pending Approval") || null)
+              : Promise.resolve(null),
+            supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`),
+          ]);
           if (poId) {
-            const poRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}&select=data`);
-            po = poRows[0]?.data;
             if (!po) return json({ error: "Purchase order not found" }, { status: 404 });
             if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot receive stock for a purchase order with status "${po.status}"`);
-            const existingRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockReceipts&select=data`);
-            const openReceipt = existingRows.map((row) => row.data).find((entry) => entry.poId === poId && entry.status === "Pending Approval");
             if (openReceipt) throw new Error(`${poId} already has a stock receipt (${openReceipt.id}) awaiting approval.`);
           }
-          const itemRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`);
           const items = itemRows.map((row) => row.data);
           const lines = validateReceivingLines(po, Array.isArray(body.lines) ? body.lines : [], items);
           const { orderNumber, dateReceived, source } = validateReceivingMeta(body);
+          // Accept a client-generated id so a retried submit (network blip after the server already
+          // committed) safely re-upserts the same record instead of creating a duplicate receipt.
+          const clientId = typeof body.id === "string" ? body.id.trim() : "";
           const receipt = {
-            id: `SR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+            id: /^SR-[A-Z0-9]{1,24}-[A-Z0-9]{1,24}$/i.test(clientId) ? clientId : `SR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
             poId: po?.id || null,
             supplier: po?.supplier || "",
             status: "Pending Approval",
@@ -4052,6 +4070,7 @@ export default {
 
         if (action === "cancel") {
           requireStockReceiptApprover(profile);
+          if (receipt.status === "Cancelled") return json({ ok: true, receipt });
           if (receipt.status !== "Pending Approval") throw new Error(`Cannot cancel a stock receipt with status "${receipt.status}"`);
           const body = await request.json().catch(() => ({}));
           const reason = String(body.reason || "").trim();
@@ -4070,12 +4089,12 @@ export default {
           requireStockReceiptApprover(profile);
           if (receipt.status !== "Pending Approval") throw new Error(`Cannot edit a stock receipt with status "${receipt.status}"`);
           const body = await request.json().catch(() => ({}));
-          let po = null;
-          if (receipt.poId) {
-            const poRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(receipt.poId)}&select=data`);
-            po = poRows[0]?.data;
-          }
-          const itemRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`);
+          const [po, itemRows] = await Promise.all([
+            receipt.poId
+              ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(receipt.poId)}&select=data`).then((rows) => rows[0]?.data || null)
+              : Promise.resolve(null),
+            supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`),
+          ]);
           const items = itemRows.map((row) => row.data);
           receipt.lines = validateReceivingLines(po, Array.isArray(body.lines) ? body.lines : [], items);
           const { orderNumber, dateReceived, source } = validateReceivingMeta(body);
@@ -4089,16 +4108,31 @@ export default {
         }
 
         requireStockReceiptApprover(profile);
+        // Idempotent short-circuit: a retried approve (client resend after a dropped response)
+        // lands here once the first attempt already posted to inventory, so it returns the
+        // already-approved receipt instead of throwing "Cannot approve ... status Approved".
+        if (receipt.status === "Approved") {
+          const po = receipt.poId
+            ? (await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(receipt.poId)}&select=data`))[0]?.data || null
+            : null;
+          return json({ ok: true, receipt, po });
+        }
         if (receipt.status !== "Pending Approval") throw new Error(`Cannot approve a stock receipt with status "${receipt.status}"`);
-        let po = null;
+        // The PO lookup and the inventory lookup are independent reads — running them together
+        // shaves a full round trip off every approval, which matters most on itemized receipts
+        // where the extra latency made a transient network blip more likely to surface as
+        // "Failed to fetch".
+        const [po, invRows] = await Promise.all([
+          receipt.poId
+            ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(receipt.poId)}&select=data`).then((rows) => rows[0]?.data || null)
+            : Promise.resolve(null),
+          supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=record_key,data`),
+        ]);
         if (receipt.poId) {
-          const poRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(receipt.poId)}&select=data`);
-          po = poRows[0]?.data;
           if (!po) return json({ error: "Purchase order not found" }, { status: 404 });
           if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot approve this stock receipt: ${po.id} is no longer ready for receiving (status "${po.status}").`);
           po.history = po.history || [];
         }
-        const invRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=record_key,data`);
         const inventory = invRows.map((row) => row.data);
         const totalReceived = applyReceivingLines(po, receipt.lines, inventory);
         receipt.status = "Approved";
@@ -4111,17 +4145,23 @@ export default {
           if (fullyReceived) { po.receivedBy = by; po.receivedAt = shortDate(); }
           po.history.push({ date: timestamp, status: po.status, note: `Received ${totalReceived} unit(s) across ${receipt.lines.length} line(s) via ${receipt.id}.`, by });
         }
+        // These three writes touch separate records (inventory, the receipt, the PO) with no
+        // ordering dependency between them, so running them together instead of one after another
+        // cuts the remaining latency roughly by half.
         const invRecords = recordsFromState({ inventory }, authUser.id, stateKey, ["inventory"]);
-        if (invRecords.length) await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(invRecords) });
         const receiptRecords = recordsFromState({ stockReceipts: [receipt] }, authUser.id, stateKey, ["stockReceipts"]);
-        await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(receiptRecords) });
-        if (po) {
-          await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(po.id)}`, {
+        await Promise.all([
+          invRecords.length ? supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(invRecords) }) : Promise.resolve(),
+          supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(receiptRecords) }),
+          po ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(po.id)}`, {
             method: "PATCH",
             body: JSON.stringify({ data: po, updated_by: authUser.id }),
-          });
-        }
-        await postWorkflowEventToDiscord(env, profile, {
+          }) : Promise.resolve(),
+        ]);
+        // Discord post already swallows its own errors and is pure notification, so it doesn't
+        // need to block the response — waitUntil lets the Worker finish sending it after the
+        // client already has its answer.
+        ctx.waitUntil(postWorkflowEventToDiscord(env, profile, {
           title: "Stock Receipt Approved", color: 0x22c55e, label: `Stock receipt approved ${receipt.id}`,
           fields: [
             { name: "Receipt", value: webhookText(receipt.id), inline: true },
@@ -4130,7 +4170,7 @@ export default {
             { name: "Units Posted", value: webhookText(totalReceived), inline: true },
             { name: "PO Status", value: webhookText(po?.status || "—"), inline: true },
           ],
-        });
+        }));
         return json({ ok: true, receipt, po });
       }
 
