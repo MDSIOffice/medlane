@@ -3119,9 +3119,11 @@ function renderPurchaseOrders() {
   const pending = visible.filter((po) => poStatus(po) === "Pending Orders");
   const forInvoicing = visible.filter((po) => poStatus(po) === "For Invoicing");
   const invoiced = visible.filter((po) => PO_TERMINAL_STATUSES.includes(poStatus(po)));
+  const poVisualCardRowLimit = 5;
+  const forInvoicingOverflowNote = forInvoicing.length > poVisualCardRowLimit ? `Showing the top ${poVisualCardRowLimit} of ${forInvoicing.length} unserved POs.` : "Computed from POs with no served invoice quantity yet.";
   qs("#purchase-order-visuals").innerHTML = [
     visualCard("!", "Pending Orders", `${pending.length} PO${pending.length === 1 ? "" : "s"}`, pending.length ? barRows(pending.map((po) => [po.id, (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0)]), (value) => `${value} pending qty`, ["orange", "red"]) : "<p>No partially served orders.</p>", pending.length ? "warning" : "success", "Computed as ordered quantity minus served invoice quantity per PO line."),
-    visualCard("▧", "For Invoicing", `${forInvoicing.length} unserved`, forInvoicing.length ? barRows(forInvoicing.map((po) => [po.id, (po.lines || []).length]), (value) => `${value} line${value === 1 ? "" : "s"}`, ["", "green"]) : "<p>No unserved POs.</p>", "info", "Computed from POs with no served invoice quantity yet."),
+    visualCard("▧", "For Invoicing", `${forInvoicing.length} unserved`, forInvoicing.length ? barRows(forInvoicing.slice(0, poVisualCardRowLimit).map((po) => [po.id, (po.lines || []).length]), (value) => `${value} line${value === 1 ? "" : "s"}`, ["", "green"]) : "<p>No unserved POs.</p>", "info", forInvoicingOverflowNote),
     visualCard("✓", "Completed", `${invoiced.length} served`, "<p>Completed POs are tagged by the document that fully served them.</p>", "success", "Computed from POs whose ordered quantities are fully served by SI or TS."),
   ].join("");
   qsa("#po-workflow-tabs .tab").forEach((btn) => {
