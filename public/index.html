@@ -1321,15 +1321,19 @@
     </dialog>
 
     <div class="toast" id="toast"></div>
-    <script src="scripts/vendor/pdf-lib.min.js"></script>
-    <script src="scripts/config-data.js"></script>
-    <script src="scripts/api-client.js"></script>
-    <script src="scripts/state.js"></script>
-    <script src="scripts/ui-utils.js"></script>
-    <script src="scripts/modules.js"></script>
-    <script src="scripts/events-bootstrap.js"></script>
-    <script src="scripts/game.js"></script>
-    <script src="scripts/landing-motion.js"></script>
-    <script src="scripts/app-motion.js"></script>
+    <!-- defer: lets the browser fetch all of these in parallel instead of one at a time, while
+         still guaranteeing document-order execution after parsing (same DOM-ready guarantee
+         these already had at the bottom of body) — cuts wall-clock script load time without
+         changing init order or DOMContentLoaded timing. -->
+    <script src="scripts/vendor/pdf-lib.min.js" defer></script>
+    <script src="scripts/config-data.js" defer></script>
+    <script src="scripts/api-client.js" defer></script>
+    <script src="scripts/state.js" defer></script>
+    <script src="scripts/ui-utils.js" defer></script>
+    <script src="scripts/modules.js" defer></script>
+    <script src="scripts/events-bootstrap.js" defer></script>
+    <script src="scripts/game.js" defer></script>
+    <script src="scripts/landing-motion.js" defer></script>
+    <script src="scripts/app-motion.js" defer></script>
   </body>
 </html>

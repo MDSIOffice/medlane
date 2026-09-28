@@ -1,3 +1,11 @@
+## Build
+
+`src/styles.css` is the editable CSS source. `public/styles.css` (what actually ships) is a
+**generated, minified build output** — edit `src/styles.css`, then run `npm run build` (or
+`npm run build:css`) to regenerate it before committing/deploying. There is no CI build step:
+deploy publishes `public/` as-is, so a deploy after editing `src/styles.css` without rebuilding
+ships stale CSS. Commit both files together.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

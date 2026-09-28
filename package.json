@@ -1,0 +1,11 @@
+{
+  "name": "medlane",
+  "private": true,
+  "scripts": {
+    "build:css": "cleancss -o public/styles.css src/styles.css",
+    "build": "npm run build:css"
+  },
+  "devDependencies": {
+    "clean-css-cli": "^5.6.3"
+  }
+}

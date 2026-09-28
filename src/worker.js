@@ -244,24 +244,54 @@ export class LiveHub extends DurableObject {
   }
 }
 
+async function supabaseFetchOnceWithTotal(env, path, init = {}) {
+  const headers = { ...supabaseHeaders(env), ...(init.headers || {}) };
+  headers.prefer = [headers.prefer, "count=exact"].filter(Boolean).join(",");
+  const response = await fetch(`${supabaseBaseUrl(env)}${path}`, { ...init, headers });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.message || payload?.error || `Supabase request failed: ${response.status}`);
+  // "0-999/12345" (or "*/0" when empty) — the slice after the / is Postgres's exact row count
+  // for the query, computed in the same request as the first page.
+  const range = response.headers.get("content-range");
+  const total = range?.includes("/") ? Number(range.split("/")[1]) : NaN;
+  return { payload, total: Number.isFinite(total) ? total : null };
+}
+
+async function supabaseFetchWithTotal(env, path, init = {}) {
+  try {
+    return await supabaseFetchOnceWithTotal(env, path, init);
+  } catch (error) {
+    if (!isTransientJwtClockSkew(error)) throw error;
+    await sleep(1500);
+    return supabaseFetchOnceWithTotal(env, path, init);
+  }
+}
+
 // PostgREST caps how many rows a single request can return (the project's "Max Rows" API
 // setting) and silently returns only that many with a normal 200 — there is no error to
 // catch. A plain supabaseFetch() on a table that has grown past that cap quietly returns a
 // partial result. For queries ordered oldest-first, that means the newest rows — anything
 // just written — are exactly what gets cut off. Page through with offset/limit until a page
 // comes back smaller than requested, so a read is never silently incomplete.
+//
+// Page 1 asks Postgres for the exact total row count (`Prefer: count=exact`) alongside its
+// data, so every remaining page is known up front and can be requested in parallel instead of
+// one round trip at a time. A module with, say, 20,000 rows used to take 20 sequential Supabase
+// round trips — the dominant cost of the full-state load on every login — and now takes one
+// round trip to learn the total plus a single parallel batch for the rest. Falls back to the
+// old single-page result if the count header is ever missing (e.g. a malformed query PostgREST
+// rejects the Prefer header for), so this can never return less data than before.
 async function supabaseFetchAll(env, path, init = {}) {
   const pageSize = 1000;
   const separator = path.includes("?") ? "&" : "?";
-  let offset = 0;
-  let all = [];
-  while (true) {
-    const page = await supabaseFetch(env, `${path}${separator}limit=${pageSize}&offset=${offset}`, init);
-    if (!Array.isArray(page)) return page;
-    all = all.concat(page);
-    if (page.length < pageSize) break;
-    offset += pageSize;
-  }
+  const { payload: firstPage, total } = await supabaseFetchWithTotal(env, `${path}${separator}limit=${pageSize}&offset=0`, init);
+  if (!Array.isArray(firstPage)) return firstPage;
+  if (total === null || firstPage.length < pageSize || firstPage.length >= total) return firstPage;
+  const offsets = [];
+  for (let offset = pageSize; offset < total; offset += pageSize) offsets.push(offset);
+  const restPages = await Promise.all(offsets.map((offset) => supabaseFetch(env, `${path}${separator}limit=${pageSize}&offset=${offset}`, init)));
+  let all = firstPage;
+  for (const page of restPages) { if (Array.isArray(page)) all = all.concat(page); }
   return all;
 }
 
@@ -3489,7 +3519,13 @@ export default {
             if (!["Superadmin", "CEO"].includes(profile.role)) {
               const masterlistModulesPresent = presentKeys.filter((key) => ["clients", "items", "suppliers", "employees", "banks"].includes(key));
               if (masterlistModulesPresent.length) {
-                const storedMasterRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(masterlistModulesPresent))}&select=module_name,record_key,data`);
+                // Only the specific rows this save touches need their stored `archived` flag
+                // checked — not every masterlist record in the company. A full-module fetch
+                // here used to cost as much as the login-time state load, on every save.
+                const masterlistRecordKeys = rows.filter((row) => masterlistModulesPresent.includes(row.module_name)).map((row) => row.record_key);
+                const storedMasterRows = masterlistRecordKeys.length
+                  ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(masterlistModulesPresent))}&record_key=in.${encodeURIComponent(postgrestIn(masterlistRecordKeys))}&select=module_name,record_key,data`)
+                  : [];
                 const storedArchived = new Map();
                 for (const row of storedMasterRows) storedArchived.set(`${row.module_name}|${row.record_key}`, Boolean(row.data && row.data.archived));
                 for (const row of rows) {
@@ -3504,7 +3540,13 @@ export default {
             // through this bulk state PUT. New rows, and changes bundled with a stock-moving flow
             // (`sales` invoicing, `pendingTransfers`), are unaffected.
             if (!["Admin", "Superadmin", "CEO"].includes(profile.role) && presentKeys.includes("inventory") && !presentKeys.includes("sales") && !presentKeys.includes("pendingTransfers")) {
-              const storedStock = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=record_key,data`);
+              // Only the incoming inventory rows need their stored qty/expiry checked — not
+              // the entire inventory table, which grows with every SKU/lot the company has ever
+              // stocked. A full-module fetch here used to run on every non-admin inventory save.
+              const inventoryRecordKeys = rows.filter((row) => row.module_name === "inventory").map((row) => row.record_key);
+              const storedStock = inventoryRecordKeys.length
+                ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(inventoryRecordKeys))}&select=record_key,data`)
+                : [];
               const storedStockByKey = new Map(storedStock.map((row) => [row.record_key, row.data || {}]));
               for (const row of rows) {
                 if (row.module_name !== "inventory") continue;
