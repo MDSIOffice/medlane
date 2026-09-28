@@ -871,7 +871,19 @@ const APP_SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 async function validateAppSession(env, request, userId) {
   const id = sessionHeader(request);
-  if (!id) return;
+  if (!id) {
+    // A legitimate client always attaches this header from its very first authenticated
+    // request after login (login's response embeds the same id the client stores it from,
+    // worker.js's /api/auth/login handler) and keeps sending it across token refreshes. A
+    // request that's otherwise authenticated but omits it is either replaying a stolen
+    // Supabase access token directly — bypassing this app's own device-revocation control
+    // entirely, since Supabase itself has no API to force-invalidate an already-issued
+    // access token early — or predates this account ever getting a tracked session. Reject
+    // the former; allow the latter, since there is nothing to revoke yet.
+    const tracked = await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(userId)}&select=id&limit=1`);
+    if (tracked.length) throw new Error("Invalid app session");
+    return;
+  }
   const rows = await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(userId)}&select=id,revoked_at,created_at`);
   if (!rows[0]) throw new Error("Invalid app session");
   if (rows[0].revoked_at) throw new Error("SESSION_REVOKED");
