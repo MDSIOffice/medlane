@@ -22,7 +22,7 @@ const MedlaneAPI = (() => {
     if (!active?.refresh_token) throw new Error("No refresh token available");
     if (!refreshInFlight) {
       refreshInFlight = (async () => {
-        const response = await fetch("/api/auth/refresh", {
+        const response = await fetchWithDiagnostics("/api/auth/refresh", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ refreshToken: active.refresh_token }),
@@ -44,6 +44,44 @@ const MedlaneAPI = (() => {
     if (typeof toast === "function") toast(reason);
   }
 
+  // A plain fetch() rejection only ever says "Failed to fetch" — the browser gives no reason
+  // (offline, DNS/CORS failure, connection dropped mid-request, or our own timeout below all look
+  // identical). This turns that one opaque message into the closest we can tell from the client:
+  // definitely offline, the request took too long, or the server just couldn't be reached at all.
+  function classifyFetchFailure(error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error("The request timed out waiting for the server to respond. The server may be slow or overloaded — check your connection and try again.");
+      timeoutError.code = "TIMEOUT";
+      timeoutError.transient = true;
+      return timeoutError;
+    }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      const offlineError = new Error("You appear to be offline. Check your internet connection and try again.");
+      offlineError.code = "OFFLINE";
+      offlineError.transient = true;
+      return offlineError;
+    }
+    const networkError = new Error("Could not reach the Medlane server. It may be temporarily down or restarting, or your connection was interrupted — check your connection and try again.");
+    networkError.code = "NETWORK";
+    networkError.transient = true;
+    return networkError;
+  }
+
+  const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+  // Wraps fetch() with a timeout (so a hung connection fails fast and distinctly, instead of
+  // hanging indefinitely) and classifies whatever it throws via classifyFetchFailure above.
+  async function fetchWithDiagnostics(path, options = {}, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      return await fetch(path, { ...options, signal: controller.signal });
+    } catch (error) {
+      throw classifyFetchFailure(error);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async function request(path, options = {}, retried = false) {
     trackGlobalLoading(1);
     try {
@@ -59,7 +97,7 @@ const MedlaneAPI = (() => {
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
     if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
     if (options.body && !(options.body instanceof FormData)) headers["content-type"] = "application/json";
-    const response = await fetch(path, { ...options, headers });
+    const response = await fetchWithDiagnostics(path, { ...options, headers }, options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
     const payload = await response.json().catch(() => null);
     const errorText = payload?.error || "";
     const sessionRevoked = /SESSION_REVOKED|Invalid app session/i.test(errorText);
@@ -106,7 +144,7 @@ const MedlaneAPI = (() => {
       } catch (error) {
         lastError = error;
         const status = Number(error?.status || 0);
-        const networkFailure = !status && /failed to fetch|networkerror|network error|load failed|timed? ?out/i.test(String(error?.message || ""));
+        const networkFailure = error?.transient || (!status && /failed to fetch|networkerror|network error|load failed|timed? ?out/i.test(String(error?.message || "")));
         if (!(networkFailure || status >= 500 || status === 429) || attempt === attempts - 1) throw error;
         await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
       }
@@ -163,7 +201,8 @@ const MedlaneAPI = (() => {
     const form = new FormData();
     form.append("file", file);
     Object.entries(metadata).forEach(([key, value]) => form.append(key, value ?? ""));
-    return request("/api/files", { method: "POST", body: form });
+    // A large attachment on a slow connection can easily take longer than the default 30s.
+    return request("/api/files", { method: "POST", body: form, timeoutMs: 120000 });
   }
 
   async function listFiles() {
@@ -175,7 +214,9 @@ const MedlaneAPI = (() => {
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
     if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
-    const response = await fetch(`/api/files/${encodeURIComponent(id)}`, { headers });
+    // No abort timeout here — file downloads can legitimately take a while; classification alone
+    // still tells a genuine network drop apart from offline or a rejected/failed request.
+    const response = await fetchWithDiagnostics(`/api/files/${encodeURIComponent(id)}`, { headers }, null);
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
       throw new Error(payload?.error || `Request failed: ${response.status}`);
@@ -328,7 +369,9 @@ const MedlaneAPI = (() => {
 
   async function listReports(branch = "all") {
     const query = new URLSearchParams({ branch });
-    return request(`/api/reports?${query}`);
+    // Aggregates across the whole dataset — give it more room than the default 30s before
+    // treating it as a timeout.
+    return request(`/api/reports?${query}`, { timeoutMs: 90000 });
   }
 
   async function createMemo(payload) {
@@ -367,7 +410,8 @@ const MedlaneAPI = (() => {
   }
 
   async function runBackup(backupType = "manual") {
-    return request("/api/backups", { method: "POST", body: JSON.stringify({ backupType }) });
+    // Snapshots the full dataset and uploads it to R2 — can run well past the default 30s timeout.
+    return request("/api/backups", { method: "POST", body: JSON.stringify({ backupType }), timeoutMs: 180000 });
   }
 
   async function runDigest(periodLabel = "Daily") {
@@ -383,7 +427,7 @@ const MedlaneAPI = (() => {
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
     if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
-    const response = await fetch(`/api/backups/${encodeURIComponent(id)}`, { headers });
+    const response = await fetchWithDiagnostics(`/api/backups/${encodeURIComponent(id)}`, { headers }, null);
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
       throw new Error(payload?.error || `Request failed: ${response.status}`);
@@ -406,7 +450,7 @@ const MedlaneAPI = (() => {
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
     if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
-    const response = await fetch(`/api/backups/object?${new URLSearchParams({ key })}`, { headers });
+    const response = await fetchWithDiagnostics(`/api/backups/object?${new URLSearchParams({ key })}`, { headers }, null);
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
       throw new Error(payload?.error || `Request failed: ${response.status}`);
@@ -425,7 +469,8 @@ const MedlaneAPI = (() => {
   }
 
   async function restoreBackup(ref) {
-    return request("/api/backups/restore", { method: "POST", body: JSON.stringify(ref) });
+    // Rewrites the full dataset from a snapshot — can run well past the default 30s timeout.
+    return request("/api/backups/restore", { method: "POST", body: JSON.stringify(ref), timeoutMs: 180000 });
   }
 
   async function startGameSession() {
@@ -444,7 +489,7 @@ const MedlaneAPI = (() => {
       } catch (error) {
         lastError = error;
         const message = String(error?.message || "");
-        const transient = /failed to fetch|networkerror|network error|load failed|request failed: 5\d\d|timed? ?out/i.test(message);
+        const transient = error?.transient || /failed to fetch|networkerror|network error|load failed|request failed: 5\d\d|timed? ?out/i.test(message);
         if (!transient) throw error;
         await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
       }

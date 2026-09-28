@@ -3478,8 +3478,10 @@ export default {
               if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
             }
 
-            await assertFinancialApprovalAllowed(env, stateKey, profile, rows);
-            await assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows);
+            await Promise.all([
+              assertFinancialApprovalAllowed(env, stateKey, profile, rows),
+              assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
+            ]);
 
             // Toggling a masterlist record's `archived` flag is CEO/Superadmin-only, even
             // through this bulk state PUT. Diff each incoming masterlist record against the
@@ -3575,7 +3577,9 @@ export default {
                 record: changedSummary,
               }, authUser.id, auditContext);
             }
-            await postRecordEventsToDiscord(env, profile, eventBeforeRows, rows);
+            // Same reasoning as /api/modules/records: this already swallows its own errors and
+            // runs its posts in parallel, so it doesn't need to hold up the response.
+            ctx.waitUntil(postRecordEventsToDiscord(env, profile, eventBeforeRows, rows));
           }
           return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
         }
@@ -3847,8 +3851,14 @@ export default {
           }
         }
 
-        await assertFinancialApprovalAllowed(env, stateKey, profile, rows);
-        await assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows);
+        // Independent read-only checks on disjoint module rows — run together instead of one
+        // after another. This endpoint is the shared save path for nearly every module (sales,
+        // transfers, payment requests, masterlist edits, ...), so shaving round trips here speeds
+        // up every itemized/many-row submit in the app, not just one module.
+        await Promise.all([
+          assertFinancialApprovalAllowed(env, stateKey, profile, rows),
+          assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
+        ]);
 
         // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
         // permission check above only gates *editing* the module, not flipping the `archived`
@@ -3859,10 +3869,12 @@ export default {
           const keysByModule = {};
           for (const row of archiveCandidateRows) (keysByModule[row.module_name] ||= []).push(row.record_key);
           const storedArchivedByKey = new Map();
-          for (const [moduleName, keys] of Object.entries(keysByModule)) {
+          // One fetch per touched masterlist module — independent of each other, so run them
+          // together instead of one at a time.
+          await Promise.all(Object.entries(keysByModule).map(async ([moduleName, keys]) => {
             const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=in.${encodeURIComponent(postgrestIn(keys))}&select=record_key,data`);
             for (const entry of stored) storedArchivedByKey.set(`${moduleName}|${entry.record_key}`, Boolean(entry.data && entry.data.archived));
-          }
+          }));
           for (const row of archiveCandidateRows) {
             const wasArchived = storedArchivedByKey.get(`${row.module_name}|${row.record_key}`) || false;
             const willBeArchived = Boolean(row.data && row.data.archived);
@@ -3936,7 +3948,11 @@ export default {
             headers: { prefer: "resolution=merge-duplicates,return=minimal" },
             body: JSON.stringify(rows),
           });
-          await postRecordEventsToDiscord(env, profile, beforeRows, rows);
+          // Discord posts here already swallow their own errors and run in parallel internally
+          // (Promise.allSettled) — pure notification, so it doesn't need to block the response.
+          // This is the shared save path for nearly every module, so this alone removes a
+          // meaningful chunk of latency (and "Failed to fetch" exposure) from every itemized submit.
+          ctx.waitUntil(postRecordEventsToDiscord(env, profile, beforeRows, rows));
         }
         return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
       }
