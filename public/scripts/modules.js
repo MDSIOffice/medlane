@@ -5257,7 +5257,7 @@ function validateImportRows() {
   if (kind === "productsMasterlist") return validateProductsMasterlistRows(parsed);
   if (kind === "salesMigration") return validateSalesMigrationRows(parsed);
   if (kind === "collectionsMigration") return validateCollectionsMigrationRows(parsed);
-  const allowedAreas = ["Region I", "Region II", "Region III", "Region IV-A", "Region V", "Visayas Dealer", "Mindanao Dealer"];
+  const allowedAreas = ["Region I", "Region II", "Region III", "Region IV-A", "NCR", "Region V", "Visayas Dealer", "Mindanao Dealer"];
   const seen = new Set();
   return parsed.map((cells, index) => {
     const [type, name, area, address, contact, tin] = cells;
