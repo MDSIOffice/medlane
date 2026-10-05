@@ -17,7 +17,7 @@ const tableState = new Map();
 const initialData = {
   dataVersion: 23,
   branch: "all",
-  platformAreas: ["Region I", "Region II", "Region III", "Region IV-A", "Region V", "Visayas Dealer", "Mindanao Dealer"],
+  platformAreas: ["Region I", "Region II", "Region III", "Region IV-A", "NCR", "Region V", "Visayas Dealer", "Mindanao Dealer"],
   platformBranches: ["Las Pinas", "Naga"],
   branchAddresses: { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" },
   invoiceApprovals: { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" },
