@@ -5419,17 +5419,20 @@ function renderPayables() {
   const requests = data.payables.filter((p) => p.requestStatus !== "Approved" && p.requestStatus !== "Cancelled");
   const approved = data.payables.filter((p) => p.requestStatus === "Approved" && !p.paymentConfirmed);
   const rows = data.payables.filter((p) => includesSearch(Object.values(p)));
-  const totalPayables = rows.reduce((sum, payable) => sum + Number(payable.amount || 0), 0);
-  const totalPaid = rows.reduce((sum, payable) => sum + Number(payable.paid || 0), 0);
-  const balance = rows.reduce((sum, payable) => sum + Math.max(Number(payable.amount || 0) - Number(payable.paid || 0), 0), 0);
-  const pendingCount = rows.filter((payable) => !["Approved", "Cancelled", "Paid"].includes(payable.requestStatus || payable.status)).length;
-  const approvedCount = rows.filter((payable) => (payable.requestStatus || payable.status) === "Approved" && !payable.paymentConfirmed).length;
-  const paidCount = rows.filter((payable) => payable.paymentConfirmed || (payable.status || "") === "Paid").length;
-  const chequeCount = rows.filter((payable) => payable.method === "Cheque").length;
-  const largestPayable = rows.reduce((max, payable) => Math.max(max, Number(payable.amount || 0)), 0);
-  const averagePayable = rows.length ? Math.round(totalPayables / rows.length) : 0;
+  // Summary totals should reflect live money, not requests that were cancelled — only the
+  // full #payables-table below keeps the full `rows` set (cancelled included) for audit history.
+  const activeRows = rows.filter((p) => (p.requestStatus || p.status) !== "Cancelled");
+  const totalPayables = activeRows.reduce((sum, payable) => sum + Number(payable.amount || 0), 0);
+  const totalPaid = activeRows.reduce((sum, payable) => sum + Number(payable.paid || 0), 0);
+  const balance = activeRows.reduce((sum, payable) => sum + Math.max(Number(payable.amount || 0) - Number(payable.paid || 0), 0), 0);
+  const pendingCount = activeRows.filter((payable) => !["Approved", "Cancelled", "Paid"].includes(payable.requestStatus || payable.status)).length;
+  const approvedCount = activeRows.filter((payable) => (payable.requestStatus || payable.status) === "Approved" && !payable.paymentConfirmed).length;
+  const paidCount = activeRows.filter((payable) => payable.paymentConfirmed || (payable.status || "") === "Paid").length;
+  const chequeCount = activeRows.filter((payable) => payable.method === "Cheque").length;
+  const largestPayable = activeRows.reduce((max, payable) => Math.max(max, Number(payable.amount || 0)), 0);
+  const averagePayable = activeRows.length ? Math.round(totalPayables / activeRows.length) : 0;
   renderFinancialSummary("#payables-summary-grid", [
-    { tone: "primary", label: "Total displayed payables", value: peso.format(totalPayables), note: `${rows.length} payable${rows.length === 1 ? "" : "s"} in this view` },
+    { tone: "primary", label: "Total displayed payables", value: peso.format(totalPayables), note: `${activeRows.length} payable${activeRows.length === 1 ? "" : "s"} in this view` },
     { tone: "success", label: "Total paid", value: peso.format(totalPaid), note: `${paidCount} confirmed payment${paidCount === 1 ? "" : "s"}` },
     { tone: "warning", label: "Outstanding balance", value: peso.format(balance), note: `${approvedCount} approved awaiting payment` },
   ], [
@@ -5437,9 +5440,9 @@ function renderPayables() {
     { title: "Payable Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averagePayable) }, { label: "Largest", value: peso.format(largestPayable) }] },
     { title: "Payment Risk", kind: "pairs", items: [{ label: "Balance", value: peso.format(balance) }, { label: "Cheques", value: chequeCount }] },
   ]);
-  table("#payable-requests-table", ["ID", "Supplier", "Requested", "Items", "Gross", "Withholding", "Net Total", "Status", "Actions"], requests.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", itemizedSummary(p.items), peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill ${statusClass(p.requestStatus)}">${p.requestStatus}</span>`, requestActions("payable", data.payables.indexOf(p), p)] })));
-  table("#final-payables-table", ["ID", "Supplier", "Requested", "Approved", "Gross", "Withholding", "Net Total", "Status", "Attachment", "2307", "Set payment type"], approved.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", p.approvedAt || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill success">Approved</span>`, payableAttachmentCell(p), payable2307Cell(p), paymentConfirmActions("payable", data.payables.indexOf(p))] })));
-  table("#payables-table", ["ID", "Supplier", "Requested", "Approved", "Items/Service", "Method", "Gross", "Withholding", "Net Total", "Paid", "Balance", "Cheque Details", "Tag", "Attachment", "2307", "Voucher"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", p.approvedAt || "-", itemizedSummary(p.items), p.method || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`, payableAttachmentCell(p), payable2307Cell(p), `<button class="ghost-button" data-request-preview="payable:${data.payables.indexOf(p)}" type="button">Print Voucher</button>`] })));
+  table("#payable-requests-table", ["ID", "Supplier", "Requested", "Items", "Gross", "Withholding", "Net Total", "Status", "Actions"], requests.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", itemizedSummary(p.items), peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill ${statusClass(p.requestStatus)}">${p.requestStatus}</span>`, requestActions("payable", p.id)] })));
+  table("#final-payables-table", ["ID", "Supplier", "Requested", "Approved", "Gross", "Withholding", "Net Total", "Status", "Attachment", "2307", "Set payment type"], approved.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", p.approvedAt || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill success">Approved</span>`, payableAttachmentCell(p), payable2307Cell(p), paymentConfirmActions("payable", p.id)] })));
+  table("#payables-table", ["ID", "Supplier", "Requested", "Approved", "Items/Service", "Method", "Gross", "Withholding", "Net Total", "Paid", "Balance", "Cheque Details", "Tag", "Attachment", "2307", "Voucher"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", p.approvedAt || "-", itemizedSummary(p.items), p.method || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`, payableAttachmentCell(p), payable2307Cell(p), `<button class="ghost-button" data-request-preview="payable:${escapeHtml(p.id)}" type="button">Print Voucher</button>`] })));
   const loadMorePayablesButton = qs("#load-more-payables");
   if (loadMorePayablesButton) loadMorePayablesButton.hidden = !modulePagination.payables?.hasMore;
 }
@@ -5640,26 +5643,29 @@ function renderPayablesWorkflowTabs() {
 function renderReplenishments() {
   renderReplenishmentsWorkflowTabs();
   const rows = byBranch(data.replenishments, "office").filter((r) => includesSearch(Object.values(r)));
+  // Summary totals should reflect live money, not requests that were cancelled — only the
+  // "All Expenses" table below keeps the full `rows` set (cancelled included) for audit history.
+  const activeRows = rows.filter((r) => (r.requestStatus || r.status) !== "Cancelled");
   const requests = rows.filter((r) => r.requestStatus !== "Approved" && r.requestStatus !== "Cancelled");
   const approved = rows.filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed);
-  const totalExpenses = rows.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const paidExpenses = rows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const pendingAmount = rows.filter((expense) => !["Approved", "Cancelled", "Paid"].includes(expense.requestStatus || expense.status)).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const totalExpenses = activeRows.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const paidExpenses = activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const pendingAmount = activeRows.filter((expense) => !["Approved", "Cancelled", "Paid"].includes(expense.requestStatus || expense.status)).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const approvedAmount = approved.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const largestExpense = rows.reduce((max, expense) => Math.max(max, Number(expense.amount || 0)), 0);
-  const averageExpense = rows.length ? Math.round(totalExpenses / rows.length) : 0;
-  const topType = Object.entries(sumBy(rows, "type", (expense) => Number(expense.amount || 0))).sort((a, b) => b[1] - a[1])[0];
+  const largestExpense = activeRows.reduce((max, expense) => Math.max(max, Number(expense.amount || 0)), 0);
+  const averageExpense = activeRows.length ? Math.round(totalExpenses / activeRows.length) : 0;
+  const topType = Object.entries(sumBy(activeRows, "type", (expense) => Number(expense.amount || 0))).sort((a, b) => b[1] - a[1])[0];
   renderFinancialSummary("#expenses-summary-grid", [
-    { tone: "primary", label: "Total displayed expenses", value: peso.format(totalExpenses), note: `${rows.length} expense request${rows.length === 1 ? "" : "s"} in this view` },
-    { tone: "success", label: "Paid expenses", value: peso.format(paidExpenses), note: `${rows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length} confirmed payment${rows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length === 1 ? "" : "s"}` },
+    { tone: "primary", label: "Total displayed expenses", value: peso.format(totalExpenses), note: `${activeRows.length} expense request${activeRows.length === 1 ? "" : "s"} in this view` },
+    { tone: "success", label: "Paid expenses", value: peso.format(paidExpenses), note: `${activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length} confirmed payment${activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length === 1 ? "" : "s"}` },
     { tone: "warning", label: "Pending approval", value: peso.format(pendingAmount), note: `${requests.length} request${requests.length === 1 ? "" : "s"} pending` },
   ], [
-    { title: "Status Count", items: [{ label: "Pending", value: requests.length }, { label: "Approved", value: approved.length }, { label: "Paid", value: rows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length }] },
+    { title: "Status Count", items: [{ label: "Pending", value: requests.length }, { label: "Approved", value: approved.length }, { label: "Paid", value: activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length }] },
     { title: "Expense Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averageExpense) }, { label: "Largest", value: peso.format(largestExpense) }] },
     { title: "Classification", kind: "pairs", items: [{ label: topType?.[0] || "Top Type", value: topType ? peso.format(topType[1]) : peso.format(0) }, { label: "Approved", value: peso.format(approvedAmount) }] },
   ]);
-  table("#expense-requests-table", ["ID", "Type", "Employee", "Requester", "Requested", "Items", "Amount", "Status", "Actions"], requests.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.date || "-", itemizedSummary(r.items), peso.format(r.amount), `<span class="pill ${statusClass(r.requestStatus)}">${r.requestStatus}</span>`, requestActions("expense", data.replenishments.indexOf(r), r)] })));
-  table("#confirmed-expenses-table", ["ID", "Type", "Employee", "Requester", "Requested", "Approved", "Amount", "Status", "Payment"], approved.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.date || "-", r.approvedAt || "-", peso.format(r.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("expense", data.replenishments.indexOf(r))] })));
+  table("#expense-requests-table", ["ID", "Type", "Employee", "Requester", "Requested", "Items", "Amount", "Status", "Actions"], requests.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.date || "-", itemizedSummary(r.items), peso.format(r.amount), `<span class="pill ${statusClass(r.requestStatus)}">${r.requestStatus}</span>`, requestActions("expense", r.id)] })));
+  table("#confirmed-expenses-table", ["ID", "Type", "Employee", "Requester", "Requested", "Approved", "Amount", "Status", "Payment"], approved.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.date || "-", r.approvedAt || "-", peso.format(r.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("expense", r.id)] })));
   table("#replenishments-table", ["ID", "Expense Type", "Employee", "Requester", "Requested", "Approved", "Office", "Amount", "Receipt/File", "Status", "Payment"], rows.map((r) => ({ focus: r.id, attrs: { "data-expense-detail": r.id }, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.date || "-", r.approvedAt || "-", r.office, peso.format(r.amount), r.file, `<span class="pill ${statusClass(r.requestStatus || r.status)}">${r.requestStatus || r.status}</span>`, r.paymentConfirmed ? `${escapeHtml(r.method)}<small>${escapeHtml(r.bank || r.cheque || "")}</small>` : "-"] })));
 }
 
@@ -5707,14 +5713,18 @@ function canApproveFinancialRequest(type) {
   return currentUser?.role !== "Accounting";
 }
 
-function requestActions(type, index) { return `<div class="inline-actions"><button class="mini-button" data-request-preview="${type}:${index}">Print</button>${canApproveFinancialRequest(type) ? `<button class="mini-button" data-request-approve="${type}:${index}">Approve</button>` : `<small>Awaiting ${type === "payable" ? "Superadmin/CEO" : "approver"}</small>`}<button class="mini-button danger-button" data-request-cancel="${type}:${index}">Cancel</button></div>`; }
+// Keyed by the record's stable id, not its array position — the underlying arrays can be
+// re-sorted or re-fetched (live sync, another user's approve/cancel) between when a row is
+// rendered and when its button is clicked, so an index baked into the button can silently
+// point at a different record by the time it's read back.
+function requestActions(type, id) { return `<div class="inline-actions"><button class="mini-button" data-request-preview="${type}:${escapeHtml(id)}">Print</button>${canApproveFinancialRequest(type) ? `<button class="mini-button" data-request-approve="${type}:${escapeHtml(id)}">Approve</button>` : `<small>Awaiting ${type === "payable" ? "Superadmin/CEO" : "approver"}</small>`}<button class="mini-button danger-button" data-request-cancel="${type}:${escapeHtml(id)}">Cancel</button></div>`; }
 
-function paymentConfirmActions(type, index) { return `<div class="inline-actions"><button class="mini-button" data-confirm-payment="${type}:${index}:Cash">Cash</button><button class="mini-button" data-confirm-payment="${type}:${index}:Bank Transfer">Bank</button><button class="mini-button" data-confirm-payment="${type}:${index}:Cheque">Cheque</button></div>`; }
+function paymentConfirmActions(type, id) { return `<div class="inline-actions"><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cash">Cash</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Bank Transfer">Bank</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cheque">Cheque</button></div>`; }
 
-function requestRecord(type, index) { return type === "payable" ? data.payables[index] : data.replenishments[index]; }
+function requestRecord(type, id) { return type === "payable" ? data.payables.find((p) => p.id === id) : data.replenishments.find((r) => r.id === id); }
 
-async function previewFinancialRequest(type, index) {
-  const record = requestRecord(type, index);
+async function previewFinancialRequest(type, id) {
+  const record = requestRecord(type, id);
   if (!record) return toast("Request not found.");
   showReportPreviewLoading();
   const printable = await MedlaneAPI.printableFinancialRequest(type, record.id).catch((error) => { toast(error.message || "Unable to load request printable."); qs("#report-preview-modal").close(); return null; });
@@ -5754,8 +5764,8 @@ function financialRequestDetailFields(record, type) {
   return fields;
 }
 
-async function approveFinancialRequest(type, index) {
-  const record = requestRecord(type, index);
+async function approveFinancialRequest(type, id) {
+  const record = requestRecord(type, id);
   if (!record) return;
   if (!canApproveFinancialRequest(type)) return toast(type === "payable" ? "Only Superadmin or CEO can approve payable requests." : "Accounting cannot approve expense requests.");
   const ok = await confirmDetailsModal({ eyebrow: "Confirm Approval", title: `Approve ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Approve" });
@@ -5769,8 +5779,8 @@ async function approveFinancialRequest(type, index) {
   saveData(["notifications"]); renderAll(); toast(`${record.id} approved.`);
 }
 
-async function cancelFinancialRequest(type, index) {
-  const record = requestRecord(type, index);
+async function cancelFinancialRequest(type, id) {
+  const record = requestRecord(type, id);
   if (!record) return;
   const ok = await confirmDetailsModal({ eyebrow: "Confirm Cancellation", title: `Cancel ${record.id}`, fields: financialRequestDetailFields(record, type), confirmLabel: "Cancel Request", danger: true });
   if (!ok) return;
@@ -5807,8 +5817,8 @@ function confirmPaymentDetailsModal(record, type, method) {
   });
 }
 
-async function confirmFinancialPayment(type, index, method) {
-  const record = requestRecord(type, index);
+async function confirmFinancialPayment(type, id, method) {
+  const record = requestRecord(type, id);
   if (!record || record.requestStatus !== "Approved") return toast("Only approved requests can be confirmed paid.");
   const result = await confirmPaymentDetailsModal(record, type, method);
   if (!result) return;

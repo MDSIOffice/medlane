@@ -426,11 +426,11 @@ document.body.addEventListener("click", (event) => {
   const openPaymentRequest = event.target.closest("[data-open-payment-request]");
   if (openPaymentRequest) { closeReportPreview(); return renderPaymentRequestDetail(openPaymentRequest.dataset.openPaymentRequest); }
   const requestPreview = event.target.closest("[data-request-preview]");
-  if (requestPreview) { const [type, index] = requestPreview.dataset.requestPreview.split(":"); return previewFinancialRequest(type, Number(index)); }
+  if (requestPreview) { const [type, id] = requestPreview.dataset.requestPreview.split(":"); return previewFinancialRequest(type, id); }
   const requestApprove = event.target.closest("[data-request-approve]");
-  if (requestApprove) { const [type, index] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, Number(index)); }
+  if (requestApprove) { const [type, id] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, id); }
   const requestCancel = event.target.closest("[data-request-cancel]");
-  if (requestCancel) { const [type, index] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, Number(index)); }
+  if (requestCancel) { const [type, id] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, id); }
   const generate2307 = event.target.closest("[data-generate2307]");
   if (generate2307) return downloadBir2307(generate2307.dataset.generate2307);
   const viewUserSessions = event.target.closest("[data-view-user-sessions]");
@@ -446,7 +446,7 @@ document.body.addEventListener("click", (event) => {
   const restoreBackupKey = event.target.closest("[data-restore-backup-key]");
   if (restoreBackupKey) return restoreBackupFromRef({ key: restoreBackupKey.dataset.restoreBackupKey, created: restoreBackupKey.dataset.restoreBackupCreated, records: restoreBackupKey.dataset.restoreBackupRecords, size: restoreBackupKey.dataset.restoreBackupSize, source: restoreBackupKey.dataset.restoreBackupSource });
   const confirmPayment = event.target.closest("[data-confirm-payment]");
-  if (confirmPayment) { const [type, index, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, Number(index), method); }
+  if (confirmPayment) { const [type, id, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, id, method); }
   const makePaymentRequest = event.target.closest("[data-make-payment-request]");
   if (makePaymentRequest) return openPaymentRequestForInvoice(makePaymentRequest.dataset.makePaymentRequest);
   const collectionStatus = event.target.closest("[data-collection-status]");
