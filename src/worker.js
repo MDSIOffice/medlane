@@ -71,7 +71,7 @@ const moduleRecordKeys = {
   history: ["sales", "purchaseOrders", "payments"],
   collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
   payables: ["payables"],
-  expenses: ["replenishments"],
+  replenishments: ["replenishments"],
   imports: ["imports"],
   reports: ["reports"],
   reconciliation: ["reconHistory"],
