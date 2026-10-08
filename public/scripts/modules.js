@@ -3440,6 +3440,7 @@ function renderInvoicing() {
 
 function renderInvoicing() {
   ensureUploadedFilesLoaded(renderInvoicing);
+  renderPendingCreditInvoices();
   const rows = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).reverse();
   const deliveryControl = (s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
   const actionCell = (s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
@@ -5793,6 +5794,78 @@ async function cancelFinancialRequest(type, id) {
   saveData(["notifications"]); renderAll(); toast(`${record.id} cancelled.`);
 }
 
+// Mirrors canApproveFinancialRequest(): the same role set buildSale() treats as able to
+// authorize a credit-limit breach directly can also decide a pending request for one.
+function canApproveCreditInvoice() {
+  return ["Superadmin", "CEO", "Admin"].includes(currentUser?.role);
+}
+
+function pendingCreditInvoiceActions(request) {
+  if (request.status !== "Pending") return `<small>${escapeHtml(request.status)} by ${escapeHtml(request.decidedBy || "-")}</small>`;
+  if (!canApproveCreditInvoice()) return `<small>Awaiting Admin/CEO</small>`;
+  return `<div class="inline-actions"><button class="mini-button" data-credit-approve="${escapeHtml(request.id)}">Approve</button><button class="mini-button danger-button" data-credit-reject="${escapeHtml(request.id)}">Reject</button></div>`;
+}
+
+function creditInvoiceRequestDetailFields(request) {
+  return [["Client", request.client], ["Requested By", `${request.requestedBy} (${request.requestedByRole})`], ["Requested", request.requestedAt], ["Projected Balance", peso.format(request.projected)], ["Credit Limit", peso.format(request.limit)]];
+}
+
+async function approveCreditInvoice(id) {
+  const request = data.pendingCreditInvoices.find((entry) => entry.id === id);
+  if (!request || request.status !== "Pending") return;
+  if (!canApproveCreditInvoice()) return toast("Only Superadmin, CEO, or Admin can approve credit requests.");
+  const ok = await confirmDetailsModal({ eyebrow: "Confirm Approval", title: `Approve credit for ${request.client}`, fields: creditInvoiceRequestDetailFields(request), note: "This creates the invoice now, deducting stock and serving the PO — re-validated fresh against current stock and PO state.", confirmLabel: "Approve & Create Invoice" });
+  if (!ok) return;
+  let sale;
+  try {
+    // Re-run the normal, fully-validated build now, under the approver's own authorization —
+    // nothing from the original request is trusted blindly. canAuthorize is true for this role,
+    // so the credit check passes and buildSale performs its real stock/PO side effects.
+    sale = buildSale({ ...request.values }, request.replacementOf || null);
+  } catch (error) {
+    return toast(`Cannot approve — ${error.message}`);
+  }
+  data.sales.push(sale);
+  request.status = "Approved";
+  request.decidedBy = currentUser?.name || "System User";
+  request.decidedAt = fmtDate(today);
+  request.resultingDocumentNo = sale.documentNo;
+  const saveResult = await persistRecords({ sales: [sale], inventory: inventoryTouchedBySale(sale), purchaseOrders: purchaseOrdersTouchedBySales([sale]), pendingCreditInvoices: [request] });
+  if (!saveResult?.ok) return;
+  log("Approved credit invoice request", "Invoicing", `${request.id} -> ${sale.documentNo}`, { save: false });
+  notify("Credit", `${currentUser.name} approved ${request.client}'s invoice over credit limit — ${sale.documentNo} created.`, "invoicing", sale.documentNo);
+  if (request.requestedBy) notify("Credit", `Your invoice request for ${request.client} was approved as ${sale.documentNo}.`, "notifications", sale.documentNo, null, request.requestedBy);
+  saveData(["notifications"]); renderAll(); toast(`${sale.documentNo} created.`);
+}
+
+async function rejectCreditInvoice(id) {
+  const request = data.pendingCreditInvoices.find((entry) => entry.id === id);
+  if (!request || request.status !== "Pending") return;
+  if (!canApproveCreditInvoice()) return toast("Only Superadmin, CEO, or Admin can reject credit requests.");
+  const { ok, reason } = await confirmDetailsModal({ eyebrow: "Confirm Rejection", title: `Reject credit request for ${request.client}`, fields: creditInvoiceRequestDetailFields(request), confirmLabel: "Reject", danger: true, collectReason: true, reasonLabel: "Reason for rejection" });
+  if (!ok) return;
+  request.status = "Rejected";
+  request.decidedBy = currentUser?.name || "System User";
+  request.decidedAt = fmtDate(today);
+  request.rejectReason = reason;
+  const saveResult = await persistRecords({ pendingCreditInvoices: [request] });
+  if (!saveResult?.ok) return;
+  log("Rejected credit invoice request", "Invoicing", request.id, { save: false });
+  notify("Credit", `${currentUser.name} rejected ${request.client}'s credit request.`, "invoicing", request.id);
+  if (request.requestedBy) notify("Credit", `Your invoice request for ${request.client} was rejected${reason ? `: ${reason}` : "."}`, "notifications", request.id, null, request.requestedBy);
+  saveData(["notifications"]); renderAll(); toast("Request rejected.");
+}
+
+function renderPendingCreditInvoices() {
+  const card = qs("#pending-credit-invoices-card");
+  if (!card) return;
+  const requests = [...data.pendingCreditInvoices].sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+  card.hidden = !requests.length;
+  if (!requests.length) return;
+  const pillClass = { Pending: "orange", Approved: "green", Rejected: "red" };
+  table("#pending-credit-invoices-table", ["Request", "Client", "Requested By", "Requested", "Projected Balance", "Credit Limit", "Status", "Actions"], requests.map((request) => ({ focus: request.id, cells: [request.id, request.client, request.requestedBy, request.requestedAt || "-", peso.format(request.projected), peso.format(request.limit), `<span class="pill ${pillClass[request.status] || "gray"}">${escapeHtml(request.status)}</span>`, pendingCreditInvoiceActions(request)] })));
+}
+
 function confirmPaymentDetailsModal(record, type, method) {
   return new Promise((resolve) => {
     const needsBank = ["Bank Transfer", "Cheque"].includes(method);
@@ -7371,7 +7444,20 @@ function purchaseOrdersTouchedBySales(sales = []) {
   return data.purchaseOrders.filter((po) => ids.has(po.id));
 }
 
-function buildSale(values, replacementOf = null) {
+// Thrown by buildSale() when a non-authorizing role (Accounting) submits an invoice that would
+// exceed the client's credit limit — the caller catches this and routes the request into
+// data.pendingCreditInvoices for Admin/CEO/Superadmin sign-off instead of treating it as a
+// hard validation failure. Nothing has been mutated (stock, PO) when this is thrown: buildSale
+// checks credit before touching either.
+class CreditApprovalRequiredError extends Error {
+  constructor({ client, projected, limit }) {
+    super(`${client} would exceed its credit limit (${peso.format(projected)} / ${peso.format(limit)}).`);
+    this.name = "CreditApprovalRequiredError";
+    this.credit = { client, projected, limit };
+  }
+}
+
+function buildSale(values, replacementOf = null, { allowCreditPending = false } = {}) {
   const client = findClientByName(values.client);
   if (!client) throw new Error("Client is required.");
   values.client = client.name;
@@ -7425,7 +7511,10 @@ function buildSale(values, replacementOf = null) {
   const totalSalesVatInclusive = amount - discount;
   const net = totalSalesVatInclusive;
   const credit = skipPo ? { exceeded: false } : clientCreditState(client.name, net);
-  if (credit.exceeded && !canAuthorize) throw new Error("Credit limit exceeded. Needs Admin/CEO authorization.");
+  if (credit.exceeded && !canAuthorize) {
+    if (allowCreditPending) throw new CreditApprovalRequiredError({ client: client.name, projected: credit.projected, limit: credit.limit });
+    throw new Error("Credit limit exceeded. Needs Admin/CEO authorization.");
+  }
   if (!skipPo) {
     lines.forEach((line) => {
       const stock = matchInvoiceLineStock(line);

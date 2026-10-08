@@ -95,7 +95,7 @@ const frontendModuleRecordKeys = {
   "purchase-orders": ["purchaseOrders"],
   "item-forecast": [],
   sales: ["sales"],
-  invoicing: ["sales"],
+  invoicing: ["sales", "pendingCreditInvoices"],
   collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
   "payment-request-detail": ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
   "receivables-tracker": ["sales", "payments", "collectionContacts", "collectionContactHistory"],
@@ -246,6 +246,7 @@ function emptyProductionData() {
     employees: [],
     inventory: [],
     sales: [],
+    pendingCreditInvoices: [],
     purchaseOrders: [],
     inventoryPurchaseOrders: [],
     inventoryDemoRequests: [],
@@ -328,6 +329,7 @@ function normalizeData(next) {
   next.printTemplates ||= [];
   next.memos ||= [];
   next.pendingTransfers ||= [];
+  next.pendingCreditInvoices ||= [];
   next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };
   next.invoiceApprovals ||= { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" };
   next.transferHistory ||= [];
