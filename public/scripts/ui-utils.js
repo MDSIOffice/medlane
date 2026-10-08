@@ -554,3 +554,106 @@ function calendarDayDetailHtml(dateKey, entries) {
   return `<div class="calendar-day-detail-header"><strong>${escapeHtml(label)}</strong></div>${rows}`;
 }
 
+// --- Custom combobox replacing native <input list> + <datalist> suggestions ---------------
+// Chromium renders the native datalist popup as browser UI outside page CSS, and it paints
+// with a broken/see-through background when it opens above a <dialog> shown via showModal()
+// (confirmed: removing backdrop-filter from .modal::backdrop did not fix it — the popup
+// itself is the problem, not anything in our stylesheet). We keep every <datalist> element
+// as-is (the data source) but suppress the native `list` wiring and drive our own always-
+// opaque dropdown instead. Wired up via delegated listeners in events-bootstrap.js.
+let comboOpenInput = null;
+let comboHighlightIndex = -1;
+
+function comboSuppressNative(input) {
+  if (input.tagName === "INPUT" && input.hasAttribute("list")) {
+    input.dataset.comboList = input.getAttribute("list");
+    input.removeAttribute("list");
+  }
+}
+
+function comboOptionsFor(input) {
+  const datalist = input.dataset.comboList && document.getElementById(input.dataset.comboList);
+  if (!datalist) return [];
+  return Array.from(datalist.options).map((option) => ({ value: option.value, label: option.textContent || "" }));
+}
+
+function comboFilter(options, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return options;
+  return options.filter((option) => option.value.toLowerCase().includes(q) || option.label.toLowerCase().includes(q));
+}
+
+function comboClose() {
+  document.getElementById("combo-dropdown")?.remove();
+  comboOpenInput?.setAttribute("aria-expanded", "false");
+  comboOpenInput = null;
+  comboHighlightIndex = -1;
+  window.removeEventListener("scroll", comboReposition, true);
+  window.removeEventListener("resize", comboReposition);
+}
+
+function comboReposition() {
+  const panel = document.getElementById("combo-dropdown");
+  if (!panel || !comboOpenInput || !document.contains(comboOpenInput)) return comboClose();
+  const rect = comboOpenInput.getBoundingClientRect();
+  panel.style.left = `${rect.left}px`;
+  panel.style.top = `${rect.bottom + 4}px`;
+  panel.style.width = `${rect.width}px`;
+}
+
+function comboRenderOptions(options) {
+  const panel = document.getElementById("combo-dropdown");
+  if (!panel) return;
+  if (!options.length) { comboClose(); return; }
+  panel.innerHTML = options.map((option, i) => `<div class="combo-option${i === comboHighlightIndex ? " active" : ""}" role="option" data-combo-value="${escapeHtml(option.value)}"><span>${escapeHtml(option.value)}</span>${option.label ? `<small>${escapeHtml(option.label)}</small>` : ""}</div>`).join("");
+}
+
+function comboOpen(input) {
+  comboSuppressNative(input);
+  if (!input.dataset.comboList) return;
+  const options = comboFilter(comboOptionsFor(input), input.value);
+  if (!options.length) { comboClose(); return; }
+  comboOpenInput = input;
+  comboHighlightIndex = -1;
+  let panel = document.getElementById("combo-dropdown");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "combo-dropdown";
+    panel.className = "combo-dropdown";
+    panel.setAttribute("role", "listbox");
+    // Appended inside the open <dialog> (not document.body): a showModal() dialog paints in
+    // the browser's top layer, above all regular body-level stacking contexts regardless of
+    // z-index, so a body-level panel would render *behind* it.
+    (input.closest("dialog") || document.body).appendChild(panel);
+  }
+  input.setAttribute("aria-expanded", "true");
+  comboReposition();
+  comboRenderOptions(options);
+  window.addEventListener("scroll", comboReposition, true);
+  window.addEventListener("resize", comboReposition);
+}
+
+function comboRefresh(input) {
+  if (input !== comboOpenInput) return;
+  comboHighlightIndex = -1;
+  comboRenderOptions(comboFilter(comboOptionsFor(input), input.value));
+}
+
+function comboSelect(input, value) {
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  comboClose();
+}
+
+function comboHandleKeydown(event) {
+  if (!comboOpenInput || event.target !== comboOpenInput) return;
+  const panel = document.getElementById("combo-dropdown");
+  if (!panel) return;
+  const items = Array.from(panel.children);
+  if (event.key === "ArrowDown") { event.preventDefault(); comboHighlightIndex = Math.min(comboHighlightIndex + 1, items.length - 1); comboRenderOptions(comboFilter(comboOptionsFor(comboOpenInput), comboOpenInput.value)); }
+  else if (event.key === "ArrowUp") { event.preventDefault(); comboHighlightIndex = Math.max(comboHighlightIndex - 1, 0); comboRenderOptions(comboFilter(comboOptionsFor(comboOpenInput), comboOpenInput.value)); }
+  else if (event.key === "Enter") { if (comboHighlightIndex >= 0 && items[comboHighlightIndex]) { event.preventDefault(); comboSelect(comboOpenInput, items[comboHighlightIndex].dataset.comboValue); } }
+  else if (event.key === "Escape") { comboClose(); }
+}
+

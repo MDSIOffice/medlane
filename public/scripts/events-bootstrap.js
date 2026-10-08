@@ -837,10 +837,25 @@ qs("#users-table").addEventListener("change", async (event) => {
 document.addEventListener("input", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target);
   if (event.target.matches(".transfer-lot")) updateTransferBalanceHint(event.target.closest("tr"));
+  comboRefresh(event.target);
 });
 document.addEventListener("blur", (event) => {
   if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
 }, true);
+// Custom combobox wiring — see ui-utils.js for why <input list> + <datalist> is no longer
+// used directly to drive the suggestions popup.
+document.addEventListener("focusin", (event) => {
+  if (event.target.tagName === "INPUT" && (event.target.hasAttribute("list") || event.target.dataset.comboList)) comboOpen(event.target);
+}, true);
+document.addEventListener("focusout", (event) => {
+  if (event.target === comboOpenInput) setTimeout(() => { if (!document.activeElement?.closest?.("#combo-dropdown")) comboClose(); }, 0);
+}, true);
+document.addEventListener("keydown", comboHandleKeydown);
+document.addEventListener("mousedown", (event) => {
+  const option = event.target.closest(".combo-option");
+  if (option && comboOpenInput) { event.preventDefault(); comboSelect(comboOpenInput, option.dataset.comboValue); }
+  else if (comboOpenInput && event.target !== comboOpenInput && !event.target.closest("#combo-dropdown")) comboClose();
+});
 document.addEventListener("click", (event) => {
   const removeSheetRow = event.target.closest(".remove-sheet-row");
   if (removeSheetRow) removeInventorySheetRow(removeSheetRow);
