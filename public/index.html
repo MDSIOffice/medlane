@@ -694,7 +694,7 @@
       <section class="section" id="sales">
         <div class="section-header"><div><p class="eyebrow">Sales Review</p><h2>SI and TS by client, area, sales person, and payment status</h2></div></div>
         <div class="near-expiry-banner" id="near-expiry-sales-alert"></div>
-        <div class="toolbar"><input id="sales-client" list="sales-client-options" type="text" autocomplete="off" placeholder="Filter by client…" aria-label="Filter by client" /><datalist id="sales-client-options"></datalist><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select><button class="ghost-button" id="clear-sales-filters" type="button">Clear Filters</button></div>
+        <div class="toolbar"><input id="sales-client" name="sales-client" list="sales-client-options" type="text" autocomplete="off" placeholder="Filter by client…" aria-label="Filter by client" /><datalist id="sales-client-options"></datalist><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select><button class="ghost-button" id="clear-sales-filters" type="button">Clear Filters</button></div>
         <div id="sales-target-panel"></div>
         <div class="table-card"><table id="sales-table"></table></div>
         <button class="ghost-button" id="load-more-sales" type="button" hidden>Load Previous</button>
@@ -719,7 +719,7 @@
           <div class="forecast-filter-toolbar">
             <div class="field"><label for="item-forecast-brand">Brand</label><select id="item-forecast-brand"><option value="">All Brands</option></select></div>
             <div class="field"><label for="item-forecast-client">Client</label><select id="item-forecast-client"><option value="">All Clients</option></select></div>
-            <div class="field"><label for="item-forecast-item">Item</label><input id="item-forecast-item" list="item-forecast-item-options" placeholder="Search item code or name" /><datalist id="item-forecast-item-options"></datalist></div>
+            <div class="field"><label for="item-forecast-item">Item</label><input id="item-forecast-item" name="item-forecast-item" list="item-forecast-item-options" placeholder="Search item or code" autocomplete="off" /><datalist id="item-forecast-item-options"></datalist></div>
             <div class="field"><label for="item-forecast-division">Division</label><select id="item-forecast-division"><option value="">All Divisions</option></select></div>
             <div class="field"><label for="item-forecast-region">Region</label><select id="item-forecast-region"><option value="">All Regions</option></select></div>
             <div class="field"><label for="item-forecast-classification">Classification</label><select id="item-forecast-classification"><option value="">All Classifications</option></select></div>
@@ -801,7 +801,7 @@
           <div class="toolbar" id="collections-client-search-row" hidden>
             <div class="field">
               <label for="collections-client-search">Search Client History</label>
-              <input list="collections-client-search-list" id="collections-client-search" placeholder="Type a client name to view their full history..." autocomplete="off" />
+              <input list="collections-client-search-list" id="collections-client-search" name="collections-client-search" placeholder="Type a client to view their full history..." autocomplete="off" />
               <datalist id="collections-client-search-list"></datalist>
             </div>
             <button class="ghost-button" id="collections-client-search-clear" type="button" hidden>Clear Search</button>
@@ -1100,7 +1100,7 @@
             <button class="ghost-button" id="clear-log-filters" type="button">Clear Filters</button>
           </div>
           <div class="toolbar log-user-search-toolbar">
-            <div class="field"><label for="logs-user-search">Search User</label><input id="logs-user-search" list="logs-user-options" placeholder="Type a user's name..." /><datalist id="logs-user-options"></datalist></div>
+            <div class="field"><label for="logs-user-search">Search User</label><input id="logs-user-search" name="logs-user-search" list="logs-user-options" placeholder="Type a user to filter..." autocomplete="off" /><datalist id="logs-user-options"></datalist></div>
             <button class="primary-button" id="logs-user-search-button" type="button">View User's Activity Log</button>
           </div>
           <div class="table-card"><table id="logs-table"></table></div>
@@ -1183,7 +1183,7 @@
         <div class="modal-header"><div><p class="eyebrow">Inventory Demo</p><h2>Request Service Order</h2></div><button class="icon-button" id="demo-request-close" type="button" aria-label="Close">x</button></div>
         <p class="page-description">Request machines and spare parts for a client demo. Sales must approve first, then Superadmin or CEO approves release.</p>
         <div class="form-grid">
-          <div class="field"><label for="demo-client">Client</label><input id="demo-client" list="client-options" required /></div>
+          <div class="field"><label for="demo-client">Client</label><input id="demo-client" name="demo-client" list="client-options" autocomplete="off" required /></div>
           <div class="field"><label for="demo-sales-agent">Sales Agent</label><input id="demo-sales-agent" required /></div>
           <div class="field"><label for="demo-date">Demo Date</label><input id="demo-date" type="date" required /></div>
           <div class="field"><label for="demo-return-date">Expected Return Date</label><input id="demo-return-date" type="date" required /></div>
