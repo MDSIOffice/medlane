@@ -142,8 +142,9 @@ async function submitModal(event) {
     return;
   }
   if (modalType === "invoice") {
+    const allowCreditPending = currentUser?.role === "Accounting";
     try {
-      const sale = buildSale(values);
+      const sale = buildSale(values, null, { allowCreditPending });
       if (!(await confirmFinalSave("Save this invoice?"))) return;
       data.sales.push(sale);
       const saveResult = await persistRecords({ sales: [sale], inventory: inventoryTouchedBySale(sale), purchaseOrders: purchaseOrdersTouchedBySales([sale]) });
@@ -156,7 +157,24 @@ async function submitModal(event) {
       toast(`${modalConfigs[modalType].title} saved.`);
       return;
     }
-    catch (error) { notify("Validation", error.message, "sales", values.documentNo || values.client || ""); saveData(); return toast(error.message); }
+    catch (error) {
+      if (error instanceof CreditApprovalRequiredError) {
+        if (!(await confirmFinalSave(`${error.message} Submit this invoice for Admin/CEO approval?`))) return;
+        const request = { id: `PCA-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, client: error.credit.client, requestedBy: currentUser?.name || "System User", requestedByRole: currentUser?.role, requestedAt: fmtDate(today), projected: error.credit.projected, limit: error.credit.limit, values: { ...values }, status: "Pending" };
+        data.pendingCreditInvoices.push(request);
+        const saveResult = await persistRecords({ pendingCreditInvoices: [request] });
+        if (!saveResult?.ok) return;
+        log("Requested credit approval", "Invoicing", `${request.id} · ${request.client}`, { save: false });
+        notify("Credit", `${request.requestedBy} requested approval to invoice ${request.client} over its credit limit (${peso.format(request.projected)} / ${peso.format(request.limit)}).`, "invoicing", request.id);
+        saveData(["notifications"]);
+        qs("#demo-modal").close();
+        form.reset();
+        renderAll();
+        toast("Submitted for Admin/CEO credit approval.");
+        return;
+      }
+      notify("Validation", error.message, "sales", values.documentNo || values.client || ""); saveData(); return toast(error.message);
+    }
   }
   if (modalType === "purchaseOrder") {
     const wasEditing = Boolean(editingPoId);
@@ -431,6 +449,10 @@ document.body.addEventListener("click", (event) => {
   if (requestApprove) { const [type, id] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, id); }
   const requestCancel = event.target.closest("[data-request-cancel]");
   if (requestCancel) { const [type, id] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, id); }
+  const creditApprove = event.target.closest("[data-credit-approve]");
+  if (creditApprove) return approveCreditInvoice(creditApprove.dataset.creditApprove);
+  const creditReject = event.target.closest("[data-credit-reject]");
+  if (creditReject) return rejectCreditInvoice(creditReject.dataset.creditReject);
   const generate2307 = event.target.closest("[data-generate2307]");
   if (generate2307) return downloadBir2307(generate2307.dataset.generate2307);
   const viewUserSessions = event.target.closest("[data-view-user-sessions]");

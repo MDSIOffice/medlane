@@ -64,7 +64,7 @@ const moduleRecordKeys = {
   "catalog-reference": ["items", "clients", "suppliers", "inventory"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
   "purchase-orders": ["purchaseOrders"],
-  invoicing: ["sales"],
+  invoicing: ["sales", "pendingCreditInvoices"],
   sales: ["sales"],
   receivables: ["sales", "payments", "collectionContacts", "collectionContactHistory"],
   warranty: ["warranties"],
@@ -990,6 +990,12 @@ function daysUntilIso(value) {
 async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   const canAuthorizeDiscount = ["Superadmin", "CEO", "Admin"].includes(profile?.role);
   let inventoryByKey = null;
+  // Mirrors clientCreditState() in ui-utils.js, which only gates the UI (canAuthorize there is
+  // client-trusted). Lazily loaded and keyed by client name; projectedBalanceByClient accumulates
+  // net across every new row in this same save so splitting one over-limit order into several
+  // rows in one batch can't slip past the per-row check.
+  let creditLimitByClient = null;
+  let projectedBalanceByClient = null;
 
   for (const row of newSaleRows) {
     const sale = row.data || {};
@@ -1024,6 +1030,30 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
 
       const submittedNet = Number(sale.net ?? sale.amount ?? 0);
       if (Math.abs(submittedNet - (submittedAmount - discount)) > 0.01) throw new Error(`Invoice ${label}: net amount does not match amount minus discount.`);
+    }
+
+    if (!canAuthorizeDiscount && sale.client) {
+      if (!creditLimitByClient) {
+        const clientRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`);
+        creditLimitByClient = new Map(clientRows.map((clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
+      }
+      const limit = creditLimitByClient.get(sale.client) || 0;
+      if (limit > 0) {
+        if (!projectedBalanceByClient) {
+          const saleRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&select=data`);
+          projectedBalanceByClient = new Map();
+          for (const saleRow of saleRows) {
+            const existing = saleRow.data || {};
+            if (existing.status === "Cancelled" || !existing.client) continue;
+            const used = Math.max(Number(existing.net || 0) - Number(existing.paid || 0), 0);
+            projectedBalanceByClient.set(existing.client, (projectedBalanceByClient.get(existing.client) || 0) + used);
+          }
+        }
+        const net = Number(sale.net ?? sale.amount ?? 0);
+        const projected = (projectedBalanceByClient.get(sale.client) || 0) + net;
+        if (projected > limit) throw new Error(`Invoice ${label}: credit limit exceeded for ${sale.client} (${projected.toFixed(2)} / ${limit.toFixed(2)}). Needs Admin/CEO/Superadmin authorization.`);
+        projectedBalanceByClient.set(sale.client, projected);
+      }
     }
 
     if (!inventoryByKey) {
@@ -1151,6 +1181,22 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
     if (storedStatus.get(`${row.module_name}|${row.record_key}`) === "Approved") continue;
     if (row.module_name === "payables") throw new Error("Only Superadmin or CEO can approve payable requests");
     if (profile?.role === "Accounting") throw new Error("Accounting cannot approve expense requests");
+  }
+}
+
+// Accounting can submit an invoice that exceeds a client's credit limit (see validateNewSaleRows),
+// but it lands in pendingCreditInvoices with status "Pending" rather than becoming a sale — only
+// Superadmin/CEO/Admin may move it to "Approved" or "Rejected". Diffs against the stored status so
+// only an actual transition out of "Pending" is checked.
+async function assertCreditApprovalAllowed(env, stateKey, profile, rows) {
+  if (["Superadmin", "CEO", "Admin"].includes(profile?.role)) return;
+  const candidates = rows.filter((row) => row.module_name === "pendingCreditInvoices" && ["Approved", "Rejected"].includes(row.data?.status));
+  if (!candidates.length) return;
+  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.pendingCreditInvoices&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=record_key,data`);
+  const storedStatus = new Map(stored.map((row) => [row.record_key, row.data?.status]));
+  for (const row of candidates) {
+    if (storedStatus.get(row.record_key) === row.data.status) continue;
+    throw new Error("Only Superadmin, CEO, or Admin can approve or reject a credit-limit invoice request");
   }
 }
 
@@ -3664,6 +3710,7 @@ export default {
             await Promise.all([
               assertFinancialApprovalAllowed(env, stateKey, profile, rows),
               assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
+              assertCreditApprovalAllowed(env, stateKey, profile, rows),
             ]);
 
             // Toggling a masterlist record's `archived` flag is CEO/Superadmin-only, even
@@ -4053,6 +4100,7 @@ export default {
         await Promise.all([
           assertFinancialApprovalAllowed(env, stateKey, profile, rows),
           assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
+          assertCreditApprovalAllowed(env, stateKey, profile, rows),
         ]);
 
         // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
