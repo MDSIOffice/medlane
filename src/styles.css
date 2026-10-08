@@ -1337,6 +1337,13 @@ select, .search-input {
 .invoice-stock-hint { display: block; margin-top: 4px; font-size: 12px; font-weight: 800; color: var(--muted); }
 .invoice-stock-hint-empty { color: var(--red); }
 .invoice-stock-hint-reserved { color: var(--orange); }
+/* Custom combobox dropdown (replaces native <input list> + <datalist> popups — see
+   ui-utils.js for why: Chromium's native datalist popup is unstylable browser UI and
+   renders with a broken/transparent background inside a <dialog> opened via showModal(). */
+.combo-dropdown { position: fixed; z-index: 400; max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-solid); color: var(--ink); box-shadow: var(--shadow); padding: 4px; }
+.combo-option { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 700; }
+.combo-option small { color: var(--muted); font-size: 11px; font-weight: 800; }
+.combo-option:hover, .combo-option.active { background: var(--tint); }
 .invoice-line-row .remove-invoice-line { position: absolute; top: 14px; right: 14px; width: 36px; height: 36px; min-height: 36px; margin: 0; border-radius: 50%; background: var(--tint-red); color: var(--red); font-size: 20px; font-weight: 950; line-height: 1; box-shadow: none; }
 .invoice-line-row .remove-invoice-line:hover { background: var(--red); color: #fff; }
 .invoice-editor-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
