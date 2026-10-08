@@ -565,13 +565,34 @@ function invoiceItemStockQty(item, branch) {
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
 }
 
-function invoiceRowStockHintHtml(item, branch) {
+// What a given lot would actually resolve to under matchInvoiceLineStock()'s rules: an exact
+// lot match, or (if no row on file for this item/branch has a lot at all) any untracked row.
+// invoiceItemStockQty() above is a lot-blind total — it can say "1 available" while the one
+// unit on hand sits under a different lot than the one typed, which only surfaces as a save-time
+// "No sufficient stock" error. This keeps the hint honest once a lot is entered.
+function invoiceItemStockQtyForLot(item, branch, lot) {
+  if (!item) return 0;
+  const trimmedLot = String(lot || "").trim();
+  if (!trimmedLot) return invoiceItemStockQty(item, branch);
+  const candidates = data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0) && (entry.lot === trimmedLot || !entry.lot));
+  return candidates.reduce((max, entry) => Math.max(max, Number(entry.qty || 0)), 0);
+}
+
+function invoiceRowStockHintHtml(item, branch, lot) {
   if (!item) return "";
-  const qty = invoiceItemStockQty(item, branch);
+  const trimmedLot = String(lot || "").trim();
+  const qty = invoiceItemStockQtyForLot(item, branch, trimmedLot);
   const uom = item.uom || "unit";
   const reserved = pendingPoDemandForItem(item.code, branch, qs("#po")?.value || null);
-  const reservedNote = reserved > 0 ? ` · ${reserved} already pending on other PO${reserved === 1 ? "" : "s"}` : "";
-  return `<small class="invoice-stock-hint${qty <= 0 ? " invoice-stock-hint-empty" : ""}" data-role="stock-hint">${qty > 0 ? `Stock available: ${qty} ${escapeHtml(uom)}${qty === 1 ? "" : "s"}${branch ? ` at ${escapeHtml(branch)}` : ""}` : `No stock available${branch ? ` at ${escapeHtml(branch)}` : ""}`}${escapeHtml(reservedNote)}</small>`;
+  const lotNote = trimmedLot ? ` for lot ${escapeHtml(trimmedLot)}` : "";
+  const availability = qty > 0
+    ? `${qty} ${escapeHtml(uom)}${qty === 1 ? "" : "s"} available${branch ? ` at ${escapeHtml(branch)}` : ""}${lotNote}`
+    : `No stock available${branch ? ` at ${escapeHtml(branch)}` : ""}${lotNote}`;
+  // Always shown, not just when > 0 — a row with 1 available and 2 already pending on other
+  // POs needs to read the same at a glance as one with 1 available and 0 pending, instead of
+  // only growing a note once there's a problem (see the VEDA8900 "1 available" confusion).
+  const pendingNote = ` (${reserved} ${escapeHtml(uom)}${reserved === 1 ? "" : "s"} pending)`;
+  return `<small class="invoice-stock-hint${qty <= 0 ? " invoice-stock-hint-empty" : ""}${reserved > 0 ? " invoice-stock-hint-reserved" : ""}" data-role="stock-hint">${availability}${pendingNote}</small>`;
 }
 
 function invoiceLineTemplate(line = {}, options = {}) {
@@ -588,14 +609,14 @@ function invoiceLineTemplate(line = {}, options = {}) {
   const uid = ++invoiceRowUid;
   return `<div class="invoice-line-row">
     <div class="invoice-line-fields">
-      ${showCode ? `<div class="field code-field"><label>Item Code</label><input class="invoice-code-input" list="item-code-options" autocomplete="off" value="${escapeHtml(line.code || item?.code || "")}" placeholder="Type or pick a code" /></div>` : ""}
-      <div class="field item-field"><label>Item</label><input class="invoice-item-input" list="item-master-options" autocomplete="off" value="${escapeHtml(line.item || item?.name || "")}" placeholder="Type item name or code" required />${invoiceRowStockHintHtml(item, preferredBranch)}</div>
+      ${showCode ? `<div class="field code-field"><label>Item Code</label><input class="invoice-code-input" name="invoice-code-${uid}" list="item-code-options" autocomplete="off" value="${escapeHtml(line.code || item?.code || "")}" placeholder="Type or pick a code" /></div>` : ""}
+      <div class="field item-field"><label>Item</label><input class="invoice-item-input" name="invoice-item-${uid}" list="item-master-options" autocomplete="off" value="${escapeHtml(line.item || item?.name || "")}" placeholder="Type item or code" required />${invoiceRowStockHintHtml(item, preferredBranch, line.lot || stock.lot || "")}</div>
       <input class="invoice-source-branch-input" type="hidden" value="${escapeHtml(selectedInvoiceBranch)}" />
       <div class="field brand-field"><label>Brand</label><input class="invoice-brand-input" value="${escapeHtml(line.brand || item?.brand || "")}" readonly /></div>
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="0" step="any" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${uomOptions.map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" step="any" value="${line.price || ""}" required /></div>
-      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label>${lotTracked ? `<input class="invoice-lot-input" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist>` : `<input class="invoice-lot-input" autocomplete="off" value="${escapeHtml(line.lot || "")}" placeholder="No lot on file — enter it here to record it" />`}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
+      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label>${lotTracked ? `<input class="invoice-lot-input" name="invoice-lot-${uid}" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist>` : `<input class="invoice-lot-input" name="invoice-lot-${uid}" autocomplete="off" value="${escapeHtml(line.lot || "")}" placeholder="No lot on file — enter it here to record it" />`}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" step="any" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
     </div>
     <button class="icon-button remove-invoice-line" type="button" aria-label="Remove item" title="Remove item">×</button>
@@ -723,8 +744,14 @@ function syncInvoiceRowLot(input) {
   const row = input.closest(".invoice-line-row");
   const item = findItemByCodeOrName(row?.querySelector(".invoice-item-input")?.value);
   const lot = input.value.trim();
-  if (!row || !item || !lot) return;
+  if (!row || !item) return;
   const branch = row.querySelector(".invoice-source-branch-input")?.value || qs("#sourceBranch")?.value;
+  // Refresh the hint for every lot edit (including clearing it back to the aggregate view) —
+  // this is what the "1 available" / "No sufficient stock" mismatch needed: the hint has to
+  // react to the exact lot typed, not just to the item changing.
+  const stockHint = row.querySelector("[data-role='stock-hint']");
+  if (stockHint) stockHint.outerHTML = invoiceRowStockHintHtml(item, branch, lot) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
+  if (!lot) return;
   const stock = data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.lot === lot && (!branch || entry.branch === branch));
   if (stock?.expiry && stock.expiry !== "N/A") {
     const expiryInput = row.querySelector(".invoice-expiry-input");
@@ -739,9 +766,13 @@ function syncInvoiceRowItem(input, options = {}) {
   const warehouse = qs("#sourceBranch")?.value || row.querySelector(".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
   const lotDatalist = row.querySelector("datalist[id^='invoice-lot-options-']");
   if (lotDatalist) lotDatalist.innerHTML = invoiceRowLotOptionsHtml(item, warehouse);
-  const stockHint = row.querySelector("[data-role='stock-hint']");
-  if (stockHint) stockHint.outerHTML = invoiceRowStockHintHtml(item, warehouse) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
-  if (!item) return;
+  // outerHTML replaces the element, so any reference captured before that point is detached —
+  // re-query fresh each call instead of reusing one `stockHint` variable across both calls below.
+  const refreshStockHint = (lot) => {
+    const hint = row.querySelector("[data-role='stock-hint']");
+    if (hint) hint.outerHTML = invoiceRowStockHintHtml(item, warehouse, lot) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
+  };
+  if (!item) { refreshStockHint(""); return; }
   const lotInput = row.querySelector(".invoice-lot-input");
   if (lotInput && lotInput.type !== "hidden") {
     const lotTracked = itemStockLotTracked(item, warehouse);
@@ -768,6 +799,7 @@ function syncInvoiceRowItem(input, options = {}) {
     row.querySelector(".invoice-lot-input").value = stock.lot || "";
     if (!equipment) row.querySelector(".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
   }
+  refreshStockHint(row.querySelector(".invoice-lot-input")?.value.trim() || "");
 }
 
 function syncInvoiceLinesForClient() {
@@ -1504,7 +1536,7 @@ async function cancelStockReceipt(index) {
 }
 
 function fillStockSheetFromReceipt(receipt) {
-  const bodyRows = (receipt.lines || []).map((line) => `<tr><td><select class="stock-branch">${branchOptions(line.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`).join("");
+  const bodyRows = (receipt.lines || []).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(line.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
   qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
   if (qs("#stock-sheet-order-number")) qs("#stock-sheet-order-number").value = receipt.orderNumber || "";
@@ -2424,7 +2456,8 @@ function ensureInventoryDatalists() {
 let editingStockReceiptId = null;
 
 function stockSheetRow(index) {
-  return `<tr><td><select class="stock-branch">${branchOptions(inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" autocomplete="off" /></td><td><input class="stock-code" list="inventory-code-options" autocomplete="off" /></td><td><input class="stock-item" list="inventory-item-options" autocomplete="off" /></td><td><input class="stock-lot" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" /></td><td><input class="stock-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+  const uid = ++stockSheetRowUid;
+  return `<tr><td><select class="stock-branch">${branchOptions(inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" /></td><td><input class="stock-lot" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" /></td><td><input class="stock-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
 function receivablePurchaseOrders() { return (data.inventoryPurchaseOrders || []).filter((po) => ["For Receiving", "Partially Received"].includes(po.status)); }
@@ -2451,7 +2484,7 @@ function fillStockSheetFromInventoryPo(poId) {
   if (!po) return renderStockSheet();
   if (qs("#stock-sheet-order-number") && !qs("#stock-sheet-order-number").value.trim()) qs("#stock-sheet-order-number").value = po.id;
   const remainingLines = po.lines.filter((line) => Number(line.qty || 0) - Number(line.receivedQty || 0) > 0);
-  const bodyRows = (remainingLines.length ? remainingLines : po.lines).map((line) => `<tr><td><select class="stock-branch">${branchOptions(po.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`).join("");
+  const bodyRows = (remainingLines.length ? remainingLines : po.lines).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(po.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
   qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
 }
@@ -2464,7 +2497,7 @@ function addStockSheetRow() {
 
 function transferSheetRow() {
   const uid = ++transferRowUid;
-  return `<tr><td><input class="transfer-code" list="inventory-code-options" autocomplete="off" /></td><td><input class="transfer-item" list="inventory-item-options" autocomplete="off" /><small class="transfer-balance-hint"></small></td><td><input class="transfer-lot" list="transfer-lot-options-${uid}" autocomplete="off" /><datalist id="transfer-lot-options-${uid}"></datalist></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+  return `<tr><td><input class="transfer-code" name="transfer-code-${uid}" list="inventory-code-options" autocomplete="off" /></td><td><input class="transfer-item" name="transfer-item-${uid}" list="inventory-item-options" autocomplete="off" /><small class="transfer-balance-hint"></small></td><td><input class="transfer-lot" name="transfer-lot-${uid}" list="transfer-lot-options-${uid}" autocomplete="off" /><datalist id="transfer-lot-options-${uid}"></datalist></td><td><input class="transfer-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
 // Per-branch on-hand quantity for one item. With a lot, only that lot counts — the balance a
@@ -2490,7 +2523,8 @@ function addTransferSheetRow() {
 }
 
 function demoRequestLineRow() {
-  return `<tr><td><select class="demo-line-type"><option>Machine</option><option>Spare Part</option><option>Consumable</option></select></td><td><input class="demo-line-code" list="inventory-code-options" autocomplete="off" /></td><td><input class="demo-line-item" list="inventory-item-options" autocomplete="off" /></td><td><input class="demo-line-brand" list="inventory-brand-options" autocomplete="off" /></td><td><input class="demo-line-lot" /></td><td><input class="demo-line-qty" type="number" min="1" value="1" /></td><td><input class="demo-line-notes" placeholder="Serial, setup, remarks" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+  const uid = ++demoRowUid;
+  return `<tr><td><select class="demo-line-type"><option>Machine</option><option>Spare Part</option><option>Consumable</option></select></td><td><input class="demo-line-code" name="demo-line-code-${uid}" list="inventory-code-options" autocomplete="off" /></td><td><input class="demo-line-item" name="demo-line-item-${uid}" list="inventory-item-options" autocomplete="off" /></td><td><input class="demo-line-brand" name="demo-line-brand-${uid}" list="inventory-brand-options" autocomplete="off" /></td><td><input class="demo-line-lot" /></td><td><input class="demo-line-qty" type="number" min="1" value="1" /></td><td><input class="demo-line-notes" placeholder="Serial, setup, remarks" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
 function renderDemoRequestSheet() {
@@ -2881,7 +2915,7 @@ function transferDispatchModalRowsHtml(transfer) {
     const lot = line.dispatchedLot || line.requestedLot;
     const currentStock = stock.find((entry) => entry.lot === lot);
     const maxQty = currentStock ? currentStock.qty : 0;
-    return `<div class="transfer-review-row"><div class="transfer-review-item"><strong>${escapeHtml(line.item)}</strong><small>${escapeHtml(line.code)} · Requested ${line.requestedQty} · Lot ${escapeHtml(line.requestedLot)}</small></div><div class="field"><label>Qty</label><input class="transfer-review-qty" type="number" min="0" max="${maxQty}" value="${line.dispatchedQty ?? line.requestedQty}" /></div><div class="field"><label>Lot</label><input class="transfer-review-lot" list="transfer-review-lot-options-${i}" autocomplete="off" value="${escapeHtml(lot)}" /><datalist id="transfer-review-lot-options-${i}">${stock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("")}</datalist></div><div class="field"><label>Expiry</label><input class="transfer-review-expiry" value="${escapeHtml(line.dispatchedExpiry || line.requestedExpiry || "")}" readonly /></div><small class="transfer-review-available">${maxQty} available in lot ${escapeHtml(lot)} at ${escapeHtml(transfer.from)}</small></div>`;
+    return `<div class="transfer-review-row"><div class="transfer-review-item"><strong>${escapeHtml(line.item)}</strong><small>${escapeHtml(line.code)} · Requested ${line.requestedQty} · Lot ${escapeHtml(line.requestedLot)}</small></div><div class="field"><label>Qty</label><input class="transfer-review-qty" type="number" min="0" max="${maxQty}" value="${line.dispatchedQty ?? line.requestedQty}" /></div><div class="field"><label>Lot</label><input class="transfer-review-lot" name="transfer-review-lot-${i}" list="transfer-review-lot-options-${i}" autocomplete="off" value="${escapeHtml(lot)}" /><datalist id="transfer-review-lot-options-${i}">${stock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("")}</datalist></div><div class="field"><label>Expiry</label><input class="transfer-review-expiry" value="${escapeHtml(line.dispatchedExpiry || line.requestedExpiry || "")}" readonly /></div><small class="transfer-review-available">${maxQty} available in lot ${escapeHtml(lot)} at ${escapeHtml(transfer.from)}</small></div>`;
   }).join("");
 }
 
@@ -3882,7 +3916,7 @@ function paymentRequestLineTemplate(line = {}) {
   const amountDue = line.amountDue != null ? line.amountDue : paymentRequestRowBalance(clientName, line.invoice || "");
   const amountPaid = line.amount != null ? line.amount : amountDue;
   const balance = Math.max(amountDue - amountPaid, 0);
-  return `<div class="payment-request-line-row payment-request-invoice-row"><div class="field"><label>Invoice</label><input class="payment-request-invoice-input" list="${rowId}-options" autocomplete="off" value="${escapeHtml(line.invoice || "")}" placeholder="Type or pick invoice" /><datalist id="${rowId}-options">${paymentRequestInvoiceDatalistOptions(clientName)}</datalist></div><div class="field"><label>Amount Due</label><input class="payment-request-amount-due" readonly value="${amountDue ? amountDue.toFixed(2) : "0.00"}" /></div><div class="field"><label>Amount Paid</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${amountPaid || ""}" /></div><div class="field"><label>Balance</label><input class="payment-request-balance" readonly value="${balance.toFixed(2)}" /></div><div class="payment-request-row-withholding"><label class="ios-check-row compact-doc-check"><input class="payment-request-row-wtax" type="checkbox" ${wtaxDefault ? "checked" : ""} /><span></span><strong>WTax 5%</strong></label><label class="ios-check-row compact-doc-check"><input class="payment-request-row-ewt" type="checkbox" ${ewtDefault ? "checked" : ""} /><span></span><strong>EWT 1%</strong></label></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
+  return `<div class="payment-request-line-row payment-request-invoice-row"><div class="field"><label>Invoice</label><input class="payment-request-invoice-input" name="${rowId}" list="${rowId}-options" autocomplete="off" value="${escapeHtml(line.invoice || "")}" placeholder="Type or pick invoice" /><datalist id="${rowId}-options">${paymentRequestInvoiceDatalistOptions(clientName)}</datalist></div><div class="field"><label>Amount Due</label><input class="payment-request-amount-due" readonly value="${amountDue ? amountDue.toFixed(2) : "0.00"}" /></div><div class="field"><label>Amount Paid</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${amountPaid || ""}" /></div><div class="field"><label>Balance</label><input class="payment-request-balance" readonly value="${balance.toFixed(2)}" /></div><div class="payment-request-row-withholding"><label class="ios-check-row compact-doc-check"><input class="payment-request-row-wtax" type="checkbox" ${wtaxDefault ? "checked" : ""} /><span></span><strong>WTax 5%</strong></label><label class="ios-check-row compact-doc-check"><input class="payment-request-row-ewt" type="checkbox" ${ewtDefault ? "checked" : ""} /><span></span><strong>EWT 1%</strong></label></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
 }
 
 function syncPaymentRequestRowDerived(row, { invoiceChanged = false } = {}) {
@@ -3931,8 +3965,9 @@ function paymentRequestNetAmountExceeded(rows, netAmount) {
 const EXPENSE_CLASSIFICATION_OPTIONS = ["Accommodation", "Advertising & Marketing", "Bidding Expenses", "Delivery Fee", "Fixed Assets", "Freight/Importation", "Per Diem"];
 
 function financialLineTemplate(line = {}, options = {}) {
-  const vendorField = options.vendor === false ? "" : `<div class="field"><label>Vendor</label><input class="payment-request-vendor" list="financial-vendor-options" autocomplete="off" value="${escapeHtml(line.vendor || "")}" /></div>`;
-  const classificationField = options.classification ? `<div class="field"><label>Classification</label><input class="payment-request-classification" list="expense-classification-options" value="${escapeHtml(line.classification || "")}" autocomplete="off" required /></div>` : "";
+  const uid = ++paymentRequestRowUid;
+  const vendorField = options.vendor === false ? "" : `<div class="field"><label>Vendor</label><input class="payment-request-vendor" name="financial-vendor-${uid}" list="financial-vendor-options" autocomplete="off" value="${escapeHtml(line.vendor || "")}" /></div>`;
+  const classificationField = options.classification ? `<div class="field"><label>Classification</label><input class="payment-request-classification" name="financial-classification-${uid}" list="expense-classification-options" value="${escapeHtml(line.classification || "")}" autocomplete="off" required /></div>` : "";
   const rowClass = options.classification ? "payment-request-line-row financial-line-row financial-line-row-expense" : "payment-request-line-row financial-line-row";
   return `<div class="${rowClass}">${vendorField}<div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div>${classificationField}<div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
 }
