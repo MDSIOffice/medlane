@@ -405,6 +405,7 @@ async function approvePaymentRequest(cvNo) {
   if (!ok) return;
   const by = currentUser?.name || "System User";
   const newPayments = [];
+  const touchedSales = [];
   const applyPayment = (sale, applied) => {
     if (applied <= 0) return;
     const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: "", chequeDate: request.chequeDate || "", transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo };
@@ -413,6 +414,7 @@ async function approvePaymentRequest(cvNo) {
     // so the receivable balance reflects partial payments right away. Bounced reverses it back.
     applyCollectionPayment(payment);
     newPayments.push(payment);
+    if (!touchedSales.includes(sale)) touchedSales.push(sale);
   };
   if (hasPerInvoiceAmounts) {
     perInvoiceItems.forEach((item) => {
@@ -438,7 +440,7 @@ async function approvePaymentRequest(cvNo) {
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
   request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updated now; it reverses only if the deposit later bounces.`, by });
-  const saveResult = await persistRecords({ paymentRequests: [request], payments: newPayments });
+  const saveResult = await persistRecords({ paymentRequests: [request], payments: newPayments, sales: touchedSales });
   if (!saveResult?.ok) return;
   log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
   notify("Payment Received", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
@@ -6028,6 +6030,12 @@ function getReconciliationFindings(scope = getReconScope()) {
     const lineTotal = saleAmount(sale.lines || []);
     if (Math.abs(lineTotal - sale.amount) > 1) findings.push(["Sales Amount", sale.documentNo, `Line total ${peso.format(lineTotal)} does not match gross ${peso.format(sale.amount)}`, "High", "sales", sale.documentNo]);
     if (sale.paid > sale.net) findings.push(["Collection", sale.documentNo, "Paid amount is higher than invoice net", "High", "collections", sale.documentNo]);
+    // A payment marked appliedToInvoice=true should already be counted in sale.paid. If the two
+    // disagree, an approval's paid-amount update never made it to the server (see the stale-sync
+    // bug fixed in approvePaymentRequest on 2026-10-09) and the invoice is understating what was
+    // actually collected.
+    const appliedPaymentsTotal = data.payments.filter((payment) => (payment.invoice === sale.documentNo || payment.invoice === sale.id) && payment.appliedToInvoice === true).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    if (appliedPaymentsTotal - sale.paid > 1) findings.push(["Collection", sale.documentNo, `Approved payment(s) totaling ${peso.format(appliedPaymentsTotal)} marked applied but invoice paid is only ${peso.format(sale.paid)} — approval did not persist, needs manual correction`, "High", "collections", sale.documentNo]);
     if (sale.status === "Cancelled" && !sale.replacementId) findings.push(["Cancellation", sale.documentNo, "Cancelled document has no replacement link", "Medium", "invoicing", sale.documentNo]);
     if (sale.replacementId && !scope.sales.some((entry) => entry.documentNo === sale.replacementId) && !data.sales.some((entry) => entry.documentNo === sale.replacementId)) findings.push(["Cancellation", sale.documentNo, `Replacement ${sale.replacementId} not found`, "High", "invoicing", sale.documentNo]);
     (sale.lines || []).forEach((line) => {
