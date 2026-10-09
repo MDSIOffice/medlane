@@ -24,6 +24,7 @@ let uploadedFilesCache = [];
 let uploadedFilesLoaded = false;
 let selectedReconHistoryIndex = null;
 let reconciliationTab = "current";
+let reconciliationAreaFilter = "";
 let collectionLeafletMap = null;
 let collectionLeafletLayer = null;
 let collectionRegionLayer = null;
