@@ -39,6 +39,7 @@ let inventoryWorkflowTab = "receiving";
 let inventoryCompactView = false;
 let poViewMode = "table";
 let poWorkflowTab = "pending";
+let creditInvoiceWorkflowTab = "pending";
 let masterShowArchived = false;
 let editingPoId = null;
 let userStatusFilter = "all";

@@ -4721,6 +4721,27 @@ export default {
         return json({ ok: true, granted: false, role: restoredRole });
       }
 
+      if (url.pathname === "/api/users/reset-permissions") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { email: rawEmail } = await request.json();
+        const email = cleanEmail(rawEmail);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
+        const target = profiles[0];
+        if (!target) return json({ error: "User profile not found" }, { status: 404 });
+        // userFromProfileAndAuth() prefers any existing module_permissions rows over the
+        // role's current default module list, so a row set saved at invite time never
+        // picks up a module added to the role later (see roleModules). Clearing those rows
+        // is how a user falls back onto the live role defaults — same trick already used
+        // by the Superadmin grant above.
+        await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(target.id)}`, { method: "DELETE" }).catch(() => null);
+        const authUser = await findAuthUserForProfileOrEmail(env, target, email);
+        const updatedUser = userFromProfileAndAuth(target, authUser, []);
+        return json({ user: updatedUser });
+      }
+
       if (url.pathname === "/api/users/delete") {
         const { authUser, profile } = await authenticatedProfile(request, env);
         if (request.method !== "POST") return methodNotAllowed();

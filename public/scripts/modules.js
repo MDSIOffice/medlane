@@ -5896,9 +5896,21 @@ async function rejectCreditInvoice(id) {
 function renderPendingCreditInvoices() {
   const card = qs("#pending-credit-invoices-card");
   if (!card) return;
-  const requests = [...data.pendingCreditInvoices].sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
-  card.hidden = !requests.length;
-  if (!requests.length) return;
+  const all = [...data.pendingCreditInvoices].sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+  card.hidden = !all.length;
+  if (!all.length) return;
+  const pending = all.filter((request) => request.status === "Pending");
+  const decided = all.filter((request) => request.status !== "Pending");
+  qsa("#credit-invoices-workflow-tabs .tab").forEach((btn) => {
+    const tab = btn.dataset.creditWorkflow;
+    btn.classList.toggle("active", tab === creditInvoiceWorkflowTab);
+    const count = tab === "history" ? decided.length : pending.length;
+    btn.innerHTML = `${tab === "history" ? "History" : "Pending"} <span class="tab-count">${count}</span>`;
+  });
+  const isHistory = creditInvoiceWorkflowTab === "history";
+  qs("#credit-invoices-card-title").textContent = isHistory ? "Credit Approval History" : "Pending Credit Approval";
+  qs("#credit-invoices-card-description").textContent = isHistory ? "Past invoice requests Accounting submitted over a client's credit limit, with the Admin/CEO decision." : "Invoices Accounting submitted over a client's credit limit, awaiting Admin/CEO sign-off. Nothing is deducted from stock until approved.";
+  const requests = isHistory ? decided : pending;
   const pillClass = { Pending: "orange", Approved: "green", Rejected: "red" };
   table("#pending-credit-invoices-table", ["Request", "Client", "Requested By", "Requested", "Projected Balance", "Credit Limit", "Status", "Actions"], requests.map((request) => ({ focus: request.id, cells: [request.id, request.client, request.requestedBy, request.requestedAt || "-", peso.format(request.projected), peso.format(request.limit), `<span class="pill ${pillClass[request.status] || "gray"}">${escapeHtml(request.status)}</span>`, pendingCreditInvoiceActions(request)] })));
 }
@@ -6357,7 +6369,8 @@ function renderUsers() {
     const statusAction = isSelf ? "" : `<button class="mini-button ${disabled ? "" : "danger-button"}" data-toggle-user-disabled="${index}">${disabled ? "Enable" : "Disable"}</button>`;
     const statusCell = `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>${u.disabledReason ? `<small>${escapeHtml(u.disabledReason)}</small>` : ""}`;
     const archiveAction = isSelf ? "" : `<button class="mini-button danger-button" data-archive-user="${index}">Archive User</button>`;
-    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button>${resend}${statusAction}${archiveAction}</div></details>`;
+    const resetPermissionsAction = isSuperadmin ? "" : `<button class="mini-button" data-reset-user-permissions="${index}" title="Clears any custom view/edit modules saved for this user so they fall back to their role's current default module list">Reset Permissions to Role Defaults</button>`;
+    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button>${resend}${statusAction}${archiveAction}${resetPermissionsAction}</div></details>`;
     return { focus: email || name, cells: [escapeHtml(name), email || "-", `<span class="pill ${statusClass(u.role)}">${escapeHtml(u.role)}</span>`, statusCell, grantControl, escapeHtml(accessSummary), canManageUsers() ? actions : "Superadmin/CEO only"] };
   }));
 }
