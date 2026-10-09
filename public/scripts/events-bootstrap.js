@@ -754,6 +754,8 @@ qs("#users-table").addEventListener("click", async (event) => {
   if (resetButton) return setUserPasswordPrompt(Number(resetButton.dataset.resetUserPassword));
   const copyLinkButton = event.target.closest("[data-copy-invite-link]");
   if (copyLinkButton) return copyInviteLink(Number(copyLinkButton.dataset.copyInviteLink));
+  const resetPermissionsButton = event.target.closest("[data-reset-user-permissions]");
+  if (resetPermissionsButton) return resetUserPermissions(Number(resetPermissionsButton.dataset.resetUserPermissions));
   const button = event.target.closest("[data-archive-user]");
   if (!button) return;
   if (!canManageUsers()) return toast("Only Superadmin/CEO can archive users.");
@@ -807,6 +809,20 @@ async function resendUserInvite(index) {
   const result = await MedlaneAPI.resendInvite(user.email).catch((error) => ({ error }));
   if (result.error) return toast(result.error.message || "Unable to resend invite.");
   toast(result.emailDelivery?.sent ? `Invitation resent to ${user.email}.` : result.emailDelivery?.reason || "Invite link generated, but email was not sent.");
+}
+
+async function resetUserPermissions(index) {
+  if (!canManageUsers()) return toast("Only Superadmin/CEO can reset user permissions.");
+  const user = data.users[index];
+  if (!user?.email) return toast("User email is required.");
+  if (!confirm(`Reset ${user.name || user.email}'s permissions to ${user.role}'s current default modules? Any custom view/edit access granted to them individually will be cleared.`)) return;
+  const result = await MedlaneAPI.resetUserPermissions(user.email).catch((error) => ({ error }));
+  if (result.error) return toast(result.error.message || "Unable to reset permissions.");
+  Object.assign(user, result.user);
+  log("Reset user permissions to role defaults", "Users", `${user.email} · ${user.role}`);
+  saveData();
+  renderUsers();
+  toast(`${user.name || user.email}'s permissions reset to ${user.role} defaults.`);
 }
 qs("#users-table").addEventListener("change", async (event) => {
   const checkbox = event.target.closest("[data-user-superadmin]");
@@ -911,6 +927,12 @@ qs("#po-workflow-tabs")?.addEventListener("click", (event) => {
   if (!button) return;
   poWorkflowTab = button.dataset.poWorkflow;
   renderPurchaseOrders();
+});
+qs("#credit-invoices-workflow-tabs")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-credit-workflow]");
+  if (!button) return;
+  creditInvoiceWorkflowTab = button.dataset.creditWorkflow;
+  renderPendingCreditInvoices();
 });
 qs("#print-template-tabs")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-pt-tab]");
