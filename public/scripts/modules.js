@@ -6143,7 +6143,8 @@ function renderReconciliation() {
     buckets[key].findings += findings.filter((finding) => finding[1] === payment.invoice || finding[1] === payment.receiptNo).length;
   });
   qs("#reconciliation-comparison").innerHTML = barRows(Object.entries(buckets).sort(([a], [b]) => a.localeCompare(b)).map(([label, values]) => [label, values.findings]), (value) => `${value} issue${value === 1 ? "" : "s"}`, ["green", "orange", "red"]) + graphNote("Computed by grouping reconciliation findings by invoice/payment date using the selected period.");
-  table("#reconciliation-table", ["Area", "Record", "What Needs Fixing", "Severity", "Fix"], findings.map((row) => [row[0], row[1], row[2], `<span class="pill ${statusClass(row[3] === "High" ? "Critical" : row[3] === "Medium" ? "Near Due" : "Available")}">${row[3]}</span>`, `<button class="mini-button" data-go-section="${row[4]}" data-focus-record="${escapeHtml(row[5])}">Fix in ${row[4]}</button>`]));
+  const tableFindings = reconciliationAreaFilter ? findings.filter((row) => row[4] === reconciliationAreaFilter) : findings;
+  table("#reconciliation-table", ["Area", "Record", "What Needs Fixing", "Severity", "Fix"], tableFindings.map((row) => [row[0], row[1], row[2], `<span class="pill ${statusClass(row[3] === "High" ? "Critical" : row[3] === "Medium" ? "Near Due" : "Available")}">${row[3]}</span>`, `<button class="mini-button" data-go-section="${row[4]}" data-focus-record="${escapeHtml(row[5])}">Fix in ${row[4]}</button>`]));
   renderReconciliationHistory();
 }
 
