@@ -1,6 +1,5 @@
 let currentReportSaleId = null;
 let selectedUserSessionsTarget = null;
-let serverReportDefinitions = null;
 
 function moduleWorkflowItems(section) {
   const facts = workflowFacts();
@@ -6004,38 +6003,261 @@ async function approveExpense(index, nextStatus) {
   toast(`${expense.id} ${nextStatus}.`);
 }
 
-async function renderReports() {
-  if (MedlaneAPI?.session()?.access_token) {
-    try {
-      const payload = await MedlaneAPI.listReports(data.branch || "all");
-      serverReportDefinitions = payload.reports || null;
-    } catch (error) {
-      serverReportDefinitions = null;
-      console.warn("Server reports unavailable", error);
-    }
-  }
-  const cards = getReportDefinitions();
-  const operationalCards = cards.map((report, index) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(report.title)}" data-focus-text="${escapeHtml(`${report.title} ${report.body}`)}"><div><span class="feature-icon">${report.icon}</span><strong>${report.title}</strong><p>${report.body}</p></div><button class="primary-button" data-report-preview="${index}">Open full report</button></article>`).join("");
+function renderReports() {
+  const operationalCards = Object.entries(operationalReports).map(([key, config]) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(config.title)}" data-focus-text="${escapeHtml(`${config.title} ${config.body}`)}"><div><span class="feature-icon">${config.icon}</span><strong>${config.title}</strong><p>${config.body}</p></div><button class="primary-button" data-operational-report="${key}">Open full report</button></article>`).join("");
   const salesAnalyticsCards = Object.entries(salesBreakdownDimensions).map(([dimension, config]) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(config.title)}" data-focus-text="${escapeHtml(`${config.title} ${config.body}`)}"><div><span class="feature-icon">${config.icon}</span><strong>${config.title}</strong><p>${config.body}</p></div><button class="primary-button" data-sales-breakdown="${dimension}">Open full report</button></article>`).join("");
   qs("#report-grid").innerHTML = operationalCards + salesAnalyticsCards;
 }
 
-function renderReportPage(index) {
-  currentReportSaleId = null;
-  const report = getReportDefinitions()[index];
-  if (!report) return toast("Report not found.");
-  qs("#report-detail-title").textContent = report.title;
-  const chartRows = report.rows.slice(0, 6).map((row, rowIndex) => {
-    const numeric = row.map((cell) => Number(String(cell).replace(/[^0-9.-]/g, ""))).filter(Number.isFinite).at(-1);
-    return [String(row[0] || row[1] || `Row ${rowIndex + 1}`), numeric || row.length];
-  });
-  qs("#report-page-detail").innerHTML = `<div class="panel-header"><div><p class="eyebrow">Report Page</p><h2>${escapeHtml(report.title)}</h2><p>${escapeHtml(report.body)}</p></div><span class="badge">${report.rows.length} records</span></div><div class="modal-actions report-detail-actions"><button class="ghost-button" data-go-section="reports">Back to Reports</button><button class="ghost-button" data-go-section="${report.section}">${escapeHtml(report.actionLabel)}</button><button class="primary-button" id="print-report-inline" type="button">Print This Report</button></div><div class="report-preview-grid"><div class="report-preview-card"><small>Branch View</small><strong>${data.branch === "all" ? "All Areas" : escapeHtml(data.branch)}</strong></div><div class="report-preview-card"><small>Records</small><strong>${report.rows.length}</strong></div><div class="report-preview-card"><small>Connected Module</small><strong>${escapeHtml(report.actionLabel)}</strong></div></div><div class="chart-bars">${barRows(chartRows, (value) => Number(value).toLocaleString("en-PH"), ["", "green", "orange", "red"])}${graphNote("Computed from the report rows below; the last numeric value in each row drives the bar length.")}</div><div class="table-card"><table><tbody>${report.rows.slice(0, 12).map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("") || `<tr><td>No records found.</td></tr>`}</tbody></table></div>`;
+// Every report below (operational and Sales Analytics alike) is computed client-side straight
+// from data.* — same approach renderAnalytics() already uses — rather than the old single
+// generic template (3 stat cards + one "last numeric column" bar chart + a 12-row unsorted,
+// unfilterable table) that used to come from generateReportsFromState()/getReportDefinitions().
+// Each report gets real KPIs, two chart types suited to its own data, and a sortable
+// (table()-backed), searchable, filterable breakdown table via the shared #report-detail page.
+
+function setupReportDetailToolbar({ statusLabel, statusOptions, section, sectionLabel }) {
+  const statusField = qs("#report-detail-status-filter").closest(".field");
+  if (statusOptions) {
+    statusField.hidden = false;
+    qs("label[for='report-detail-status-filter']").textContent = statusLabel;
+    setForecastSelectOptions("#report-detail-status-filter", statusOptions, `All ${statusLabel}`);
+  } else {
+    statusField.hidden = true;
+  }
+  const openModuleButton = qs("#report-detail-open-module");
+  openModuleButton.hidden = !section;
+  openModuleButton.textContent = `Open ${sectionLabel || ""}`;
+  openModuleButton.onclick = () => showSection(section);
+}
+
+function reportDetailFilters() {
+  return { status: qs("#report-detail-status-filter")?.value || "" };
+}
+
+function renderReportKpis(entries) {
+  qs("#report-detail-kpis").innerHTML = entries.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></div>`).join("");
+}
+
+const operationalReports = {
+  "sales-territory": { title: "Sales by Territory", body: "Revenue by area and salesperson, with every document in view.", icon: "₱", render: renderSalesTerritoryReport },
+  "collections-ar": { title: "Collections & AR", body: "Collected vs. outstanding balance, AR aging, and status breakdown.", icon: "●", render: renderCollectionsArReport },
+  "reagent-expiry": { title: "Reagent Expiry", body: "Low/critical stock and expiry risk by branch and timeframe.", icon: "▤", render: renderReagentExpiryReport },
+  "client-documents": { title: "Client Documents", body: "Document compliance gaps by client and by document type.", icon: "◆", render: renderClientDocumentsReport },
+  "supplier-payables": { title: "Supplier Payables", body: "Outstanding payables by supplier and approval status.", icon: "◇", render: renderSupplierPayablesReport },
+  "service-warranty": { title: "Service & Warranty", body: "Installed equipment coverage by type and warranty status.", icon: "◉", render: renderServiceWarrantyReport },
+  "compliance-audit": { title: "Compliance Audit", body: "Recent traceable actions by module and by user.", icon: "◎", render: renderComplianceAuditReport },
+};
+
+// Split from renderOperationalReport() so sectionRenderers["report-detail"] (triggered by the
+// global search box re-rendering whatever section is active) can refresh the open report in
+// place without calling showSection() again — showSection() itself calls renderSection(), which
+// would otherwise re-enter here and recurse.
+function applyOperationalReport(key) {
+  const config = operationalReports[key];
+  if (!config) return toast("Report not found.");
+  currentOperationalReportKey = key;
+  qs("#report-detail-eyebrow").textContent = "Report Detail";
+  qs("#report-detail-title").textContent = config.title;
+  qs("#report-detail-body").textContent = config.body;
+  config.render();
+}
+
+function renderOperationalReport(key) {
+  applyOperationalReport(key);
   showSection("report-detail");
 }
 
-// Richer, Analytics-style reports (KPI cards + 2 chart types + full breakdown table) computed
-// client-side straight from data.sales/data.items, same as renderAnalytics() — unlike the 7
-// operational reports above, these never go through generateReportsFromState()/getReportDefinitions().
+function renderSalesTerritoryReport() {
+  const { status: area } = reportDetailFilters();
+  const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled");
+  setupReportDetailToolbar({ statusLabel: "Area", statusOptions: [...new Set(sales.map((s) => s.area))], section: "sales", sectionLabel: "Sales" });
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const topArea = Object.entries(sumBy(sales, "area", (sale) => sale.net)).sort((a, b) => b[1] - a[1])[0];
+  renderReportKpis([
+    ["Total Sales", peso.format(totalSales)],
+    ["Total Orders", sales.length.toLocaleString("en-PH")],
+    ["Average Order Value", peso.format(sales.length ? totalSales / sales.length : 0)],
+    ["Top Area", topArea ? `${topArea[0]} · ${peso.format(topArea[1])}` : "No data"],
+  ]);
+  const byArea = Object.entries(sumBy(sales, "area", (sale) => sale.net)).sort((a, b) => b[1] - a[1]);
+  qs("#report-detail-chart-primary").innerHTML = barRows(byArea, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Invoice net totals grouped by sales area.");
+  const bySalesperson = Object.entries(sumBy(sales, "salesperson", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  qs("#report-detail-chart-secondary").innerHTML = barRows(bySalesperson, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Top 10 salespeople by invoice net total.");
+  const filtered = sales.filter((sale) => (!area || sale.area === area) && includesSearch(Object.values(sale)));
+  table("#report-detail-table", ["Area", "Client", "Salesperson", "Document", "Items", "Amount"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.area || "-", sale.client, sale.salesperson || "-", sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
+}
+
+function renderCollectionsArReport() {
+  const { status } = reportDetailFilters();
+  const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled");
+  setupReportDetailToolbar({ statusLabel: "Status", statusOptions: [...new Set(sales.map(statusForSale))], section: "collections", sectionLabel: "Collections" });
+  const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const totalOutstanding = sales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  const totalNet = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const overdueCount = sales.filter((sale) => statusForSale(sale) === "Overdue").length;
+  renderReportKpis([
+    ["Total Collected", peso.format(totalCollected)],
+    ["Outstanding AR", peso.format(totalOutstanding)],
+    ["Overdue Invoices", overdueCount.toLocaleString("en-PH")],
+    ["Collection Rate", `${totalNet ? Math.round((totalCollected / totalNet) * 100) : 0}%`],
+  ]);
+  const byStatus = Object.entries(sales.reduce((acc, sale) => {
+    const key = statusForSale(sale);
+    acc[key] = (acc[key] || 0) + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+    return acc;
+  }, {})).sort((a, b) => b[1] - a[1]);
+  qs("#report-detail-chart-primary").innerHTML = barRows(byStatus, (value) => peso.format(value), ["red", "orange", "", "green"]) + graphNote("Open balance grouped by invoice status.");
+  const agingBuckets = [["Not Yet Due", 0], ["1-30 Days Overdue", 0], ["31-60 Days Overdue", 0], ["61-90 Days Overdue", 0], ["90+ Days Overdue", 0]];
+  sales.forEach((sale) => {
+    const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+    if (!balance) return;
+    const overdueDays = -daysUntil(addDays(sale.date, sale.terms));
+    const bucketIndex = overdueDays <= 0 ? 0 : overdueDays <= 30 ? 1 : overdueDays <= 60 ? 2 : overdueDays <= 90 ? 3 : 4;
+    agingBuckets[bucketIndex][1] += balance;
+  });
+  qs("#report-detail-chart-secondary").innerHTML = barRows(agingBuckets, (value) => peso.format(value), ["green", "", "orange", "orange", "red"]) + graphNote("Open balance grouped by days overdue (AR aging).");
+  const filtered = sales.filter((sale) => (!status || statusForSale(sale) === status) && includesSearch(Object.values(sale)));
+  table("#report-detail-table", ["Document", "Client", "Status", "Paid", "Balance", "Due Date"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.documentNo || sale.id, sale.client, `<span class="pill ${statusClass(statusForSale(sale))}">${escapeHtml(statusForSale(sale))}</span>`, peso.format(sale.paid), peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0)), fmtDate(addDays(sale.date, sale.terms))] })));
+}
+
+function renderReagentExpiryReport() {
+  const { status } = reportDetailFilters();
+  const inventory = byBranch(data.inventory);
+  setupReportDetailToolbar({ statusLabel: "Status", statusOptions: [...new Set(inventory.map(inventoryStatus))], section: "inventory", sectionLabel: "Inventory" });
+  const atRisk = inventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
+  const disposal = inventory.filter((item) => inventoryStatus(item) === "For Disposal");
+  const expiringSoon = inventory.filter((item) => item.expiry !== "N/A" && daysUntil(item.expiry) >= 0 && daysUntil(item.expiry) <= 90);
+  renderReportKpis([
+    ["Total Stock Records", inventory.length.toLocaleString("en-PH")],
+    ["Low/Critical Stock", atRisk.length.toLocaleString("en-PH")],
+    ["Expiring Within 90 Days", expiringSoon.length.toLocaleString("en-PH")],
+    ["Expired / For Disposal", disposal.length.toLocaleString("en-PH")],
+  ]);
+  const byBranchCount = Object.entries(sumBy(atRisk, "branch", () => 1)).sort((a, b) => b[1] - a[1]);
+  qs("#report-detail-chart-primary").innerHTML = barRows(byBranchCount, (value) => `${value} record${value === 1 ? "" : "s"}`, ["red", "orange"]) + graphNote("Low/critical stock record count grouped by branch.");
+  const expiryBuckets = [["Expired", 0], ["≤30 Days", 0], ["31-60 Days", 0], ["61-90 Days", 0], ["91-180 Days", 0], ["Safe / No Expiry", 0]];
+  inventory.forEach((item) => {
+    if (item.expiry === "N/A") return expiryBuckets[5][1]++;
+    const days = daysUntil(item.expiry);
+    const bucketIndex = days < 0 ? 0 : days <= 30 ? 1 : days <= 60 ? 2 : days <= 90 ? 3 : days <= 180 ? 4 : 5;
+    expiryBuckets[bucketIndex][1]++;
+  });
+  qs("#report-detail-chart-secondary").innerHTML = barRows(expiryBuckets, (value) => `${value} record${value === 1 ? "" : "s"}`, ["red", "red", "orange", "orange", "", "green"]) + graphNote("All stock records grouped by time until expiry.");
+  const filtered = inventory.filter((item) => (!status || inventoryStatus(item) === status) && includesSearch(Object.values(item)));
+  table("#report-detail-table", ["Item", "Branch", "Lot", "Expiry", "Qty", "Status"], filtered.map((item) => ({ focus: `${item.item}|${item.lot}`, cells: [item.item, item.branch || "-", item.lot || "-", item.expiry, item.qty, `<span class="pill ${statusClass(inventoryStatus(item))}">${escapeHtml(inventoryStatus(item))}</span>`] })));
+}
+
+function renderClientDocumentsReport() {
+  const { status: completion } = reportDetailFilters();
+  const clients = data.clients;
+  setupReportDetailToolbar({ statusLabel: "Completion", statusOptions: ["Complete", "Incomplete"], section: "masterlists", sectionLabel: "Masterlists" });
+  const missingByClient = clients.map((client) => ({ client, missing: requiredClientDocs.filter((doc) => !client.docs?.includes(doc)) }));
+  const compliantCount = missingByClient.filter((entry) => !entry.missing.length).length;
+  const totalMissing = missingByClient.reduce((sum, entry) => sum + entry.missing.length, 0);
+  renderReportKpis([
+    ["Total Clients", clients.length.toLocaleString("en-PH")],
+    ["Fully Compliant", compliantCount.toLocaleString("en-PH")],
+    ["Clients With Gaps", (clients.length - compliantCount).toLocaleString("en-PH")],
+    ["Total Missing Docs", totalMissing.toLocaleString("en-PH")],
+  ]);
+  const topOffenders = missingByClient.filter((entry) => entry.missing.length).sort((a, b) => b.missing.length - a.missing.length).slice(0, 10).map((entry) => [entry.client.name, entry.missing.length]);
+  qs("#report-detail-chart-primary").innerHTML = barRows(topOffenders, (value) => `${value} missing`, ["red", "orange"]) + graphNote("Top 10 clients by number of missing required documents.");
+  const byDocType = requiredClientDocs.map((doc) => [doc, missingByClient.filter((entry) => entry.missing.includes(doc)).length]).sort((a, b) => b[1] - a[1]);
+  qs("#report-detail-chart-secondary").innerHTML = barRows(byDocType, (value) => `${value} client${value === 1 ? "" : "s"}`, ["red", "orange"]) + graphNote("Clients missing each specific required document.");
+  const filtered = missingByClient.filter((entry) => (!completion || (completion === "Complete" ? !entry.missing.length : entry.missing.length)) && includesSearch(Object.values(entry.client)));
+  table("#report-detail-table", ["Client", "Area", "TIN", "Credit Limit", "Docs Uploaded", "Missing Docs"], filtered.map(({ client, missing }) => ({ focus: client.name, cells: [client.name, client.area || "-", client.tin || "-", peso.format(client.creditLimit), `${requiredClientDocs.length - missing.length}/${requiredClientDocs.length}`, missing.join(", ") || "None"] })));
+}
+
+function renderSupplierPayablesReport() {
+  const { status } = reportDetailFilters();
+  const payables = data.payables;
+  setupReportDetailToolbar({ statusLabel: "Status", statusOptions: [...new Set(payables.map((p) => p.requestStatus || p.status).filter(Boolean))], section: "payables", sectionLabel: "Payables" });
+  const totalPayables = payables.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const totalPaid = payables.reduce((sum, p) => sum + Number(p.paid || 0), 0);
+  const totalBalance = payables.reduce((sum, p) => sum + Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0), 0);
+  const pendingCount = payables.filter((p) => !["Approved", "Cancelled", "Paid"].includes(p.requestStatus || p.status)).length;
+  renderReportKpis([
+    ["Total Payables", peso.format(totalPayables)],
+    ["Total Paid", peso.format(totalPaid)],
+    ["Outstanding Balance", peso.format(totalBalance)],
+    ["Pending Requests", pendingCount.toLocaleString("en-PH")],
+  ]);
+  const bySupplier = Object.entries(payables.reduce((acc, p) => {
+    const balance = Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0);
+    if (balance) acc[p.supplier] = (acc[p.supplier] || 0) + balance;
+    return acc;
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  qs("#report-detail-chart-primary").innerHTML = barRows(bySupplier, (value) => peso.format(value), ["red", "orange"]) + graphNote("Top 10 suppliers by outstanding balance.");
+  const byStatus = Object.entries(payables.reduce((acc, p) => {
+    const key = p.requestStatus || p.status || "Unknown";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {})).sort((a, b) => b[1] - a[1]);
+  qs("#report-detail-chart-secondary").innerHTML = barRows(byStatus, (value) => `${value} request${value === 1 ? "" : "s"}`, ["orange", "green", "red", ""]) + graphNote("Payable request count grouped by status.");
+  const filtered = payables.filter((p) => (!status || (p.requestStatus || p.status) === status) && includesSearch(Object.values(p)));
+  table("#report-detail-table", ["Supplier", "Item/Service", "Method", "Amount", "Paid", "Balance", "Status"], filtered.map((p) => ({ focus: p.id, cells: [p.supplier, itemizedSummary(p.items), p.method || "-", peso.format(p.amount), peso.format(p.paid), peso.format(Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0)), `<span class="pill ${statusClass(p.requestStatus || p.status)}">${escapeHtml(p.requestStatus || p.status || "-")}</span>`] })));
+}
+
+function renderServiceWarrantyReport() {
+  const { status } = reportDetailFilters();
+  const warranties = data.warranties;
+  setupReportDetailToolbar({ statusLabel: "Status", statusOptions: [...new Set(warranties.map((w) => w.status).filter(Boolean))], section: "warranty", sectionLabel: "Warranty" });
+  const active = warranties.filter((w) => w.status === "Active").length;
+  const expiringSoon = warranties.filter((w) => w.status === "Expiring Soon").length;
+  const expired = warranties.filter((w) => w.status === "Expired").length;
+  renderReportKpis([
+    ["Total Units", warranties.length.toLocaleString("en-PH")],
+    ["Active", active.toLocaleString("en-PH")],
+    ["Expiring Soon", expiringSoon.toLocaleString("en-PH")],
+    ["Expired", expired.toLocaleString("en-PH")],
+  ]);
+  const byEquipment = Object.entries(sumBy(warranties, "equipment", () => 1)).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  qs("#report-detail-chart-primary").innerHTML = barRows(byEquipment, (value) => `${value} unit${value === 1 ? "" : "s"}`, ["", "green"]) + graphNote("Top 10 equipment types by installed unit count.");
+  const byStatus = Object.entries(sumBy(warranties, "status", () => 1)).sort((a, b) => b[1] - a[1]);
+  qs("#report-detail-chart-secondary").innerHTML = barRows(byStatus, (value) => `${value} unit${value === 1 ? "" : "s"}`, ["green", "orange", "red", ""]) + graphNote("Installed units grouped by warranty status.");
+  const filtered = warranties.filter((w) => (!status || w.status === status) && includesSearch(Object.values(w)));
+  table("#report-detail-table", ["Client", "Equipment", "Serial", "Install Date", "Warranty End", "Status"], filtered.map((w) => ({ focus: w.serial || w.client, cells: [w.client, w.equipment, w.serial || "-", w.installDate || "-", w.warrantyEnd || "-", `<span class="pill ${statusClass(w.status)}">${escapeHtml(w.status || "-")}</span>`] })));
+}
+
+let complianceAuditEntries = [];
+async function renderComplianceAuditReport() {
+  setupReportDetailToolbar({ statusLabel: "Module", statusOptions: null, section: "logs", sectionLabel: "Audit Logs" });
+  renderReportKpis([["Total Actions", "Loading…"], ["Unique Users", "Loading…"], ["Top Module", "Loading…"], ["Top User", "Loading…"]]);
+  tableSkeleton("#report-detail-table", ["Date", "User", "Module", "Action", "Record"], 6);
+  qs("#report-detail-chart-primary").innerHTML = "";
+  qs("#report-detail-chart-secondary").innerHTML = "";
+  try {
+    const result = await MedlaneAPI.listLogs({ limit: 200 });
+    complianceAuditEntries = result.entries || [];
+  } catch (error) {
+    complianceAuditEntries = [];
+    toast(error.message || "Could not load audit logs.");
+  }
+  if (currentOperationalReportKey !== "compliance-audit") return;
+  setupReportDetailToolbar({ statusLabel: "Module", statusOptions: [...new Set(complianceAuditEntries.map((entry) => entry.module).filter(Boolean))], section: "logs", sectionLabel: "Audit Logs" });
+  renderComplianceAuditTable();
+}
+
+function renderComplianceAuditTable() {
+  const { status: module } = reportDetailFilters();
+  const entries = complianceAuditEntries;
+  const uniqueUsers = new Set(entries.map((entry) => entry.user)).size;
+  const topModule = Object.entries(sumBy(entries, "module", () => 1)).sort((a, b) => b[1] - a[1])[0];
+  const topUser = Object.entries(sumBy(entries, "user", () => 1)).sort((a, b) => b[1] - a[1])[0];
+  renderReportKpis([
+    ["Total Actions", entries.length.toLocaleString("en-PH")],
+    ["Unique Users", uniqueUsers.toLocaleString("en-PH")],
+    ["Top Module", topModule ? `${topModule[0]} (${topModule[1]})` : "No data"],
+    ["Top User", topUser ? `${topUser[0]} (${topUser[1]})` : "No data"],
+  ]);
+  const byModule = Object.entries(sumBy(entries, "module", () => 1)).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  qs("#report-detail-chart-primary").innerHTML = barRows(byModule, (value) => `${value} action${value === 1 ? "" : "s"}`, ["", "green"]) + graphNote(`Most recent ${entries.length} audit log entries grouped by module.`);
+  const byUser = Object.entries(sumBy(entries, "user", () => 1)).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  qs("#report-detail-chart-secondary").innerHTML = barRows(byUser, (value) => `${value} action${value === 1 ? "" : "s"}`, ["", "green"]) + graphNote("Top 10 users by recorded action count in this window.");
+  const filtered = entries.filter((entry) => (!module || entry.module === module) && includesSearch(Object.values(entry)));
+  table("#report-detail-table", ["Date", "User", "Module", "Action", "Record"], filtered.map((entry) => ({ focus: [entry.record, entry.action, entry.user].filter(Boolean).join("|"), cells: [entry.date, entry.user, entry.module, entry.action, entry.record || "-"] })));
+}
 const salesBreakdownDimensions = {
   month: { title: "Sales by Month", body: "Monthly revenue trend with orders, average order value, and best month.", icon: "₱", groupLabel: "Month", topLabel: "Top Month", groupBy: (sale) => sale.date.slice(0, 7), formatGroup: monthLabel },
   client: { title: "Sales per Client", body: "Revenue, order count, and average order value by client.", icon: "◆", groupLabel: "Client", topLabel: "Top Client", groupBy: (sale) => sale.client },
@@ -6274,43 +6496,6 @@ function renderReconciliation() {
   const tableFindings = reconciliationAreaFilter ? findings.filter((row) => row[4] === reconciliationAreaFilter) : findings;
   table("#reconciliation-table", ["Area", "Record", "What Needs Fixing", "Severity", "Fix"], tableFindings.map((row) => [row[0], row[1], row[2], `<span class="pill ${statusClass(row[3] === "High" ? "Critical" : row[3] === "Medium" ? "Near Due" : "Available")}">${row[3]}</span>`, `<button class="mini-button" data-go-section="${row[4]}" data-focus-record="${escapeHtml(row[5])}">Fix in ${row[4]}</button>`]));
   renderReconciliationHistory();
-}
-
-function getReportDefinitions() {
-  if (serverReportDefinitions) return serverReportDefinitions;
-  const totalSales = byBranch(data.sales, "area").reduce((sum, s) => sum + s.net, 0);
-  const totalPaid = byBranch(data.sales, "area").reduce((sum, s) => sum + s.paid, 0);
-  const overdue = byBranch(data.sales, "area").filter((s) => statusForSale(s) === "Overdue").length;
-  const lowStock = byBranch(data.inventory).filter((i) => ["Low Stock", "Critical"].includes(inventoryStatus(i))).length;
-  return [
-    { icon: "₱", title: "Sales by Territory", body: `Area, client, salesperson, SI/TS/DR, and item movement. ${peso.format(totalSales)} current view.`, section: "sales", actionLabel: "Open Sales", rows: byBranch(data.sales, "area").map((s) => [s.area, s.client, s.salesperson, s.documentNo || s.id, saleSummary(s), peso.format(s.net)]) },
-    { icon: "●", title: "Collections & AR", body: `${peso.format(totalPaid)} collected. ${overdue} overdue invoice/s.`, section: "collections", actionLabel: "Open Collections", rows: byBranch(data.sales, "area").map((s) => [s.id, s.client, statusForSale(s), peso.format(s.paid), peso.format(Math.max(s.net - s.paid, 0)), fmtDate(addDays(s.date, s.terms))]) },
-    { icon: "▤", title: "Reagent Expiry", body: `${lowStock} low or critical stock records with lot and expiry tracking.`, section: "inventory", actionLabel: "Open Inventory", rows: byBranch(data.inventory).map((i) => [i.item, i.branch, i.lot, i.expiry, i.qty, inventoryStatus(i)]) },
-    { icon: "◆", title: "Client Documents", body: "BIR, SEC, TIN, required permits, and account attachments.", section: "masterlists", actionLabel: "Open Masterlists", rows: data.clients.map((c) => [c.name, c.area, c.tin, peso.format(c.creditLimit), c.docs]) },
-    { icon: "◇", title: "Supplier Payables", body: `${data.payables.length} supplier payable records with payment method tracking.`, section: "payables", actionLabel: "Open Payables", rows: data.payables.map((p) => [p.supplier, p.item, p.method, peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.status]) },
-    { icon: "◉", title: "Service & Warranty", body: "Equipment install, serial number, warranty, and customer support history.", section: "warranty", actionLabel: "Open Warranty", rows: data.warranties.map((w) => [w.client, w.equipment, w.serial, w.installDate, w.warrantyEnd, w.status]) },
-    { icon: "◎", title: "Compliance Audit", body: "Traceable changes for corrections, exports, and approvals.", section: "logs", actionLabel: "Open Audit Logs", rows: [] },
-  ];
-}
-
-function openReportPreview(index) {
-  const report = getReportDefinitions()[index];
-  if (!report) return toast("Report not found.");
-  const totalRows = report.rows.length;
-  const previewRows = report.rows.slice(0, 8);
-  qs("#report-preview-title").textContent = report.title;
-  qs("#report-preview-description").textContent = report.body;
-  qs("#report-preview-content").innerHTML = `
-    <div class="report-preview-grid">
-      <div class="report-preview-card"><small>Report Type</small><strong>${escapeHtml(report.title)}</strong></div>
-      <div class="report-preview-card"><small>Records</small><strong>${totalRows}</strong></div>
-      <div class="report-preview-card"><small>Branch View</small><strong>${data.branch === "all" ? "All" : data.branch}</strong></div>
-    </div>
-    <div class="table-card"><table><tbody>${previewRows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("") || `<tr><td>No records found.</td></tr>`}</tbody></table></div>
-  `;
-  if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
-  if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
-  qs("#report-preview-modal").showModal();
 }
 
 function canManageUsers() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
@@ -6934,6 +7119,7 @@ const sectionRenderers = {
   payables: renderPayables,
   replenishments: renderReplenishments,
   reports: renderReports,
+  "report-detail": () => currentOperationalReportKey && applyOperationalReport(currentOperationalReportKey),
   reconciliation: renderReconciliation,
   users: renderUsers,
   notifications: renderNotifications,

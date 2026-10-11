@@ -990,8 +990,18 @@
       </section>
 
       <section class="section" id="report-detail">
-        <div class="section-header"><div><p class="eyebrow">Report Detail</p><h2 id="report-detail-title">Report</h2></div><button class="ghost-button" data-go-section="reports">Back to Reports</button></div>
-        <article class="panel report-page" id="report-page-detail"></article>
+        <div class="section-header"><div><p class="eyebrow" id="report-detail-eyebrow">Report Detail</p><h2 id="report-detail-title">Report</h2><p id="report-detail-body"></p></div><div class="topbar-actions"><button class="ghost-button" data-go-section="reports">Back to Reports</button><button class="ghost-button" id="report-detail-open-module" type="button">Open Module</button><button class="primary-button" id="report-detail-print" type="button">Print This Report</button></div></div>
+        <div class="toolbar" id="report-detail-toolbar">
+          <p class="field-help">Use the search box in the top bar to search this report's table.</p>
+          <div class="field"><label for="report-detail-status-filter">Status</label><select id="report-detail-status-filter"><option value="">All Statuses</option></select></div>
+          <button class="ghost-button" id="report-detail-clear-filters" type="button">Clear Filters</button>
+        </div>
+        <article class="panel report-page">
+          <div class="report-preview-grid" id="report-detail-kpis"></div>
+          <div class="chart-bars" id="report-detail-chart-primary"></div>
+          <div class="chart-bars" id="report-detail-chart-secondary"></div>
+          <div class="table-card"><table id="report-detail-table"></table></div>
+        </article>
       </section>
 
       <section class="section" id="sales-breakdown-detail">
