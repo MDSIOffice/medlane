@@ -520,6 +520,9 @@ document.body.addEventListener("click", (event) => {
       if (qs("#client-invoices-to")) qs("#client-invoices-to").value = "";
     }
     currentClientView = nextClient;
+    // "client-invoices" itself is never a valid origin here (a click from within it would just
+    // re-enter this same branch for a different client) — keep whatever the last real origin was.
+    if (document.body.dataset.activeSection && document.body.dataset.activeSection !== "client-invoices") clientInvoicesReturnSection = document.body.dataset.activeSection;
     renderClientInvoices();
     return showSection("client-invoices");
   }
