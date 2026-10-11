@@ -2279,7 +2279,12 @@ function renderInventory() {
   const closedDemos = demoRequests.filter((request) => ["Returned", "To Sales", "Cancelled"].includes(request.status));
   table("#demo-request-table", ["Request", "Client", "Demo Date", "Items", "Status", "Approvals", "Actions"], activeDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, `${request.salesApprovedBy ? `Sales: ${escapeHtml(request.salesApprovedBy)}` : request.status === "For Logistics Approval" || request.logisticsApprovedBy ? `Logistics: ${escapeHtml(request.logisticsApprovedBy || "Pending")}` : "Logistics: Not needed"}<small>Mgmt: ${escapeHtml(request.managementApprovedBy || "Pending")}</small>`, demoRequestActions(request)] })));
   table("#demo-history-table", ["Request", "Client", "Demo Date", "Items", "Closed As", "Closed By"], closedDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, escapeHtml(request.closedBy || "-")] })));
-  table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], data.transferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
+  // entry.date is a locale-formatted display string (not reliably sortable as a Date), but
+  // entry.id embeds the real creation timestamp as `TH-<Date.now()>-<random>` — sort on that
+  // instead so a server reload (which arrives oldest-first) still shows latest first here.
+  const transferHistoryTimestamp = (entry) => Number(String(entry.id || "").split("-")[1]) || new Date(entry.date).getTime() || 0;
+  const sortedTransferHistory = [...data.transferHistory].sort((a, b) => transferHistoryTimestamp(b) - transferHistoryTimestamp(a));
+  table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], sortedTransferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
   const loadMoreInventoryPosButton = qs("#load-more-inventory-pos");
   if (loadMoreInventoryPosButton) loadMoreInventoryPosButton.hidden = !modulePagination.inventoryPurchaseOrders?.hasMore;
   const loadMoreTransfersButton = qs("#load-more-transfers");
@@ -4649,6 +4654,12 @@ function renderClientHistoryTabs(client) {
 }
 
 function renderClientInvoices() {
+  const backButton = qs("#client-invoices-back-button");
+  if (backButton) {
+    const fromHistory = clientInvoicesReturnSection === "purchase-history";
+    backButton.textContent = fromHistory ? "Back to Client History" : "Back to AR Tracker";
+    backButton.dataset.goSection = fromHistory ? "purchase-history" : "receivables-tracker";
+  }
   const client = currentClientView || data.sales[0]?.client;
   const invoices = data.sales.filter((sale) => sale.client === client);
   const clientRecord = data.clients.find((item) => item.name === client) || {};

@@ -42,6 +42,7 @@ let poWorkflowTab = "pending";
 let creditInvoiceWorkflowTab = "pending";
 let masterShowArchived = false;
 let currentSalesBreakdownDimension = null;
+let clientInvoicesReturnSection = "receivables-tracker";
 let editingPoId = null;
 let userStatusFilter = "all";
 let invoiceViewMode = "table";
