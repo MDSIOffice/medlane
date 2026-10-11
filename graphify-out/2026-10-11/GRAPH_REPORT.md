@@ -1,7 +1,7 @@
 # Graph Report - medlane  (2026-10-11)
 
 ## Corpus Check
-- 66 files · ~353,631 words
+- 66 files · ~353,775 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `330ddca2`
+- Built from commit: `8b39f991`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -39,8 +39,8 @@
 - buildSale
 - Feature Specification: Reliable Daily Digest Email and Automatic Friday Backup
 - escapeHtml
-- openModal
-- renderCollectionMapVisual
+- findItemByCodeOrName
+- showSection
 - renderUsers
 - game.js
 - renderLogs
@@ -48,21 +48,21 @@
 - renderPrintTemplateSidePanel
 - memoCardHtml
 - renderProductIssues
-- syncPaymentRequestTotal
+- openModal
 - renderDashboard
 - json
 - i
 - i
 - public/scripts/config-data.js
 - attachedFilesFor
-- is
+- pe
 - scripts/config-data.js
 - showSection
 - comboHandleKeydown
 - createAppSession
 - renderPrintTemplateSidePanel
 - saveData
-- renderCollections
+- renderDashboard
 - syncStockSheetRow
 - common.sh
 - renderInventory
@@ -184,11 +184,11 @@ Nodes (42): collectFinancialLines(), collectPaymentRequestInvoices(), collectPay
 
 ### Community 5 - "public/scripts/modules.js"
 Cohesion: 0.02
-Nodes (103): addDemoRequestLine(), applyReconciliationHistory(), auditLogModules, bir2307DrawBoxedDigits(), bir2307DrawDigits(), bir2307DrawTin(), bir2307DrawTinLastGroup(), bir2307MMDDYYYY() (+95 more)
+Nodes (114): addDemoRequestLine(), auditLogModules, bir2307DrawBoxedDigits(), bir2307DrawDigits(), bir2307DrawTin(), bir2307DrawTinLastGroup(), bir2307MMDDYYYY(), bir2307Money() (+106 more)
 
 ### Community 6 - "scripts/modules.js"
 Cohesion: 0.02
-Nodes (101): applyReconciliationHistory(), auditLogModules, bir2307DrawBoxedDigits(), bir2307DrawDigits(), bir2307DrawTin(), bir2307DrawTinLastGroup(), bir2307MMDDYYYY(), bir2307Money() (+93 more)
+Nodes (103): applyReconciliationHistory(), auditLogModules, bir2307DrawBoxedDigits(), bir2307DrawDigits(), bir2307DrawTin(), bir2307DrawTinLastGroup(), bir2307MMDDYYYY(), bir2307Money() (+95 more)
 
 ### Community 7 - "public/scripts/vendor/pdf-lib.min.js"
 Cohesion: 0.04
@@ -199,28 +199,28 @@ Cohesion: 0.04
 Nodes (8): cs(), hs(), qe(), us(), Ve(), Vr(), We(), wr()
 
 ### Community 9 - "renderAll"
-Cohesion: 0.06
-Nodes (54): advancePurchaseOrderStatus(), applyRole(), approveExpense(), approveFinancialRequest(), approvePurchaseOrder(), canApproveMigrations(), canApprovePurchaseOrders(), cancelFinancialRequest() (+46 more)
+Cohesion: 0.07
+Nodes (41): advancePurchaseOrderStatus(), applyRole(), approveExpense(), approveFinancialRequest(), approvePurchaseOrder(), canApproveMigrations(), canApprovePurchaseOrders(), cancelFinancialRequest() (+33 more)
 
 ### Community 10 - "fetch"
 Cohesion: 0.06
 Nodes (45): canAccessKey(), checkAssetPageHealth(), cleanEmail(), dedupeRowsByRecordKey(), enrichAuditLogEntry(), extractLinkResult(), fetch(), filterRecordsForProfile() (+37 more)
 
 ### Community 11 - "printableFooterHtml"
-Cohesion: 0.09
-Nodes (27): addMonthsToDate(), clientInvoiceReportHtml(), clientInvoicesExportRows(), clientInvoicesFilteredSales(), dashboardReportHtml(), dashboardReportRows(), dashboardVisibleSales(), exportClientInvoicesCsv() (+19 more)
+Cohesion: 0.11
+Nodes (23): addMonthsToDate(), clientInvoiceReportHtml(), dashboardReportHtml(), dashboardReportRows(), dashboardVisibleSales(), exportDashboardCsv(), itemForecastMonthKeys(), itemForecastMonthLabels() (+15 more)
 
 ### Community 12 - "importCheckedRows"
-Cohesion: 0.11
-Nodes (37): applyCollectionPayment(), approvePaymentRequest(), buildImportedClient(), buildImportedProduct(), buildImportedSupplier(), buildMigratedSale(), canApprovePaymentRequests(), cancelPaymentRequest() (+29 more)
+Cohesion: 0.10
+Nodes (36): approvePaymentRequest(), buildImportedClient(), buildImportedProduct(), buildImportedSupplier(), buildMigratedSale(), canApprovePaymentRequests(), cancelPaymentRequest(), collectionStatusActions() (+28 more)
 
 ### Community 13 - "worker.js"
 Cohesion: 0.04
 Nodes (70): addDays(), applyReceivingLines(), BIRTHDAY_GIF_IDS, buildServedQtyByPo(), canWrite(), daysUntilIso(), defaultSeedSignature, DEMO_ONLY_ROLES (+62 more)
 
 ### Community 14 - "renderInvoicing"
-Cohesion: 0.12
-Nodes (25): acknowledgeMemo(), attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canPostMemo(), canUpdateDeliveryStatus(), clientDocRecordId() (+17 more)
+Cohesion: 0.08
+Nodes (38): acknowledgeMemo(), applyReconciliationHistory(), attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canPostMemo(), canUpdateDeliveryStatus() (+30 more)
 
 ### Community 15 - "importCheckedRows"
 Cohesion: 0.19
@@ -248,7 +248,7 @@ Nodes (8): 1. Resend pacing + 429 retry (`sendResendEmail` area), 2. Stagger the
 
 ### Community 21 - "buildSale"
 Cohesion: 0.06
-Nodes (51): buildInventoryPurchaseOrder(), buildPurchaseOrder(), buildSale(), collectInvoiceEditorLines(), collectInvoicePreviewLines(), competingPurchaseOrdersForItem(), discountNeedsApproval(), documentExists() (+43 more)
+Nodes (54): buildInventoryPurchaseOrder(), buildPurchaseOrder(), buildSale(), collectInvoiceEditorLines(), collectInvoicePreviewLines(), competingPurchaseOrdersForItem(), discountNeedsApproval(), documentExists() (+46 more)
 
 ### Community 22 - "Feature Specification: Reliable Daily Digest Email and Automatic Friday Backup"
 Cohesion: 0.22
@@ -258,13 +258,13 @@ Nodes (8): Assumptions, Feature Specification: Reliable Daily Digest Email and A
 Cohesion: 0.17
 Nodes (22): brandedEmailHtml(), brandedInviteEmailHtml(), digestDeltaBadge(), digestEmailHtml(), digestSectionHtml(), digestStatCardsHtml(), digestToneColors(), escapeHtml() (+14 more)
 
-### Community 24 - "openModal"
-Cohesion: 0.05
-Nodes (50): buildInventoryPurchaseOrder(), buildPurchaseOrder(), buildSale(), collectInvoiceEditorLines(), collectInvoicePreviewLines(), cvYear(), discountNeedsApproval(), documentExists() (+42 more)
+### Community 24 - "findItemByCodeOrName"
+Cohesion: 0.08
+Nodes (33): buildInventoryPurchaseOrder(), buildPurchaseOrder(), buildSale(), collectInvoiceEditorLines(), collectInvoicePreviewLines(), discountNeedsApproval(), documentExists(), findItemByCodeOrName() (+25 more)
 
-### Community 25 - "renderCollectionMapVisual"
+### Community 25 - "showSection"
 Cohesion: 0.10
-Nodes (24): collectionContactsGeoJson(), collectionRegionCount(), collectionRegionSource(), collectionRegionSummaries(), contactActionCard(), featureRegionName(), geoJsonBounds(), geoRegionName() (+16 more)
+Nodes (24): applyCollectionPayment(), getReportDefinitions(), inventoryPoHistoryClass(), loadMoreUserAuditLog(), openReportPreview(), openUserAuditLog(), paymentRequestHistory(), poHistory() (+16 more)
 
 ### Community 26 - "renderUsers"
 Cohesion: 0.10
@@ -291,12 +291,12 @@ Cohesion: 0.13
 Nodes (22): backupRunLabel(), canManageUsers(), canPostMemo(), dedupedUsers(), formatBytes(), formatSessionDate(), memoAcknowledgedByCurrentUser(), memoAudienceCheckboxesHtml() (+14 more)
 
 ### Community 32 - "renderProductIssues"
-Cohesion: 0.19
-Nodes (14): canActOnProductIssue(), clientSupportHistoryCard(), confirmResolveProductIssue(), demoRequestHistoryCard(), productIssueActionsMenu(), productIssueHistory(), productIssueParameterSummaryHtml(), productIssueStatusClass() (+6 more)
+Cohesion: 0.12
+Nodes (20): canActOnProductIssue(), clientInvoicesExportRows(), clientInvoicesFilteredSales(), clientSupportHistoryCard(), confirmResolveProductIssue(), demoRequestHistoryCard(), exportClientInvoicesCsv(), printClientInvoicesReport() (+12 more)
 
-### Community 33 - "syncPaymentRequestTotal"
-Cohesion: 0.15
-Nodes (22): collectFinancialLines(), collectPaymentRequestInvoices(), collectPaymentRequestLines(), financialRequestDeductions(), findClientByName(), openInvoicesForPaymentRequest(), openPaymentRequestForInvoice(), paymentRequestDeductions() (+14 more)
+### Community 33 - "openModal"
+Cohesion: 0.07
+Nodes (39): collectFinancialLines(), collectPaymentRequestInvoices(), collectPaymentRequestLines(), cvYear(), financialLineTemplate(), financialRequestDeductions(), findClientByName(), nextCvNumber() (+31 more)
 
 ### Community 34 - "renderDashboard"
 Cohesion: 0.09
@@ -307,8 +307,8 @@ Cohesion: 0.12
 Nodes (19): authenticatedProfile(), authenticatedUser(), isTransientJwtClockSkew(), json(), LiveHub, methodNotAllowed(), paceResend(), profileForUser() (+11 more)
 
 ### Community 36 - "i"
-Cohesion: 0.18
-Nodes (17): a(), ae(), de(), _e(), ee(), fe(), ge(), Gr() (+9 more)
+Cohesion: 0.20
+Nodes (17): a(), ae(), as(), _e(), Gr(), i(), is(), Kr() (+9 more)
 
 ### Community 37 - "i"
 Cohesion: 0.18
@@ -322,17 +322,17 @@ Nodes (14): clientContactDepartments, deliveryStatusOptions, employeeBenefitOpti
 Cohesion: 0.12
 Nodes (21): attachedFilesFor(), attachedFilesHtml(), canManageEmployees(), canManageEmployeeSalary(), canUpdateDeliveryStatus(), clientDocRecordId(), clientDocsModalRowsHtml(), compressImageFile() (+13 more)
 
-### Community 40 - "is"
-Cohesion: 0.50
-Nodes (5): as(), is(), Ms(), os(), rs()
+### Community 40 - "pe"
+Cohesion: 0.40
+Nodes (5): de(), ee(), fe(), ge(), pe()
 
 ### Community 41 - "scripts/config-data.js"
 Cohesion: 0.13
 Nodes (14): clientContactDepartments, deliveryStatusOptions, employeeBenefitOptions, initialData, peso, productClassificationOptions, requiredClientDocs, requiredSecurityApprovals (+6 more)
 
 ### Community 42 - "showSection"
-Cohesion: 0.05
-Nodes (44): applyOperationalReport(), canActOnProductIssue(), canRestoreSection(), clientSupportHistoryCard(), confirmResolveProductIssue(), demoRequestHistoryCard(), exportInvoicingCsv(), exportItemizedInvoicingCsv() (+36 more)
+Cohesion: 0.06
+Nodes (41): applyOperationalReport(), canActOnProductIssue(), canRestoreSection(), clientSupportHistoryCard(), confirmResolveProductIssue(), demoRequestHistoryCard(), exportInvoicingCsv(), exportItemizedInvoicingCsv() (+33 more)
 
 ### Community 43 - "comboHandleKeydown"
 Cohesion: 0.38
@@ -350,9 +350,9 @@ Nodes (24): applyPtFieldOverride(), applyPtRowOverride(), buildPrintTemplateCanv
 Cohesion: 0.38
 Nodes (11): clearPendingSaveQueueKeys(), dedupeRecordsForSave(), flushPendingSaveQueue(), hasPendingSaveQueue(), mergePendingSaveQueue(), pendingSaveQueueKey(), persistRecords(), readPendingSaveQueue() (+3 more)
 
-### Community 47 - "renderCollections"
-Cohesion: 0.09
-Nodes (28): calendarState(), collectionStatusActions(), contactActionCard(), lineChart(), monthLabel(), multiSeriesChart(), navigateCalendarWidget(), notificationItem() (+20 more)
+### Community 47 - "renderDashboard"
+Cohesion: 0.19
+Nodes (14): calendarState(), lineChart(), monthLabel(), multiSeriesChart(), navigateCalendarWidget(), registerCalendarWidget(), renderAnalytics(), renderCalendarSection() (+6 more)
 
 ### Community 48 - "syncStockSheetRow"
 Cohesion: 0.18
