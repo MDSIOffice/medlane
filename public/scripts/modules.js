@@ -1647,6 +1647,7 @@ function renderLogisticsDashboard() {
 }
 
 function renderDashboard() {
+  defaultDateRangeIfEmpty("dashboard-date-from", "dashboard-date-to");
   const logistics = isLogisticsDashboard();
   const dashboard = qs("#dashboard");
   dashboard?.classList.toggle("logistics-dashboard", logistics);
@@ -1801,8 +1802,12 @@ function renderAnalytics() {
     return acc;
   }, {});
   qs("#analytics-sales-trend").innerHTML = lineChart(Object.entries(monthlySales).sort(([a], [b]) => a.localeCompare(b))) + graphNote("Computed from invoice net totals grouped by invoice month in the selected branch view.");
-  const salespersonSales = Object.entries(sumBy(visibleSales, "salesperson", (sale) => sale.net)).sort((a, b) => b[1] - a[1]);
-  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales) + graphNote("Computed from invoice net totals grouped by assigned salesperson.");
+  // Clients can be assigned an Admin/CEO as their "salesperson" (see the Assigned Sales Person
+  // dropdown in the client form), so grouping all visible sales by that field would mix Admin/CEO
+  // names into a chart meant to rank actual Sales-role agents. Scope to the Sales role here only.
+  const salesAgentNames = new Set(data.users.filter((user) => user.role === "Sales").map((user) => user.name));
+  const salespersonSales = Object.entries(sumBy(visibleSales.filter((sale) => salesAgentNames.has(sale.salesperson)), "salesperson", (sale) => sale.net)).sort((a, b) => b[1] - a[1]);
+  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales) + graphNote("Computed from invoice net totals grouped by assigned salesperson, Sales role agents only.");
   const branchSales = Object.entries(sumBy(visibleSales, "area", (sale) => sale.net));
   qs("#analytics-branch-sales").innerHTML = barRows(branchSales, (value) => peso.format(value), ["", "green"]) + graphNote("Computed from invoice net totals grouped by client sales area.");
   const dealerClients = data.clients.filter((client) => client.dealer !== "Direct");
@@ -2084,7 +2089,35 @@ function renderMasterlists() {
     archivedToggle.classList.toggle("active", showArchived);
   }
   qs("#master-add-button").hidden = !canEditModule("masterlists") || showArchived || data.masterTab === "branches";
-  const masterFilter = (record) => (showArchived ? isArchived(record) : !isArchived(record)) && includesSearch(Object.values(record));
+  qs("#master-items-filter-toolbar").hidden = data.masterTab !== "items";
+  qs("#master-suppliers-filter-toolbar").hidden = data.masterTab !== "suppliers";
+  if (data.masterTab === "items") {
+    setForecastSelectOptions("#master-items-brand-filter", data.items.map((i) => i.brand), "All Brands");
+    setForecastSelectOptions("#master-items-supplier-filter", data.items.map((i) => i.supplier), "All Suppliers");
+    setForecastSelectOptions("#master-items-classification-filter", data.items.map((i) => i.classification || i.category), "All Classifications");
+  }
+  if (data.masterTab === "suppliers") {
+    setForecastSelectOptions("#master-suppliers-classification-filter", data.suppliers.map((s) => s.classification || s.brand), "All Classifications");
+    setForecastSelectOptions("#master-suppliers-status-filter", data.suppliers.map((s) => s.status), "All Statuses");
+  }
+  const itemsBrandFilter = qs("#master-items-brand-filter")?.value || "";
+  const itemsSupplierFilter = qs("#master-items-supplier-filter")?.value || "";
+  const itemsClassificationFilter = qs("#master-items-classification-filter")?.value || "";
+  const suppliersClassificationFilter = qs("#master-suppliers-classification-filter")?.value || "";
+  const suppliersStatusFilter = qs("#master-suppliers-status-filter")?.value || "";
+  const masterFilter = (record) => {
+    if (!(showArchived ? isArchived(record) : !isArchived(record)) || !includesSearch(Object.values(record))) return false;
+    if (data.masterTab === "items") {
+      if (itemsBrandFilter && record.brand !== itemsBrandFilter) return false;
+      if (itemsSupplierFilter && record.supplier !== itemsSupplierFilter) return false;
+      if (itemsClassificationFilter && (record.classification || record.category) !== itemsClassificationFilter) return false;
+    }
+    if (data.masterTab === "suppliers") {
+      if (suppliersClassificationFilter && (record.classification || record.brand) !== suppliersClassificationFilter) return false;
+      if (suppliersStatusFilter && record.status !== suppliersStatusFilter) return false;
+    }
+    return true;
+  };
   const rowActions = (type, index) => {
     if (showArchived) return canArchive ? `<button class="mini-button" data-master-restore="${type}" data-index="${index}">Restore</button>` : "Archived";
     const parts = [canEditModule("masterlists") ? `<button class="mini-button" data-master-edit="${type}" data-index="${index}">Edit</button>` : "Approval required"];
@@ -3146,6 +3179,7 @@ function renderFinancialSummary(target, heroCards, groups) {
 }
 
 function renderPurchaseOrders() {
+  defaultDateRangeIfEmpty("po-date-from", "po-date-to");
   const from = qs("#po-date-from")?.value || "";
   const to = qs("#po-date-to")?.value || "";
   const visible = byBranch(data.purchaseOrders || [], "area")
@@ -3464,20 +3498,8 @@ function printMemo(id) {
 
 function renderInvoicing() {
   ensureUploadedFilesLoaded(renderInvoicing);
-  qs("#invoice-grid").innerHTML = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).reverse().map((s) => {
-    const due = fmtDate(addDays(s.date, s.terms));
-    const paid = Number(s.paid || 0);
-    const pending = Math.max(Number(s.net || 0) - paid, 0);
-    const balanceLine = paid > 0 ? `<small class="invoice-balance-line">Paid ${peso.format(paid)} · Pending ${peso.format(pending)}</small>` : "";
-    const taxSummary = saleTaxSummary(s);
-    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><span class="pill ${deliveryStatusPillClass(s.deliveryStatus)}">${escapeHtml(s.deliveryStatus || "Pending")}</span><small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p>${taxSummary ? `<small>${escapeHtml(taxSummary)}</small>` : ""}${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`}</div>${attachedFilesHtml("sale", s.id)}<div class="modal-actions"><button class="ghost-button" data-sale-detail="${s.id}">View</button><button class="ghost-button" data-print-invoice="${s.id}">Print</button><button class="ghost-button" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : "Upload Copy"}</button><input type="file" accept="image/*" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" ? "" : `<button class="ghost-button" data-cancel-replace="${s.id}">Cancel & Replace</button>`}</div></div></details>`;
-  }).join("");
-}
-
-function renderInvoicing() {
-  ensureUploadedFilesLoaded(renderInvoicing);
   renderPendingCreditInvoices();
-  const rows = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).reverse();
+  const rows = invoicingVisibleSales().reverse();
   const deliveryControl = (s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
   const actionCell = (s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
   qsa("#invoice-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.invoiceView === invoiceViewMode));
@@ -3695,7 +3717,7 @@ function renderCollectionsTotalSummary() {
     clientSelect.innerHTML = `<option value="">All Clients</option>${[...new Set(data.clients.map((c) => c.name))].map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}`;
     clientSelect.dataset.populated = "true";
   }
-  if (!qs("#total-collections-from")?.value && !qs("#total-collections-to")?.value) resetCollectionsTotalToAnnual();
+  defaultDateRangeIfEmpty("total-collections-from", "total-collections-to");
   const client = qs("#total-collections-client")?.value || "";
   const from = qs("#total-collections-from")?.value || "";
   const to = qs("#total-collections-to")?.value || "";
@@ -3753,7 +3775,7 @@ function renderCollections() {
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Collection Status", "Actions", "Balance", "AR Status"], rows);
-  table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Department", "Payment", "Total", "Status", "Actions"], [...data.paymentRequests].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.department, r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
+  table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Collector", "Payment", "Total", "Status", "Actions"], [...data.paymentRequests].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.preparedBy || "-", r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
   const loadMoreCollectionsButton = qs("#load-more-collections");
   if (loadMoreCollectionsButton) loadMoreCollectionsButton.hidden = !modulePagination.payments?.hasMore;
   const loadMorePaymentRequestsButton = qs("#load-more-payment-requests");
@@ -4653,7 +4675,8 @@ function renderClientInvoices() {
 }
 
 function invoicingVisibleSales() {
-  return byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s)));
+  const typeFilter = qs("#invoicing-type-filter")?.value || "all";
+  return byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).filter((s) => typeFilter === "all" || documentType(s.type) === typeFilter);
 }
 
 function exportInvoicingCsv() {
@@ -5057,15 +5080,16 @@ function renderPurchaseHistory() {
       const last = purchases.map((sale) => sale.date).sort().at(-1) || "No purchase";
       const items = [...new Set(purchases.map((sale) => sale.item))].join(", ") || "-";
       const balance = purchases.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-      return { client, purchases, total, last, items, balance };
+      const credit = clientCreditState(client.name);
+      return { client, purchases, total, last, items, balance, credit };
     }).sort((a, b) => b.total - a.total);
     const agentTotal = agentClientStats.reduce((sum, stat) => sum + stat.total, 0);
-    const limit = purchaseHistoryVisibleCounts[agent] || purchaseHistoryDefaultLimit(agent);
-    const visibleStats = agentClientStats.slice(0, limit);
+    const rowLimit = purchaseHistoryVisibleCounts[agent] || purchaseHistoryDefaultLimit(agent);
+    const visibleStats = agentClientStats.slice(0, rowLimit);
     const remaining = agentClientStats.length - visibleStats.length;
-    const rows = visibleStats.map(({ client, purchases, total, last, items, balance }) => `<tr data-focus-text="${escapeHtml(`${client.name} ${client.area || ""} ${items}`)}"><td data-label="Client"><button class="link-button dark" data-client-invoices="${escapeHtml(client.name)}">${escapeHtml(client.name)}</button></td><td data-label="Area">${escapeHtml(client.area || "-")}</td><td data-label="Orders">${purchases.length}</td><td data-label="Items Purchased">${escapeHtml(items)}</td><td data-label="Lifetime Value">${peso.format(total)}</td><td data-label="AR Balance">${peso.format(balance)}</td><td data-label="Last Purchase">${escapeHtml(last)}</td></tr>`).join("");
+    const rows = visibleStats.map(({ client, purchases, total, last, items, balance, credit }) => `<tr data-focus-text="${escapeHtml(`${client.name} ${client.area || ""} ${items}`)}"><td data-label="Client"><button class="link-button dark" data-client-invoices="${escapeHtml(client.name)}">${escapeHtml(client.name)}</button></td><td data-label="Area">${escapeHtml(client.area || "-")}</td><td data-label="Orders">${purchases.length}</td><td data-label="Items Purchased">${escapeHtml(items)}</td><td data-label="Lifetime Value">${peso.format(total)}</td><td data-label="AR Balance">${peso.format(balance)}</td><td data-label="Credit Limit">${peso.format(credit.limit)}</td><td data-label="Credit Used">${peso.format(credit.used)}${credit.limit > 0 && credit.used > credit.limit ? ` <span class="credit-warning">Over limit</span>` : ""}</td><td data-label="Last Purchase">${escapeHtml(last)}</td></tr>`).join("");
     const viewMoreButton = remaining > 0 ? `<button class="ghost-button" data-purchase-history-more="${escapeHtml(agent)}" type="button">View More (${remaining} more)</button>` : "";
-    return `<article class="panel purchase-history-agent"><div class="panel-header"><div><p class="eyebrow">Sales Agent</p><h2>${escapeHtml(agent)}</h2></div><span class="pill gray">${agentClientStats.length} client${agentClientStats.length === 1 ? "" : "s"} · ${peso.format(agentTotal)}</span></div><div class="table-card"><table><thead><tr><th>Client</th><th>Area</th><th>Orders</th><th>Items Purchased</th><th>Lifetime Value</th><th>AR Balance</th><th>Last Purchase</th></tr></thead><tbody>${rows}</tbody></table></div>${viewMoreButton}</article>`;
+    return `<article class="panel purchase-history-agent"><div class="panel-header"><div><p class="eyebrow">Sales Agent</p><h2>${escapeHtml(agent)}</h2></div><span class="pill gray">${agentClientStats.length} client${agentClientStats.length === 1 ? "" : "s"} · ${peso.format(agentTotal)}</span></div><div class="table-card"><table><thead><tr><th>Client</th><th>Area</th><th>Orders</th><th>Items Purchased</th><th>Lifetime Value</th><th>AR Balance</th><th>Credit Limit</th><th>Credit Used</th><th>Last Purchase</th></tr></thead><tbody>${rows}</tbody></table></div>${viewMoreButton}</article>`;
   }).join("") : `<article class="panel"><p>No clients found.</p></article>`;
 }
 
@@ -5991,7 +6015,9 @@ async function renderReports() {
     }
   }
   const cards = getReportDefinitions();
-  qs("#report-grid").innerHTML = cards.map((report, index) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(report.title)}" data-focus-text="${escapeHtml(`${report.title} ${report.body}`)}"><div><span class="feature-icon">${report.icon}</span><strong>${report.title}</strong><p>${report.body}</p></div><button class="primary-button" data-report-preview="${index}">Open full report</button></article>`).join("");
+  const operationalCards = cards.map((report, index) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(report.title)}" data-focus-text="${escapeHtml(`${report.title} ${report.body}`)}"><div><span class="feature-icon">${report.icon}</span><strong>${report.title}</strong><p>${report.body}</p></div><button class="primary-button" data-report-preview="${index}">Open full report</button></article>`).join("");
+  const salesAnalyticsCards = Object.entries(salesBreakdownDimensions).map(([dimension, config]) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(config.title)}" data-focus-text="${escapeHtml(`${config.title} ${config.body}`)}"><div><span class="feature-icon">${config.icon}</span><strong>${config.title}</strong><p>${config.body}</p></div><button class="primary-button" data-sales-breakdown="${dimension}">Open full report</button></article>`).join("");
+  qs("#report-grid").innerHTML = operationalCards + salesAnalyticsCards;
 }
 
 function renderReportPage(index) {
@@ -6005,6 +6031,95 @@ function renderReportPage(index) {
   });
   qs("#report-page-detail").innerHTML = `<div class="panel-header"><div><p class="eyebrow">Report Page</p><h2>${escapeHtml(report.title)}</h2><p>${escapeHtml(report.body)}</p></div><span class="badge">${report.rows.length} records</span></div><div class="modal-actions report-detail-actions"><button class="ghost-button" data-go-section="reports">Back to Reports</button><button class="ghost-button" data-go-section="${report.section}">${escapeHtml(report.actionLabel)}</button><button class="primary-button" id="print-report-inline" type="button">Print This Report</button></div><div class="report-preview-grid"><div class="report-preview-card"><small>Branch View</small><strong>${data.branch === "all" ? "All Areas" : escapeHtml(data.branch)}</strong></div><div class="report-preview-card"><small>Records</small><strong>${report.rows.length}</strong></div><div class="report-preview-card"><small>Connected Module</small><strong>${escapeHtml(report.actionLabel)}</strong></div></div><div class="chart-bars">${barRows(chartRows, (value) => Number(value).toLocaleString("en-PH"), ["", "green", "orange", "red"])}${graphNote("Computed from the report rows below; the last numeric value in each row drives the bar length.")}</div><div class="table-card"><table><tbody>${report.rows.slice(0, 12).map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("") || `<tr><td>No records found.</td></tr>`}</tbody></table></div>`;
   showSection("report-detail");
+}
+
+// Richer, Analytics-style reports (KPI cards + 2 chart types + full breakdown table) computed
+// client-side straight from data.sales/data.items, same as renderAnalytics() — unlike the 7
+// operational reports above, these never go through generateReportsFromState()/getReportDefinitions().
+const salesBreakdownDimensions = {
+  month: { title: "Sales by Month", body: "Monthly revenue trend with orders, average order value, and best month.", icon: "₱", groupLabel: "Month", topLabel: "Top Month", groupBy: (sale) => sale.date.slice(0, 7), formatGroup: monthLabel },
+  client: { title: "Sales per Client", body: "Revenue, order count, and average order value by client.", icon: "◆", groupLabel: "Client", topLabel: "Top Client", groupBy: (sale) => sale.client },
+  brand: { title: "Sales per Brand", body: "Revenue by item brand, computed from invoice line items.", icon: "▤", groupLabel: "Brand", topLabel: "Top Brand", perLine: true, lineKey: "brand" },
+  item: { title: "Sales per Item", body: "Revenue by individual item, computed from invoice line items.", icon: "◇", groupLabel: "Item", topLabel: "Top Item", perLine: true, lineKey: "item" },
+  classification: { title: "Sales per Classification", body: "Revenue by item classification, computed from invoice line items.", icon: "●", groupLabel: "Classification", topLabel: "Top Classification", perLine: true, lineKey: "classification" },
+};
+
+function salesBreakdownScope() {
+  defaultDateRangeIfEmpty("sales-breakdown-date-from", "sales-breakdown-date-to");
+  const from = qs("#sales-breakdown-date-from")?.value || "";
+  const to = qs("#sales-breakdown-date-to")?.value || "";
+  return byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to));
+}
+
+// Mirrors the legacy single-line fallback already used by exportItemizedInvoicingCsv() —
+// older sales were saved with item/brand/qty/price on the sale itself, not a lines[] array.
+function salesBreakdownLines(sale) {
+  return sale.lines?.length ? sale.lines : [{ item: sale.item, code: sale.code, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: sale.price }];
+}
+
+function itemClassificationFor(line) {
+  const item = data.items.find((entry) => entry.code === line.code || entry.name === line.item);
+  return item?.classification || item?.category || "Unclassified";
+}
+
+function renderSalesBreakdownReport(dimension) {
+  const config = salesBreakdownDimensions[dimension];
+  if (!config) return toast("Report not found.");
+  currentSalesBreakdownDimension = dimension;
+  const sales = salesBreakdownScope();
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const totalOrders = sales.length;
+  const avgOrder = totalOrders ? totalSales / totalOrders : 0;
+
+  const groupTotals = {};
+  const groupOrders = {};
+  if (config.perLine) {
+    sales.forEach((sale) => {
+      const seenGroups = new Set();
+      salesBreakdownLines(sale).forEach((line) => {
+        const key = (dimension === "classification" ? itemClassificationFor(line) : line[config.lineKey]) || "Unassigned";
+        groupTotals[key] = (groupTotals[key] || 0) + lineSubtotal(line);
+        seenGroups.add(key);
+      });
+      seenGroups.forEach((key) => { groupOrders[key] = (groupOrders[key] || 0) + 1; });
+    });
+  } else {
+    sales.forEach((sale) => {
+      const key = config.groupBy(sale) || "Unassigned";
+      groupTotals[key] = (groupTotals[key] || 0) + Number(sale.net || 0);
+      groupOrders[key] = (groupOrders[key] || 0) + 1;
+    });
+  }
+
+  const sortedEntries = Object.entries(groupTotals).sort((a, b) => b[1] - a[1]);
+  const topEntry = sortedEntries[0];
+  const formatGroup = (key) => config.formatGroup ? config.formatGroup(key) : key;
+
+  qs("#sales-breakdown-title").textContent = config.title;
+  qs("#sales-breakdown-kpis").innerHTML = [
+    ["Total Sales", peso.format(totalSales)],
+    ["Total Orders", totalOrders.toLocaleString("en-PH")],
+    ["Average Order Value", peso.format(avgOrder)],
+    [config.topLabel, topEntry ? `${formatGroup(topEntry[0])} · ${peso.format(topEntry[1])}` : "No data"],
+  ].map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join("");
+
+  const rankRows = sortedEntries.slice(0, 10).map(([key, value]) => [formatGroup(key), value]);
+  qs("#sales-breakdown-rank-chart").innerHTML = barRows(rankRows, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote(`Computed from invoice net totals grouped by ${config.groupLabel.toLowerCase()}, ranked by revenue, for the selected date range.`);
+
+  const monthlyTrend = sales.reduce((acc, sale) => {
+    const month = sale.date.slice(0, 7);
+    acc[month] = (acc[month] || 0) + Number(sale.net || 0);
+    return acc;
+  }, {});
+  qs("#sales-breakdown-trend-chart").innerHTML = lineChart(Object.entries(monthlyTrend).sort(([a], [b]) => a.localeCompare(b))) + graphNote("Month-over-month invoice net totals for the selected date range.");
+
+  table("#sales-breakdown-table", [config.groupLabel, "Orders", "Total Revenue", "% of Total", "Avg Order Value"], sortedEntries.map(([key, value]) => {
+    const orders = groupOrders[key] || 0;
+    const pct = totalSales ? (value / totalSales) * 100 : 0;
+    return { focus: String(key), cells: [formatGroup(key), orders, peso.format(value), `${pct.toFixed(1)}%`, peso.format(orders ? value / orders : 0)] };
+  }));
+
+  showSection("sales-breakdown-detail");
 }
 
 function getReconRange() {
@@ -6122,6 +6237,7 @@ function recordReconciliationRun(findings, passRate, scope) {
 }
 
 function renderReconciliation() {
+  defaultDateRangeIfEmpty("recon-date-from", "recon-date-to");
   const scope = getReconScope();
   const findings = getReconciliationFindings(scope);
   const successes = getReconciliationSuccesses(findings, scope);
@@ -6478,6 +6594,7 @@ async function showDigestMessagePreview(id) {
   dialog.showModal();
 }
 async function renderLogs() {
+  defaultDateRangeIfEmpty("logs-date-from", "logs-date-to");
   renderLogFilters();
   logsState = { entries: [], nextCursor: null, loading: true };
   tableSkeleton("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address", "Details"], 6);
@@ -6526,6 +6643,7 @@ function renderNotificationLogTable() {
   if (loadMoreButton) loadMoreButton.hidden = !notificationLogsState.nextCursor;
 }
 async function renderNotificationLogs() {
+  defaultDateRangeIfEmpty("notification-logs-date-from", "notification-logs-date-to");
   notificationLogsState = { entries: [], nextCursor: null, loading: true };
   tableSkeleton("#notification-logs-table", ["Date", "Channel", "Action", "Details"], 5);
   try {
