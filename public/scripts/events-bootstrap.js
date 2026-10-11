@@ -1242,13 +1242,16 @@ qs("#master-archived-toggle")?.addEventListener("click", () => {
   renderMasterlists();
 });
 qs("#report-grid").addEventListener("click", (event) => {
-  const reportButton = event.target.closest("[data-report-preview]");
-  if (reportButton) return renderReportPage(Number(reportButton.dataset.reportPreview));
+  const reportButton = event.target.closest("[data-operational-report]");
+  if (reportButton) return renderOperationalReport(reportButton.dataset.operationalReport);
   const breakdownButton = event.target.closest("[data-sales-breakdown]");
   if (breakdownButton) renderSalesBreakdownReport(breakdownButton.dataset.salesBreakdown);
 });
-qs("#report-page-detail").addEventListener("click", (event) => {
-  if (event.target.closest("#print-report-inline")) window.print();
+qs("#report-detail-print")?.addEventListener("click", () => window.print());
+qs("#report-detail-status-filter")?.addEventListener("change", () => applyOperationalReport(currentOperationalReportKey));
+qs("#report-detail-clear-filters")?.addEventListener("click", () => {
+  qs("#report-detail-status-filter").value = "";
+  applyOperationalReport(currentOperationalReportKey);
 });
 qs("#sales-breakdown-print")?.addEventListener("click", () => window.print());
 qs("#sales-breakdown-date-from")?.addEventListener("change", () => renderSalesBreakdownReport(currentSalesBreakdownDimension));
