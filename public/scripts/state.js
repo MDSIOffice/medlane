@@ -41,6 +41,7 @@ let poViewMode = "table";
 let poWorkflowTab = "pending";
 let creditInvoiceWorkflowTab = "pending";
 let masterShowArchived = false;
+let currentSalesBreakdownDimension = null;
 let editingPoId = null;
 let userStatusFilter = "all";
 let invoiceViewMode = "table";

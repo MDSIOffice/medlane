@@ -1019,6 +1019,7 @@ qs("#invoice-view-toggle")?.addEventListener("click", (event) => {
   invoiceViewMode = btn.dataset.invoiceView;
   renderInvoicing();
 });
+qs("#invoicing-type-filter")?.addEventListener("change", renderInvoicing);
 qs("#item-forecast-preset-toggle")?.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-forecast-months]");
   if (!btn) return;
@@ -1241,11 +1242,21 @@ qs("#master-archived-toggle")?.addEventListener("click", () => {
   renderMasterlists();
 });
 qs("#report-grid").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-report-preview]");
-  if (button) renderReportPage(Number(button.dataset.reportPreview));
+  const reportButton = event.target.closest("[data-report-preview]");
+  if (reportButton) return renderReportPage(Number(reportButton.dataset.reportPreview));
+  const breakdownButton = event.target.closest("[data-sales-breakdown]");
+  if (breakdownButton) renderSalesBreakdownReport(breakdownButton.dataset.salesBreakdown);
 });
 qs("#report-page-detail").addEventListener("click", (event) => {
   if (event.target.closest("#print-report-inline")) window.print();
+});
+qs("#sales-breakdown-print")?.addEventListener("click", () => window.print());
+qs("#sales-breakdown-date-from")?.addEventListener("change", () => renderSalesBreakdownReport(currentSalesBreakdownDimension));
+qs("#sales-breakdown-date-to")?.addEventListener("change", () => renderSalesBreakdownReport(currentSalesBreakdownDimension));
+qs("#sales-breakdown-clear-dates")?.addEventListener("click", () => {
+  qs("#sales-breakdown-date-from").value = "";
+  qs("#sales-breakdown-date-to").value = "";
+  renderSalesBreakdownReport(currentSalesBreakdownDimension);
 });
 qs("#reconciliation-history-table").addEventListener("click", (event) => {
   const button = event.target.closest("[data-recon-history]");
@@ -1258,6 +1269,16 @@ qs("#reconciliation-tabs").addEventListener("click", (event) => {
   renderReconciliationTabs();
 });
 qsa("#master-tabs .tab").forEach((button) => button.addEventListener("click", () => { data.masterTab = button.dataset.master; masterShowArchived = false; saveData(); renderMasterlists(); }));
+qsa("#master-items-filter-toolbar select").forEach((select) => select.addEventListener("change", renderMasterlists));
+qs("#master-items-filter-clear")?.addEventListener("click", () => {
+  qsa("#master-items-filter-toolbar select").forEach((select) => { select.value = ""; });
+  renderMasterlists();
+});
+qsa("#master-suppliers-filter-toolbar select").forEach((select) => select.addEventListener("change", renderMasterlists));
+qs("#master-suppliers-filter-clear")?.addEventListener("click", () => {
+  qsa("#master-suppliers-filter-toolbar select").forEach((select) => { select.value = ""; });
+  renderMasterlists();
+});
 qsa("#analytics-tabs .tab").forEach((button) => button.addEventListener("click", () => {
   qsa("#analytics-tabs .tab").forEach((tab) => tab.classList.toggle("active", tab === button));
   qsa(".analytics-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.analyticsPanel === button.dataset.analyticsTab));

@@ -132,6 +132,15 @@ function clientCreditState(clientName, pendingAmount = 0) {
   const limit = Number(client?.creditLimit || 0);
   return { client, used, limit, projected: used + pendingAmount, exceeded: limit > 0 && used + pendingAmount > limit };
 }
+// Leaves an explicitly-cleared or user-set range alone — only fills in both fields when both
+// are empty, so "Clear Dates" buttons (which blank both before re-rendering) land on this
+// default instead of an unbounded range.
+function defaultDateRangeIfEmpty(fromId, toId) {
+  const fromEl = qs(`#${fromId}`), toEl = qs(`#${toId}`);
+  if (!fromEl || !toEl || fromEl.value || toEl.value) return;
+  fromEl.value = `${fmtDate(today).slice(0, 4)}-01-01`;
+  toEl.value = fmtDate(today);
+}
 function clientTaxRate(client) {
   return (client?.withholdingTax ? 0.05 : 0) + (client?.expandedWithholdingTax ? 0.01 : 0);
 }

@@ -651,6 +651,17 @@
           <button class="tab" data-master="banks">Banks</button>
         </div>
         <div class="master-overview" id="master-overview"></div>
+        <div class="toolbar" id="master-items-filter-toolbar" hidden>
+          <div class="field"><label for="master-items-brand-filter">Brand</label><select id="master-items-brand-filter"><option value="">All Brands</option></select></div>
+          <div class="field"><label for="master-items-supplier-filter">Supplier</label><select id="master-items-supplier-filter"><option value="">All Suppliers</option></select></div>
+          <div class="field"><label for="master-items-classification-filter">Classification</label><select id="master-items-classification-filter"><option value="">All Classifications</option></select></div>
+          <button class="ghost-button" id="master-items-filter-clear" type="button">Clear Filters</button>
+        </div>
+        <div class="toolbar" id="master-suppliers-filter-toolbar" hidden>
+          <div class="field"><label for="master-suppliers-classification-filter">Classification</label><select id="master-suppliers-classification-filter"><option value="">All Classifications</option></select></div>
+          <div class="field"><label for="master-suppliers-status-filter">Status</label><select id="master-suppliers-status-filter"><option value="">All Statuses</option></select></div>
+          <button class="ghost-button" id="master-suppliers-filter-clear" type="button">Clear Filters</button>
+        </div>
         <article class="panel settings-panel platform-settings-panel" id="platform-branch-panel">
           <div class="panel-header"><div><p class="eyebrow">Branch Masterlist</p><h2>Physical Branches</h2></div></div>
           <form id="platform-branch-form" class="toolbar">
@@ -769,7 +780,7 @@
           </div>
           <div class="table-card compact-table"><table id="pending-credit-invoices-table"></table></div>
         </article>
-        <div class="toolbar"><button class="ghost-button" id="invoicing-export-csv" type="button">Export CSV</button><button class="ghost-button" id="invoicing-export-itemized-csv" type="button">Export Itemized CSV</button><div class="view-toggle" id="invoice-view-toggle" role="group" aria-label="Invoice view"><button class="view-toggle-btn active" data-invoice-view="table" type="button" aria-label="Table view" title="Table view"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M7.3 3.5v13"/></svg></button><button class="view-toggle-btn" data-invoice-view="card" type="button" aria-label="Card view" title="Card view"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="6.3" height="6.3" rx="1.2"/><rect x="11.2" y="2.5" width="6.3" height="6.3" rx="1.2"/><rect x="2.5" y="11.2" width="6.3" height="6.3" rx="1.2"/><rect x="11.2" y="11.2" width="6.3" height="6.3" rx="1.2"/></svg></button></div></div>
+        <div class="toolbar"><select id="invoicing-type-filter" aria-label="Document type"><option value="all">All Types</option><option value="SI">SI</option><option value="TS">TS</option><option value="DR">DR</option></select><button class="ghost-button" id="invoicing-export-csv" type="button">Export CSV</button><button class="ghost-button" id="invoicing-export-itemized-csv" type="button">Export Itemized CSV</button><div class="view-toggle" id="invoice-view-toggle" role="group" aria-label="Invoice view"><button class="view-toggle-btn active" data-invoice-view="table" type="button" aria-label="Table view" title="Table view"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M7.3 3.5v13"/></svg></button><button class="view-toggle-btn" data-invoice-view="card" type="button" aria-label="Card view" title="Card view"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="6.3" height="6.3" rx="1.2"/><rect x="11.2" y="2.5" width="6.3" height="6.3" rx="1.2"/><rect x="2.5" y="11.2" width="6.3" height="6.3" rx="1.2"/><rect x="11.2" y="11.2" width="6.3" height="6.3" rx="1.2"/></svg></button></div></div>
         <div class="table-card" id="invoice-table-view"><table id="invoice-table"></table></div>
         <div class="invoice-grid" id="invoice-grid" hidden></div>
       </section>
@@ -800,7 +811,7 @@
           </div>
         </article></div>
         <div class="workflow-panel active" data-collections-panel="ledger"><div class="table-card"><table id="collections-table"></table></div><button class="ghost-button" id="load-more-collections" type="button" hidden>Load Previous</button></div>
-        <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Received</p><h2>Printable CV Requests</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div><button class="ghost-button" id="load-more-payment-requests" type="button" hidden>Load Previous</button></article></div>
+        <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Received</p><h2>Collections</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div><button class="ghost-button" id="load-more-payment-requests" type="button" hidden>Load Previous</button></article></div>
         <div class="workflow-panel" data-collections-panel="history"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Collections History</p><h2>All previous collection activity</h2></div></div>
           <div class="toolbar" id="collections-client-search-row" hidden>
             <div class="field">
@@ -981,6 +992,21 @@
       <section class="section" id="report-detail">
         <div class="section-header"><div><p class="eyebrow">Report Detail</p><h2 id="report-detail-title">Report</h2></div><button class="ghost-button" data-go-section="reports">Back to Reports</button></div>
         <article class="panel report-page" id="report-page-detail"></article>
+      </section>
+
+      <section class="section" id="sales-breakdown-detail">
+        <div class="section-header"><div><p class="eyebrow">Sales Analytics</p><h2 id="sales-breakdown-title">Sales Report</h2></div><div class="topbar-actions"><button class="ghost-button" data-go-section="reports">Back to Reports</button><button class="primary-button" id="sales-breakdown-print" type="button">Print This Report</button></div></div>
+        <div class="toolbar date-toolbar">
+          <div class="field"><label for="sales-breakdown-date-from">From</label><input id="sales-breakdown-date-from" type="date" /></div>
+          <div class="field"><label for="sales-breakdown-date-to">To</label><input id="sales-breakdown-date-to" type="date" /></div>
+          <button class="ghost-button" id="sales-breakdown-clear-dates" type="button">Reset to Default</button>
+        </div>
+        <article class="panel report-page">
+          <div class="report-preview-grid" id="sales-breakdown-kpis"></div>
+          <div class="chart-bars" id="sales-breakdown-rank-chart"></div>
+          <div class="line-chart" id="sales-breakdown-trend-chart"></div>
+          <div class="table-card"><table id="sales-breakdown-table"></table></div>
+        </article>
       </section>
 
       <section class="section" id="users">
