@@ -1805,8 +1805,22 @@ function renderAnalytics() {
   // dropdown in the client form), so grouping all visible sales by that field would mix Admin/CEO
   // names into a chart meant to rank actual Sales-role agents. Scope to the Sales role here only.
   const salesAgentNames = new Set(data.users.filter((user) => user.role === "Sales").map((user) => user.name));
-  const salespersonSales = Object.entries(sumBy(visibleSales.filter((sale) => salesAgentNames.has(sale.salesperson)), "salesperson", (sale) => sale.net)).sort((a, b) => b[1] - a[1]);
-  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales) + graphNote("Computed from invoice net totals grouped by assigned salesperson, Sales role agents only.");
+  // Credits a collection to whichever Sales agent the CLIENT is assigned to (client.salesperson),
+  // not the invoice's own salesperson field (set to whoever created the invoice, which can drift
+  // from the client's actual owner). Who approved the payment request is irrelevant — Superadmin/CEO
+  // approval is a segregation-of-duties step, not an attribution signal. Only counts once the money
+  // is actually confirmed collected (collectionStatus === "Deposited"); pending For Deposition/Posted
+  // Date and reversed Bounced/Cancelled payments don't count yet.
+  const visibleDocs = new Set(visibleSales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
+  const depositedPayments = data.payments.filter((payment) => payment.collectionStatus === "Deposited" && visibleDocs.has(payment.invoice));
+  const salespersonCollections = {};
+  depositedPayments.forEach((payment) => {
+    const agent = data.clients.find((client) => client.name === payment.client)?.salesperson;
+    if (!salesAgentNames.has(agent)) return;
+    salespersonCollections[agent] = (salespersonCollections[agent] || 0) + Number(payment.amount || 0);
+  });
+  const salespersonSales = Object.entries(salespersonCollections).sort((a, b) => b[1] - a[1]);
+  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales) + graphNote("Computed from deposited collections grouped by the client's assigned salesperson, Sales role agents only.");
   const branchSales = Object.entries(sumBy(visibleSales, "area", (sale) => sale.net));
   qs("#analytics-branch-sales").innerHTML = barRows(branchSales, (value) => peso.format(value), ["", "green"]) + graphNote("Computed from invoice net totals grouped by client sales area.");
   const dealerClients = data.clients.filter((client) => client.dealer !== "Direct");
