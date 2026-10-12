@@ -225,10 +225,10 @@ function multiSeriesChart(labels, series, options = {}) {
   </svg><div class="chart-legend-row">${legend}</div>`;
 }
 
-function verticalBars(entries) {
+function verticalBars(entries, subTextFn) {
   if (!entries.length) return `<p>No salesperson data available for this view.</p>`;
   const max = Math.max(...entries.map(([, value]) => value), 1);
-  return entries.map(([label, value]) => `<div class="vertical-bar"><span class="vertical-value">${peso.format(value)}</span><div class="vertical-track"><span class="vertical-fill" style="height:${Math.max(6, Math.round((value / max) * 100))}%"></span></div><span class="vertical-label">${escapeHtml(label)}</span></div>`).join("");
+  return entries.map(([label, value]) => `<div class="vertical-bar"><span class="vertical-value">${peso.format(value)}</span><div class="vertical-track"><span class="vertical-fill" style="height:${Math.max(6, Math.round((value / max) * 100))}%"></span></div><span class="vertical-label">${escapeHtml(label)}</span>${subTextFn ? `<span class="vertical-subvalue">${escapeHtml(subTextFn(label, value))}</span>` : ""}</div>`).join("");
 }
 
 function parseInvoiceLines(text, options = {}) {
@@ -1819,8 +1819,17 @@ function renderAnalytics() {
     if (!salesAgentNames.has(agent)) return;
     salespersonCollections[agent] = (salespersonCollections[agent] || 0) + Number(payment.amount || 0);
   });
-  const salespersonSales = Object.entries(salespersonCollections).sort((a, b) => b[1] - a[1]);
-  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales) + graphNote("Computed from deposited collections grouped by the client's assigned salesperson, Sales role agents only.");
+  // Total sales credited the same way as the collections above — by the client's assigned
+  // agent, not the invoice's own salesperson field — so the bar height reflects everything
+  // invoiced to that agent's accounts, not just what's been deposited so far.
+  const salespersonTotalSales = {};
+  visibleSales.forEach((sale) => {
+    const agent = data.clients.find((client) => client.name === sale.client)?.salesperson;
+    if (!salesAgentNames.has(agent)) return;
+    salespersonTotalSales[agent] = (salespersonTotalSales[agent] || 0) + Number(sale.net || 0);
+  });
+  const salespersonSales = Object.entries(salespersonTotalSales).sort((a, b) => b[1] - a[1]);
+  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales, (agent) => `Deposited ${peso.format(salespersonCollections[agent] || 0)}`) + graphNote("Bar height is invoice net totals grouped by the client's assigned salesperson, Sales role agents only; deposited collections shown beneath each bar.");
   const branchSales = Object.entries(sumBy(visibleSales, "area", (sale) => sale.net));
   qs("#analytics-branch-sales").innerHTML = barRows(branchSales, (value) => peso.format(value), ["", "green"]) + graphNote("Computed from invoice net totals grouped by client sales area.");
   const dealerClients = data.clients.filter((client) => client.dealer !== "Direct");
@@ -1830,7 +1839,9 @@ function renderAnalytics() {
   const directSales = Math.max(totalSales - dealerSales, 0);
   const dealerEnd = totalSales ? Math.round((directSales / totalSales) * 100) : 0;
   qs("#analytics-area-dealer").innerHTML = `<div class="donut" style="--paid:${dealerEnd}%; --partial:${dealerEnd}%; --end:100%;" data-label="${totalSales ? Math.round((dealerSales / totalSales) * 100) : 0}%\ndealer"></div><div class="legend"><span class="green">Direct ${peso.format(directSales)}</span><span class="red">Dealer ${peso.format(dealerSales)}</span></div>${graphNote("Computed from invoice net totals split by client account type: Direct vs Dealer.")}`;
-  const topBrands = Object.entries(sumBy(visibleSales, "brand", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  // "AR" entries are added purely to track receivable history, not actual sold items/brands.
+  const isTrackingOnlyAR = (value) => String(value || "").trim().toUpperCase() === "AR";
+  const topBrands = Object.entries(sumBy(visibleSales.filter((sale) => !isTrackingOnlyAR(sale.brand)), "brand", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 5);
   qs("#analytics-top-brands").innerHTML = barRows(topBrands, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Computed from invoice line subtotals grouped by item brand.");
 
   const paidCount = visibleSales.filter((sale) => statusForSale(sale) === "Paid").length;
@@ -1841,7 +1852,7 @@ function renderAnalytics() {
   const partialEnd = Math.round(((paidCount + partialCount) / totalCount) * 100);
   qs("#analytics-ar-mix").innerHTML = `<div class="donut" style="--paid:${paidEnd}%; --partial:${partialEnd}%; --end:100%;" data-label="${collectionRate}%\ncollected"></div><div class="legend"><span class="green">Paid ${paidCount}</span><span class="orange">Partial/Near due ${partialCount}</span><span class="red">Unpaid/Overdue ${unpaidCount}</span></div>${graphNote("Computed from invoice payment status using paid amount, net amount, due date, and terms.")}`;
 
-  const topItems = Object.entries(sumBy(visibleSales, "item", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topItems = Object.entries(sumBy(visibleSales.filter((sale) => !isTrackingOnlyAR(sale.item)), "item", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 5);
   qs("#analytics-top-items").innerHTML = barRows(topItems, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Computed from invoice line subtotals grouped by item name.");
   qs("#analytics-collection-rate").textContent = `${collectionRate}%`;
   qs("#analytics-collection-note").textContent = `${peso.format(totalPaid)} collected out of ${peso.format(totalSales)} sales in the selected branch view.`;
@@ -6067,6 +6078,7 @@ function renderReportKpis(entries) {
 
 const operationalReports = {
   "sales-territory": { title: "Sales by Territory", body: "Revenue by area and salesperson, with every document in view.", icon: "₱", render: renderSalesTerritoryReport },
+  "sales-by-agent": { title: "Sales by Agent", body: "Revenue and order count per salesperson, with every document in view.", icon: "◈", render: renderSalesByAgentReport },
   "collections-ar": { title: "Collections & AR", body: "Collected vs. outstanding balance, AR aging, and status breakdown.", icon: "●", render: renderCollectionsArReport },
   "reagent-expiry": { title: "Reagent Expiry", body: "Low/critical stock and expiry risk by branch and timeframe.", icon: "▤", render: renderReagentExpiryReport },
   "client-documents": { title: "Client Documents", body: "Document compliance gaps by client and by document type.", icon: "◆", render: renderClientDocumentsReport },
@@ -6112,6 +6124,27 @@ function renderSalesTerritoryReport() {
   qs("#report-detail-chart-secondary").innerHTML = barRows(bySalesperson, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Top 10 salespeople by invoice net total.");
   const filtered = sales.filter((sale) => (!area || sale.area === area) && includesSearch(Object.values(sale)));
   table("#report-detail-table", ["Area", "Client", "Salesperson", "Document", "Items", "Amount"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.area || "-", sale.client, sale.salesperson || "-", sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
+}
+
+function renderSalesByAgentReport() {
+  const { status: agentFilter } = reportDetailFilters();
+  const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled");
+  setupReportDetailToolbar({ statusLabel: "Salesperson", statusOptions: [...new Set(sales.map((sale) => sale.salesperson).filter(Boolean))], section: "sales", sectionLabel: "Sales" });
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const bySalesperson = Object.entries(sumBy(sales, "salesperson", (sale) => sale.net)).sort((a, b) => b[1] - a[1]);
+  const topAgent = bySalesperson[0];
+  const activeAgents = bySalesperson.filter(([agent]) => agent).length;
+  renderReportKpis([
+    ["Total Sales", peso.format(totalSales)],
+    ["Total Orders", sales.length.toLocaleString("en-PH")],
+    ["Active Agents", activeAgents.toLocaleString("en-PH")],
+    ["Top Agent", topAgent ? `${topAgent[0]} · ${peso.format(topAgent[1])}` : "No data"],
+  ]);
+  qs("#report-detail-chart-primary").innerHTML = barRows(bySalesperson, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Invoice net totals grouped by the invoice's assigned salesperson.");
+  const ordersBySalesperson = Object.entries(sumBy(sales, "salesperson", () => 1)).sort((a, b) => b[1] - a[1]);
+  qs("#report-detail-chart-secondary").innerHTML = barRows(ordersBySalesperson, (value) => `${value} order${value === 1 ? "" : "s"}`, ["", "green", "orange", "red"]) + graphNote("Order count grouped by the invoice's assigned salesperson.");
+  const filtered = sales.filter((sale) => (!agentFilter || sale.salesperson === agentFilter) && includesSearch(Object.values(sale)));
+  table("#report-detail-table", ["Salesperson", "Area", "Client", "Document", "Items", "Amount"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.salesperson || "-", sale.area || "-", sale.client, sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
 }
 
 function renderCollectionsArReport() {
@@ -7860,6 +7893,14 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
   if (!skipPo) {
     if (!po) throw new Error("Choose an incomplete or unserved Purchase Order for this account.");
     if (po.client !== client.name) throw new Error("Purchase Order does not belong to this client.");
+    // A PO-backed invoice only ever reaches here because that PO was itself created against a
+    // then-active client (buildPurchaseOrder() blocks archiving-time creation) — same reasoning
+    // as allowing an archived item already on the PO to still be invoiced, below.
+  } else if (isArchived(client)) {
+    // Skip-PO invoices have no PO to anchor them, so the client field the user just typed is the
+    // only check: the datalist already hides archived clients from the dropdown, but a free-text
+    // `<input list>` still lets an archived name through if typed exactly — block it here too.
+    throw new Error(`${client.name} is archived and can no longer be used on a new invoice.`);
   }
   if (!platformBranches().includes(values.sourceBranch)) throw new Error("Choose one valid stock source branch for this invoice.");
   // Serving a PO: the "line must be on the PO" check below is the real gate, so an archived

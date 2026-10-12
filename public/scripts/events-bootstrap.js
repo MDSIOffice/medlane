@@ -144,7 +144,7 @@ async function submitModal(event) {
   if (modalType === "invoice") {
     const allowCreditPending = currentUser?.role === "Accounting";
     try {
-      const sale = buildSale(values, null, { allowCreditPending });
+      const sale = await buildWithItemRefresh(() => buildSale(values, null, { allowCreditPending }));
       if (!(await confirmFinalSave("Save this invoice?"))) return;
       data.sales.push(sale);
       const saveResult = await persistRecords({ sales: [sale], inventory: inventoryTouchedBySale(sale), purchaseOrders: purchaseOrdersTouchedBySales([sale]) });
@@ -179,7 +179,7 @@ async function submitModal(event) {
   if (modalType === "purchaseOrder") {
     const wasEditing = Boolean(editingPoId);
     let po;
-    try { po = buildPurchaseOrder(values, { editingId: editingPoId }); }
+    try { po = await buildWithItemRefresh(() => buildPurchaseOrder(values, { editingId: editingPoId })); }
     catch (error) { notify("Validation", error.message, "purchase-orders", values.client || ""); saveData(); return toast(error.message); }
     if (!(await confirmFinalSave(wasEditing ? `Save changes to ${po.id}?` : "Save this purchase order?"))) return;
     if (wasEditing) {
@@ -200,7 +200,7 @@ async function submitModal(event) {
   }
   if (modalType === "inventoryPurchaseOrder") {
     let po;
-    try { po = buildInventoryPurchaseOrder(values); }
+    try { po = await buildWithItemRefresh(() => buildInventoryPurchaseOrder(values)); }
     catch (error) { notify("Validation", error.message, "inventory", values.supplier || ""); saveData(); return toast(error.message); }
     if (!(await confirmFinalSave("Save this inventory purchase order?"))) return;
     data.inventoryPurchaseOrders.push(po);
