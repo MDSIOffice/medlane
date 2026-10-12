@@ -1610,13 +1610,13 @@ button.calendar-cell:hover { background: var(--tint); }
 .calendar-day-detail { display: grid; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
 .calendar-day-detail-header { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
 .calendar-widget.compact .calendar-cell { min-height: 42px; }
-.vertical-bars { display: flex; align-items: end; gap: 14px; min-height: 0; height: clamp(190px, 24vw, 280px); margin-top: 18px; padding: 10px 4px 0; overflow-x: auto; max-width: 100%; }
-.vertical-bar { flex: 1 0 68px; display: grid; align-content: end; gap: 8px; min-width: 68px; }
+.vertical-bars { display: flex; align-items: end; gap: 14px; min-height: 0; height: clamp(190px, 24vw, 280px); margin-top: 18px; padding: 22px 4px 0; overflow: visible auto; max-width: 100%; }
+.vertical-bar { flex: 1 0 68px; display: grid; align-content: end; gap: 8px; min-width: 68px; overflow: visible; }
 .vertical-track { position: relative; height: 158px; border-radius: 14px; background: var(--tint); overflow: hidden; }
 .vertical-fill { position: absolute; inset: auto 0 0; border-radius: inherit; background: linear-gradient(180deg, var(--accent), #006eb6); animation: fillBar 0.75s cubic-bezier(.2,.8,.2,1) both; }
 .vertical-bar:nth-child(2n) .vertical-fill { background: linear-gradient(180deg, var(--green), #0b7a5c); }
 .vertical-label, .vertical-value { display: block; color: var(--muted); font-size: 12px; font-weight: 900; line-height: 1.2; text-align: center; }
-.vertical-value { color: var(--ink); }
+.vertical-value { color: var(--ink); white-space: nowrap; }
 .vertical-subvalue { display: block; color: var(--muted); font-size: 10px; font-weight: 700; line-height: 1.2; text-align: center; margin-top: -4px; }
 .donut-wrap { display: grid; place-items: center; gap: 12px; margin-top: 14px; }
 .donut {
@@ -2004,6 +2004,11 @@ button.calendar-cell:hover { background: var(--tint); }
 .field label { font-weight: 800; color: var(--ink); }
 .toolbar .field label { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .field input, .field select, .field textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-solid); padding: 12px 13px; color: var(--ink); }
+/* Toolbar/filter-row selects sit beside ghost-button controls (Clear Filters, etc.) that use the
+   lean select/.ghost-button sizing (min-height 42px, padding 0 16px) — the roomier .field padding
+   above is meant for modal form fields, not filter rows, so it's overridden here to keep every
+   dropdown the same height as the buttons next to it across every tab. */
+.toolbar .field select { min-height: 42px; padding: 0 13px; }
 input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:-webkit-autofill:active,
 textarea:-webkit-autofill, textarea:-webkit-autofill:hover, textarea:-webkit-autofill:focus, textarea:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 1000px var(--panel-solid) inset;

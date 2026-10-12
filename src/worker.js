@@ -2167,16 +2167,18 @@ function detectThresholdsAndApprovals(state) {
   };
 
   const inventory = state.inventory || [];
-  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item)));
-  const nearExpiry = inventory.filter((item) => digestInventoryStatus(item) === "Near Expiry");
+  // Worst-first: the most urgent shortages/expiries are what digestSectionHtml's cap keeps
+  // visible once a branch has dozens of low-stock or near-expiry lots.
+  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).sort((a, b) => Number(a.qty || 0) - Number(b.qty || 0));
+  const nearExpiry = inventory.filter((item) => digestInventoryStatus(item) === "Near Expiry").sort((a, b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
   if (lowStock.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Low / Critical Stock", lowStock.map((item) => `${item.item} (${item.branch}) — ${item.qty} left, lot ${item.lot}`));
-  if (nearExpiry.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Near-Expiry Stock", nearExpiry.map((item) => `${item.item} (${item.branch}) — lot ${item.lot}, expires ${item.expiry}`));
+  if (nearExpiry.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Near-Expiry Stock", nearExpiry.map((item) => `${item.item} (${item.branch}) — lot ${item.lot}, expires ${item.expiry} (${digestDaysUntil(item.expiry)}d)`));
 
   const sales = state.sales || [];
   const clients = state.clients || [];
-  const overdue = sales.filter((sale) => digestSaleStatus(sale) === "Overdue");
+  const overdue = sales.filter((sale) => digestSaleStatus(sale) === "Overdue").sort((a, b) => Math.max(Number(b.net || 0) - Number(b.paid || 0), 0) - Math.max(Number(a.net || 0) - Number(a.paid || 0), 0));
   if (overdue.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Overdue Invoices", overdue.map((sale) => `${sale.documentNo || sale.id} — ${sale.client}, ${money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))} overdue`));
-  const creditBreach = clients.filter((client) => Number(client.creditLimit || 0) > 0 && digestClientBalance(client.name, sales) > Number(client.creditLimit));
+  const creditBreach = clients.filter((client) => Number(client.creditLimit || 0) > 0 && digestClientBalance(client.name, sales) > Number(client.creditLimit)).sort((a, b) => (digestClientBalance(b.name, sales) - Number(b.creditLimit)) - (digestClientBalance(a.name, sales) - Number(a.creditLimit)));
   if (creditBreach.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Credit Limit Breach", creditBreach.map((client) => `${client.name} — ${money(digestClientBalance(client.name, sales))} used / ${money(client.creditLimit)} limit`));
 
   const warranties = state.warranties || [];
@@ -3059,11 +3061,21 @@ function discordBullet(line) {
   return `▸ **${line.slice(0, dashIndex)}** — ${line.slice(dashIndex + 3)}`;
 }
 
+// A branch with dozens of low-stock SKUs or near-expiry lots used to render every single one
+// as its own bullet, making the section (and the whole email) scroll on forever. Each section
+// is pre-sorted worst/most-urgent-first by its caller in detectThresholdsAndApprovals(), so
+// capping here keeps exactly the rows someone would act on first, with a plain count for the
+// rest — same pattern auditLogTableHtml() already uses for the audit section.
+const DIGEST_SECTION_MAX_LINES = 8;
+
 function digestSectionHtml(sections) {
   return sections.map((section) => {
     const colors = digestToneColors(DIGEST_SECTION_STYLE[section.title] || "default");
-    const rows = section.lines.map((line) => `<li style="margin:0 0 4px;">${escapeHtml(line)}</li>`).join("");
-    return `<div style="border:1px solid ${colors.border};border-left:4px solid ${colors.fg};border-radius:14px;padding:12px 16px;margin:0 0 14px;background:${DIGEST_COLORS.card};"><strong style="display:block;color:${colors.fg};font-size:13.5px;margin-bottom:6px;">${escapeHtml(section.title)} <span style="color:${DIGEST_COLORS.muted};font-weight:700;">(${section.lines.length})</span></strong><ul style="margin:0;padding-left:18px;color:${DIGEST_COLORS.text};font-size:13.5px;line-height:1.6;">${rows}</ul></div>`;
+    const shown = section.lines.slice(0, DIGEST_SECTION_MAX_LINES);
+    const overflow = section.lines.length - shown.length;
+    const rows = shown.map((line) => `<li style="margin:0 0 4px;">${escapeHtml(line)}</li>`).join("");
+    const moreRow = overflow > 0 ? `<li style="margin:4px 0 0;list-style:none;margin-left:-18px;color:${DIGEST_COLORS.muted};font-weight:700;">+ ${overflow} more — open Medlane OS for the full list.</li>` : "";
+    return `<div style="border:1px solid ${colors.border};border-left:4px solid ${colors.fg};border-radius:14px;padding:12px 16px;margin:0 0 14px;background:${DIGEST_COLORS.card};"><strong style="display:block;color:${colors.fg};font-size:13.5px;margin-bottom:6px;">${escapeHtml(section.title)} <span style="color:${DIGEST_COLORS.muted};font-weight:700;">(${section.lines.length})</span></strong><ul style="margin:0;padding-left:18px;color:${DIGEST_COLORS.text};font-size:13.5px;line-height:1.6;">${rows}${moreRow}</ul></div>`;
   }).join("");
 }
 
@@ -3186,13 +3198,29 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
         seenTitles.add(section.title);
         sectionBlocks.push(section);
       }
+      // A short, personalized "what actually needs you" line at the very top — the sections
+      // below are role-scoped already, but without this a recipient has to read the whole
+      // email to find out whether anything here is even their problem today.
+      const isBusinessRecipient = roleList.some((role) => DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role));
+      const isAuditRecipient = roleList.some((role) => DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role));
+      const totalFlagged = sectionBlocks.reduce((sum, section) => sum + section.lines.length, 0);
+      const glanceParts = [];
+      if (sectionBlocks.length) glanceParts.push(`<strong>${totalFlagged}</strong> item${totalFlagged === 1 ? "" : "s"} across <strong>${sectionBlocks.length}</strong> categor${sectionBlocks.length === 1 ? "y" : "ies"} need${sectionBlocks.length === 1 ? "s" : ""} your attention`);
+      if (isBusinessRecipient && businessSummary.length) glanceParts.push("today's business summary");
+      if (isAuditRecipient) glanceParts.push(`the ${auditLimitLabel} audit log`);
+      // Same relevance check as the "nothing to send" guard below — only greet a recipient who
+      // is about to see actual content, so the "nothing to report" skip-and-don't-retry path
+      // further down stays a true no-op instead of becoming its own empty email.
+      if (glanceParts.length) {
+        parts.push(`<p style="margin:0 0 18px;color:${DIGEST_COLORS.muted};font-size:13px;">Viewing as <strong style="color:${DIGEST_COLORS.navy};">${escapeHtml(roleList.join(", "))}</strong> — ${glanceParts.map((part, index) => index === 0 ? part : index === glanceParts.length - 1 ? `, and ${part}` : `, ${part}`).join("")} below.</p>`);
+      }
       if (sectionBlocks.length) parts.push(digestSectionHtml(sectionBlocks));
-      if (roleList.some((role) => DIGEST_ROLE_RECIPIENTS.digestBusiness.includes(role)) && businessSummary.length) {
+      if (isBusinessRecipient && businessSummary.length) {
         parts.push(attentionHtml);
         parts.push(`<h3 style="margin:18px 0 8px;color:${DIGEST_COLORS.navy};">${escapeHtml(`${periodLabel} Business Summary`)}</h3>${statCardsHtml}`);
         parts.push(operationalHtml);
       }
-      if (roleList.some((role) => DIGEST_ROLE_RECIPIENTS.digestAuditLog.includes(role))) {
+      if (isAuditRecipient) {
         parts.push(`<h3 style="margin:18px 0 8px;color:${DIGEST_COLORS.navy};">${escapeHtml(`${periodLabel} Audit Log (${auditLimitLabel})`)}</h3>${auditLogTableHtml(auditRows)}`);
       }
       if (!parts.length) { progress.sentEmails.add(emailKey); continue; } // nothing relevant to this recipient — don't retry them
@@ -4868,7 +4896,17 @@ export default {
         if (!["Daily", "Weekly"].includes(periodLabel)) return json({ error: "Invalid periodLabel" }, { status: 400 });
         // Default run is idempotent per Manila day (a scheduled retry won't double-send); pass
         // force:true to wipe that ledger and deliberately resend this period to everyone.
-        const result = periodLabel === "Weekly" ? await runWeeklyDigest(env, { force: Boolean(force) }) : await runDailyDigest(env, { force: Boolean(force) });
+        //
+        // Not forced: shares the SAME claimAutomationPeriod lock (jobKey + dayKey) the 18:00
+        // scheduled run uses, so a manual click that lands while the scheduled run is still
+        // in-flight is held off instead of racing it — composeAndSendDigest's own ledger check
+        // only catches ALREADY-saved recipients, not ones the other run is mid-way through
+        // sending to, which is what let some roles receive the daily digest twice.
+        const jobKey = periodLabel === "Weekly" ? "weekly-digest" : "daily-digest";
+        const { dayKey } = manilaPeriodKeys(manilaScheduleParts(Date.now()));
+        const runJob = () => (periodLabel === "Weekly" ? runWeeklyDigest(env, { force: Boolean(force) }) : runDailyDigest(env, { force: Boolean(force) }));
+        const result = force ? await runJob() : await runOncePerPeriod(env, jobKey, dayKey, runJob);
+        if (!force && result === null) return json({ ok: true, skipped: true, reason: "Already sent or currently in progress for this period — use force to resend.", recipients: 0, sent: 0, discordConfigured: Boolean(env.DISCORD_WEBHOOK_URL), discord: { sent: false, reason: "Skipped — digest already ran for this period" } });
         return json({ ok: true, forced: Boolean(force), recipients: result?.recipients ?? null, sent: result?.sent ?? null, discordConfigured: Boolean(env.DISCORD_WEBHOOK_URL), discord: result?.discord || { sent: false, reason: "Unknown" } });
       }
 

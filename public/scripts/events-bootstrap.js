@@ -1252,8 +1252,12 @@ qs("#report-grid").addEventListener("click", (event) => {
 });
 qs("#report-detail-print")?.addEventListener("click", () => window.print());
 qs("#report-detail-status-filter")?.addEventListener("change", () => applyOperationalReport(currentOperationalReportKey));
+qs("#report-detail-date-from")?.addEventListener("change", () => applyOperationalReport(currentOperationalReportKey));
+qs("#report-detail-date-to")?.addEventListener("change", () => applyOperationalReport(currentOperationalReportKey));
 qs("#report-detail-clear-filters")?.addEventListener("click", () => {
   qs("#report-detail-status-filter").value = "";
+  qs("#report-detail-date-from").value = "";
+  qs("#report-detail-date-to").value = "";
   applyOperationalReport(currentOperationalReportKey);
 });
 qs("#sales-breakdown-print")?.addEventListener("click", () => window.print());
@@ -1424,6 +1428,11 @@ qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
 qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
 qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
 qs("#inventory-status").addEventListener("change", renderInventory);
+["stock-filter-brand", "stock-filter-code", "stock-filter-item", "stock-filter-lot", "stock-filter-expiry", "stock-filter-qty-min", "stock-filter-qty-max", "stock-filter-notes"].forEach((id) => qs(`#${id}`)?.addEventListener("input", renderInventory));
+qs("#stock-filter-clear")?.addEventListener("click", () => {
+  ["stock-filter-brand", "stock-filter-code", "stock-filter-item", "stock-filter-lot", "stock-filter-expiry", "stock-filter-qty-min", "stock-filter-qty-max", "stock-filter-notes"].forEach((id) => { const el = qs(`#${id}`); if (el) el.value = ""; });
+  renderInventory();
+});
 let salesClientFilterTimer = null;
 qs("#sales-client").addEventListener("input", () => {
   clearTimeout(salesClientFilterTimer);
