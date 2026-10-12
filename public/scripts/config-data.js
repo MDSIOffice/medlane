@@ -1,4 +1,16 @@
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Full peso.format() amounts (₱73,500.00) wrap onto two lines inside narrow chart labels (e.g.
+// vertical bar columns), crowding whatever sits above them. Used wherever a value label has to
+// fit a fixed narrow column; the exact amount still shows via the element's title attribute.
+function pesoCompact(value) {
+  const amount = Number(value) || 0;
+  const sign = amount < 0 ? "-" : "";
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000) return `${sign}₱${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 10_000) return `${sign}₱${(abs / 1_000).toFixed(0)}K`;
+  if (abs >= 1_000) return `${sign}₱${(abs / 1_000).toFixed(1)}K`;
+  return peso.format(amount);
+}
 const today = new Date();
 const uomOptions = ["box", "kit", "piece", "vial", "gallon", "bottle", "set", "unit"];
 const supplierClassificationOptions = ["ACCOMMODATION", "BIDDING", "FREIGHT FEE", "FUEL", "GOVERNMENT BENEFITS", "IMPORTATION", "INSURANCE", "LEGAL AND PROFESSIONAL FEES", "LICENSES AND PERMIT", "LOCAL PURCHASES", "OFFICE EXPENSE", "OFFICE SUPPLIES", "OTHERS - INSURANCE", "PARKING FEE", "PER DIEM", "PETTY CASH", "REPAIR AND MAINTENANCE", "REPRESENTATION", "SPONSORSHIP", "TOLL FEE", "TRANSPORTATION", "UTILITIES", "WAREHOUSE EXPENSE"];

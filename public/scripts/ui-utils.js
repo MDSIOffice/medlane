@@ -339,6 +339,15 @@ function renderViewMoreButton(target) {
   button.textContent = `View More (${remaining} more)`;
 }
 
+// A "Load Previous" button (server pagination, fetches older records not loaded locally yet)
+// sits right after the same table-card as the "View More" button above (client-side reveal of
+// rows already loaded). Showing both at once reads as two competing pagination controls, so
+// "Load Previous" only appears once "View More" has nothing left to reveal.
+function tableFullyRevealed(target) {
+  const state = tableState.get(target);
+  return !state || state.rendered >= state.rows.length;
+}
+
 function ensureFocusedRecordsRendered(records) {
   qsa(".section.active table[data-table-target]").forEach((tableEl) => {
     const target = tableEl.dataset.tableTarget;

@@ -699,17 +699,29 @@
         <div class="inventory-workflow-panel" data-inventory-panel="completed"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="transfers"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div><button class="ghost-button" id="load-more-transfers" type="button" hidden>Load Previous</button></article></div>
         <div class="inventory-workflow-panel" data-inventory-panel="demos"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo Service Orders</p><h2>Logistics (consumables) and management approval</h2></div></div><div class="table-card compact-table"><table id="demo-request-table"></table></div></article><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo History</p><h2>Returned or converted to sales</h2></div></div><div class="table-card compact-table"><table id="demo-history-table"></table></div></article></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="stocks"><div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div><div class="table-card"><table id="inventory-table"></table></div></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="stocks"><div class="tabs" id="inventory-branch-tabs"><button class="tab active" data-inventory-branch="Las Pinas">Las Piñas Stocks</button><button class="tab" data-inventory-branch="Naga">Naga City Stocks</button></div>
+          <div class="toolbar" id="stock-column-filters">
+            <div class="field"><label for="stock-filter-brand">Brand</label><input id="stock-filter-brand" name="stock-filter-brand" list="inventory-brand-options" type="text" autocomplete="off" placeholder="Any brand…" /></div>
+            <div class="field"><label for="stock-filter-code">Item Code</label><input id="stock-filter-code" name="stock-filter-code" type="text" autocomplete="off" placeholder="Any code…" /></div>
+            <div class="field"><label for="stock-filter-item">Item Name</label><input id="stock-filter-item" name="stock-filter-item" type="text" autocomplete="off" placeholder="Any item…" /></div>
+            <div class="field"><label for="stock-filter-lot">Serial/Lot No.</label><input id="stock-filter-lot" name="stock-filter-lot" type="text" autocomplete="off" placeholder="Any lot…" /></div>
+            <div class="field"><label for="stock-filter-expiry">Expiry Date</label><input id="stock-filter-expiry" name="stock-filter-expiry" type="text" autocomplete="off" placeholder="Any expiry…" /></div>
+            <div class="field"><label for="stock-filter-qty-min">Qty Min</label><input id="stock-filter-qty-min" name="stock-filter-qty-min" type="number" min="0" placeholder="Min" /></div>
+            <div class="field"><label for="stock-filter-qty-max">Qty Max</label><input id="stock-filter-qty-max" name="stock-filter-qty-max" type="number" min="0" placeholder="Max" /></div>
+            <div class="field"><label for="stock-filter-notes">Notes</label><input id="stock-filter-notes" name="stock-filter-notes" type="text" autocomplete="off" placeholder="Any note…" /></div>
+            <button class="ghost-button" id="stock-filter-clear" type="button">Clear Column Filters</button>
+          </div>
+          <div class="table-card"><table id="inventory-table"></table></div></div>
       </section>
 
       <section class="section" id="sales">
         <div class="section-header"><div><p class="eyebrow">Sales Review</p><h2>SI and TS by client, area, sales person, and payment status</h2></div></div>
         <div class="near-expiry-banner" id="near-expiry-sales-alert"></div>
         <div class="toolbar"><input id="sales-client" name="sales-client" list="sales-client-options" type="text" autocomplete="off" placeholder="Filter by client…" aria-label="Filter by client" /><datalist id="sales-client-options"></datalist><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select><button class="ghost-button" id="clear-sales-filters" type="button">Clear Filters</button></div>
+        <article class="panel sales-total-panel"><div class="sales-summary-grid" id="sales-summary-grid"></div></article>
         <div id="sales-target-panel"></div>
         <div class="table-card"><table id="sales-table"></table></div>
         <button class="ghost-button" id="load-more-sales" type="button" hidden>Load Previous</button>
-        <article class="panel sales-total-panel"><div class="sales-summary-grid" id="sales-summary-grid"></div></article>
       </section>
 
       <section class="section" id="item-forecast">
@@ -843,7 +855,6 @@
         <div class="visual-grid" id="ar-tracker-visuals"></div>
         <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Client Receivables</p><h2>Open balance by client</h2></div></div><div class="table-card compact-table"><table id="client-receivables-table"></table></div></article>
         <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Regional Receivables</p><h2>Open client invoices grouped by region</h2></div></div><p class="page-description">Expand a region, then click a client to jump straight to their invoice timeline.</p><div id="regional-receivables-groups" class="region-groups-list"></div></article>
-        <div class="tracker-grid" id="receivables-tracker-grid"></div>
       </section>
 
       <section class="section" id="client-invoices">
@@ -991,13 +1002,16 @@
 
       <section class="section" id="report-detail">
         <div class="section-header"><div><p class="eyebrow" id="report-detail-eyebrow">Report Detail</p><h2 id="report-detail-title">Report</h2><p id="report-detail-body"></p></div><div class="topbar-actions"><button class="ghost-button" data-go-section="reports">Back to Reports</button><button class="ghost-button" id="report-detail-open-module" type="button">Open Module</button><button class="primary-button" id="report-detail-print" type="button">Print This Report</button></div></div>
-        <div class="toolbar" id="report-detail-toolbar">
+        <div class="toolbar date-toolbar" id="report-detail-toolbar">
           <p class="field-help">Use the search box in the top bar to search this report's table.</p>
+          <div class="field"><label for="report-detail-date-from">From</label><input id="report-detail-date-from" type="date" /></div>
+          <div class="field"><label for="report-detail-date-to">To</label><input id="report-detail-date-to" type="date" /></div>
           <div class="field"><label for="report-detail-status-filter">Status</label><select id="report-detail-status-filter"><option value="">All Statuses</option></select></div>
           <button class="ghost-button" id="report-detail-clear-filters" type="button">Clear Filters</button>
         </div>
         <article class="panel report-page">
           <div class="report-preview-grid" id="report-detail-kpis"></div>
+          <div class="line-chart" id="report-detail-chart-trend"></div>
           <div class="chart-bars" id="report-detail-chart-primary"></div>
           <div class="chart-bars" id="report-detail-chart-secondary"></div>
           <div class="table-card"><table id="report-detail-table"></table></div>
