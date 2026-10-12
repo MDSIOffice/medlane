@@ -996,9 +996,23 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   // rows in one batch can't slip past the per-row check.
   let creditLimitByClient = null;
   let projectedBalanceByClient = null;
+  // Lazily loaded set of archived client names. buildSale() (modules.js) already blocks a
+  // skip-PO invoice against an archived client client-side, but that check is client-trusted —
+  // this mirrors it server-side the same way the credit-limit check above does.
+  let archivedClientNames = null;
 
   for (const row of newSaleRows) {
     const sale = row.data || {};
+    // A skip-PO invoice (buildSale's skipPo path) has no PO behind it, so it's the one invoice
+    // shape where the client field is a brand-new, unanchored relationship — check it before the
+    // `continue` below skips the rest of this row's validation along with it.
+    if (sale.noPo && !sale.migrated && sale.client) {
+      if (!archivedClientNames) {
+        const clientRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`);
+        archivedClientNames = new Set(clientRows.filter((clientRow) => clientRow.data?.archived).map((clientRow) => clientRow.data?.name));
+      }
+      if (archivedClientNames.has(sale.client)) throw new Error(`Invoice ${sale.documentNo || row.record_key}: ${sale.client} is archived and can no longer be used on a new invoice.`);
+    }
     // Historical backfills from the Sales/Collections migration importer (buildMigratedSale in
     // modules.js) carry their own net/tax formula and never touch live inventory — they aren't
     // the live invoice-creation path this validation targets, so leave them alone. Same for a
@@ -1083,6 +1097,21 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
       // last unit of something can't both pass — the second sees what the first already took.
       inventoryByKey.set(key, available - qty);
     }
+  }
+}
+
+// buildPurchaseOrder() (modules.js) already blocks creating/editing a PO against an archived
+// client client-side — this mirrors it server-side, the same way validateNewSaleRows() above
+// mirrors buildSale()'s skip-PO archived-client check. Checked for every incoming PO row (new
+// or edited), since buildPurchaseOrder() allows changing the client on an edit too.
+async function assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) {
+  const clientNames = [...new Set(poRows.map((row) => row.data?.client).filter(Boolean))];
+  if (!clientNames.length) return;
+  const clientRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`);
+  const archivedClientNames = new Set(clientRows.filter((clientRow) => clientRow.data?.archived).map((clientRow) => clientRow.data?.name));
+  for (const row of poRows) {
+    const client = row.data?.client;
+    if (client && archivedClientNames.has(client)) throw new Error(`Purchase Order ${row.data?.id || row.record_key}: ${client} is archived and can no longer be used on a purchase order.`);
   }
 }
 
@@ -3707,6 +3736,11 @@ export default {
               if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
             }
 
+            if (presentKeys.includes("purchaseOrders")) {
+              const poRows = rows.filter((row) => row.module_name === "purchaseOrders");
+              if (poRows.length) await assertPurchaseOrderClientsNotArchived(env, stateKey, poRows);
+            }
+
             await Promise.all([
               assertFinancialApprovalAllowed(env, stateKey, profile, rows),
               assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
@@ -4162,6 +4196,7 @@ export default {
         // has a non-cancelled referencing sale AND its lines/client/date actually changed —
         // guards against a stale client bypassing the client-side served check (spec FR-011).
         const incomingPoRows = rows.filter((row) => row.module_name === "purchaseOrders");
+        if (incomingPoRows.length) await assertPurchaseOrderClientsNotArchived(env, stateKey, incomingPoRows);
         if (incomingPoRows.length && !incomingSaleRows.length) {
           const poIds = incomingPoRows.map((row) => row.record_key);
           const storedPoRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(poIds))}&select=record_key,data`);

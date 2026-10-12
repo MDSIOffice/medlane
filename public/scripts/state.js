@@ -691,6 +691,30 @@ async function refreshInventoryFromServer() {
   data.inventory = normalizeData({ ...emptyProductionData(), ...fresh.data }).inventory;
   return true;
 }
+// Same idea as refreshInventoryFromServer(), for the item masterlist. A user building a PO/invoice
+// can be stuck on an in-memory `data.items` snapshot taken before another user added a brand-new
+// item — the live-update feed should normally catch this, but a build that fails with "Unknown
+// item" is exactly the symptom of that window not having closed yet. Pulling a fresh copy here
+// self-heals it without asking the user to refresh or relog in.
+async function refreshItemsFromServer() {
+  if (!currentUser || !MedlaneAPI?.session()?.access_token) return false;
+  const fresh = await MedlaneAPI.loadAppState().catch(() => null);
+  if (!fresh?.data) return false;
+  data.items = normalizeData({ ...emptyProductionData(), ...fresh.data }).items;
+  return true;
+}
+// Wraps a synchronous build*() call (buildSale/buildPurchaseOrder/buildInventoryPurchaseOrder)
+// that resolves item lines via parseInvoiceLines()/findItemByCodeOrName(). On an "Unknown item"
+// failure, refetches the item masterlist once and retries before giving up — see
+// refreshItemsFromServer() above for why that failure can be transient rather than a real typo.
+async function buildWithItemRefresh(buildFn) {
+  try {
+    return buildFn();
+  } catch (error) {
+    if (!/^Unknown item:/.test(error.message || "") || !(await refreshItemsFromServer())) throw error;
+    return buildFn();
+  }
+}
 // Masterlist archiving: an archived record keeps `archived === true` and stays in storage (so
 // historical documents and existing transactions still resolve it by code/name) but is hidden
 // from the active masterlist tables and from every picker used to build NEW transactions.

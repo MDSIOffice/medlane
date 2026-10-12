@@ -1617,6 +1617,7 @@ button.calendar-cell:hover { background: var(--tint); }
 .vertical-bar:nth-child(2n) .vertical-fill { background: linear-gradient(180deg, var(--green), #0b7a5c); }
 .vertical-label, .vertical-value { display: block; color: var(--muted); font-size: 12px; font-weight: 900; line-height: 1.2; text-align: center; }
 .vertical-value { color: var(--ink); }
+.vertical-subvalue { display: block; color: var(--muted); font-size: 10px; font-weight: 700; line-height: 1.2; text-align: center; margin-top: -4px; }
 .donut-wrap { display: grid; place-items: center; gap: 12px; margin-top: 14px; }
 .donut {
   width: 178px;
