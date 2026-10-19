@@ -190,7 +190,10 @@ const MedlaneAPI = (() => {
   }
 
   async function saveAppState(nextData, revision) {
-    return withTransientRetry(() => request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }) }));
+    // The server does several sequential Supabase round-trips per save (before-state fetch,
+    // event-module diff fetch, validation checks, then the upsert) — under load or a cold
+    // Supabase connection that chain can outrun the default 30s. Matches uploadFile's timeout.
+    return withTransientRetry(() => request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }), timeoutMs: 120000 }));
   }
 
   async function saveRecords(records, recordKeys = {}) {
