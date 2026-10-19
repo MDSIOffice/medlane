@@ -327,16 +327,44 @@ function renderViewMoreButton(target) {
   const card = tableEl?.closest(".table-card");
   if (!state || !card) return;
   const remaining = state.rows.length - state.rendered;
+  const serverHasMore = paginatedModuleButtons[target] && Boolean(modulePagination[paginatedModuleButtons[target].key]?.hasMore);
   let button = card.nextElementSibling;
   if (!button?.classList?.contains("table-view-more")) {
     button = document.createElement("button");
     button.type = "button";
     button.className = "ghost-button table-view-more";
     card.insertAdjacentElement("afterend", button);
-    button.addEventListener("click", () => appendTableRows(target));
+    button.addEventListener("click", () => loadMoreTableRows(target));
   }
-  button.hidden = remaining <= 0;
-  button.textContent = `View More (${remaining} more)`;
+  button.hidden = remaining <= 0 && !serverHasMore;
+  button.disabled = false;
+  button.textContent = remaining > 0 ? `View More (${remaining} more)` : "View More";
+  refreshLoadPreviousButton(target);
+}
+
+// "View More" reveals rows already loaded locally, 10 at a time. Once a table's local rows run
+// out, there may still be older records on the server (modulePagination[key].hasMore) that
+// /api/modules/state trimmed away — previously the only way to get those was a separate "Load
+// Previous" button, which a bug kept permanently hidden. Instead of relying on that button, this
+// fetches the next server page transparently and keeps revealing 10 at a time, so one button,
+// clicked repeatedly, walks all the way to the end.
+async function loadMoreTableRows(target) {
+  const state = tableState.get(target);
+  if (state && state.rendered < state.rows.length) { appendTableRows(target); return; }
+  const entry = paginatedModuleButtons[target];
+  if (!entry || !modulePagination[entry.key]?.hasMore) return;
+  const tableEl = qs(target);
+  const card = tableEl?.closest(".table-card");
+  const button = card?.nextElementSibling;
+  const revealedBefore = state ? state.rendered : 0;
+  if (button) button.disabled = true;
+  try {
+    await entry.loadMore();
+    const newState = tableState.get(target);
+    if (newState) appendTableRows(target, Math.max(revealedBefore - newState.rendered, 0) + tableBatchSize);
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 // A "Load Previous" button (server pagination, fetches older records not loaded locally yet)
@@ -346,6 +374,30 @@ function renderViewMoreButton(target) {
 function tableFullyRevealed(target) {
   const state = tableState.get(target);
   return !state || state.rendered >= state.rows.length;
+}
+
+// Each render*() function (renderSales(), renderPayables(), ...) sets its "Load Previous"
+// button's hidden state once, at redraw time — when tableFullyRevealed() is still false because
+// only the initial batch is locally revealed. Clicking "View More" afterward never re-ran that
+// render*() function, so the button stayed hidden forever even once all local rows were
+// revealed. Re-checking it here, every time "View More" finishes revealing a table, fixes that
+// for every paginated module without duplicating each module's render*() logic. `loadMore` (used
+// by loadMoreTableRows() below) is wrapped in an arrow function since modules.js, which defines
+// loadMoreSales() etc., loads after this file — a bare reference here would fail at parse time.
+const paginatedModuleButtons = {
+  "#sales-table": { button: "#load-more-sales", key: "sales", loadMore: () => loadMoreSales() },
+  "#purchase-order-table": { button: "#load-more-purchase-orders", key: "purchaseOrders", loadMore: () => loadMorePurchaseOrders() },
+  "#inventory-po-table": { button: "#load-more-inventory-pos", key: "inventoryPurchaseOrders", loadMore: () => loadMoreInventoryPurchaseOrders() },
+  "#transfer-table": { button: "#load-more-transfers", key: "pendingTransfers", loadMore: () => loadMoreTransfers() },
+  "#payables-table": { button: "#load-more-payables", key: "payables", loadMore: () => loadMorePayables() },
+  "#collections-table": { button: "#load-more-collections", key: "payments", loadMore: () => loadMoreCollections() },
+  "#payment-request-table": { button: "#load-more-payment-requests", key: "paymentRequests", loadMore: () => loadMorePaymentRequests() },
+};
+function refreshLoadPreviousButton(target) {
+  const entry = paginatedModuleButtons[target];
+  if (!entry) return;
+  const button = qs(entry.button);
+  if (button) button.hidden = !modulePagination[entry.key]?.hasMore || !tableFullyRevealed(target);
 }
 
 function ensureFocusedRecordsRendered(records) {
