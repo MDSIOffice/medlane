@@ -1,17 +1,17 @@
 # Graph Report - medlane  (2026-10-19)
 
 ## Corpus Check
-- 66 files · ~356,537 words
+- 66 files · ~356,990 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 14 file(s) not represented in the graph (top: (none) 9, .css 3, .xml 1)
 
 ## Summary
-- 2453 nodes · 5449 edges · 122 communities (102 shown, 20 thin omitted)
+- 2453 nodes · 5450 edges · 122 communities (102 shown, 20 thin omitted)
 - Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 427 edges (avg confidence: 0.88)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `7f519c62`
+- Built from commit: `f56d4360`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -220,7 +220,7 @@ Nodes (30): approvePaymentRequest(), buildImportedClient(), buildImportedProduct
 
 ### Community 13 - "worker.js"
 Cohesion: 0.04
-Nodes (78): addDays(), applyReceivingLines(), auditContextForRequest(), BIRTHDAY_GIF_IDS, browserName(), buildServedQtyByPo(), canAccessKey(), canWrite() (+70 more)
+Nodes (75): addDays(), applyReceivingLines(), auditContextForRequest(), BIRTHDAY_GIF_IDS, browserName(), buildServedQtyByPo(), canAccessKey(), canWrite() (+67 more)
 
 ### Community 14 - "renderInvoicing"
 Cohesion: 0.11
@@ -563,8 +563,8 @@ Cohesion: 0.12
 Nodes (27): backupDigestLines(), buildBusinessSummaryLines(), composeAndSendDigest(), computeBusinessMetrics(), dashboardAnalyticsFields(), detectThresholdsAndApprovals(), digestClientBalance(), digestDaysUntil() (+19 more)
 
 ### Community 123 - "supabaseFetch"
-Cohesion: 0.13
-Nodes (27): Grilling: 004-audit-digest-view-and-discord-events, appStateKey(), assertCreditApprovalAllowed(), assertDemoRequestTransitionsAllowed(), assertFinancialApprovalAllowed(), auditLogDigestRows(), backupStatus(), checkBackupFreshnessHealth() (+19 more)
+Cohesion: 0.12
+Nodes (30): Grilling: 004-audit-digest-view-and-discord-events, appStateKey(), assertCreditApprovalAllowed(), assertDemoRequestTransitionsAllowed(), assertFinancialApprovalAllowed(), auditLogDigestRows(), backupStatus(), checkBackupFreshnessHealth() (+22 more)
 
 ### Community 129 - "package.json"
 Cohesion: 0.22
