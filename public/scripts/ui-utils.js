@@ -347,7 +347,7 @@ function renderViewMoreButton(target) {
   const card = tableEl?.closest(".table-card");
   if (!state || !card) return;
   const remaining = state.rows.length - state.rendered;
-  const serverHasMore = paginatedModuleButtons[target] && Boolean(modulePagination[paginatedModuleButtons[target].key]?.hasMore);
+  const serverHasMore = paginatedModuleButtons[target] && entryHasMore(paginatedModuleButtons[target]);
   let button = card.nextElementSibling;
   if (!button?.classList?.contains("table-view-more")) {
     button = document.createElement("button");
@@ -374,7 +374,7 @@ async function loadMoreTableRows(target) {
   const state = tableState.get(target);
   if (state && state.rendered < state.rows.length) { appendTableRows(target); return; }
   const entry = paginatedModuleButtons[target];
-  if (!entry || !modulePagination[entry.key]?.hasMore) return;
+  if (!entry || !entryHasMore(entry)) return;
   const tableEl = qs(target);
   const card = tableEl?.closest(".table-card");
   const button = card?.nextElementSibling;
@@ -406,6 +406,10 @@ function tableFullyRevealed(target) {
 // for every paginated module without duplicating each module's render*() logic. `loadMore` (used
 // by loadMoreTableRows() below) is wrapped in an arrow function since modules.js, which defines
 // loadMoreSales() etc., loads after this file — a bare reference here would fail at parse time.
+// Most modules key into modulePagination (trimmed by /api/modules/state); the cursor-paginated
+// logs-style tables below instead read their own nextCursor via `hasMore()` — without an entry
+// here at all, the scroll observer stops dead once the locally-loaded page is exhausted, since
+// loadMoreTableRows() has nothing to call to fetch the next page from the server.
 const paginatedModuleButtons = {
   "#sales-table": { button: "#load-more-sales", key: "sales", loadMore: () => loadMoreSales() },
   "#purchase-order-table": { button: "#load-more-purchase-orders", key: "purchaseOrders", loadMore: () => loadMorePurchaseOrders() },
@@ -414,12 +418,18 @@ const paginatedModuleButtons = {
   "#payables-table": { button: "#load-more-payables", key: "payables", loadMore: () => loadMorePayables() },
   "#collections-table": { button: "#load-more-collections", key: "payments", loadMore: () => loadMoreCollections() },
   "#payment-request-table": { button: "#load-more-payment-requests", key: "paymentRequests", loadMore: () => loadMorePaymentRequests() },
+  "#logs-table": { button: "#load-more-logs", hasMore: () => Boolean(logsState.nextCursor), loadMore: () => loadMoreLogs() },
+  "#notification-logs-table": { button: "#load-more-notification-logs", hasMore: () => Boolean(notificationLogsState.nextCursor), loadMore: () => loadMoreNotificationLogs() },
+  "#collections-history-table": { button: "#load-more-collections-history", hasMore: () => Boolean(collectionsHistoryState.nextCursor), loadMore: () => loadMoreCollectionsHistory() },
 };
+function entryHasMore(entry) {
+  return entry.hasMore ? Boolean(entry.hasMore()) : Boolean(modulePagination[entry.key]?.hasMore);
+}
 function refreshLoadPreviousButton(target) {
   const entry = paginatedModuleButtons[target];
   if (!entry) return;
   const button = qs(entry.button);
-  if (button) button.hidden = !modulePagination[entry.key]?.hasMore || !tableFullyRevealed(target);
+  if (button) button.hidden = !entryHasMore(entry) || !tableFullyRevealed(target);
 }
 
 function ensureFocusedRecordsRendered(records) {

@@ -6163,7 +6163,8 @@ function renderOperationalReport(key) {
 
 function renderSalesTerritoryReport() {
   const { status: area, from, to } = reportDetailFilters();
-  const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to));
+  const agentNames = salesAgentNameSet();
+  const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to) && agentNames.has(assignedSalesAgent(sale))).map((sale) => ({ ...sale, agent: assignedSalesAgent(sale) }));
   setupReportDetailToolbar({ statusLabel: "Area", statusOptions: [...new Set(sales.map((s) => s.area))], section: "sales", sectionLabel: "Sales" });
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
   const topArea = Object.entries(sumBy(sales, "area", (sale) => sale.net)).sort((a, b) => b[1] - a[1])[0];
@@ -6176,11 +6177,11 @@ function renderSalesTerritoryReport() {
   const monthly = Object.entries(sales.reduce((acc, sale) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.net || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
   qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly invoice net totals for the areas in this view.") : "";
   const byArea = Object.entries(sumBy(sales, "area", (sale) => sale.net)).sort((a, b) => b[1] - a[1]);
-  qs("#report-detail-chart-primary").innerHTML = barRows(byArea, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Invoice net totals grouped by sales area.");
-  const bySalesperson = Object.entries(sumBy(sales, "salesperson", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  qs("#report-detail-chart-secondary").innerHTML = barRows(bySalesperson, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Top 10 salespeople by invoice net total (whoever processed the document — see the Sales by Agent report for client-owner attribution).");
+  qs("#report-detail-chart-primary").innerHTML = barRows(byArea, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Invoice net totals grouped by sales area (Sales role agents only).");
+  const bySalesperson = Object.entries(sumBy(sales, "agent", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  qs("#report-detail-chart-secondary").innerHTML = barRows(bySalesperson, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Top 10 sales agents by invoice net total, attributed to the client's assigned agent (Sales role only).");
   const filtered = sales.filter((sale) => (!area || sale.area === area) && includesSearch(Object.values(sale)));
-  table("#report-detail-table", ["Area", "Client", "Salesperson", "Document", "Items", "Amount"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.area || "-", sale.client, sale.salesperson || "-", sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
+  table("#report-detail-table", ["Area", "Client", "Salesperson", "Document", "Items", "Amount"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.area || "-", sale.client, sale.agent || "-", sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
 }
 
 function renderSalesByAgentReport() {
