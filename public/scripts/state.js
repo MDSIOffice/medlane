@@ -647,7 +647,25 @@ function flushPendingSaveQueue() {
     if (result?.revision) serverRevision = Number(result.revision);
     writePendingSaveQueue({});
     setGlobalSaveStatus("saved", "Saved");
-  }).catch((error) => {
+  }).catch(async (error) => {
+    // A 409 here means the queued payload is stale — some other save landed on the
+    // server after this one was queued — so blindly retrying it forever would never
+    // succeed (same stale revision every time) and risks overwriting newer server
+    // data once it finally does succeed. Resolve it the same way saveData() does:
+    // drop the queue and adopt the server's current state. Unlike the silent generic
+    // branch below, this one does lose local edits, so it's worth a toast.
+    if (error.message.includes("APP_STATE_CONFLICT")) {
+      const latest = await MedlaneAPI.loadAppState().catch(() => null);
+      if (latest?.data) {
+        serverRevision = Number(latest.revision || 0);
+        data = normalizeData({ ...emptyProductionData(), ...latest.data });
+        writePendingSaveQueue({});
+        if (typeof renderAll === "function") renderAll();
+        if (typeof toast === "function") toast("Another save landed first. Reloaded latest server data — please redo any changes made since.");
+        setGlobalSaveStatus("saved", "Reloaded");
+        return;
+      }
+    }
     // Silent by design: this is an automatic background retry the user never asked
     // for and has no way to know is even running. A toast() here can (and did)
     // land on top of — and hide — the actual result of whatever the user was just
