@@ -321,6 +321,26 @@ function appendTableRows(target, count = tableBatchSize) {
   renderViewMoreButton(target);
 }
 
+// Scrolling the "View More" button into view fires the same loadMoreTableRows() a click would,
+// so every table auto-paginates as the user scrolls down instead of requiring a click. One
+// shared observer (lazily created) watches every table's button; rootMargin starts the load
+// ~400px before the button actually reaches the viewport so more rows are ready by the time the
+// user gets there. button.dataset.tableTarget carries the target since entries only expose the
+// observed element, not the closure that created it.
+let viewMoreObserver = null;
+function ensureViewMoreObserver() {
+  if (viewMoreObserver) return viewMoreObserver;
+  viewMoreObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      const button = entry.target;
+      const target = button.dataset.tableTarget;
+      if (target && !button.hidden && !button.disabled) loadMoreTableRows(target);
+    });
+  }, { rootMargin: "0px 0px 400px 0px" });
+  return viewMoreObserver;
+}
+
 function renderViewMoreButton(target) {
   const state = tableState.get(target);
   const tableEl = qs(target);
@@ -333,8 +353,10 @@ function renderViewMoreButton(target) {
     button = document.createElement("button");
     button.type = "button";
     button.className = "ghost-button table-view-more";
+    button.dataset.tableTarget = target;
     card.insertAdjacentElement("afterend", button);
     button.addEventListener("click", () => loadMoreTableRows(target));
+    ensureViewMoreObserver().observe(button);
   }
   button.hidden = remaining <= 0 && !serverHasMore;
   button.disabled = false;
