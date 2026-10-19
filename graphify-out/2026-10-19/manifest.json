@@ -108,9 +108,9 @@
     "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
   },
   "src/worker.js": {
-    "mtime": 1792379967.4419563,
-    "seen": 1792379981.621639,
-    "ast_hash": "0cafafce7232625ac57d4565de3c2304",
+    "mtime": 1792380234.7287874,
+    "seen": 1792380256.2359328,
+    "ast_hash": "46ba3bcfaf5b0589a536bd6a8b352054",
     "semantic_hash": ""
   },
   "Notification Sound.mp3": {
@@ -780,15 +780,21 @@
     "semantic_hash": ""
   },
   "docs/supabase-production-schema.sql": {
-    "mtime": 1789562004.755731,
-    "seen": 1792378679.404774,
-    "ast_hash": "a41fbca22c6a516061325a1678fd56b0",
+    "mtime": 1792380220.0167885,
+    "seen": 1792380256.235913,
+    "ast_hash": "f9679b7f7ca120a1ccb607351089f661",
     "semantic_hash": ""
   },
   "skills-lock.json": {
     "mtime": 1787482011.9350471,
     "seen": 1792378679.404791,
     "ast_hash": "7beabdef48b6c3d87dd7925c2ef9171a",
+    "semantic_hash": ""
+  },
+  "docs/migrations/2026-10-19-client-sales-balance-rpc.sql": {
+    "mtime": 1792380226.6358178,
+    "seen": 1792380256.2359118,
+    "ast_hash": "36832b249a882fb817b41aae137a77c5",
     "semantic_hash": ""
   }
 }
