@@ -722,9 +722,10 @@ async function refreshInventoryFromServer() {
 }
 // Same idea as refreshInventoryFromServer(), for the item masterlist. A user building a PO/invoice
 // can be stuck on an in-memory `data.items` snapshot taken before another user added a brand-new
-// item — the live-update feed should normally catch this, but a build that fails with "Unknown
-// item" is exactly the symptom of that window not having closed yet. Pulling a fresh copy here
-// self-heals it without asking the user to refresh or relog in.
+// item — the live-update feed should normally catch this, but a build that fails with the "was
+// not found in the Items masterlist" error from parseInvoiceLines() is exactly the symptom of
+// that window not having closed yet. Pulling a fresh copy here self-heals it without asking the
+// user to refresh or relog in.
 async function refreshItemsFromServer() {
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return false;
   const fresh = await MedlaneAPI.loadAppState().catch(() => null);
@@ -733,14 +734,15 @@ async function refreshItemsFromServer() {
   return true;
 }
 // Wraps a synchronous build*() call (buildSale/buildPurchaseOrder/buildInventoryPurchaseOrder)
-// that resolves item lines via parseInvoiceLines()/findItemByCodeOrName(). On an "Unknown item"
-// failure, refetches the item masterlist once and retries before giving up — see
+// that resolves item lines via parseInvoiceLines()/findItemByCodeOrName(). On the "was not found
+// in the Items masterlist" failure (keep this regex in sync with the message parseInvoiceLines()
+// throws), refetches the item masterlist once and retries before giving up — see
 // refreshItemsFromServer() above for why that failure can be transient rather than a real typo.
 async function buildWithItemRefresh(buildFn) {
   try {
     return buildFn();
   } catch (error) {
-    if (!/^Unknown item:/.test(error.message || "") || !(await refreshItemsFromServer())) throw error;
+    if (!/was not found in the Items masterlist/.test(error.message || "") || !(await refreshItemsFromServer())) throw error;
     return buildFn();
   }
 }

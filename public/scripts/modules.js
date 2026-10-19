@@ -239,8 +239,13 @@ function parseInvoiceLines(text, options = {}) {
     const sourceBranch = hasBranch ? sixthValue : "";
     const lotValue = hasBranch ? seventhValue : sixthValue;
     const expiryValue = hasBranch ? eighthValue : seventhValue;
-    const item = data.items.find((entry) => entry.name === itemName || entry.code === itemName);
-    if (!item) throw new Error(`Unknown item: ${itemName}`);
+    // Match the same way the live row preview does (findItemByCodeOrName: trimmed,
+    // case-insensitive, with a partial fallback) instead of a strict exact string compare —
+    // otherwise a row the UI already resolved (brand/stock hint filled in while typing) could
+    // still fail here over nothing but a stray extra space or a case difference, and the only
+    // clue was "Unknown item: <name>" even though that exact name was sitting in the masterlist.
+    const item = findItemByCodeOrName(itemName);
+    if (!item) throw new Error(`"${itemName}" was not found in the Items masterlist. Check the spelling, or add it under Masterlists → Items.`);
     if (isArchived(item) && !options.allowArchivedItems) throw new Error(`${item.name} is archived and can no longer be added to new transactions.`);
     const equipment = isEquipmentItem(item);
     const qty = Number(qtyValue);
@@ -5054,15 +5059,21 @@ function itemForecastRows(allocationMonths) {
     });
   });
   const stockByCode = {};
-  data.inventory.forEach((stock) => { stockByCode[stock.code] = (stockByCode[stock.code] || 0) + Number(stock.qty || 0); });
+  const stockByCodeBranch = {};
+  data.inventory.forEach((stock) => {
+    stockByCode[stock.code] = (stockByCode[stock.code] || 0) + Number(stock.qty || 0);
+    stockByCodeBranch[stock.code] ||= {};
+    stockByCodeBranch[stock.code][stock.branch] = (stockByCodeBranch[stock.code][stock.branch] || 0) + Number(stock.qty || 0);
+  });
   return data.items.filter((item) => qtyByCode[item.code] || stockByCode[item.code]).map((item) => {
     const totalQty = qtyByCode[item.code] || 0;
     const avgMonthlyQty = totalQty / 3;
     const monthlyQty = monthKeys.map((key) => Math.round(monthlyQtyByCode[item.code]?.[key] || 0));
     const projectedDemand = avgMonthlyQty * allocationMonths;
     const currentStock = stockByCode[item.code] || 0;
+    const currentStockByBranch = stockByCodeBranch[item.code] || {};
     const suggestedRestock = Math.max(0, Math.round(projectedDemand - currentStock));
-    return { item, totalQty, avgMonthlyQty, monthlyQty, projectedDemand, currentStock, suggestedRestock };
+    return { item, totalQty, avgMonthlyQty, monthlyQty, projectedDemand, currentStock, currentStockByBranch, suggestedRestock };
   }).sort((a, b) => b.suggestedRestock - a.suggestedRestock);
 }
 
@@ -5106,12 +5117,12 @@ function renderItemForecast() {
     visualCard("▤", "Tracked Items", `${rows.length} item${rows.length === 1 ? "" : "s"}`, `<p>Items with sales in the last 3 months or current stock on hand.</p>`, "info", "Items with zero recent sales and zero stock are excluded from this view."),
   ].join("");
   const monthLabels = itemForecastMonthLabels();
-  table("#item-forecast-table", ["Item Code", "Item Name", "Brand", `${monthLabels[0]} Sales`, `${monthLabels[1]} Sales`, `${monthLabels[2]} Sales`, "Avg Monthly Sales (3mo)", "Projected Demand", "Current Stock", "Suggested Restock"], rows.map((row) => ({ focus: row.item.code, cells: [row.item.code, row.item.name, row.item.brand || "-", row.monthlyQty[0], row.monthlyQty[1], row.monthlyQty[2], row.avgMonthlyQty.toFixed(1), Math.round(row.projectedDemand), row.currentStock, row.suggestedRestock > 0 ? `<span class="pill red">${row.suggestedRestock}</span>` : `<span class="pill green">0</span>`] })));
+  table("#item-forecast-table", ["Item Code", "Item Name", "Brand", `${monthLabels[0]} Sales`, `${monthLabels[1]} Sales`, `${monthLabels[2]} Sales`, "Avg Monthly Sales (3mo)", "Projected Demand", "Current Stock", "Stock (Las Piñas)", "Stock (Naga)", "Suggested Restock"], rows.map((row) => ({ focus: row.item.code, cells: [row.item.code, row.item.name, row.item.brand || "-", row.monthlyQty[0], row.monthlyQty[1], row.monthlyQty[2], row.avgMonthlyQty.toFixed(1), Math.round(row.projectedDemand), row.currentStock, row.currentStockByBranch["Las Pinas"] || 0, row.currentStockByBranch["Naga"] || 0, row.suggestedRestock > 0 ? `<span class="pill red">${row.suggestedRestock}</span>` : `<span class="pill green">0</span>`] })));
 }
 
 function itemForecastReportHtml(rows, monthLabels, allocationMonths) {
   const generatedAt = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
-  return `<section class="payment-request-print">${printableBrandHeaderHtml("Item Forecast")}<div class="pr-meta"><span>Allocation Window: <strong>+${allocationMonths} month${allocationMonths === 1 ? "" : "s"}</strong></span><span>Generated: <strong>${escapeHtml(generatedAt)}</strong></span><span>Items: <strong>${rows.length}</strong></span></div><table><thead><tr><th>Item Code</th><th>Item Name</th><th>Brand</th><th>${escapeHtml(monthLabels[0])} Sales</th><th>${escapeHtml(monthLabels[1])} Sales</th><th>${escapeHtml(monthLabels[2])} Sales</th><th>Avg Monthly (3mo)</th><th>Projected Demand</th><th>Current Stock</th><th>Suggested Restock</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.item.code)}</td><td>${escapeHtml(row.item.name)}</td><td>${escapeHtml(row.item.brand || "-")}</td><td>${row.monthlyQty[0]}</td><td>${row.monthlyQty[1]}</td><td>${row.monthlyQty[2]}</td><td>${row.avgMonthlyQty.toFixed(1)}</td><td>${Math.round(row.projectedDemand)}</td><td>${row.currentStock}</td><td>${row.suggestedRestock}</td></tr>`).join("") || `<tr><td colspan="10">No items to report for the current filters.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
+  return `<section class="payment-request-print">${printableBrandHeaderHtml("Item Forecast")}<div class="pr-meta"><span>Allocation Window: <strong>+${allocationMonths} month${allocationMonths === 1 ? "" : "s"}</strong></span><span>Generated: <strong>${escapeHtml(generatedAt)}</strong></span><span>Items: <strong>${rows.length}</strong></span></div><table><thead><tr><th>Item Code</th><th>Item Name</th><th>Brand</th><th>${escapeHtml(monthLabels[0])} Sales</th><th>${escapeHtml(monthLabels[1])} Sales</th><th>${escapeHtml(monthLabels[2])} Sales</th><th>Avg Monthly (3mo)</th><th>Projected Demand</th><th>Current Stock</th><th>Stock (Las Piñas)</th><th>Stock (Naga)</th><th>Suggested Restock</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.item.code)}</td><td>${escapeHtml(row.item.name)}</td><td>${escapeHtml(row.item.brand || "-")}</td><td>${row.monthlyQty[0]}</td><td>${row.monthlyQty[1]}</td><td>${row.monthlyQty[2]}</td><td>${row.avgMonthlyQty.toFixed(1)}</td><td>${Math.round(row.projectedDemand)}</td><td>${row.currentStock}</td><td>${row.currentStockByBranch["Las Pinas"] || 0}</td><td>${row.currentStockByBranch["Naga"] || 0}</td><td>${row.suggestedRestock}</td></tr>`).join("") || `<tr><td colspan="12">No items to report for the current filters.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
 }
 
 function printItemForecast() {
