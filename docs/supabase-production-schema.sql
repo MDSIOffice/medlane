@@ -142,6 +142,9 @@ create table if not exists backup_runs (
 create index if not exists file_objects_record_idx on file_objects(record_type, record_id);
 create index if not exists file_objects_active_size_idx on file_objects(deleted_at, size_bytes);
 create index if not exists app_records_module_idx on app_records(state_key, module_name);
+-- Lets client_sales_balance() (and anything else filtering sales by client) use an index
+-- instead of scanning every sales row for the state_key.
+create index if not exists app_records_sales_client_balance_idx on app_records (state_key, (data->>'client')) where module_name = 'sales';
 create index if not exists app_sessions_user_idx on app_sessions(user_id, revoked_at, last_seen_at desc);
 create index if not exists backup_runs_type_idx on backup_runs(state_key, backup_type, created_at desc);
 
@@ -330,6 +333,31 @@ begin
 end;
 $$;
 
+-- Mirrors validateNewSaleRows()'s JS math exactly: sum(greatest(net - paid, 0)) over sales
+-- rows for one client whose status isn't "Cancelled" (a missing status counts as not
+-- cancelled, same as the JS `existing.status === "Cancelled"` check does). Lets the Worker
+-- get back a single number for a credit-limit check instead of the entire sales table.
+create or replace function client_sales_balance(p_state_key text, p_client text)
+returns table(balance numeric)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(sum(
+    greatest(
+      case when data->>'net' ~ '^-?[0-9]+(\.[0-9]+)?$' then (data->>'net')::numeric else 0 end
+      - case when data->>'paid' ~ '^-?[0-9]+(\.[0-9]+)?$' then (data->>'paid')::numeric else 0 end,
+      0
+    )
+  ), 0) as balance
+  from app_records
+  where state_key = p_state_key
+    and module_name = 'sales'
+    and data->>'client' = p_client
+    and coalesce(data->>'status', '') <> 'Cancelled';
+$$;
+
 grant usage on schema public to anon, authenticated, service_role;
 grant select, insert, update, delete on table branches to service_role;
 grant select, insert, update, delete on table profiles to service_role;
@@ -354,6 +382,7 @@ grant execute on function update_app_state(bigint, jsonb, uuid, text) to service
 grant execute on function reserve_file_storage(text, bigint, bigint) to service_role;
 grant execute on function release_file_storage(text, bigint) to service_role;
 grant execute on function acknowledge_memo(text, text, text, text, text, text, uuid) to service_role;
+grant execute on function client_sales_balance(text, text) to service_role;
 grant execute on function prevent_app_records_delete() to service_role;
 
 insert into branches (name, address) values

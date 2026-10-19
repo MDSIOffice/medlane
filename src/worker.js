@@ -1000,6 +1000,22 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   // skip-PO invoice against an archived client client-side, but that check is client-trusted —
   // this mirrors it server-side the same way the credit-limit check above does.
   let archivedClientNames = null;
+  // archivedClientNames and creditLimitByClient both come from the same clients table — share one
+  // fetch instead of pulling the entire clients masterlist twice in the same save when a batch
+  // needs both (e.g. a skip-PO invoice plus a discount-restricted row for a different client).
+  let clientRowsPromise = null;
+  const loadClientRows = () => (clientRowsPromise ||= supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`));
+
+  // Every item code this batch will actually check stock for, gathered up front so the inventory
+  // fetch below can be scoped to just those codes instead of the entire inventory table (every
+  // SKU/branch/lot combination the company has ever stocked) — this runs on every new invoice.
+  const stockCheckedCodes = new Set();
+  for (const row of newSaleRows) {
+    const sale = row.data || {};
+    if (sale.migrated || sale.noPo) continue;
+    const lines = Array.isArray(sale.lines) && sale.lines.length ? sale.lines : [{ code: sale.code }];
+    for (const line of lines) if (line.code) stockCheckedCodes.add(String(line.code));
+  }
 
   for (const row of newSaleRows) {
     const sale = row.data || {};
@@ -1008,7 +1024,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     // `continue` below skips the rest of this row's validation along with it.
     if (sale.noPo && !sale.migrated && sale.client) {
       if (!archivedClientNames) {
-        const clientRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`);
+        const clientRows = await loadClientRows();
         archivedClientNames = new Set(clientRows.filter((clientRow) => clientRow.data?.archived).map((clientRow) => clientRow.data?.name));
       }
       if (archivedClientNames.has(sale.client)) throw new Error(`Invoice ${sale.documentNo || row.record_key}: ${sale.client} is archived and can no longer be used on a new invoice.`);
@@ -1048,30 +1064,33 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
 
     if (!canAuthorizeDiscount && sale.client) {
       if (!creditLimitByClient) {
-        const clientRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`);
+        const clientRows = await loadClientRows();
         creditLimitByClient = new Map(clientRows.map((clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
       }
       const limit = creditLimitByClient.get(sale.client) || 0;
       if (limit > 0) {
-        if (!projectedBalanceByClient) {
-          const saleRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&select=data`);
-          projectedBalanceByClient = new Map();
-          for (const saleRow of saleRows) {
-            const existing = saleRow.data || {};
-            if (existing.status === "Cancelled" || !existing.client) continue;
-            const used = Math.max(Number(existing.net || 0) - Number(existing.paid || 0), 0);
-            projectedBalanceByClient.set(existing.client, (projectedBalanceByClient.get(existing.client) || 0) + used);
-          }
+        projectedBalanceByClient ||= new Map();
+        if (!projectedBalanceByClient.has(sale.client)) {
+          // One indexed Postgres aggregate (see docs/migrations/2026-10-19-client-sales-balance-rpc.sql)
+          // scoped to this one client, instead of paging through every sale the company has ever
+          // recorded — across every client — just to recompute this client's running balance.
+          const [balanceRow] = await supabaseFetch(env, "/rest/v1/rpc/client_sales_balance", {
+            method: "POST",
+            body: JSON.stringify({ p_state_key: stateKey, p_client: sale.client }),
+          });
+          projectedBalanceByClient.set(sale.client, Number(balanceRow?.balance ?? 0));
         }
         const net = Number(sale.net ?? sale.amount ?? 0);
-        const projected = (projectedBalanceByClient.get(sale.client) || 0) + net;
+        const projected = projectedBalanceByClient.get(sale.client) + net;
         if (projected > limit) throw new Error(`Invoice ${label}: credit limit exceeded for ${sale.client} (${projected.toFixed(2)} / ${limit.toFixed(2)}). Needs Admin/CEO/Superadmin authorization.`);
         projectedBalanceByClient.set(sale.client, projected);
       }
     }
 
     if (!inventoryByKey) {
-      const invRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&select=data`);
+      const invRows = stockCheckedCodes.size
+        ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&data->>code=in.${encodeURIComponent(postgrestIn([...stockCheckedCodes]))}&select=data`)
+        : [];
       inventoryByKey = new Map();
       for (const invRow of invRows) {
         const item = invRow.data || {};
