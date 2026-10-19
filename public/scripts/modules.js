@@ -7473,7 +7473,6 @@ function openModal(type, edit = null) {
     syncClientDocsHidden();
   }
   if (type === "paymentRequest" && !edit?.record) {
-    qs("#preparedBy").value = currentUser?.name || "";
     qs("#date").value = fmtDate(today);
     qs("#cvNo").value = nextCvNumber(cvYear(qs("#date").value));
     qs("#total").value = "0.00";
