@@ -521,13 +521,18 @@ function applyPendingSaveQueueToLocal() {
   data = normalizeData({ ...emptyProductionData(), ...data, ...pending });
 }
 
-function setGlobalSaveStatus(status, text) {
+function setGlobalSaveStatus(status, text, detail = "") {
   const indicator = typeof qs === "function" ? qs("#save-status-indicator") : null;
   const label = typeof qs === "function" ? qs("#save-status-text") : null;
   if (!indicator || !label) return;
   indicator.classList.remove("saving", "saved", "error");
   indicator.classList.add(status);
   label.textContent = text;
+  // Surfaces the exact underlying error (e.g. the specific timeout/offline/network reason
+  // classifyFetchFailure() worked out) as a hover tooltip, without needing a toast — flushPendingSaveQueue
+  // deliberately avoids toasts since it runs silently in the background and a toast there can
+  // land on top of whatever the user was actually doing.
+  indicator.title = detail;
 }
 
 // A refresh/close while a save request is actually in flight has no warning today —
@@ -627,7 +632,7 @@ function saveData(keys = null) {
           return;
         }
       }
-      setGlobalSaveStatus("error", "Save failed");
+      setGlobalSaveStatus("error", "Save failed", error.message);
       if (typeof toast === "function") toast(`Server save failed: ${error.message}`);
     });
   }, 450);
@@ -672,8 +677,14 @@ function flushPendingSaveQueue() {
     // doing, e.g. triggering a file download can shift window focus enough to fire
     // this via the focus/visibilitychange listeners, right as an unrelated toast is
     // showing. The status indicator still reflects the failure; it'll retry on the
-    // next focus/online/reconnect.
-    setGlobalSaveStatus("error", "Pending save failed — will retry");
+    // next focus/online/reconnect. classifyFetchFailure() (api-client.js) already
+    // tags timeout/offline/unreachable distinctly, so surface that instead of a flat
+    // generic line — the status text stays short, the full reason is the tooltip.
+    const reason = error.code === "TIMEOUT" ? "server took too long to respond"
+      : error.code === "OFFLINE" ? "you're offline"
+      : error.code === "NETWORK" ? "server unreachable"
+      : "";
+    setGlobalSaveStatus("error", reason ? `Pending save failed — ${reason}, will retry` : "Pending save failed — will retry", error.message);
     console.warn("Pending save queue flush failed, will retry:", error.message);
   });
 }
@@ -692,7 +703,7 @@ async function persistRecords(records, recordKeys = {}) {
     return result;
   } catch (error) {
     mergePendingSaveQueue(savePayloadForKeys(Object.keys(filtered)));
-    setGlobalSaveStatus("error", "Save failed");
+    setGlobalSaveStatus("error", "Save failed", error.message);
     if (typeof toast === "function") toast(`Server save failed; queued for retry: ${error.message}`);
     return { ok: false, queued: true, error: error.message };
   } finally {

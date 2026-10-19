@@ -3736,13 +3736,36 @@ export default {
             // an intentional bulk delete — refuse it and log full context instead
             // of silently applying it.
             const eventModules = presentKeys.filter((key) => DISCORD_EVENT_MODULES.includes(key));
-            const beforeRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name,record_key`);
-            // The Discord poster diffs before/after status, so it needs the *complete* stored
-            // set of the event modules (paged), not the single capped page the circuit-breaker
-            // counts above tolerate — a truncated read would make an existing record look new.
-            const eventBeforeRows = eventModules.length
-              ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`)
-              : [];
+            const masterlistModulesPresent = !["Superadmin", "CEO"].includes(profile.role) ? presentKeys.filter((key) => ["clients", "items", "suppliers", "employees", "banks"].includes(key)) : [];
+            const masterlistRecordKeys = masterlistModulesPresent.length ? rows.filter((row) => masterlistModulesPresent.includes(row.module_name)).map((row) => row.record_key) : [];
+            const checkInventoryStock = !["Admin", "Superadmin", "CEO"].includes(profile.role) && presentKeys.includes("inventory") && !presentKeys.includes("sales") && !presentKeys.includes("pendingTransfers");
+            const inventoryRecordKeys = checkInventoryStock ? rows.filter((row) => row.module_name === "inventory").map((row) => row.record_key) : [];
+            const poRows = presentKeys.includes("purchaseOrders") ? rows.filter((row) => row.module_name === "purchaseOrders") : [];
+
+            // None of these reads depend on each other, so fire them together instead of
+            // one `await` at a time — this used to be up to 4 sequential Supabase round
+            // trips before the save could even start.
+            const [beforeRows, eventBeforeRows, storedMasterRows, storedStock] = await Promise.all([
+              supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name,record_key`),
+              // The Discord poster diffs before/after status, so it needs the *complete* stored
+              // set of the event modules (paged), not the single capped page the circuit-breaker
+              // counts above tolerate — a truncated read would make an existing record look new.
+              eventModules.length
+                ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`)
+                : Promise.resolve([]),
+              // Only the specific rows this save touches need their stored `archived` flag
+              // checked — not every masterlist record in the company. A full-module fetch
+              // here used to cost as much as the login-time state load, on every save.
+              masterlistRecordKeys.length
+                ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(masterlistModulesPresent))}&record_key=in.${encodeURIComponent(postgrestIn(masterlistRecordKeys))}&select=module_name,record_key,data`)
+                : Promise.resolve([]),
+              // Only the incoming inventory rows need their stored qty/expiry checked — not
+              // the entire inventory table, which grows with every SKU/lot the company has ever
+              // stocked. A full-module fetch here used to run on every non-admin inventory save.
+              inventoryRecordKeys.length
+                ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(inventoryRecordKeys))}&select=record_key,data`)
+                : Promise.resolve([]),
+            ]);
             const beforeCounts = {};
             const beforeKeysByModule = {};
             for (const row of beforeRows) {
@@ -3758,57 +3781,23 @@ export default {
               incomingKeysByModule[row.module_name].add(row.record_key);
             }
 
-            if (presentKeys.includes("sales")) {
-              const existingSaleKeys = beforeKeysByModule.sales || new Set();
-              const newSaleRows = rows.filter((row) => row.module_name === "sales" && !existingSaleKeys.has(row.record_key));
-              if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
-            }
-
-            if (presentKeys.includes("purchaseOrders")) {
-              const poRows = rows.filter((row) => row.module_name === "purchaseOrders");
-              if (poRows.length) await assertPurchaseOrderClientsNotArchived(env, stateKey, poRows);
-            }
-
-            await Promise.all([
-              assertFinancialApprovalAllowed(env, stateKey, profile, rows),
-              assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
-              assertCreditApprovalAllowed(env, stateKey, profile, rows),
-            ]);
-
             // Toggling a masterlist record's `archived` flag is CEO/Superadmin-only, even
             // through this bulk state PUT. Diff each incoming masterlist record against the
             // stored row and reject any archived-flag transition by a non-admin actor.
-            if (!["Superadmin", "CEO"].includes(profile.role)) {
-              const masterlistModulesPresent = presentKeys.filter((key) => ["clients", "items", "suppliers", "employees", "banks"].includes(key));
-              if (masterlistModulesPresent.length) {
-                // Only the specific rows this save touches need their stored `archived` flag
-                // checked — not every masterlist record in the company. A full-module fetch
-                // here used to cost as much as the login-time state load, on every save.
-                const masterlistRecordKeys = rows.filter((row) => masterlistModulesPresent.includes(row.module_name)).map((row) => row.record_key);
-                const storedMasterRows = masterlistRecordKeys.length
-                  ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(masterlistModulesPresent))}&record_key=in.${encodeURIComponent(postgrestIn(masterlistRecordKeys))}&select=module_name,record_key,data`)
-                  : [];
-                const storedArchived = new Map();
-                for (const row of storedMasterRows) storedArchived.set(`${row.module_name}|${row.record_key}`, Boolean(row.data && row.data.archived));
-                for (const row of rows) {
-                  if (!masterlistModulesPresent.includes(row.module_name)) continue;
-                  const wasArchived = storedArchived.get(`${row.module_name}|${row.record_key}`) || false;
-                  if (Boolean(row.data && row.data.archived) !== wasArchived) throw new Error("Only CEO or Superadmin can archive or restore masterlist records");
-                }
+            if (masterlistModulesPresent.length) {
+              const storedArchived = new Map();
+              for (const row of storedMasterRows) storedArchived.set(`${row.module_name}|${row.record_key}`, Boolean(row.data && row.data.archived));
+              for (const row of rows) {
+                if (!masterlistModulesPresent.includes(row.module_name)) continue;
+                const wasArchived = storedArchived.get(`${row.module_name}|${row.record_key}`) || false;
+                if (Boolean(row.data && row.data.archived) !== wasArchived) throw new Error("Only CEO or Superadmin can archive or restore masterlist records");
               }
             }
 
             // Editing a stored stock row's quantity or expiry is Admin/CEO/Superadmin-only, even
             // through this bulk state PUT. New rows, and changes bundled with a stock-moving flow
             // (`sales` invoicing, `pendingTransfers`), are unaffected.
-            if (!["Admin", "Superadmin", "CEO"].includes(profile.role) && presentKeys.includes("inventory") && !presentKeys.includes("sales") && !presentKeys.includes("pendingTransfers")) {
-              // Only the incoming inventory rows need their stored qty/expiry checked — not
-              // the entire inventory table, which grows with every SKU/lot the company has ever
-              // stocked. A full-module fetch here used to run on every non-admin inventory save.
-              const inventoryRecordKeys = rows.filter((row) => row.module_name === "inventory").map((row) => row.record_key);
-              const storedStock = inventoryRecordKeys.length
-                ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(inventoryRecordKeys))}&select=record_key,data`)
-                : [];
+            if (checkInventoryStock) {
               const storedStockByKey = new Map(storedStock.map((row) => [row.record_key, row.data || {}]));
               for (const row of rows) {
                 if (row.module_name !== "inventory") continue;
@@ -3820,8 +3809,21 @@ export default {
               }
             }
 
-            const totalBefore = beforeRows.length;
-            const totalAfter = rows.length;
+            // These are all independent assertions against already-stored data — run them
+            // together instead of one at a time. (validateNewSaleRows needs beforeKeysByModule
+            // to know which sales rows are new, which is why it waits until after the fetch
+            // above instead of joining it.)
+            const newSaleRows = presentKeys.includes("sales")
+              ? rows.filter((row) => row.module_name === "sales" && !(beforeKeysByModule.sales || new Set()).has(row.record_key))
+              : [];
+            await Promise.all([
+              newSaleRows.length ? validateNewSaleRows(env, stateKey, profile, newSaleRows) : null,
+              poRows.length ? assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) : null,
+              assertFinancialApprovalAllowed(env, stateKey, profile, rows),
+              assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
+              assertCreditApprovalAllowed(env, stateKey, profile, rows),
+            ]);
+
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
             const seededModules = env.ENVIRONMENT === "production" ? Object.entries(defaultSeedSignature).filter(([key, count]) => presentKeys.includes(key) && (beforeCounts[key] || 0) === 0 && (afterCounts[key] || 0) === count).map(([key]) => key) : [];
             const defaultSeedBurst = seededModules.length >= 3;
@@ -3837,16 +3839,6 @@ export default {
               throw new Error(`Save blocked: this looks like bundled default masterlist data being written to production. Restore from Backup instead. This attempt has been recorded in Audit Logs.`);
             }
 
-            if (wipedModules.length) {
-              const deltaSummary = presentKeys.map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
-              await writeAuditTrace(env, stateKey, {
-                actor, role: profile.role,
-                action: "Preserved existing records omitted from save payload",
-                module: "System",
-                record: `${deltaSummary}. Omitted modules preserved: ${wipedModules.join(", ")}.`,
-              }, authUser.id, auditContext);
-            }
-
             if (rows.length) {
               await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
                 method: "POST",
@@ -3854,33 +3846,48 @@ export default {
                 body: JSON.stringify(rows),
               });
             }
+
+            // Everything below is informational (audit trail + Discord notification), not
+            // something the already-durable save needs to wait on. Firing them after the
+            // response via ctx.waitUntil — instead of 1-3 more sequential awaits — is what
+            // used to make an otherwise-fast save look slow.
             const missingSummary = presentKeys.map((key) => {
               const beforeKeys = beforeKeysByModule[key] || new Set();
               const incomingKeys = incomingKeysByModule[key] || new Set();
               const missing = [...beforeKeys].filter((recordKey) => !incomingKeys.has(recordKey));
               return missing.length ? `${key}: preserved ${missing.length} existing record(s) absent from save` : "";
             }).filter(Boolean).join(", ");
-            if (missingSummary) {
-              await writeAuditTrace(env, stateKey, {
-                actor, role: profile.role,
-                action: "Ignored destructive save cleanup",
-                module: "System",
-                record: missingSummary,
-              }, authUser.id, auditContext);
-            }
-
             // Trace every save so a future incident can be pinpointed to the exact
             // user, time, and modules touched — only note modules whose record
             // count actually changed, to keep routine content-only edits quiet.
             const changedSummary = presentKeys.filter((key) => (beforeCounts[key] || 0) !== (afterCounts[key] || 0)).map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
+            const auditWrites = [];
+            if (wipedModules.length) {
+              const deltaSummary = presentKeys.map((key) => `${key}: ${beforeCounts[key] || 0}->${afterCounts[key] || 0}`).join(", ");
+              auditWrites.push(writeAuditTrace(env, stateKey, {
+                actor, role: profile.role,
+                action: "Preserved existing records omitted from save payload",
+                module: "System",
+                record: `${deltaSummary}. Omitted modules preserved: ${wipedModules.join(", ")}.`,
+              }, authUser.id, auditContext));
+            }
+            if (missingSummary) {
+              auditWrites.push(writeAuditTrace(env, stateKey, {
+                actor, role: profile.role,
+                action: "Ignored destructive save cleanup",
+                module: "System",
+                record: missingSummary,
+              }, authUser.id, auditContext));
+            }
             if (changedSummary) {
-              await writeAuditTrace(env, stateKey, {
+              auditWrites.push(writeAuditTrace(env, stateKey, {
                 actor, role: profile.role,
                 action: "Saved app state (record count changed)",
                 module: "System",
                 record: changedSummary,
-              }, authUser.id, auditContext);
+              }, authUser.id, auditContext));
             }
+            if (auditWrites.length) ctx.waitUntil(Promise.all(auditWrites));
             // Same reasoning as /api/modules/records: this already swallows its own errors and
             // runs its posts in parallel, so it doesn't need to hold up the response.
             ctx.waitUntil(postRecordEventsToDiscord(env, profile, eventBeforeRows, rows));
@@ -4137,13 +4144,85 @@ export default {
         }
         rows = dedupeRowsByRecordKey(rows);
 
+        const saleCodes = saleScopedInventory ? new Set(records.sales.flatMap((sale) => (sale?.lines || []).map((line) => String(line?.code || ""))).filter(Boolean)) : null;
+        const saleStockRows = saleScopedInventory ? rows.filter((row) => row.module_name === "inventory") : [];
+
+        // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
+        // permission check above only gates *editing* the module, not flipping the `archived`
+        // flag, so enforce that specific transition here by diffing against the stored row.
+        const MASTERLIST_ARCHIVE_MODULES = ["clients", "items", "suppliers", "employees", "banks"];
+        const archiveCandidateRows = rows.filter((row) => MASTERLIST_ARCHIVE_MODULES.includes(row.module_name));
+        const checkMasterlistArchive = archiveCandidateRows.length && !["Superadmin", "CEO"].includes(profile?.role);
+        const archiveKeysByModule = {};
+        if (checkMasterlistArchive) for (const row of archiveCandidateRows) (archiveKeysByModule[row.module_name] ||= []).push(row.record_key);
+
+        // Directly correcting a stored stock row's quantity or expiry (the Inventory → Stocks
+        // "Edit" dialog) is Admin/CEO/Superadmin-only. The "inventory" module permission gates
+        // receiving/transfers for Logistics et al., but a manual stock correction is a higher bar.
+        // Legit stock-moving flows bundle a companion record (invoicing → `sales`, transfers →
+        // `pendingTransfers`); the correction dialog sends `inventory` alone, so skip the guard
+        // when a companion is present. A brand-new stock row (no stored match) also passes through.
+        const stockMovementCompanions = new Set(["sales", "pendingTransfers"]);
+        const incomingStockRows = rows.filter((row) => row.module_name === "inventory");
+        const hasStockMovementCompanion = rows.some((row) => stockMovementCompanions.has(row.module_name));
+        const checkStockEdit = incomingStockRows.length && !hasStockMovementCompanion && !["Admin", "CEO", "Superadmin"].includes(profile?.role);
+
+        // This is the real invoice-creation path (buildSale -> persistRecords -> here), not
+        // /api/modules/state's bulk PUT — so the new-sale integrity checks belong here.
+        const incomingSaleRows = rows.filter((row) => row.module_name === "sales");
+
+        // A submitted client PO can be edited only until it has invoices/DRs against it. This
+        // is the pure PO-edit path (no sales in the same payload); invoicing re-saves the PO
+        // row unchanged alongside its sale and is not affected. Reject when a stored PO already
+        // has a non-cancelled referencing sale AND its lines/client/date actually changed —
+        // guards against a stale client bypassing the client-side served check (spec FR-011).
+        const incomingPoRows = rows.filter((row) => row.module_name === "purchaseOrders");
+        const checkPoEditLock = incomingPoRows.length && !incomingSaleRows.length;
+
+        const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => DISCORD_EVENT_MODULES.includes(key)))];
+
+        // Wave 1: every read below is independent of the others — none of them depend on each
+        // other's result — so they're fired together instead of one `await` at a time. This
+        // endpoint is the shared save path for nearly every module (sales, transfers, payment
+        // requests, masterlist edits, PO edits, ...), so shaving round trips here speeds up every
+        // itemized/many-row submit in the app, including PO saves. (The PO-edit-lock check still
+        // needs a second, sequential read below — it only knows which sales rows to look for once
+        // it knows which incoming PO rows are edits of an existing PO, i.e. once storedPoRows below
+        // has resolved.)
+        const [saleScopedStock, existingSaleRows, storedPoRows, beforeRows, masterlistStoredRows, stockEditStoredStock] = await Promise.all([
+          saleStockRows.length
+            ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(saleStockRows.map((row) => row.record_key)))}&select=record_key,data`)
+            : Promise.resolve([]),
+          incomingSaleRows.length
+            ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&record_key=in.${encodeURIComponent(postgrestIn(incomingSaleRows.map((row) => row.record_key)))}&select=record_key`)
+            : Promise.resolve([]),
+          checkPoEditLock
+            ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(incomingPoRows.map((row) => row.record_key)))}&select=record_key,data`)
+            : Promise.resolve([]),
+          eventModules.length
+            ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`)
+            : Promise.resolve([]),
+          // One fetch per touched masterlist module (kept separate per module, not combined into
+          // one `module_name=in.(...)&record_key=in.(...)` query — two different modules can share
+          // a record_key, which a combined IN/IN filter can't tell apart) — independent of each
+          // other, so still run together.
+          checkMasterlistArchive
+            ? Promise.all(Object.entries(archiveKeysByModule).map(async ([moduleName, keys]) => {
+                const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=in.${encodeURIComponent(postgrestIn(keys))}&select=record_key,data`);
+                return stored.map((entry) => ({ moduleName, ...entry }));
+              })).then((groups) => groups.flat())
+            : Promise.resolve([]),
+          checkStockEdit
+            ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(incomingStockRows.map((row) => row.record_key)))}&select=record_key,data`)
+            : Promise.resolve([]),
+          incomingPoRows.length ? assertPurchaseOrderClientsNotArchived(env, stateKey, incomingPoRows) : Promise.resolve(),
+          assertFinancialApprovalAllowed(env, stateKey, profile, rows),
+          assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
+          assertCreditApprovalAllowed(env, stateKey, profile, rows),
+        ]);
+
         if (saleScopedInventory) {
-          const saleCodes = new Set(records.sales.flatMap((sale) => (sale?.lines || []).map((line) => String(line?.code || ""))).filter(Boolean));
-          const saleStockRows = rows.filter((row) => row.module_name === "inventory");
-          const storedStock = saleStockRows.length
-            ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(saleStockRows.map((row) => row.record_key)))}&select=record_key,data`)
-            : [];
-          const storedStockByKey = new Map(storedStock.map((entry) => [entry.record_key, entry.data || {}]));
+          const storedStockByKey = new Map(saleScopedStock.map((entry) => [entry.record_key, entry.data || {}]));
           for (const row of saleStockRows) {
             const incoming = row.data || {};
             if (!saleCodes.has(String(incoming.code || ""))) throw new Error("You do not have permission to edit inventory");
@@ -4155,31 +4234,9 @@ export default {
           }
         }
 
-        // Independent read-only checks on disjoint module rows — run together instead of one
-        // after another. This endpoint is the shared save path for nearly every module (sales,
-        // transfers, payment requests, masterlist edits, ...), so shaving round trips here speeds
-        // up every itemized/many-row submit in the app, not just one module.
-        await Promise.all([
-          assertFinancialApprovalAllowed(env, stateKey, profile, rows),
-          assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
-          assertCreditApprovalAllowed(env, stateKey, profile, rows),
-        ]);
-
-        // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
-        // permission check above only gates *editing* the module, not flipping the `archived`
-        // flag, so enforce that specific transition here by diffing against the stored row.
-        const MASTERLIST_ARCHIVE_MODULES = ["clients", "items", "suppliers", "employees", "banks"];
-        const archiveCandidateRows = rows.filter((row) => MASTERLIST_ARCHIVE_MODULES.includes(row.module_name));
-        if (archiveCandidateRows.length && !["Superadmin", "CEO"].includes(profile?.role)) {
-          const keysByModule = {};
-          for (const row of archiveCandidateRows) (keysByModule[row.module_name] ||= []).push(row.record_key);
+        if (checkMasterlistArchive) {
           const storedArchivedByKey = new Map();
-          // One fetch per touched masterlist module — independent of each other, so run them
-          // together instead of one at a time.
-          await Promise.all(Object.entries(keysByModule).map(async ([moduleName, keys]) => {
-            const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=in.${encodeURIComponent(postgrestIn(keys))}&select=record_key,data`);
-            for (const entry of stored) storedArchivedByKey.set(`${moduleName}|${entry.record_key}`, Boolean(entry.data && entry.data.archived));
-          }));
+          for (const entry of masterlistStoredRows) storedArchivedByKey.set(`${entry.moduleName}|${entry.record_key}`, Boolean(entry.data && entry.data.archived));
           for (const row of archiveCandidateRows) {
             const wasArchived = storedArchivedByKey.get(`${row.module_name}|${row.record_key}`) || false;
             const willBeArchived = Boolean(row.data && row.data.archived);
@@ -4187,18 +4244,8 @@ export default {
           }
         }
 
-        // Directly correcting a stored stock row's quantity or expiry (the Inventory → Stocks
-        // "Edit" dialog) is Admin/CEO/Superadmin-only. The "inventory" module permission gates
-        // receiving/transfers for Logistics et al., but a manual stock correction is a higher bar.
-        // Legit stock-moving flows bundle a companion record (invoicing → `sales`, transfers →
-        // `pendingTransfers`); the correction dialog sends `inventory` alone, so skip the guard
-        // when a companion is present. A brand-new stock row (no stored match) also passes through.
-        const stockMovementCompanions = new Set(["sales", "pendingTransfers"]);
-        const incomingStockRows = rows.filter((row) => row.module_name === "inventory");
-        const hasStockMovementCompanion = rows.some((row) => stockMovementCompanions.has(row.module_name));
-        if (incomingStockRows.length && !hasStockMovementCompanion && !["Admin", "CEO", "Superadmin"].includes(profile?.role)) {
-          const storedStock = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(incomingStockRows.map((row) => row.record_key)))}&select=record_key,data`);
-          const storedStockByKey = new Map(storedStock.map((entry) => [entry.record_key, entry.data || {}]));
+        if (checkStockEdit) {
+          const storedStockByKey = new Map(stockEditStoredStock.map((entry) => [entry.record_key, entry.data || {}]));
           for (const row of incomingStockRows) {
             const prev = storedStockByKey.get(row.record_key);
             if (!prev) continue;
@@ -4208,30 +4255,21 @@ export default {
           }
         }
 
-        // This is the real invoice-creation path (buildSale -> persistRecords -> here), not
-        // /api/modules/state's bulk PUT — so the new-sale integrity checks belong here.
-        const incomingSaleRows = rows.filter((row) => row.module_name === "sales");
         if (incomingSaleRows.length) {
-          const existingSaleRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&record_key=in.${encodeURIComponent(postgrestIn(incomingSaleRows.map((row) => row.record_key)))}&select=record_key`);
           const existingSaleKeys = new Set(existingSaleRows.map((row) => row.record_key));
           const newSaleRows = incomingSaleRows.filter((row) => !existingSaleKeys.has(row.record_key));
           if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
         }
 
-        // A submitted client PO can be edited only until it has invoices/DRs against it. This
-        // is the pure PO-edit path (no sales in the same payload); invoicing re-saves the PO
-        // row unchanged alongside its sale and is not affected. Reject when a stored PO already
-        // has a non-cancelled referencing sale AND its lines/client/date actually changed —
-        // guards against a stale client bypassing the client-side served check (spec FR-011).
-        const incomingPoRows = rows.filter((row) => row.module_name === "purchaseOrders");
-        if (incomingPoRows.length) await assertPurchaseOrderClientsNotArchived(env, stateKey, incomingPoRows);
-        if (incomingPoRows.length && !incomingSaleRows.length) {
-          const poIds = incomingPoRows.map((row) => row.record_key);
-          const storedPoRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(poIds))}&select=record_key,data`);
+        if (checkPoEditLock) {
           const storedPoByKey = new Map(storedPoRows.map((row) => [row.record_key, row.data || {}]));
           const editedPoRows = incomingPoRows.filter((row) => storedPoByKey.has(row.record_key));
           if (editedPoRows.length) {
-            const saleRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&select=data`);
+            // Narrowed to sales referencing one of these specific PO ids instead of scanning the
+            // entire sales table (which only ever grows) — editing a submitted PO used to pull
+            // every invoice the company has ever issued just to check whether this one PO is locked.
+            const poIdFilter = postgrestIn(editedPoRows.map((row) => row.record_key));
+            const saleRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&data->>po=in.${encodeURIComponent(poIdFilter)}&select=data`);
             const lockedPoIds = new Set(saleRows.map((row) => row.data).filter((sale) => sale && sale.po && sale.status !== "Cancelled").map((sale) => sale.po));
             for (const row of editedPoRows) {
               if (!lockedPoIds.has(row.record_key)) continue;
@@ -4246,8 +4284,6 @@ export default {
           }
         }
 
-        const eventModules = [...new Set(rows.map((row) => row.module_name).filter((key) => DISCORD_EVENT_MODULES.includes(key)))];
-        const beforeRows = eventModules.length ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(eventModules))}&select=module_name,record_key,data`) : [];
         if (rows.length) {
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
             method: "POST",
