@@ -591,9 +591,13 @@ function invoiceRowStockHintHtml(item, branch, lot) {
   const uom = item.uom || "unit";
   const reserved = pendingPoDemandForItem(item.code, branch, qs("#po")?.value || null);
   const lotNote = trimmedLot ? ` for lot ${escapeHtml(trimmedLot)}` : "";
+  // A zero-stock hint reads the same whether the branch just happens to be low right now or the
+  // item is never stocked there at all — naming the branch that actually has it catches the
+  // common "picked the wrong Stock From branch" case before the user even tries to save.
+  const elsewhereBranches = qty <= 0 && branch ? [...new Set(data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch !== branch && entry.qty > 0).map((entry) => entry.branch))] : [];
   const availability = qty > 0
     ? `${qty} ${escapeHtml(uom)}${qty === 1 ? "" : "s"} available${branch ? ` at ${escapeHtml(branch)}` : ""}${lotNote}`
-    : `No stock available${branch ? ` at ${escapeHtml(branch)}` : ""}${lotNote}`;
+    : `No stock available${branch ? ` at ${escapeHtml(branch)}` : ""}${lotNote}${elsewhereBranches.length ? ` — available at ${elsewhereBranches.map(escapeHtml).join(" and ")}` : ""}`;
   // Always shown, not just when > 0 — a row with 1 available and 2 already pending on other
   // POs needs to read the same at a glance as one with 1 available and 0 pending, instead of
   // only growing a note once there's a problem (see the VEDA8900 "1 available" confusion).
@@ -692,8 +696,16 @@ function inventoryReservedCellHtml(item) {
   const reserved = competitors.reduce((sum, entry) => sum + entry.pending, 0);
   if (!reserved) return `<span class="muted-cell">—</span>`;
   const firstPoId = escapeHtml(competitors[0].po.id);
-  const title = `${reserved} unit${reserved === 1 ? "" : "s"} pending across open purchase orders for ${escapeHtml(item.item)} at ${escapeHtml(item.branch)}: ${competitors.map((entry) => `${entry.po.id} (${entry.po.client}) x${entry.pending}`).join(", ")}`;
-  return `<button type="button" class="pill ${reserved > item.qty ? "red" : "orange"} pill-button" title="${title}" data-go-section="purchase-orders" data-focus-record="${firstPoId}">${reserved} pending</button>`;
+  // Open PO lines only record item code + branch, never a specific lot — which lot a sale draws
+  // from is picked at invoicing time, not reserved in advance. So this total is the SAME demand
+  // figure repeated on every lot row of this item at this branch (it's shared against their
+  // combined stock, not per-lot), and the label/tooltip spell that out so two "24 pending" lot
+  // rows don't read as 48 units reserved. The red/orange threshold below has to compare against
+  // that same combined total too — comparing it to just this one lot's qty could flag the exact
+  // same reserved figure red on one lot's row and orange on another lot's row of the same item.
+  const totalStock = data.inventory.filter((stock) => stock.code === item.code && stock.branch === item.branch).reduce((sum, stock) => sum + Number(stock.qty || 0), 0);
+  const title = `${reserved} unit${reserved === 1 ? "" : "s"} pending across open purchase orders for ${escapeHtml(item.item)} at ${escapeHtml(item.branch)} — shared across all lots of this item/branch (POs don't reserve a specific lot), not per-lot: ${competitors.map((entry) => `${entry.po.id} (${entry.po.client}) x${entry.pending}`).join(", ")}`;
+  return `<button type="button" class="pill ${reserved > totalStock ? "red" : "orange"} pill-button" title="${title}" data-go-section="purchase-orders" data-focus-record="${firstPoId}">${reserved} pending (all lots)</button>`;
 }
 
 function poFullyPaid(po) {
@@ -7981,7 +7993,15 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
     for (const line of lines) {
       if (line.expiry !== "N/A" && daysUntil(line.expiry) < 0) throw new Error(`Expired lot blocked for ${line.item}.`);
       const stock = matchInvoiceLineStock(line);
-      if (!stock) throw new Error(`No sufficient ${line.item} stock in ${line.sourceBranch}${line.lot ? ` for lot ${line.lot}` : ""}.`);
+      if (!stock) {
+        // The generic "No sufficient stock" message reads the same whether the item just has a
+        // low/zero balance at this branch or simply isn't stocked there at all — the second case
+        // (picked the wrong "Stock From" branch for an item that only lives at another branch) is
+        // common enough to call out by name instead of leaving the user to go hunting for it.
+        const elsewhereBranches = [...new Set(data.inventory.filter((entry) => (entry.code === line.code || entry.item === line.item) && entry.branch !== line.sourceBranch && entry.qty > 0).map((entry) => entry.branch))];
+        if (elsewhereBranches.length) throw new Error(`${line.item} is not stocked at ${line.sourceBranch} — it's only available at ${elsewhereBranches.join(" and ")}. Change "Stock From" or remove this item.`);
+        throw new Error(`No sufficient ${line.item} stock in ${line.sourceBranch}${line.lot ? ` for lot ${line.lot}` : ""}.`);
+      }
       const otherDemand = pendingPoDemandForItem(line.code, line.sourceBranch, po.id);
       if (otherDemand > 0) {
         const available = invoiceItemStockQty({ code: line.code, name: line.item }, line.sourceBranch);
