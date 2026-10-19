@@ -4667,6 +4667,16 @@ export default {
         }
         if (!authUser?.id) throw new Error("Could not create or find the Supabase user account");
 
+        if (authUser.banned_until) {
+          // Re-inviting a previously disabled/archived account must lift the ban — otherwise the
+          // invite link works but the account still can't sign in afterward.
+          await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(authUser.id)}`, {
+            method: "PUT",
+            body: JSON.stringify({ ban_duration: "none", user_metadata: { ...(authUser.user_metadata || {}), disabled_reason: "", disabled_at: "" } }),
+          });
+          authUser = { ...authUser, banned_until: null };
+        }
+
         await supabaseFetch(env, "/rest/v1/profiles?on_conflict=id", {
           method: "POST",
           headers: { prefer: "resolution=merge-duplicates" },

@@ -400,7 +400,7 @@ async function submitModal(event) {
     if (!canManageUsers()) return toast("Only Superadmin/CEO can add users.");
     const email = String(values.email || "").trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast("Enter a valid email address.");
-    if (data.users.some((user) => String(user.email || "").trim().toLowerCase() === email)) return toast("A user with this email already exists.");
+    if (data.users.some((user) => String(user.email || "").trim().toLowerCase() === email && !userIsArchived(user))) return toast("A user with this email already exists.");
     values.email = email;
     values.branch = "all";
     if (values.role === "Superadmin") values.superadminPermissions = true;
