@@ -482,15 +482,38 @@ function savePayloadForKeys(keys) {
   return payload;
 }
 
+// In-memory mirror of the pending-save queue, keyed to the same per-user key as the localStorage
+// copy. Reads/writes go through this first so the retry loop (flushPendingSaveQueue, the periodic
+// timer in events-bootstrap.js) keeps working within the current tab session even when the disk
+// is slow or full enough that localStorage itself is unreliable — localStorage is kept only as a
+// best-effort backstop for surviving a reload/crash, not as the thing retries depend on.
+let pendingSaveQueueMemoryKey = null;
+let pendingSaveQueueMemory = null;
+
 function readPendingSaveQueue() {
-  try { return JSON.parse(localStorage.getItem(pendingSaveQueueKey()) || "{}"); }
-  catch { return {}; }
+  const key = pendingSaveQueueKey();
+  if (pendingSaveQueueMemoryKey !== key) {
+    pendingSaveQueueMemoryKey = key;
+    try { pendingSaveQueueMemory = JSON.parse(localStorage.getItem(key) || "{}"); }
+    catch { pendingSaveQueueMemory = {}; }
+  }
+  return pendingSaveQueueMemory;
 }
 
 function writePendingSaveQueue(payload) {
+  const key = pendingSaveQueueKey();
   const cleaned = Object.fromEntries(Object.entries(payload || {}).filter(([, value]) => value !== undefined));
-  if (Object.keys(cleaned).length) localStorage.setItem(pendingSaveQueueKey(), JSON.stringify(cleaned));
-  else localStorage.removeItem(pendingSaveQueueKey());
+  pendingSaveQueueMemoryKey = key;
+  pendingSaveQueueMemory = cleaned;
+  try {
+    if (Object.keys(cleaned).length) localStorage.setItem(key, JSON.stringify(cleaned));
+    else localStorage.removeItem(key);
+  } catch (error) {
+    // Most commonly a full-disk/quota error. The in-memory copy above stays authoritative for the
+    // rest of this session, so the save/retry flow keeps working — this only costs the ability to
+    // recover the queued change if the tab is closed or crashes before it reaches the server.
+    console.warn("Could not persist pending save queue to local storage (disk full or storage quota reached?) — staying queued in memory for this session:", error.message);
+  }
 }
 
 function mergePendingSaveQueue(payload) {
@@ -677,7 +700,9 @@ function flushPendingSaveQueue() {
     // doing, e.g. triggering a file download can shift window focus enough to fire
     // this via the focus/visibilitychange listeners, right as an unrelated toast is
     // showing. The status indicator still reflects the failure; it'll retry on the
-    // next focus/online/reconnect. classifyFetchFailure() (api-client.js) already
+    // next focus/online/reconnect, or on the periodic timer in events-bootstrap.js
+    // (events-bootstrap.js:4-9) for a tab left sitting idle on a slow machine.
+    // classifyFetchFailure() (api-client.js) already
     // tags timeout/offline/unreachable distinctly, so surface that instead of a flat
     // generic line — the status text stays short, the full reason is the tooltip.
     const reason = error.code === "TIMEOUT" ? "server took too long to respond"

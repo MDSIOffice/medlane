@@ -4,6 +4,12 @@ syncGeneratedNotifications();
 window.addEventListener("online", () => flushPendingSaveQueue());
 window.addEventListener("focus", () => flushPendingSaveQueue());
 document.addEventListener("visibilitychange", () => { if (!document.hidden) flushPendingSaveQueue(); });
+// Without this, a save that failed from a timeout (e.g. a slow/overloaded machine) only ever
+// retries on the next focus/online/visibilitychange event — a tab left sitting idle, still
+// focused, on a struggling PC could otherwise sit on a failed save indefinitely. flushPendingSaveQueue()
+// already no-ops instantly when there's nothing queued, so this is cheap to just let run.
+const PENDING_SAVE_RETRY_INTERVAL_MS = 45 * 1000;
+setInterval(() => flushPendingSaveQueue(), PENDING_SAVE_RETRY_INTERVAL_MS);
 window.addEventListener("beforeunload", (event) => {
   if (!hasPendingSaveQueue() && !isSaveInFlight()) return;
   event.preventDefault();
