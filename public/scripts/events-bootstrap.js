@@ -1872,6 +1872,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
     if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state.");
     serverRevision = Number(serverState.revision || 0);
     data = normalizeData({ ...emptyProductionData(), ...serverState.data });
+    await ensurePendingSaveQueueHydrated();
     applyPendingSaveQueueToLocal();
     await syncBackendUsers();
     flushPendingSaveQueue();
@@ -2304,6 +2305,7 @@ async function hydrateAuthenticatedSession() {
   serverRevision = Number(serverState.revision || 0);
   data = normalizeData({ ...emptyProductionData(), ...serverState.data });
   modulePagination = serverState.pagination || {};
+  await ensurePendingSaveQueueHydrated();
   applyPendingSaveQueueToLocal();
   await syncBackendUsers();
   flushPendingSaveQueue();
