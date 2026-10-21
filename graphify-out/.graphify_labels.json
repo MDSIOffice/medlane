@@ -80,6 +80,5 @@
   "121": "public/scripts/app-motion.js",
   "122": "scripts/app-motion.js",
   "123": "supabaseFetch",
-  "129": "package.json",
-  "132": "canEditActiveSection"
+  "129": "package.json"
 }

@@ -482,20 +482,56 @@ function savePayloadForKeys(keys) {
   return payload;
 }
 
-// In-memory mirror of the pending-save queue, keyed to the same per-user key as the localStorage
-// copy. Reads/writes go through this first so the retry loop (flushPendingSaveQueue, the periodic
-// timer in events-bootstrap.js) keeps working within the current tab session even when the disk
-// is slow or full enough that localStorage itself is unreliable — localStorage is kept only as a
-// best-effort backstop for surviving a reload/crash, not as the thing retries depend on.
+// In-memory mirror of the pending-save queue, keyed to the same per-user key as before. Every
+// synchronous read/write in this codebase goes through this object only — it's the thing the
+// retry loop (flushPendingSaveQueue, the periodic timer in events-bootstrap.js) actually depends
+// on, so saving/retrying keeps working for the rest of the tab session even if disk storage is
+// slow or full. IndexedDB below is a pure write-behind backstop for recovering the queue after a
+// reload/crash, never something the live save path has to wait on.
 let pendingSaveQueueMemoryKey = null;
 let pendingSaveQueueMemory = null;
+// Which key's IndexedDB copy has already been loaded into pendingSaveQueueMemory, so
+// ensurePendingSaveQueueHydrated() below only does real work once per user per tab session.
+let pendingSaveQueueHydratedKey = null;
+
+const PENDING_SAVE_DB_NAME = "medlane-pending-save";
+const PENDING_SAVE_DB_STORE = "queue";
+
+function openPendingSaveDb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") { reject(new Error("IndexedDB unavailable")); return; }
+    const request = indexedDB.open(PENDING_SAVE_DB_NAME, 1);
+    request.onupgradeneeded = () => { request.result.createObjectStore(PENDING_SAVE_DB_STORE); };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB open failed"));
+  });
+}
+
+function readPendingSaveQueueFromDb(key) {
+  return openPendingSaveDb().then((db) => new Promise((resolve, reject) => {
+    const getRequest = db.transaction(PENDING_SAVE_DB_STORE, "readonly").objectStore(PENDING_SAVE_DB_STORE).get(key);
+    getRequest.onsuccess = () => resolve(getRequest.result || {});
+    getRequest.onerror = () => reject(getRequest.error || new Error("IndexedDB read failed"));
+  }));
+}
+
+// Fire-and-forget: the caller (writePendingSaveQueue) has already updated pendingSaveQueueMemory
+// synchronously, so nothing downstream waits on this resolving or needs to handle its failure.
+function writePendingSaveQueueToDb(key, cleaned) {
+  openPendingSaveDb().then((db) => {
+    const store = db.transaction(PENDING_SAVE_DB_STORE, "readwrite").objectStore(PENDING_SAVE_DB_STORE);
+    if (Object.keys(cleaned).length) store.put(cleaned, key);
+    else store.delete(key);
+  }).catch((error) => {
+    console.warn("Could not persist pending save queue to IndexedDB (disk full or storage unavailable?) — staying queued in memory for this session:", error.message);
+  });
+}
 
 function readPendingSaveQueue() {
   const key = pendingSaveQueueKey();
   if (pendingSaveQueueMemoryKey !== key) {
     pendingSaveQueueMemoryKey = key;
-    try { pendingSaveQueueMemory = JSON.parse(localStorage.getItem(key) || "{}"); }
-    catch { pendingSaveQueueMemory = {}; }
+    pendingSaveQueueMemory = {};
   }
   return pendingSaveQueueMemory;
 }
@@ -505,19 +541,43 @@ function writePendingSaveQueue(payload) {
   const cleaned = Object.fromEntries(Object.entries(payload || {}).filter(([, value]) => value !== undefined));
   pendingSaveQueueMemoryKey = key;
   pendingSaveQueueMemory = cleaned;
-  try {
-    if (Object.keys(cleaned).length) localStorage.setItem(key, JSON.stringify(cleaned));
-    else localStorage.removeItem(key);
-  } catch (error) {
-    // Most commonly a full-disk/quota error. The in-memory copy above stays authoritative for the
-    // rest of this session, so the save/retry flow keeps working — this only costs the ability to
-    // recover the queued change if the tab is closed or crashes before it reaches the server.
-    console.warn("Could not persist pending save queue to local storage (disk full or storage quota reached?) — staying queued in memory for this session:", error.message);
-  }
+  writePendingSaveQueueToDb(key, cleaned);
 }
 
 function mergePendingSaveQueue(payload) {
   writePendingSaveQueue({ ...readPendingSaveQueue(), ...(payload || {}) });
+}
+
+// Awaited once, at login and at session-restore (before applyPendingSaveQueueToLocal() needs
+// it), to pull in whatever a previous — crashed or force-closed — tab session left queued.
+// Every other call site reads pendingSaveQueueMemory synchronously and never calls this, since by
+// the time a logged-in user can trigger a save, this has already resolved.
+async function ensurePendingSaveQueueHydrated() {
+  const key = pendingSaveQueueKey();
+  if (pendingSaveQueueHydratedKey === key) return;
+  pendingSaveQueueHydratedKey = key;
+  let stored = {};
+  try {
+    stored = await readPendingSaveQueueFromDb(key);
+  } catch (error) {
+    console.warn("Could not read pending save queue from IndexedDB:", error.message);
+  }
+  if (!Object.keys(stored).length) {
+    // One-time migration for a queue left over in localStorage by a pre-IndexedDB build of this
+    // code — otherwise it would be silently dropped the first time this ships.
+    try {
+      const legacy = JSON.parse(localStorage.getItem(key) || "null");
+      if (legacy && typeof legacy === "object" && Object.keys(legacy).length) {
+        stored = legacy;
+        localStorage.removeItem(key);
+      }
+    } catch { /* ignore malformed legacy entry */ }
+  }
+  // Don't clobber anything a user already queued (via writePendingSaveQueue) while this was
+  // in flight — merge on top of it rather than overwriting.
+  pendingSaveQueueMemory = { ...stored, ...(pendingSaveQueueMemoryKey === key ? pendingSaveQueueMemory : {}) };
+  pendingSaveQueueMemoryKey = key;
+  if (Object.keys(stored).length) writePendingSaveQueueToDb(key, pendingSaveQueueMemory);
 }
 
 // A queued module snapshot only reflects state as of whenever it was queued. If a
