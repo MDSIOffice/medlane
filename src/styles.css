@@ -2782,6 +2782,9 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-footer-credit .lr-fc-contact { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--lr-muted); }
 .lr-footer-credit a { color: var(--lr-light); text-decoration: none; border-bottom: 1px solid var(--lr-cyan); }
 .lr-footer-credit a:hover { color: var(--lr-cyan); }
+.lr-footer-credit .lr-fc-social { display: inline-flex; align-items: center; justify-content: center; border-bottom: none; line-height: 0; opacity: .85; transition: opacity .15s ease, transform .15s ease; }
+.lr-footer-credit .lr-fc-social:hover { opacity: 1; transform: translateY(-1px); }
+.lr-footer-credit .lr-fc-social img { width: 16px; height: 16px; }
 .lr-fb--cyan { color: var(--lr-cyan); }
 .lr-fb--orange { color: var(--lr-orange); }
 
