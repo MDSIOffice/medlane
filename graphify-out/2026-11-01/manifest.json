@@ -108,9 +108,9 @@
     "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
   },
   "src/worker.js": {
-    "mtime": 1793525506.4316416,
-    "seen": 1793525515.677264,
-    "ast_hash": "b88ef9a0201b2762cff914d709019c1b",
+    "mtime": 1793526030.7559538,
+    "seen": 1793526037.663172,
+    "ast_hash": "e5118315d375bb19665b96244d9346fa",
     "semantic_hash": ""
   },
   "Notification Sound.mp3": {
@@ -780,9 +780,9 @@
     "semantic_hash": ""
   },
   "docs/supabase-production-schema.sql": {
-    "mtime": 1792380220.0167885,
-    "seen": 1792380256.235913,
-    "ast_hash": "f9679b7f7ca120a1ccb607351089f661",
+    "mtime": 1793525653.541472,
+    "seen": 1793526037.6631548,
+    "ast_hash": "115682a3cda0e81d568e6990ea4adf7f",
     "semantic_hash": ""
   },
   "skills-lock.json": {
@@ -825,6 +825,12 @@
     "mtime": 1792688531.4669561,
     "seen": 1793525515.67733,
     "ast_hash": "8d16c228a023e09c2137266be452a047",
+    "semantic_hash": ""
+  },
+  "docs/migrations/2026-11-01-supabase-advisor-fixes.sql": {
+    "mtime": 1793525653.509436,
+    "seen": 1793526037.663154,
+    "ast_hash": "bcb0f8e844f52cc961bd9b2c401ab67c",
     "semantic_hash": ""
   }
 }
