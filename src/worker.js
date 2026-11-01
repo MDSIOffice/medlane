@@ -211,6 +211,25 @@ async function notifyLiveClients(env, modules) {
   }
 }
 
+const LOGIN_THROTTLE_MAX_FAILS = 10;
+const LOGIN_THROTTLE_WINDOW_MS = 5 * 60 * 1000;
+
+// Our own per-IP brute-force guard for /api/auth/login. Supabase only sees the Worker's egress
+// IPs, so its per-IP limits can't tell users apart. Fails open: a throttle outage must never lock
+// everyone out of the app.
+async function loginThrottle(env, request, action) {
+  const ip = clientIp(request);
+  if (!env.LIVE_HUB || !ip) return { blocked: false, retryAfter: 0 };
+  try {
+    const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(`login-throttle:${ip}`));
+    const response = await stub.fetch(`https://live-hub/login-throttle/${action}`, { method: "POST" });
+    return await response.json();
+  } catch (error) {
+    console.warn(JSON.stringify({ message: "Login throttle unavailable", error: error.message }));
+    return { blocked: false, retryAfter: 0 };
+  }
+}
+
 export class LiveHub extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -220,6 +239,19 @@ export class LiveHub extends DurableObject {
 
   async fetch(request) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/login-throttle/") && request.method === "POST") {
+      // Per-IP failed-login counter (one object per IP). Only failures count, so many staff
+      // behind one office IP signing in successfully never block each other.
+      const action = url.pathname.split("/")[2];
+      const now = Date.now();
+      let fails = ((await this.ctx.storage.get("fails")) || []).filter((t) => now - t < LOGIN_THROTTLE_WINDOW_MS);
+      if (action === "fail") fails.push(now);
+      if (action === "reset") fails = [];
+      if (fails.length) await this.ctx.storage.put("fails", fails); else await this.ctx.storage.delete("fails");
+      const blocked = fails.length >= LOGIN_THROTTLE_MAX_FAILS;
+      const retryAfter = blocked ? Math.max(1, Math.ceil((fails[0] + LOGIN_THROTTLE_WINDOW_MS - now) / 1000)) : 0;
+      return Response.json({ blocked, retryAfter });
+    }
     if (url.pathname === "/notify" && request.method === "POST") {
       const { modules = [] } = await request.json().catch(() => ({}));
       const message = JSON.stringify({ type: "changed", modules });
@@ -884,14 +916,19 @@ async function validateAppSession(env, request, userId) {
     if (tracked.length) throw new Error("Invalid app session");
     return;
   }
-  const rows = await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(userId)}&select=id,revoked_at,created_at`);
+  const rows = await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(userId)}&select=id,revoked_at,created_at,last_seen_at,ip_address`);
   if (!rows[0]) throw new Error("Invalid app session");
   if (rows[0].revoked_at) throw new Error("SESSION_REVOKED");
   if (Date.now() - new Date(rows[0].created_at).getTime() >= APP_SESSION_MAX_AGE_MS) throw new Error("SESSION_EXPIRED_12H");
+  // Every authenticated API call used to rewrite this row. last_seen_at only needs minute-level
+  // accuracy, so skip the write unless it's stale (>60s) or the IP changed.
+  const ip = clientIp(request);
+  const seenAgeMs = rows[0].last_seen_at ? Date.now() - new Date(rows[0].last_seen_at).getTime() : Infinity;
+  if (seenAgeMs < 60_000 && (rows[0].ip_address || "") === ip) return;
   await supabaseFetch(env, `/rest/v1/app_sessions?id=eq.${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { prefer: "return=minimal" },
-    body: JSON.stringify({ last_seen_at: new Date().toISOString(), ip_address: clientIp(request) }),
+    body: JSON.stringify({ last_seen_at: new Date().toISOString(), ip_address: ip }),
   });
 }
 
@@ -2410,7 +2447,7 @@ async function postInventoryBranchBoard(env, branchLabel, branchInventory) {
   const stored = await monitoringState(env, stateKey).catch(() => ({}));
   if (stored.messageId) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_INVENTORY_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
-    if (edited?.edited) return saveMonitoringState(env, stateKey, { ...stored, updatedAt: new Date().toISOString() });
+    if (edited?.edited) return; // edited in place; nothing to persist
     await recordSystemLog(env, { action: "Discord inventory edit failed", module: "Discord", record: `${branchLabel}: ${edited?.error?.message || "Unknown edit failure"}` });
     // Edit failed (message deleted/edited elsewhere, etc.) — clear the old message before
     // posting a fresh one below so a still-live message doesn't linger as a duplicate.
@@ -2503,7 +2540,7 @@ async function runLuksongLeaderboardMonitor(env) {
   const stored = await monitoringState(env, "discord-luksong-leaderboard").catch(() => ({}));
   if (stored.messageId) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_LUKSONG_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
-    if (edited?.edited) return saveMonitoringState(env, "discord-luksong-leaderboard", { ...stored, updatedAt: new Date().toISOString() });
+    if (edited?.edited) return; // edited in place; nothing to persist
     await recordSystemLog(env, { action: "Discord Luksong leaderboard edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
   }
   const sent = await sendDiscordWebhookUrl(env, env.DISCORD_LUKSONG_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
@@ -2628,7 +2665,7 @@ async function runApiHealthMonitor(env) {
     const stored = await monitoringState(env, "discord-health").catch(() => ({}));
     if (stored.messageId) {
       const edited = await editDiscordWebhookMessage(env.DISCORD_HEALTH_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
-      if (edited?.edited) await saveMonitoringState(env, "discord-health", { ...stored, updatedAt: new Date().toISOString() }).catch((error) => recordSystemLog(env, { action: "Discord health state save failed", module: "Discord", record: error.message }));
+      if (edited?.edited) { /* edited in place; nothing to persist */ }
       else {
         await recordSystemLog(env, { action: "Discord health edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
         stored.messageId = "";
@@ -2641,7 +2678,12 @@ async function runApiHealthMonitor(env) {
       else await recordSystemLog(env, { action: "Discord health message id missing", module: "Discord", record: "Discord post succeeded but did not return a message ID" });
     }
   } else await recordSystemLog(env, { action: "Discord health monitor skipped", module: "Discord", record: "DISCORD_HEALTH_WEBHOOK_URL not configured" });
-  await saveMonitoringState(env, "api-health-status", { lastStatus: failed.length ? "failed" : "ok", lastCheckedAt: new Date().toISOString(), lastFailedAt: failed.length ? new Date().toISOString() : statusState.lastFailedAt || null, lastRecoveredAt: recovered ? new Date().toISOString() : statusState.lastRecoveredAt || null, failedChecks: failed.map((check) => check.name) }).catch((error) => recordSystemLog(env, { action: "Health status state save failed", module: "Monitoring", record: error.message }));
+  // Only persist on a real change (status flip or different failing checks). lastCheckedAt is
+  // never read, and rewriting this row every 5 minutes was ~288 pointless writes/day.
+  const nextFailedChecks = failed.map((check) => check.name);
+  const statusChanged = statusState.lastStatus !== (failed.length ? "failed" : "ok")
+    || JSON.stringify(statusState.failedChecks || []) !== JSON.stringify(nextFailedChecks);
+  if (statusChanged) await saveMonitoringState(env, "api-health-status", { lastStatus: failed.length ? "failed" : "ok", lastCheckedAt: new Date().toISOString(), lastFailedAt: failed.length ? new Date().toISOString() : statusState.lastFailedAt || null, lastRecoveredAt: recovered ? new Date().toISOString() : statusState.lastRecoveredAt || null, failedChecks: failed.map((check) => check.name) }).catch((error) => recordSystemLog(env, { action: "Health status state save failed", module: "Monitoring", record: error.message }));
   if (failed.length) await sendDiscordWebhook(env, { content: "🚨 **Medlane API health check failed.**", embeds: [embed] });
   else if (recovered) await sendDiscordWebhook(env, { embeds: [{ title: "Medlane API Health Recovered", color: 0x22c55e, description: "All monitored API checks are back to OK after the previous failure.", fields: [{ name: "Recovered At", value: `**${updatedAt} PHT**`, inline: false }, { name: "Monthly Uptime", value: `${uptime.uptimePercent.toFixed(2)}%`, inline: true }], timestamp: new Date().toISOString() }] });
 }
@@ -2658,7 +2700,7 @@ async function runDashboardAnalyticsMonitor(env) {
   const stored = await monitoringState(env, "discord-dashboard").catch(() => ({}));
   if (stored.messageId) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_DASHBOARD_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
-    if (edited?.edited) return saveMonitoringState(env, "discord-dashboard", { ...stored, updatedAt: new Date().toISOString() });
+    if (edited?.edited) return; // edited in place; nothing to persist
     await recordSystemLog(env, { action: "Discord dashboard edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
     // Edit failed (message deleted/edited elsewhere, etc.) — clear the old message before
     // posting a fresh one below so a still-live message doesn't linger as a duplicate.
@@ -2681,7 +2723,7 @@ async function runPendingItemsMonitor(env) {
   const stored = await monitoringState(env, "discord-pending").catch(() => ({}));
   if (stored.messageId) {
     const edited = await editDiscordWebhookMessage(env.DISCORD_PENDING_WEBHOOK_URL, stored.messageId, { embeds: [embed] }).catch((error) => ({ error }));
-    if (edited?.edited) return saveMonitoringState(env, "discord-pending", { ...stored, updatedAt: new Date().toISOString() });
+    if (edited?.edited) return; // edited in place; nothing to persist
     await recordSystemLog(env, { action: "Discord pending edit failed", module: "Discord", record: edited?.error?.message || "Unknown edit failure" });
   }
   const sent = await sendDiscordWebhookUrl(env, env.DISCORD_PENDING_WEBHOOK_URL, { embeds: [embed], wait: true }).catch((error) => ({ error }));
@@ -3434,6 +3476,10 @@ export default {
         if (request.method !== "POST") return methodNotAllowed();
         requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
         const { email, password } = await request.json();
+        const throttle = await loginThrottle(env, request, "check");
+        if (throttle.blocked) {
+          return json({ error: `Too many failed sign-in attempts. Try again in ${Math.ceil(throttle.retryAfter / 60)} minute(s).` }, { status: 429, headers: { "retry-after": String(throttle.retryAfter) } });
+        }
         const authResponse = await fetch(`${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, {
           method: "POST",
           headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
@@ -3442,10 +3488,12 @@ export default {
         const session = await authResponse.json().catch(() => null);
         if (!authResponse.ok) {
           const authError = session?.error_description || session?.msg || session?.error || "Invalid email or password";
+          if (authResponse.status === 400 || authResponse.status === 401 || authResponse.status === 422) await loginThrottle(env, request, "fail");
           const debug = url.searchParams.get("debug") === "1";
           console.error(JSON.stringify({ message: "Supabase login failed", authError, status: authResponse.status }));
           return json({ error: authError, ...(debug ? { supabaseStatus: authResponse.status, supabaseResponse: session, supabaseHost: new URL(env.SUPABASE_URL).hostname, supabasePath: new URL(env.SUPABASE_URL).pathname, authUrl: `${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, anonKeyHash: await shortHash(env.SUPABASE_ANON_KEY) } : {}) }, { status: 401 });
         }
+        await loginThrottle(env, request, "reset");
         const user = await profileForUser(env, session.user.id, email);
         const appSession = await createAppSession(env, request, session.user.id);
         return json({ session: { ...session, app_session_id: appSession?.id || null }, user });
