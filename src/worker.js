@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { collectSample, collectLiveDetails, buildWeeklyReport, hasAccessToken } from "./perf-report.js";
 
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
@@ -2066,7 +2067,8 @@ const digestStateModules = ["inventory", "sales", "clients", "warranties", "inve
 // dead session rows on each refresh.
 const GAME_MODULES = ["game-sessions", "game-scores"];
 // App-state blob exclusions: the game modules plus `logs` (fetched on its own paged endpoint).
-const NON_STATE_MODULES = ["logs", ...GAME_MODULES];
+const PERF_MODULE = "perf-snapshots";
+const NON_STATE_MODULES = ["logs", PERF_MODULE, ...GAME_MODULES];
 // Session tokens older than this are past every use (30-min expiry) and are swept.
 const GAME_SESSION_TTL_MS = 3 * 60 * 60 * 1000;
 
@@ -2913,6 +2915,8 @@ async function runFiveMinuteScheduledTasks(event, env) {
   const scheduled = manilaScheduleParts(Date.now());
   const inDigestHour = scheduled.hour === "18";
   const tasks = [runApiHealthMonitor(env)];
+  // Hourly Supabase metrics sample for the Sunday performance report (skipped in the 18:00 digest hour).
+  if (!inDigestHour && scheduled.minute === "00") tasks.push(runPerfSampler(env));
   // Keep the heavier analytics/pending/inventory monitors out of the 18:00 hour entirely —
   // that hour is reserved for the digest/backup jobs below, and stacking the monitors on the
   // same invocation is part of what used to blow the CPU/subrequest budget.
@@ -2933,6 +2937,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
     const digestJobs = [];
     const backupJobs = [];
     if (!["Sat", "Sun"].includes(weekday)) digestJobs.push(["daily-digest", dayKey, () => runDailyDigest(env)]);
+    if (weekday === "Sun") digestJobs.push(["weekly-perf-report", dayKey, () => runWeeklyPerfReport(env)]);
     if (weekday === "Fri") digestJobs.push(["weekly-digest", dayKey, () => runWeeklyDigest(env)]);
     if (weekday === "Fri") backupJobs.push(["weekly-backup", dayKey, () => createBackup(env, "weekly", null)]);
     if (scheduled.day === "01") backupJobs.push(["monthly-backup", monthKey, () => createBackup(env, "monthly", null)]);
@@ -3399,6 +3404,75 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
 async function runDailyDigest(env, { force = false } = {}) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   return composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: "last 24 hours", force });
+}
+
+// ---- Weekly Supabase performance report -------------------------------------------------
+// Hourly samples are stored one app_records row per Manila day (perf-snapshots / day-YYYY-MM-DD,
+// up to 24 samples), so a week is 7 small rows and app_records deletes (blocked) are never needed.
+function manilaDayKey(ms) {
+  return new Date(ms + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+async function loadPerfSamples(env, dayCount) {
+  const keys = Array.from({ length: dayCount }, (_, i) => `day-${manilaDayKey(Date.now() - i * 86400000)}`);
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.${PERF_MODULE}&record_key=in.${encodeURIComponent(postgrestIn(keys))}&select=record_key,data`);
+  return rows.flatMap((row) => row.data?.samples || []);
+}
+
+async function runPerfSampler(env) {
+  if (!hasAccessToken(env)) return null; // report email explains the missing token
+  const sample = await collectSample(env);
+  const recordKey = `day-${manilaDayKey(Date.now())}`;
+  const stateKey = appStateKey(env);
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${PERF_MODULE}&record_key=eq.${recordKey}&select=data`);
+  const samples = [...(rows[0]?.data?.samples || []), sample].slice(-30);
+  await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+    method: "POST",
+    headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify([{ state_key: stateKey, module_name: PERF_MODULE, record_key: recordKey, data: { samples }, updated_by: null }]),
+  });
+  // Audit-log only when the set of failing sections changes, so a persistent problem is logged once, not hourly.
+  const previous = Object.keys(samples.at(-2)?.errors || {}).sort().join(",");
+  const current = Object.keys(sample.errors).sort().join(",");
+  if (current !== previous) {
+    await recordSystemLog(env, current
+      ? { action: "Performance sample partial", module: "Monitoring", record: Object.entries(sample.errors).map(([k, v]) => `${k}: ${v}`).join(" | ") }
+      : { action: "Performance sampling recovered", module: "Monitoring", record: "All Supabase metric sections collected" });
+  }
+  return sample;
+}
+
+async function runWeeklyPerfReport(env, { force = false, onlyTo = "" } = {}) {
+  const dayKey = manilaPeriodKeys(manilaScheduleParts(Date.now())).dayKey;
+  const ledgerKey = `perf-report-sent-${dayKey}`;
+  const ledger = force || onlyTo ? {} : await monitoringState(env, ledgerKey).catch(() => ({}));
+  const sentTo = new Set(ledger.sent || []);
+  const all = await loadPerfSamples(env, 14);
+  const cutoff = Date.now() - 7 * 86400000;
+  const samples = all.filter((entry) => new Date(entry.t).getTime() >= cutoff);
+  const prevSamples = all.filter((entry) => new Date(entry.t).getTime() < cutoff);
+  const details = hasAccessToken(env) ? await collectLiveDetails(env) : null;
+  const report = await buildWeeklyReport({ samples, prevSamples, details });
+  const tokenNote = hasAccessToken(env) ? "" : `<div style="background:#fff4e8;border-left:4px solid #b4561a;padding:8px 12px;margin:8px 0;font-size:13px;"><strong>SUPABASE_ACCESS_TOKEN is not set on the Worker</strong>, so no performance data is being collected. Add it with <code>wrangler secret put SUPABASE_ACCESS_TOKEN</code>.</div>`;
+  const html = brandedEmailHtml({ title: "Weekly Supabase Performance", intro: "Database, connections, Auth, Storage and Realtime health for the past 7 days, with Friday and Saturday highlighted.", bodyHtml: tokenNote + report.bodyHtml });
+  const messageId = await saveDigestMessageSnapshot(env, { periodLabel: "Performance", role: "Superadmin, CEO", subject: report.subject, html }).catch(() => null);
+
+  const recipients = onlyTo ? new Map([[onlyTo.toLowerCase(), { email: onlyTo }]]) : await digestRecipients(env, ["Superadmin", "CEO"]);
+  let failed = 0;
+  for (const [emailKey, { email }] of recipients) {
+    if (sentTo.has(emailKey)) continue;
+    try {
+      await sendResendEmail(env, { to: email, subject: report.subject, html, digestMessageId: messageId });
+      sentTo.add(emailKey);
+      if (!onlyTo) await saveMonitoringState(env, ledgerKey, { sent: [...sentTo] }).catch(() => null);
+    } catch (error) {
+      failed += 1;
+      await recordSystemLog(env, { action: "Performance report email failed", module: "Email", record: `${email}: ${error.message}` }).catch(() => null);
+    }
+  }
+  await recordSystemLog(env, { action: "Weekly performance report", module: "Monitoring", record: `${report.sampleCount} samples, ${report.warnCount} warning(s)${report.warnCount ? `: ${report.recommendationTitles.join("; ")}` : ""}; sent to ${sentTo.size}/${recipients.size}`, extra: messageId ? { digestMessageId: messageId } : undefined });
+  if (failed) throw new Error(`${failed} performance report email(s) failed; will retry`);
+  return { recipients: recipients.size, sent: sentTo.size, samples: report.sampleCount, warnings: report.warnCount };
 }
 
 async function runWeeklyDigest(env, { force = false } = {}) {
@@ -5000,6 +5074,21 @@ export default {
           return json({ backup }, { status: 201 });
         }
         return methodNotAllowed();
+      }
+
+      if (url.pathname === "/api/perf/run" && request.method === "POST") {
+        const { profile } = await authenticatedProfile(request, env);
+        requireDigestAdmin(profile);
+        const { action = "report", force = false, testSend = true } = await request.json().catch(() => ({}));
+        if (action === "sample") {
+          if (!hasAccessToken(env)) return json({ error: "SUPABASE_ACCESS_TOKEN is not set on the Worker" }, { status: 400 });
+          const sample = await runPerfSampler(env);
+          return json({ ok: true, errors: sample?.errors || {}, sections: Object.keys(sample || {}).filter((k) => !["t", "errors"].includes(k)) });
+        }
+        if (action !== "report") return json({ error: "Invalid action" }, { status: 400 });
+        // Default is a test send to the caller only; testSend:false sends to all Superadmin/CEO.
+        const result = await runWeeklyPerfReport(env, { force: Boolean(force), onlyTo: testSend === false ? "" : profile.email });
+        return json({ ok: true, ...result, testSend: testSend !== false });
       }
 
       if (url.pathname === "/api/digest/run" && request.method === "POST") {
