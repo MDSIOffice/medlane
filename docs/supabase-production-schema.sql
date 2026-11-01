@@ -145,12 +145,19 @@ create index if not exists app_records_module_idx on app_records(state_key, modu
 -- Lets client_sales_balance() (and anything else filtering sales by client) use an index
 -- instead of scanning every sales row for the state_key.
 create index if not exists app_records_sales_client_balance_idx on app_records (state_key, (data->>'client')) where module_name = 'sales';
+create index if not exists app_records_updated_by_idx on app_records(updated_by);
+create index if not exists app_sessions_revoked_by_idx on app_sessions(revoked_by);
+create index if not exists app_state_updated_by_idx on app_state(updated_by);
+create index if not exists backup_runs_created_by_idx on backup_runs(created_by);
+create index if not exists file_objects_uploaded_by_idx on file_objects(uploaded_by);
+create index if not exists profiles_branch_id_idx on profiles(branch_id);
 create index if not exists app_sessions_user_idx on app_sessions(user_id, revoked_at, last_seen_at desc);
 create index if not exists backup_runs_type_idx on backup_runs(state_key, backup_type, created_at desc);
 
 create or replace function prevent_app_records_delete()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   if current_setting('medlane.allow_app_records_delete', true) = 'on' then
@@ -176,31 +183,31 @@ alter table app_sessions enable row level security;
 alter table backup_runs enable row level security;
 
 drop policy if exists "Users can read own profile" on profiles;
-create policy "Users can read own profile" on profiles for select using (auth.uid() = id);
+create policy "Users can read own profile" on profiles for select using ((select auth.uid()) = id);
 
 drop policy if exists "Users can read own module permissions" on module_permissions;
-create policy "Users can read own module permissions" on module_permissions for select using (auth.uid() = user_id);
+create policy "Users can read own module permissions" on module_permissions for select using ((select auth.uid()) = user_id);
 
 drop policy if exists "Authenticated users can read branches" on branches;
-create policy "Authenticated users can read branches" on branches for select using (auth.role() = 'authenticated');
+create policy "Authenticated users can read branches" on branches for select using ((select auth.role()) = 'authenticated');
 
 drop policy if exists "Authenticated users can read app state" on app_state;
-create policy "Authenticated users can read app state" on app_state for select using (auth.role() = 'authenticated');
+create policy "Authenticated users can read app state" on app_state for select using ((select auth.role()) = 'authenticated');
 
 drop policy if exists "Authenticated users can read active files" on file_objects;
-create policy "Authenticated users can read active files" on file_objects for select using (auth.role() = 'authenticated' and deleted_at is null);
+create policy "Authenticated users can read active files" on file_objects for select using ((select auth.role()) = 'authenticated' and deleted_at is null);
 
 drop policy if exists "Authenticated users can read app records" on app_records;
-create policy "Authenticated users can read app records" on app_records for select using (auth.role() = 'authenticated');
+create policy "Authenticated users can read app records" on app_records for select using ((select auth.role()) = 'authenticated');
 
 drop policy if exists "Authenticated users can read storage usage" on storage_usage;
-create policy "Authenticated users can read storage usage" on storage_usage for select using (auth.role() = 'authenticated');
+create policy "Authenticated users can read storage usage" on storage_usage for select using ((select auth.role()) = 'authenticated');
 
 drop policy if exists "Users can read own app sessions" on app_sessions;
-create policy "Users can read own app sessions" on app_sessions for select using (auth.uid() = user_id);
+create policy "Users can read own app sessions" on app_sessions for select using ((select auth.uid()) = user_id);
 
 drop policy if exists "Authenticated users can read backup metadata" on backup_runs;
-create policy "Authenticated users can read backup metadata" on backup_runs for select using (auth.role() = 'authenticated');
+create policy "Authenticated users can read backup metadata" on backup_runs for select using ((select auth.role()) = 'authenticated');
 
 create or replace function update_app_state(expected_revision bigint, next_data jsonb, actor uuid, state_key text default 'production')
 returns table(key text, revision bigint, updated_at timestamptz)
@@ -378,6 +385,12 @@ grant select on table file_objects to authenticated;
 grant select on table storage_usage to authenticated;
 grant select on table app_sessions to authenticated;
 grant select on table backup_runs to authenticated;
+revoke execute on function update_app_state(bigint, jsonb, uuid, text) from public, anon, authenticated;
+revoke execute on function reserve_file_storage(text, bigint, bigint) from public, anon, authenticated;
+revoke execute on function release_file_storage(text, bigint) from public, anon, authenticated;
+revoke execute on function acknowledge_memo(text, text, text, text, text, text, uuid) from public, anon, authenticated;
+revoke execute on function client_sales_balance(text, text) from public, anon, authenticated;
+revoke execute on function prevent_app_records_delete() from public, anon, authenticated;
 grant execute on function update_app_state(bigint, jsonb, uuid, text) to service_role;
 grant execute on function reserve_file_storage(text, bigint, bigint) to service_role;
 grant execute on function release_file_storage(text, bigint) to service_role;

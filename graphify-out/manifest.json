@@ -108,9 +108,9 @@
     "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
   },
   "src/worker.js": {
-    "mtime": 1792380234.7287874,
-    "seen": 1792380256.2359328,
-    "ast_hash": "46ba3bcfaf5b0589a536bd6a8b352054",
+    "mtime": 1793526030.7559538,
+    "seen": 1793526037.663172,
+    "ast_hash": "e5118315d375bb19665b96244d9346fa",
     "semantic_hash": ""
   },
   "Notification Sound.mp3": {
@@ -270,9 +270,9 @@
     "semantic_hash": ""
   },
   "public/index.html": {
-    "mtime": 1792419560.8676426,
-    "seen": 1792596951.009001,
-    "ast_hash": "42229f9f6dfe54cfb2c5c14522bc1d56",
+    "mtime": 1792689014.388953,
+    "seen": 1793525515.677279,
+    "ast_hash": "263bb3062b87cddb07efc8bb5b3c4081",
     "semantic_hash": ""
   },
   "public/login/index.html": {
@@ -780,9 +780,9 @@
     "semantic_hash": ""
   },
   "docs/supabase-production-schema.sql": {
-    "mtime": 1792380220.0167885,
-    "seen": 1792380256.235913,
-    "ast_hash": "f9679b7f7ca120a1ccb607351089f661",
+    "mtime": 1793525653.541472,
+    "seen": 1793526037.6631548,
+    "ast_hash": "115682a3cda0e81d568e6990ea4adf7f",
     "semantic_hash": ""
   },
   "skills-lock.json": {
@@ -795,6 +795,42 @@
     "mtime": 1792380226.6358178,
     "seen": 1792380256.2359118,
     "ast_hash": "36832b249a882fb817b41aae137a77c5",
+    "semantic_hash": ""
+  },
+  "public/assets/landing/icon-instagram.svg": {
+    "mtime": 1792688928.22994,
+    "seen": 1793525515.677321,
+    "ast_hash": "7f9e16792d131fa3e75e730557a159a8",
+    "semantic_hash": ""
+  },
+  "public/favicon-192x192.png": {
+    "mtime": 1792688531.469924,
+    "seen": 1793525515.6773272,
+    "ast_hash": "f971c74559ece11c00f1393cb21ecfb1",
+    "semantic_hash": ""
+  },
+  "public/favicon-48x48.png": {
+    "mtime": 1792688531.4649339,
+    "seen": 1793525515.6773279,
+    "ast_hash": "01a439b982a4ab7afaaad38e8fc34473",
+    "semantic_hash": ""
+  },
+  "public/favicon-512x512.png": {
+    "mtime": 1792688531.4803622,
+    "seen": 1793525515.6773288,
+    "ast_hash": "a890f620cbc4a2b0832e8751b2c191da",
+    "semantic_hash": ""
+  },
+  "public/favicon-96x96.png": {
+    "mtime": 1792688531.4669561,
+    "seen": 1793525515.67733,
+    "ast_hash": "8d16c228a023e09c2137266be452a047",
+    "semantic_hash": ""
+  },
+  "docs/migrations/2026-11-01-supabase-advisor-fixes.sql": {
+    "mtime": 1793525653.509436,
+    "seen": 1793526037.663154,
+    "ast_hash": "bcb0f8e844f52cc961bd9b2c401ab67c",
     "semantic_hash": ""
   }
 }
