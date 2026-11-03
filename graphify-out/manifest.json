@@ -36,9 +36,9 @@
     "semantic_hash": ""
   },
   "public/scripts/state.js": {
-    "mtime": 1792597499.2874286,
-    "seen": 1792597524.284487,
-    "ast_hash": "ee6321ea37395b211c5c618320cb4439",
+    "mtime": 1793668617.5880013,
+    "seen": 1793668624.746282,
+    "ast_hash": "d0fbf55b44b1b9ac47779f99a96461ee",
     "semantic_hash": ""
   },
   "public/scripts/ui-utils.js": {
@@ -834,9 +834,9 @@
     "semantic_hash": ""
   },
   "src/perf-report.js": {
-    "mtime": 1793526613.6543436,
-    "seen": 1793526660.08522,
-    "ast_hash": "310f03c46b5f2e6d246cd93e5a3f907b",
+    "mtime": 1793527079.6923485,
+    "seen": 1793668624.7462919,
+    "ast_hash": "6baf087e0d8bdba7988fcd480ddb9476",
     "semantic_hash": ""
   }
 }
