@@ -668,6 +668,17 @@ function isSaveInFlight() {
   return activeSaveCount > 0;
 }
 
+// Mirrors the server's canAccessKey(..., "edit"): a user with no edit rights on a key's module gets
+// a 403 for the whole save, so the background auto-save (e.g. generated notifications at login)
+// must never queue keys they can't write — otherwise "Pending save failed" shows on every login.
+function canEditSaveKey(key) {
+  if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
+  const editable = editableModules();
+  if (!editable.length) return false;
+  const owners = Object.entries(frontendModuleRecordKeys).filter(([, keys]) => keys.includes(key)).map(([module]) => module);
+  return owners.length ? owners.some((module) => editable.includes(module)) : true;
+}
+
 function inferredSaveKeys() {
   const activeSection = document.body.dataset.activeSection || qs(".section.active")?.id || "dashboard";
   const keys = [...(frontendModuleRecordKeys[activeSection] || [])];
@@ -686,7 +697,7 @@ function saveData(keys = null) {
   // directly waiting on — this only updates the small status indicator.
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return;
   if (typeof syncGeneratedNotifications === "function") syncGeneratedNotifications();
-  const payload = savePayloadForKeys(keys || inferredSaveKeys());
+  const payload = savePayloadForKeys((keys || inferredSaveKeys()).filter(canEditSaveKey));
   if (!Object.keys(payload).length) return;
   mergePendingSaveQueue(payload);
   clearTimeout(pendingServerSave);
