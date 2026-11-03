@@ -754,6 +754,33 @@ function flushPendingSaveQueue() {
         return;
       }
     }
+    // A 400/403/422 is a permanent rejection (permission, validation, circuit breaker) — retrying
+    // the identical payload can never succeed, so the "Pending save failed" banner would stick
+    // forever (and be re-queued from IndexedDB on every login). Retry each module on its own:
+    // modules that save are cleared, modules the server flatly refuses are discarded, and only
+    // transient failures stay queued.
+    const isPermanentReject = (e) => ([400, 403, 404, 409, 422].includes(e.status) && !/APP_STATE_CONFLICT/.test(e.message || "")) || /Save blocked|cannot approve|permission|^Only /.test(e.message || "");
+    if (isPermanentReject(error) && Object.keys(queuedPayload).length > 1) {
+      let transient = false;
+      for (const [key, value] of Object.entries(queuedPayload)) {
+        try {
+          const result = await MedlaneAPI.saveAppState({ [key]: value }, serverRevision);
+          if (result?.revision) serverRevision = Number(result.revision);
+          clearPendingSaveQueueKeys([key]);
+        } catch (innerError) {
+          if (isPermanentReject(innerError)) {
+            console.warn(`Discarding queued "${key}" — server rejected it permanently:`, innerError.message);
+            clearPendingSaveQueueKeys([key]);
+          } else transient = true;
+        }
+      }
+      if (!transient) { setGlobalSaveStatus("saved", "Saved"); return; }
+    } else if (isPermanentReject(error)) {
+      console.warn("Discarding queued save — server rejected it permanently:", error.message);
+      writePendingSaveQueue({});
+      setGlobalSaveStatus("saved", "Saved");
+      return;
+    }
     // Silent by design: this is an automatic background retry the user never asked
     // for and has no way to know is even running. A toast() here can (and did)
     // land on top of — and hide — the actual result of whatever the user was just
