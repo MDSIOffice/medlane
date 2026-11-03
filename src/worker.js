@@ -1194,6 +1194,55 @@ async function assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) {
   }
 }
 
+// Masterlist uniqueness, enforced server-side (the client checks only its own, possibly stale,
+// copy). Only rows that are new — or whose name/code/TIN actually changed — are checked, so
+// legacy duplicates already in the data never block an unrelated edit. Names compare ignoring
+// case, spaces and punctuation; codes ignore case and spaces; TINs compare by digits.
+const MASTERLIST_UNIQUE_FIELDS = {
+  clients: { name: "name", code: "code", tin: "tin", label: "client" },
+  suppliers: { name: "name", code: "code", tin: "tin", label: "supplier" },
+  items: { name: "name", code: "code", label: "item" },
+  banks: { name: "name", label: "bank" },
+  employees: { name: "name", label: "employee" },
+};
+const masterName = (value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const masterCode = (value) => String(value ?? "").toLowerCase().replace(/\s+/g, "");
+const masterTin = (value) => String(value ?? "").replace(/\D/g, "");
+
+function masterlistIdentity(data, spec) {
+  return {
+    name: masterName(data?.[spec.name]),
+    code: spec.code ? masterCode(data?.[spec.code]) : "",
+    tin: spec.tin && masterTin(data?.[spec.tin]).length === 12 ? masterTin(data[spec.tin]) : "",
+  };
+}
+
+async function assertMasterlistUnique(env, stateKey, rows, { replaceModules = false } = {}) {
+  const incomingByModule = {};
+  for (const row of rows) if (MASTERLIST_UNIQUE_FIELDS[row.module_name] && !row.data?.archived) (incomingByModule[row.module_name] ||= []).push(row);
+  for (const [moduleName, incoming] of Object.entries(incomingByModule)) {
+    const spec = MASTERLIST_UNIQUE_FIELDS[moduleName];
+    const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&select=record_key,data`);
+    const storedByKey = new Map(stored.map((entry) => [entry.record_key, entry.data || {}]));
+    const incomingKeys = new Set(incoming.map((row) => row.record_key));
+    // A whole-module state save replaces the module: stored rows missing from it are being removed.
+    const active = stored.filter((entry) => !replaceModules && !entry.data?.archived && !incomingKeys.has(entry.record_key)).map((entry) => ({ key: entry.record_key, id: masterlistIdentity(entry.data, spec) }));
+    // Rows in this same save count as "existing" for each other.
+    for (const row of incoming) active.push({ key: row.record_key, id: masterlistIdentity(row.data, spec), incoming: true });
+    for (const row of incoming) {
+      const id = masterlistIdentity(row.data, spec);
+      const prev = storedByKey.get(row.record_key);
+      const prevId = prev ? masterlistIdentity(prev, spec) : null;
+      for (const field of ["name", "code", "tin"]) {
+        if (!id[field]) continue;
+        if (prevId && prevId[field] === id[field]) continue;
+        const clash = active.find((other) => other.key !== row.record_key && other.id[field] === id[field]);
+        if (clash) throw new Error(`Duplicate ${spec.label} ${field === "tin" ? "TIN" : field} detected: "${row.data?.[spec[field]]}" already exists.`);
+      }
+    }
+  }
+}
+
 async function postMemoToDiscord(env, memo) {
   if (!env.MEMO_DISCORD_WEBHOOK_URL) {
     await recordSystemLog(env, { action: "Memo Discord post skipped", module: "Discord", record: `${memo.id}: MEMO_DISCORD_WEBHOOK_URL not configured` });
@@ -4044,6 +4093,7 @@ export default {
             await Promise.all([
               newSaleRows.length ? validateNewSaleRows(env, stateKey, profile, newSaleRows) : null,
               poRows.length ? assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) : null,
+              assertMasterlistUnique(env, stateKey, rows, { replaceModules: true }),
               assertFinancialApprovalAllowed(env, stateKey, profile, rows),
               assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
               assertCreditApprovalAllowed(env, stateKey, profile, rows),
@@ -4441,6 +4491,7 @@ export default {
             ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(incomingStockRows.map((row) => row.record_key)))}&select=record_key,data`)
             : Promise.resolve([]),
           incomingPoRows.length ? assertPurchaseOrderClientsNotArchived(env, stateKey, incomingPoRows) : Promise.resolve(),
+          assertMasterlistUnique(env, stateKey, rows),
           assertFinancialApprovalAllowed(env, stateKey, profile, rows),
           assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
           assertCreditApprovalAllowed(env, stateKey, profile, rows),

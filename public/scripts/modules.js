@@ -2193,8 +2193,8 @@ function renderMasterlists() {
     const locked = data.inventory.some((item) => item.branch === branch) || data.pendingTransfers.some((transfer) => transfer.from === branch || transfer.to === branch);
     return { focus: branch, cells: [branch, branchAddresses()[branch] || "No address set", locked ? "Used by records" : "Unused", canEditModule("masterlists") ? `<button class="mini-button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${locked ? "" : `<button class="mini-button danger-button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}` : "Approval required"] };
   }));
-  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Target Sales", "Govt. Benefits", "Source", "Actions"], data.employees.filter(masterFilter).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", Number(e.targetSales || 0) ? peso.format(Number(e.targetSales)) : "-", employeeBenefitsSummary(e), masterlistSourcePill(e), rowActions("employee", data.employees.indexOf(e))] })));
-  if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Source", "Actions"], data.banks.filter(masterFilter).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, masterlistSourcePill(b), rowActions("bank", data.banks.indexOf(b))] })));
+  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Target Sales", "Govt. Benefits", "Actions"], data.employees.filter(masterFilter).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", Number(e.targetSales || 0) ? peso.format(Number(e.targetSales)) : "-", employeeBenefitsSummary(e), rowActions("employee", data.employees.indexOf(e))] })));
+  if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Actions"], data.banks.filter(masterFilter).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, rowActions("bank", data.banks.indexOf(b))] })));
 }
 
 function clientDocRecordId(clientName, doc) {
@@ -5274,19 +5274,25 @@ function validateClientsMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
   const seenCodes = new Set();
+  const seenTins = new Set();
   return rows.slice(1).map((row, index) => {
     const code = rowValue(headers, row, ["Code"]);
     const name = rowValue(headers, row, ["Name"]);
+    const tin = normalizeMasterTin(rowValue(headers, row, ["TIN", "TIN No."]));
     const area = inferClientArea(row, headers);
     const issues = [];
-    const key = name.trim().toLowerCase();
-    if (!name) issues.push("Missing client name");
-    const trimmedCode = String(code || "").trim().toLowerCase();
-    if (name && data.clients.some((client) => client.name.toLowerCase() === key || (trimmedCode && String(client.code || "").trim().toLowerCase() === trimmedCode))) issues.push("Duplicate existing client/code");
+    const key = normalizeMasterName(name);
+    if (!name.trim()) issues.push("Missing client name");
+    const codeKey = normalizeMasterCode(code);
+    // Archived clients count too on import: re-adding one would silently shadow it.
+    if (key && data.clients.some((client) => normalizeMasterName(client.name) === key || (codeKey && normalizeMasterCode(client.code) === codeKey))) issues.push("Duplicate existing client/code");
+    if (tin.length === 12 && data.clients.some((client) => normalizeMasterTin(client.tin) === tin)) issues.push("Duplicate existing client TIN");
     if (key && seen.has(key)) issues.push("Duplicate input client");
-    if (trimmedCode && seenCodes.has(trimmedCode)) issues.push("Duplicate input client code");
+    if (codeKey && seenCodes.has(codeKey)) issues.push("Duplicate input client code");
+    if (tin.length === 12 && seenTins.has(tin)) issues.push("Duplicate input client TIN");
     if (key) seen.add(key);
-    if (trimmedCode) seenCodes.add(trimmedCode);
+    if (codeKey) seenCodes.add(codeKey);
+    if (tin.length === 12) seenTins.add(tin);
     return { row: index + 2, kind: "clientsMasterlist", code, name, area, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
@@ -5302,18 +5308,23 @@ function validateSuppliersMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
   const seenCodes = new Set();
+  const seenTins = new Set();
   return rows.slice(1).map((row, index) => {
     const code = rowValue(headers, row, ["Code"]);
     const name = rowValue(headers, row, ["Name"]);
+    const tin = normalizeMasterTin(rowValue(headers, row, ["Tin", "TIN"]));
     const issues = [];
-    const key = name.trim().toLowerCase();
-    if (!name) issues.push("Missing supplier/vendor name");
-    const trimmedCode = String(code || "").trim().toLowerCase();
-    if (name && data.suppliers.some((supplier) => supplier.name.toLowerCase() === key || (trimmedCode && String(supplier.code || "").trim().toLowerCase() === trimmedCode))) issues.push("Duplicate existing supplier/code");
+    const key = normalizeMasterName(name);
+    if (!name.trim()) issues.push("Missing supplier/vendor name");
+    const codeKey = normalizeMasterCode(code);
+    if (key && data.suppliers.some((supplier) => normalizeMasterName(supplier.name) === key || (codeKey && normalizeMasterCode(supplier.code) === codeKey))) issues.push("Duplicate existing supplier/code");
+    if (tin.length === 12 && data.suppliers.some((supplier) => normalizeMasterTin(supplier.tin) === tin)) issues.push("Duplicate existing supplier TIN");
     if (key && seen.has(key)) issues.push("Duplicate input supplier");
-    if (trimmedCode && seenCodes.has(trimmedCode)) issues.push("Duplicate input supplier code");
+    if (codeKey && seenCodes.has(codeKey)) issues.push("Duplicate input supplier code");
+    if (tin.length === 12 && seenTins.has(tin)) issues.push("Duplicate input supplier TIN");
     if (key) seen.add(key);
-    if (trimmedCode) seenCodes.add(trimmedCode);
+    if (codeKey) seenCodes.add(codeKey);
+    if (tin.length === 12) seenTins.add(tin);
     return { row: index + 2, kind: "suppliersMasterlist", code, name, area: rowValue(headers, row, ["Classification"]), status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
@@ -5327,16 +5338,21 @@ function buildImportedSupplier(row, headers) {
 function validateProductsMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
+  const seenNames = new Set();
   return rows.slice(1).map((row, index) => {
     const code = rowValue(headers, row, ["ITEM CODE", "Item Code"]);
     const name = rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]);
     const issues = [];
-    const key = code.trim().toLowerCase();
-    if (!code) issues.push("Missing item code");
-    if (!name) issues.push("Missing item description");
-    if (code && data.items.some((item) => item.code.toLowerCase() === key)) issues.push("Duplicate existing item code");
+    const key = normalizeMasterCode(code);
+    const nameKey = normalizeMasterName(name);
+    if (!code.trim()) issues.push("Missing item code");
+    if (!name.trim()) issues.push("Missing item description");
+    if (key && data.items.some((item) => normalizeMasterCode(item.code) === key)) issues.push("Duplicate existing item code");
+    if (nameKey && data.items.some((item) => normalizeMasterName(item.name) === nameKey)) issues.push("Duplicate existing item name");
     if (key && seen.has(key)) issues.push("Duplicate input item code");
+    if (nameKey && seenNames.has(nameKey)) issues.push("Duplicate input item name");
     if (key) seen.add(key);
+    if (nameKey) seenNames.add(nameKey);
     return { row: index + 2, kind: "productsMasterlist", code, name, area: importedCategory(rowValue(headers, row, ["ITEM CLASSIFICATION", "Item Classification"])), status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
@@ -5384,10 +5400,10 @@ function buildMigratedSale(row, headers) {
   const tax = type === "DR" ? 0 : importNumber(rowValue(headers, row, ["12% VAT"]));
   const net = type === "DR" ? 0 : importNumber(rowValue(headers, row, ["NET Sales", "Actual Sales", "Invoice Amount", "Total Price"])) || Math.max(amount - discount + tax, 0);
   const item = data.items.find((entry) => entry.name.toLowerCase() === product.toLowerCase() || entry.code.toLowerCase() === product.toLowerCase());
-  const client = data.clients.find((entry) => entry.name.toLowerCase() === clientName.toLowerCase());
+  const client = data.clients.find((entry) => normalizeMasterName(entry.name) === normalizeMasterName(clientName));
   if (!client) data.clients.push({ name: clientName, area, dealer: rowValue(headers, row, ["Classification"]) || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]), terms: 30, address: rowValue(headers, row, ["Office", "Branch"]), contact: "Migrated record", tin: rowValue(headers, row, ["TIN"]), creditLimit: 150000, docs: "Migrated", migrated: true });
   if (area && !platformAreas().some((entry) => entry.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
-  return { id: documentNo, documentNo, po: `MIG-${documentNo}`, client: clientName, area, dealer: rowValue(headers, row, ["Classification"]) || client?.dealer || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]) || "Migrated", type, date: importDate(rowValue(headers, row, ["Date"]), rowValue(headers, row, ["Year"]), rowValue(headers, row, ["Month"])), item: product, brand, qty, uom, amount, discount, discountReason: discount ? "Migrated discount" : "", tax, net, terms: Number(client?.terms || 30), paid: 0, status: "Active", migrated: true, migrationSource: "Sales/Collections import", migrationRemarks: rowValue(headers, row, ["Remarks"]), lines: [{ item: product, code: item?.code || `MIG-${documentNo}`.slice(0, 24), brand, qty, uom, price, lot: "Migrated", expiry: "N/A", terms: Number(client?.terms || 30) }] };
+  return { id: documentNo, documentNo, po: `MIG-${documentNo}`, client: client?.name || clientName, area, dealer: rowValue(headers, row, ["Classification"]) || client?.dealer || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]) || "Migrated", type, date: importDate(rowValue(headers, row, ["Date"]), rowValue(headers, row, ["Year"]), rowValue(headers, row, ["Month"])), item: product, brand, qty, uom, amount, discount, discountReason: discount ? "Migrated discount" : "", tax, net, terms: Number(client?.terms || 30), paid: 0, status: "Active", migrated: true, migrationSource: "Sales/Collections import", migrationRemarks: rowValue(headers, row, ["Remarks"]), lines: [{ item: product, code: item?.code || `MIG-${documentNo}`.slice(0, 24), brand, qty, uom, price, lot: "Migrated", expiry: "N/A", terms: Number(client?.terms || 30) }] };
 }
 function validateCollectionsMigrationRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
@@ -5426,9 +5442,9 @@ function validateImportRows() {
     if (!name) issues.push("Missing client name");
     if (!allowedAreas.includes(area)) issues.push("Invalid area");
     if (!address || !contact || !tin) issues.push("Missing address, contact, or TIN");
-    if (data.clients.some((client) => client.name.toLowerCase() === String(name).toLowerCase())) issues.push("Duplicate existing client");
-    if (seen.has(String(name).toLowerCase())) issues.push("Duplicate input row");
-    seen.add(String(name).toLowerCase());
+    if (data.clients.some((client) => normalizeMasterName(client.name) === normalizeMasterName(name))) issues.push("Duplicate existing client");
+    if (seen.has(normalizeMasterName(name))) issues.push("Duplicate input row");
+    seen.add(normalizeMasterName(name));
     return { row: index + 1, kind: "clients", type, name, area, address, contact, tin, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
@@ -7833,29 +7849,35 @@ function masterlistModuleKey(type) {
 
 function validateMasterRecord(type, values, exceptIndex = -1) {
   // Archived records never block uniqueness — restoring one is guarded separately, and an
-  // archived name/code/TIN should be free to reuse for a fresh active record.
+  // archived name/code/TIN should be free to reuse for a fresh active record. Names and codes are
+  // compared normalized (case/space/punctuation-insensitive) so near-identical spellings collide.
+  const others = (list) => (list || []).filter((record, index) => index !== exceptIndex && !isArchived(record));
+  const sameName = (list, value) => { const key = normalizeMasterName(value); return Boolean(key) && others(list).some((record) => normalizeMasterName(record.name) === key); };
+  const sameCode = (list, value) => { const key = normalizeMasterCode(value); return Boolean(key) && others(list).some((record) => normalizeMasterCode(record.code) === key); };
+  const sameTin = (list, value) => { const key = normalizeMasterTin(value); return key.length === 12 && others(list).some((record) => normalizeMasterTin(record.tin) === key); };
   if (type === "client") {
-    const name = values.name?.trim().toLowerCase();
     const tin = values.tin?.trim();
     if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
-    if (data.clients.some((client, index) => index !== exceptIndex && !isArchived(client) && client.name.trim().toLowerCase() === name)) throw new Error("Duplicate client name detected.");
-    if (tin && data.clients.some((client, index) => index !== exceptIndex && !isArchived(client) && client.tin === tin)) throw new Error("Duplicate client TIN detected.");
+    if (sameName(data.clients, values.name)) throw new Error("Duplicate client name detected.");
+    if (values.code && sameCode(data.clients, values.code)) throw new Error("Duplicate client code detected.");
+    if (tin && sameTin(data.clients, tin)) throw new Error("Duplicate client TIN detected.");
     if (Number(values.creditLimit || 0) < 0) throw new Error("Credit limit cannot be negative.");
   }
   if (type === "supplier") {
     const tin = values.tin?.trim();
     if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
-    if (tin && data.suppliers.some((supplier, index) => index !== exceptIndex && !isArchived(supplier) && supplier.tin === tin)) throw new Error("Duplicate supplier TIN detected.");
+    if (sameName(data.suppliers, values.name)) throw new Error("Duplicate supplier name detected.");
+    if (values.code && sameCode(data.suppliers, values.code)) throw new Error("Duplicate supplier code detected.");
+    if (tin && sameTin(data.suppliers, tin)) throw new Error("Duplicate supplier TIN detected.");
     if (!values.zip?.trim()) throw new Error("ZIP Code is required.");
   }
   if (type === "item") {
-    const code = values.code?.trim().toLowerCase();
-    const name = values.name?.trim().toLowerCase();
-    if (data.items.some((item, index) => index !== exceptIndex && !isArchived(item) && item.code.trim().toLowerCase() === code)) throw new Error("Duplicate item code detected.");
-    if (data.items.some((item, index) => index !== exceptIndex && !isArchived(item) && item.name.trim().toLowerCase() === name)) throw new Error("Duplicate item name detected.");
+    if (sameCode(data.items, values.code)) throw new Error("Duplicate item code detected.");
+    if (sameName(data.items, values.name)) throw new Error("Duplicate item name detected.");
   }
-  if (type === "bank" && data.banks.some((bank, index) => index !== exceptIndex && !isArchived(bank) && bank.name.trim().toLowerCase() === values.name?.trim().toLowerCase())) throw new Error("Duplicate bank name detected.");
+  if (type === "bank" && sameName(data.banks, values.name)) throw new Error("Duplicate bank name detected.");
   if (type === "employee") {
+    if (sameName(data.employees, values.name)) throw new Error("Duplicate employee name detected.");
     if (!values.birthday?.trim()) throw new Error("Birthday is required.");
     if (values.birthday > latestAllowedBirthday()) throw new Error("Employee must be at least 18 years old.");
   }
