@@ -36,9 +36,9 @@
     "semantic_hash": ""
   },
   "public/scripts/state.js": {
-    "mtime": 1793668617.5880013,
-    "seen": 1793668624.746282,
-    "ast_hash": "d0fbf55b44b1b9ac47779f99a96461ee",
+    "mtime": 1793669232.6026547,
+    "seen": 1793670697.0164568,
+    "ast_hash": "fb4e03cdceba320e5817a07513c5aa2a",
     "semantic_hash": ""
   },
   "public/scripts/ui-utils.js": {
@@ -108,9 +108,9 @@
     "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
   },
   "src/worker.js": {
-    "mtime": 1793526636.1936386,
-    "seen": 1793526660.085221,
-    "ast_hash": "2677dd4ba0c4087f50f1d90b5d314dd3",
+    "mtime": 1793670689.5909648,
+    "seen": 1793670697.016472,
+    "ast_hash": "973ac43029ba92b3988261cdde2b65f8",
     "semantic_hash": ""
   },
   "Notification Sound.mp3": {

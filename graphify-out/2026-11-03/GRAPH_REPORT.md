@@ -1,17 +1,17 @@
-# Graph Report - medlane  (2026-11-01)
+# Graph Report - medlane  (2026-11-03)
 
 ## Corpus Check
-- 69 files · ~369,682 words
+- 69 files · ~369,893 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 15 file(s) not represented in the graph (top: (none) 9, .css 3, .ico 1)
 
 ## Summary
-- 2518 nodes · 5617 edges · 118 communities (102 shown, 16 thin omitted)
+- 2518 nodes · 5618 edges · 118 communities (102 shown, 16 thin omitted)
 - Extraction: 92% EXTRACTED · 8% INFERRED · 0% AMBIGUOUS · INFERRED: 431 edges (avg confidence: 0.88)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `da9becb2`
+- Built from commit: `6e792d76`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -347,7 +347,7 @@ Cohesion: 0.20
 Nodes (19): applyPtFieldOverride(), applyPtRowOverride(), ensurePtRowOverride(), handlePtCanvasKeydown(), measurePtDefaultRow(), nudgePtSelected(), ptCanvasScale(), ptElementBoxIn() (+11 more)
 
 ### Community 46 - "saveData"
-Cohesion: 0.23
+Cohesion: 0.24
 Nodes (18): beginSaveOperation(), clearPendingSaveQueueKeys(), dedupeRecordsForSave(), endSaveOperation(), flushPendingSaveQueue(), hasPendingSaveQueue(), includesSearch(), inferredSaveKeys() (+10 more)
 
 ### Community 47 - "renderDashboard"
