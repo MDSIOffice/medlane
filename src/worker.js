@@ -1055,6 +1055,37 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     for (const line of lines) if (line.code) stockCheckedCodes.add(String(line.code));
   }
 
+  // Credit-limit gate for a new invoice by a non-authorizer. Shared by the normal path and the
+  // noPo/migrated path below — those client-set flags skip stock/amount validation but must not
+  // also skip the discount and credit controls.
+  const checkCredit = async (sale, label) => {
+  if (!canAuthorizeDiscount && sale.client) {
+    if (!creditLimitByClient) {
+      const clientRows = await loadClientRows();
+      creditLimitByClient = new Map(clientRows.map((clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
+    }
+    const limit = creditLimitByClient.get(sale.client) || 0;
+    if (limit > 0) {
+      projectedBalanceByClient ||= new Map();
+      if (!projectedBalanceByClient.has(sale.client)) {
+        // One indexed Postgres aggregate (see docs/migrations/2026-10-19-client-sales-balance-rpc.sql)
+        // scoped to this one client, instead of paging through every sale the company has ever
+        // recorded — across every client — just to recompute this client's running balance.
+        const [balanceRow] = await supabaseFetch(env, "/rest/v1/rpc/client_sales_balance", {
+          method: "POST",
+          body: JSON.stringify({ p_state_key: stateKey, p_client: sale.client }),
+        });
+        projectedBalanceByClient.set(sale.client, Number(balanceRow?.balance ?? 0));
+      }
+      const net = Number(sale.net ?? sale.amount ?? 0);
+      const projected = projectedBalanceByClient.get(sale.client) + net;
+      if (projected > limit) throw new Error(`Invoice ${label}: credit limit exceeded for ${sale.client} (${projected.toFixed(2)} / ${limit.toFixed(2)}). Needs Admin/CEO/Superadmin authorization.`);
+      projectedBalanceByClient.set(sale.client, projected);
+    }
+  }
+
+  };
+
   for (const row of newSaleRows) {
     const sale = row.data || {};
     // A skip-PO invoice (buildSale's skipPo path) has no PO behind it, so it's the one invoice
@@ -1072,8 +1103,14 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     // the live invoice-creation path this validation targets, so leave them alone. Same for a
     // skip-PO invoice (buildSale's skipPo path): it's a record-keeping/collections-only entry
     // with no PO and no real stock movement behind it, so it never touches inventory either.
-    if (sale.migrated || sale.noPo) continue;
     const label = sale.documentNo || row.record_key;
+    if (sale.migrated || sale.noPo) {
+      const flaggedDiscount = Number(sale.discount || 0);
+      if (!Number.isFinite(flaggedDiscount) || flaggedDiscount < 0) throw new Error(`Invoice ${label}: discount cannot be negative.`);
+      if (flaggedDiscount > 0 && !canAuthorizeDiscount) throw new Error(`Invoice ${label}: discounts require Admin/CEO/Superadmin authorization.`);
+      await checkCredit(sale, label);
+      continue;
+    }
     const lines = Array.isArray(sale.lines) && sale.lines.length
       ? sale.lines
       : [{ item: sale.item, code: sale.code, qty: sale.qty, price: sale.price, sourceBranch: sale.sourceBranch || sale.branch, branch: sale.sourceBranch || sale.branch, lot: sale.lot, expiry: sale.expiry }];
@@ -1100,30 +1137,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
       if (Math.abs(submittedNet - (submittedAmount - discount)) > 0.01) throw new Error(`Invoice ${label}: net amount does not match amount minus discount.`);
     }
 
-    if (!canAuthorizeDiscount && sale.client) {
-      if (!creditLimitByClient) {
-        const clientRows = await loadClientRows();
-        creditLimitByClient = new Map(clientRows.map((clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
-      }
-      const limit = creditLimitByClient.get(sale.client) || 0;
-      if (limit > 0) {
-        projectedBalanceByClient ||= new Map();
-        if (!projectedBalanceByClient.has(sale.client)) {
-          // One indexed Postgres aggregate (see docs/migrations/2026-10-19-client-sales-balance-rpc.sql)
-          // scoped to this one client, instead of paging through every sale the company has ever
-          // recorded — across every client — just to recompute this client's running balance.
-          const [balanceRow] = await supabaseFetch(env, "/rest/v1/rpc/client_sales_balance", {
-            method: "POST",
-            body: JSON.stringify({ p_state_key: stateKey, p_client: sale.client }),
-          });
-          projectedBalanceByClient.set(sale.client, Number(balanceRow?.balance ?? 0));
-        }
-        const net = Number(sale.net ?? sale.amount ?? 0);
-        const projected = projectedBalanceByClient.get(sale.client) + net;
-        if (projected > limit) throw new Error(`Invoice ${label}: credit limit exceeded for ${sale.client} (${projected.toFixed(2)} / ${limit.toFixed(2)}). Needs Admin/CEO/Superadmin authorization.`);
-        projectedBalanceByClient.set(sale.client, projected);
-      }
-    }
+    await checkCredit(sale, label);
 
     if (!inventoryByKey) {
       const invRows = stockCheckedCodes.size
@@ -1265,16 +1279,64 @@ async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows)
 // incoming payables/replenishments row against the stored one so only an actual transition into
 // "Approved" is checked — ordinary edits and payment confirmation on already-approved rows pass.
 async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
-  if (["Superadmin", "CEO"].includes(profile?.role)) return;
-  const candidates = rows.filter((row) => ["payables", "replenishments"].includes(row.module_name) && row.data?.requestStatus === "Approved");
-  if (!candidates.length) return;
-  const modules = [...new Set(candidates.map((row) => row.module_name))];
-  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(modules))}&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=module_name,record_key,data`);
-  const storedStatus = new Map(stored.map((row) => [`${row.module_name}|${row.record_key}`, row.data?.requestStatus]));
-  for (const row of candidates) {
-    if (storedStatus.get(`${row.module_name}|${row.record_key}`) === "Approved") continue;
-    if (row.module_name === "payables") throw new Error("Only Superadmin or CEO can approve payable requests");
-    if (profile?.role === "Accounting") throw new Error("Accounting cannot approve expense requests");
+  const role = profile?.role;
+  const isManagement = ["Superadmin", "CEO"].includes(role);
+  const lower = (value) => String(value ?? "").trim().toLowerCase();
+  const fetchStored = async (moduleName, candidates) => {
+    if (!candidates.length) return new Map();
+    const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=record_key,data`);
+    return new Map(stored.map((row) => [row.record_key, row.data || {}]));
+  };
+
+  // Payables / expense requests: any approved-or-paid-looking state (not just the literal
+  // requestStatus) counts, compared case-insensitively against the stored row, so a non-approver
+  // can't reach it by writing status/paymentConfirmed instead of requestStatus.
+  if (!isManagement) {
+    const approvedLike = (data) => lower(data?.requestStatus) === "approved" || ["approved", "paid"].includes(lower(data?.status)) || data?.paymentConfirmed === true || data?.paymentConfirmed === "true";
+    for (const moduleName of ["payables", "replenishments"]) {
+      const candidates = rows.filter((row) => row.module_name === moduleName && approvedLike(row.data));
+      if (!candidates.length) continue;
+      const stored = await fetchStored(moduleName, candidates);
+      for (const row of candidates) {
+        if (lower(stored.get(row.record_key)?.requestStatus) === "approved") continue;
+        if (moduleName === "payables") throw new Error("Only Superadmin or CEO can approve payable requests");
+        if (role === "Accounting") throw new Error("Accounting cannot approve expense requests");
+      }
+    }
+
+    // Collection payment requests: only Superadmin/CEO move one into Approved (the dedicated
+    // approver guard was never wired into these generic writers).
+    const prCandidates = rows.filter((row) => row.module_name === "paymentRequests" && (lower(row.data?.requestStatus) === "approved" || lower(row.data?.status) === "approved"));
+    if (prCandidates.length) {
+      const stored = await fetchStored("paymentRequests", prCandidates);
+      for (const row of prCandidates) {
+        const prev = stored.get(row.record_key);
+        if (prev && (lower(prev.requestStatus) === "approved" || lower(prev.status) === "approved")) continue;
+        throw new Error("Only Superadmin/CEO can approve payment requests");
+      }
+    }
+
+    // Stock receipts: approving or cancelling one is Superadmin/CEO-only (requireStockReceiptApprover).
+    const receiptCandidates = rows.filter((row) => row.module_name === "stockReceipts" && lower(row.data?.status) !== "pending approval");
+    if (receiptCandidates.length) {
+      const stored = await fetchStored("stockReceipts", receiptCandidates);
+      for (const row of receiptCandidates) {
+        if (stored.has(row.record_key) && lower(stored.get(row.record_key)?.status) === lower(row.data?.status)) continue;
+        throw new Error("Only Superadmin/CEO can approve or cancel stock receipts");
+      }
+    }
+  }
+
+  // Inventory purchase orders: approval is Superadmin-only (requirePoApprover) — CEO included.
+  if (role !== "Superadmin") {
+    const poCandidates = rows.filter((row) => row.module_name === "inventoryPurchaseOrders" && lower(row.data?.status) === "approved");
+    if (poCandidates.length) {
+      const stored = await fetchStored("inventoryPurchaseOrders", poCandidates);
+      for (const row of poCandidates) {
+        if (lower(stored.get(row.record_key)?.status) === "approved") continue;
+        throw new Error("Only Superadmin can approve purchase orders");
+      }
+    }
   }
 }
 
@@ -1461,6 +1523,10 @@ function modulesForKey(key) {
 
 function canAccessKey(profile, key, mode = "view") {
   if (["Superadmin", "CEO"].includes(profile?.role)) return true;
+  // Memos are view-for-all, but posting/overwriting is Superadmin/CEO/HR only (requireMemoAdmin) —
+  // the shared role list above appends "memos" to every role, so the generic writers must not
+  // treat that as edit access. Acknowledgments go through /api/memos/:id/acknowledge instead.
+  if (mode === "edit" && modulesForKey(key).includes("memos") && !["HR"].includes(profile?.role)) return false;
   if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
   const allowed = profile?.customPermissions?.[mode] || [];
   const modules = modulesForKey(key);
@@ -1732,23 +1798,33 @@ function printableBranchAllowed(profile, sale) {
 
 // A saved custom template supplies { fields: { fieldKey: {left,top,width,align,fontSize} }, row: {left,right,top,height,spacing} }.
 // Only properties actually present are emitted as inline style, so anything the user never touched keeps using the CSS default.
+// Print-template overrides are stored verbatim and interpolated into a style attribute, so every
+// value is coerced to a finite number (or allowlisted) — a stored string must never be able to
+// close the attribute and inject markup.
+function overrideNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? round3(number) : null;
+}
+
 function fieldOverrideStyle(o) {
   if (!o) return "";
   const parts = [];
-  if (o.left != null) parts.push(`left:${o.left}in`);
-  if (o.top != null) parts.push(`top:${o.top}in`);
-  if (o.width != null) parts.push(`width:${o.width}in`);
-  if (o.align) parts.push(`text-align:${o.align}`);
-  if (o.fontSize != null) parts.push(`font-size:${o.fontSize}px`);
+  const left = overrideNumber(o.left), top = overrideNumber(o.top), width = overrideNumber(o.width), fontSize = overrideNumber(o.fontSize);
+  if (o.left != null && left != null) parts.push(`left:${left}in`);
+  if (o.top != null && top != null) parts.push(`top:${top}in`);
+  if (o.width != null && width != null) parts.push(`width:${width}in`);
+  if (["left", "right", "center", "justify"].includes(String(o.align || ""))) parts.push(`text-align:${o.align}`);
+  if (o.fontSize != null && fontSize != null) parts.push(`font-size:${fontSize}px`);
   return parts.length ? ` style="${parts.join(";")}"` : "";
 }
 
 function rowOverrideStyle(row, index) {
   if (!row) return ` style="--row:${index}"`;
-  const parts = [`--row:${index}`, `top:${round3(Number(row.top || 0) + index * Number(row.spacing || 0))}in`];
-  if (row.left != null) parts.push(`left:${row.left}in`);
-  if (row.right != null) parts.push(`right:${row.right}in`);
-  if (row.height != null) parts.push(`height:${row.height}in`);
+  const parts = [`--row:${index}`, `top:${round3(Number(row.top) || 0) + index * (Number(row.spacing) || 0)}in`];
+  const left = overrideNumber(row.left), right = overrideNumber(row.right), height = overrideNumber(row.height);
+  if (row.left != null && left != null) parts.push(`left:${left}in`);
+  if (row.right != null && right != null) parts.push(`right:${right}in`);
+  if (row.height != null && height != null) parts.push(`height:${height}in`);
   return ` style="${parts.join(";")}"`;
 }
 
@@ -5260,7 +5336,11 @@ export default {
         if (!canAccessKey(profile, fileRecordTypeKey[rows[0].record_type], "view")) throw new Error("You do not have permission to access this file");
         const object = await env.DOCUMENTS_BUCKET.get(rows[0].object_key);
         if (!object) return json({ error: "R2 object not found" }, { status: 404 });
-        return new Response(object.body, { headers: { "content-type": rows[0].mime_type, "content-disposition": `inline; filename="${safeFileName(rows[0].file_name)}"`, "cache-control": `private, max-age=${Number(env.DOWNLOAD_CACHE_SECONDS || 300)}` } });
+        // Stored MIME type is client-declared, so only a short list of passive types is ever served
+// inline; anything else (html, svg, js...) is forced to download as opaque bytes. nosniff + a
+// sandboxing CSP keep even an inline file from running script in the app origin.
+        const inlineSafe = /^(application\/pdf|image\/(png|jpe?g|gif|webp)|text\/plain)$/i.test(String(rows[0].mime_type || ""));
+        return new Response(object.body, { headers: { "content-type": inlineSafe ? rows[0].mime_type : "application/octet-stream", "content-disposition": `${inlineSafe ? "inline" : "attachment"}; filename="${safeFileName(rows[0].file_name)}"`, "x-content-type-options": "nosniff", "content-security-policy": "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'", "cache-control": `private, max-age=${Number(env.DOWNLOAD_CACHE_SECONDS || 300)}` } });
       }
 
       if (url.pathname.startsWith("/api/")) {

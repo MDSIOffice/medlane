@@ -305,9 +305,36 @@ function tableSkeleton(target, headers, rowCount = 5) {
   requestAnimationFrame(updateTableScrollHints);
 }
 
+// Defence-in-depth against stored XSS: record text (client names, notes, template overrides...)
+// is interpolated into HTML strings in many places. This strips anything that can execute script
+// — active elements, on* handlers, javascript:/data: URLs — while keeping normal markup,
+// classes, data-* attributes and styles used by the app's own templates.
+const SANITIZE_DROP_TAGS = new Set(["SCRIPT", "IFRAME", "FRAME", "FRAMESET", "OBJECT", "EMBED", "APPLET", "LINK", "META", "BASE", "FORM", "NOSCRIPT", "TEMPLATE"]);
+function sanitizeHtml(html) {
+  const template = document.createElement("template");
+  template.innerHTML = String(html ?? "");
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+  const doomed = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (SANITIZE_DROP_TAGS.has(node.tagName.toUpperCase()) || /^(script|animate|set|foreignobject)$/i.test(node.localName)) { doomed.push(node); continue; }
+    for (const attr of [...node.attributes]) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.replace(/[\u0000-\u0020\u007f-\u009f]+/g, "").toLowerCase();
+      if (name.startsWith("on") || name === "srcdoc" || name === "formaction") { node.removeAttribute(attr.name); continue; }
+      if (["href", "src", "xlink:href", "action", "poster", "data"].includes(name)) {
+        const safe = !/^[a-z][a-z0-9+.-]*:/.test(value) || /^(https?:|mailto:|tel:|blob:)/.test(value) || (name === "src" && /^data:image\/(png|jpe?g|gif|webp);/.test(value));
+        if (!safe) node.removeAttribute(attr.name);
+      }
+      if (name === "style" && /expression\(|javascript:|url\(\s*['"]?\s*data:text/i.test(attr.value)) node.removeAttribute(attr.name);
+    }
+  }
+  doomed.forEach((node) => node.remove());
+  return template.innerHTML;
+}
+
 function rowHtml(row, headers = []) {
   const attrs = Object.entries(row.attrs || {}).map(([key, value]) => `${key}="${escapeHtml(value)}"`).join(" ");
-  return `<tr ${attrs} ${row.focus ? `data-focus-record="${escapeHtml(row.focus)}"` : ""} data-focus-text="${escapeHtml(row.focusText)}">${row.cells.map((cell, index) => `<td data-label="${escapeHtml(headers[index] || "")}">${cell}</td>`).join("")}</tr>`;
+  return `<tr ${attrs} ${row.focus ? `data-focus-record="${escapeHtml(row.focus)}"` : ""} data-focus-text="${escapeHtml(row.focusText)}">${row.cells.map((cell, index) => `<td data-label="${escapeHtml(headers[index] || "")}">${sanitizeHtml(cell)}</td>`).join("")}</tr>`;
 }
 
 function appendTableRows(target, count = tableBatchSize) {

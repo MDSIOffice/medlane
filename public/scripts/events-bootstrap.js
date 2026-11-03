@@ -99,7 +99,10 @@ async function submitModal(event) {
   }
   if (editContext) {
     const previous = editContext.list[editContext.index];
-    const next = { ...values };
+    // Start from the stored record: the edit form only shows some fields, and the rest (client/
+    // supplier `code`, imported bank/sales-account fields, `archived`, `migrated`...) would
+    // otherwise be silently dropped on save.
+    const next = { ...previous, ...values };
     if (modalType === "item" && next.classification) next.category = importedCategory(next.classification);
     if (modalType === "employee" && !canManageEmployeeSalary()) next.salary = editContext.list[editContext.index].salary;
     try { validateMasterRecord(modalType, next, editContext.index); }
