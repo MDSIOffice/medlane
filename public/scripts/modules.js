@@ -2107,6 +2107,16 @@ function printSystemValueReport() {
   log("Printed system value report", "Analytics", fmtDate(today), { save: false });
 }
 
+// Where a masterlist record came from. Excel/migration imports stamp `migrated: true`; clients
+// auto-created by the sales migration predate that flag, so recognise their placeholder text too.
+function masterlistSourceLabel(record) {
+  return record?.migrated || record?.contact === "Migrated record" || record?.docs === "Migrated" ? "Migrated" : "Manual";
+}
+function masterlistSourcePill(record) {
+  const label = masterlistSourceLabel(record);
+  return `<span class="pill ${label === "Migrated" ? "purple" : "gray"}">${label}</span>`;
+}
+
 function renderMasterlists() {
   ensureUploadedFilesLoaded(renderMasterlists);
   if (data.masterTab === "employees" && !canManageEmployees()) data.masterTab = "clients";
@@ -2172,19 +2182,19 @@ function renderMasterlists() {
     ["Suppliers", activeSuppliers().length, "supplier records", "◇"],
     ["Banks", activeBanks().length, "collection accounts", "●"],
   ].map(([title, value, note, icon]) => `<article class="master-card"><span class="feature-icon">${icon}</span><div><strong>${value}</strong><small>${title} · ${note}</small></div></article>`).join("");
-  if (data.masterTab === "clients") table("#master-table", ["Code", "Client", "Area", "Account Type", "Sales Person", "Terms", "Contact", "TIN", "Status", "Credit Limit", "AR Used", "Required Docs", "Actions"], data.clients.filter(masterFilter).map((c) => {
+  if (data.masterTab === "clients") table("#master-table", ["Code", "Client", "Area", "Account Type", "Sales Person", "Terms", "Contact", "TIN", "Status", "Credit Limit", "AR Used", "Required Docs", "Source", "Actions"], data.clients.filter(masterFilter).map((c) => {
     const used = clientBalance(c.name);
     const creditClass = used > c.creditLimit ? "credit-warning" : "";
-    return { focus: c.name, cells: [c.code || "-", c.name, c.area, c.dealer, c.salesperson || "Unassigned", `${c.terms || 30} days`, c.contact, c.tin, isArchived(c) ? "Archived" : (c.status || "Active"), peso.format(c.creditLimit), `<span class="${creditClass}">${peso.format(used)}</span>`, docUploadButtons(c), rowActions("client", data.clients.indexOf(c))] };
+    return { focus: c.name, cells: [c.code || "-", c.name, c.area, c.dealer, c.salesperson || "Unassigned", `${c.terms || 30} days`, c.contact, c.tin, isArchived(c) ? "Archived" : (c.status || "Active"), peso.format(c.creditLimit), `<span class="${creditClass}">${peso.format(used)}</span>`, docUploadButtons(c), masterlistSourcePill(c), rowActions("client", data.clients.indexOf(c))] };
   }));
-  if (data.masterTab === "items") table("#master-table", ["Code", "Item", "Brand", "UOM", "Supplier", "Classification", "Actions"], data.items.filter(masterFilter).map((i) => ({ focus: i.code, cells: [i.code, i.name, i.brand, i.uom, i.supplier, i.classification || i.category, rowActions("item", data.items.indexOf(i))] })));
-  if (data.masterTab === "suppliers") table("#master-table", ["Code", "Supplier", "Classification", "TIN", "Address", "ZIP", "Contact", "Status", "Actions"], data.suppliers.filter(masterFilter).map((s) => ({ focus: s.name, cells: [s.code || "-", s.name, s.classification || s.brand || "Multiple", s.tin || "-", s.address, s.zip || "-", s.contact, isArchived(s) ? "Archived" : (s.status || "Active"), rowActions("supplier", data.suppliers.indexOf(s))] })));
+  if (data.masterTab === "items") table("#master-table", ["Code", "Item", "Brand", "UOM", "Supplier", "Classification", "Source", "Actions"], data.items.filter(masterFilter).map((i) => ({ focus: i.code, cells: [i.code, i.name, i.brand, i.uom, i.supplier, i.classification || i.category, masterlistSourcePill(i), rowActions("item", data.items.indexOf(i))] })));
+  if (data.masterTab === "suppliers") table("#master-table", ["Code", "Supplier", "Classification", "TIN", "Address", "ZIP", "Contact", "Status", "Source", "Actions"], data.suppliers.filter(masterFilter).map((s) => ({ focus: s.name, cells: [s.code || "-", s.name, s.classification || s.brand || "Multiple", s.tin || "-", s.address, s.zip || "-", s.contact, isArchived(s) ? "Archived" : (s.status || "Active"), masterlistSourcePill(s), rowActions("supplier", data.suppliers.indexOf(s))] })));
   if (data.masterTab === "branches") table("#master-table", ["Branch", "Address", "Status", "Actions"], platformBranches().map((branch) => {
     const locked = data.inventory.some((item) => item.branch === branch) || data.pendingTransfers.some((transfer) => transfer.from === branch || transfer.to === branch);
     return { focus: branch, cells: [branch, branchAddresses()[branch] || "No address set", locked ? "Used by records" : "Unused", canEditModule("masterlists") ? `<button class="mini-button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${locked ? "" : `<button class="mini-button danger-button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}` : "Approval required"] };
   }));
-  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Target Sales", "Govt. Benefits", "Actions"], data.employees.filter(masterFilter).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", Number(e.targetSales || 0) ? peso.format(Number(e.targetSales)) : "-", employeeBenefitsSummary(e), rowActions("employee", data.employees.indexOf(e))] })));
-  if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Actions"], data.banks.filter(masterFilter).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, rowActions("bank", data.banks.indexOf(b))] })));
+  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Target Sales", "Govt. Benefits", "Source", "Actions"], data.employees.filter(masterFilter).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", Number(e.targetSales || 0) ? peso.format(Number(e.targetSales)) : "-", employeeBenefitsSummary(e), masterlistSourcePill(e), rowActions("employee", data.employees.indexOf(e))] })));
+  if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Source", "Actions"], data.banks.filter(masterFilter).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, masterlistSourcePill(b), rowActions("bank", data.banks.indexOf(b))] })));
 }
 
 function clientDocRecordId(clientName, doc) {
@@ -3658,7 +3668,7 @@ async function printInvoice(invoiceId, noDate = false, templateId = null) {
   const type = String(printable.type || "SI").toLowerCase();
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
-  qs("#report-preview-content").innerHTML = printable.html;
+  qs("#report-preview-content").innerHTML = sanitizeHtml(printable.html);
   fitPrintTemplateRows(qs("#report-preview-content"));
   document.body.classList.add("print-template-overlay", `print-template-${type}`);
   if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
@@ -4218,7 +4228,7 @@ async function previewPaymentRequest(identifier) {
   const printable = await MedlaneAPI.printablePaymentRequest(id).catch((error) => { toast(error.message || "Unable to load payment request."); qs("#payment-request-preview-modal").close(); return null; });
   if (!printable) return;
   qs("#payment-request-preview-title").textContent = printable.title;
-  qs("#payment-request-preview-content").innerHTML = printable.html;
+  qs("#payment-request-preview-content").innerHTML = sanitizeHtml(printable.html);
 }
 
 async function printTransferRequest(id) {
@@ -4226,7 +4236,7 @@ async function printTransferRequest(id) {
   const printable = await MedlaneAPI.printableTransfer(id).catch((error) => { toast(error.message || "Unable to load transfer request."); qs("#payment-request-preview-modal").close(); return null; });
   if (!printable) return;
   qs("#payment-request-preview-title").textContent = printable.title;
-  qs("#payment-request-preview-content").innerHTML = printable.html;
+  qs("#payment-request-preview-content").innerHTML = sanitizeHtml(printable.html);
 }
 
 function renderCollectionContactMap() {
@@ -4957,7 +4967,7 @@ async function previewProductIssue(id) {
   if (!printable) return;
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
-  qs("#report-preview-content").innerHTML = printable.html;
+  qs("#report-preview-content").innerHTML = sanitizeHtml(printable.html);
   document.body.classList.add("print-template-overlay", "print-template-tsr");
   if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
@@ -5375,7 +5385,7 @@ function buildMigratedSale(row, headers) {
   const net = type === "DR" ? 0 : importNumber(rowValue(headers, row, ["NET Sales", "Actual Sales", "Invoice Amount", "Total Price"])) || Math.max(amount - discount + tax, 0);
   const item = data.items.find((entry) => entry.name.toLowerCase() === product.toLowerCase() || entry.code.toLowerCase() === product.toLowerCase());
   const client = data.clients.find((entry) => entry.name.toLowerCase() === clientName.toLowerCase());
-  if (!client) data.clients.push({ name: clientName, area, dealer: rowValue(headers, row, ["Classification"]) || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]), terms: 30, address: rowValue(headers, row, ["Office", "Branch"]), contact: "Migrated record", tin: rowValue(headers, row, ["TIN"]), creditLimit: 150000, docs: "Migrated" });
+  if (!client) data.clients.push({ name: clientName, area, dealer: rowValue(headers, row, ["Classification"]) || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]), terms: 30, address: rowValue(headers, row, ["Office", "Branch"]), contact: "Migrated record", tin: rowValue(headers, row, ["TIN"]), creditLimit: 150000, docs: "Migrated", migrated: true });
   if (area && !platformAreas().some((entry) => entry.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
   return { id: documentNo, documentNo, po: `MIG-${documentNo}`, client: clientName, area, dealer: rowValue(headers, row, ["Classification"]) || client?.dealer || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]) || "Migrated", type, date: importDate(rowValue(headers, row, ["Date"]), rowValue(headers, row, ["Year"]), rowValue(headers, row, ["Month"])), item: product, brand, qty, uom, amount, discount, discountReason: discount ? "Migrated discount" : "", tax, net, terms: Number(client?.terms || 30), paid: 0, status: "Active", migrated: true, migrationSource: "Sales/Collections import", migrationRemarks: rowValue(headers, row, ["Remarks"]), lines: [{ item: product, code: item?.code || `MIG-${documentNo}`.slice(0, 24), brand, qty, uom, price, lot: "Migrated", expiry: "N/A", terms: Number(client?.terms || 30) }] };
 }
@@ -5881,7 +5891,7 @@ async function previewFinancialRequest(type, id) {
   if (!printable) return;
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
-  qs("#report-preview-content").innerHTML = printable.html;
+  qs("#report-preview-content").innerHTML = sanitizeHtml(printable.html);
   if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
 }
@@ -7889,7 +7899,7 @@ async function previewInventoryPurchaseOrder(identifier) {
   if (!printable) return;
   qs("#report-preview-title").textContent = printable.title;
   qs("#report-preview-description").textContent = printable.description;
-  qs("#report-preview-content").innerHTML = printable.html;
+  qs("#report-preview-content").innerHTML = sanitizeHtml(printable.html);
   if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
 }

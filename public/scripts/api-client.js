@@ -224,9 +224,22 @@ const MedlaneAPI = (() => {
       const payload = await response.json().catch(() => null);
       throw new Error(payload?.error || `Request failed: ${response.status}`);
     }
-    const blob = await response.blob();
+    const raw = await response.blob();
+    // A blob URL lives in the app's own origin, so anything but a passive type (html, svg...) must
+    // never be opened — rebuild the blob with a safe type, or download it instead.
+    const safeType = /^(application\/pdf|image\/(png|jpe?g|gif|webp)|text\/plain)$/i.test(raw.type) ? raw.type : "";
+    const blob = safeType ? new Blob([raw], { type: safeType }) : new Blob([raw], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener");
+    if (safeType) window.open(url, "_blank", "noopener");
+    else {
+      const name = /filename="?([^";]+)"?/i.exec(response.headers.get("content-disposition") || "")?.[1] || "download";
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
