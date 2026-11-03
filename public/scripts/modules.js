@@ -7706,7 +7706,13 @@ function masterlistRecordOpenActivity(type, record) {
   const reasons = [];
   if (type === "client") {
     const name = record.name;
-    if (openPo((po) => po.client === name)) reasons.push("an unserved purchase order");
+    // Any PO on file blocks archiving (not just unserved ones) — an archived client can't be
+    // used on a PO, so existing POs would be stuck against an unusable client.
+    const clientPos = (data.purchaseOrders || []).filter((po) => po.client === name);
+    if (clientPos.length) {
+      const ids = clientPos.map((po) => po.id).filter(Boolean);
+      reasons.push(`an existing purchase order (${ids.slice(0, 5).join(", ")}${ids.length > 5 ? `, +${ids.length - 5} more` : ""})`);
+    }
     if ((data.sales || []).some((s) => s.client === name && s.status !== "Cancelled" && Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0.01)) reasons.push("an unpaid invoice");
     if (openCollection((r) => r.employee === name)) reasons.push("an open collection");
     if (openDemo((d) => d.client === name)) reasons.push("an active demo unit");

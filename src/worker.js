@@ -1164,10 +1164,18 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
 async function assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) {
   const clientNames = [...new Set(poRows.map((row) => row.data?.client).filter(Boolean))];
   if (!clientNames.length) return;
-  const clientRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`);
+  const [clientRows, storedPoRows] = await Promise.all([
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`),
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(poRows.map((row) => row.record_key)))}&select=record_key,data`),
+  ]);
   const archivedClientNames = new Set(clientRows.filter((clientRow) => clientRow.data?.archived).map((clientRow) => clientRow.data?.name));
+  const storedClientByKey = new Map(storedPoRows.map((entry) => [entry.record_key, entry.data?.client]));
   for (const row of poRows) {
     const client = row.data?.client;
+    // A PO already saved against this client (e.g. client archived afterwards, then the PO is
+    // re-saved by a pending-save retry or an unrelated edit) isn't a *new use* of the archived
+    // client — only block new POs or ones switched onto an archived client.
+    if (storedClientByKey.has(row.record_key) && storedClientByKey.get(row.record_key) === client) continue;
     if (client && archivedClientNames.has(client)) throw new Error(`Purchase Order ${row.data?.id || row.record_key}: ${client} is archived and can no longer be used on a purchase order.`);
   }
 }
@@ -4372,6 +4380,17 @@ export default {
             const { qty: _prevQty, lot: _prevLot, ...prevRest } = prev;
             const { qty: _nextQty, lot: _nextLot, ...nextRest } = incoming;
             if (JSON.stringify(prevRest, Object.keys(prevRest).sort()) !== JSON.stringify(nextRest, Object.keys(nextRest).sort())) throw new Error("You do not have permission to edit inventory");
+          }
+        }
+
+        // A client with any Purchase Order on file can't be archived (any role, incl. CEO/Superadmin).
+        const clientsBeingArchived = archiveCandidateRows.filter((row) => row.module_name === "clients" && row.data?.archived && row.data?.name).map((row) => row.data.name);
+        if (clientsBeingArchived.length) {
+          const poClientRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&select=data`);
+          const allPoData = [...poClientRows.map((r) => r.data), ...incomingPoRows.map((r) => r.data)].filter((d) => d?.client);
+          for (const name of clientsBeingArchived) {
+            const ids = [...new Set(allPoData.filter((d) => d.client === name).map((d) => d.id).filter(Boolean))];
+            if (ids.length) throw new Error(`${name} has an existing purchase order (${ids.slice(0, 5).join(", ")}${ids.length > 5 ? `, +${ids.length - 5} more` : ""}) and cannot be archived.`);
           }
         }
 
