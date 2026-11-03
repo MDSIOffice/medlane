@@ -391,12 +391,12 @@ function normalizeData(next) {
     const client = next.clients.find((item) => item.name === po.client);
     const lines = (po.lines || []).map((line) => {
       const item = next.items.find((entry) => entry.code === line.code || entry.name === line.item) || {};
-      return { item: line.item || item.name, code: line.code || item.code || line.item, brand: line.brand || item.brand || "Medlane", qty: Number(line.qty || 0), uom: line.uom || item.uom || "unit", price: Number(line.price || 0) };
+      return { ...line, item: line.item || item.name, code: line.code || item.code || line.item, brand: line.brand || item.brand || "Medlane", qty: Number(line.qty || 0), uom: line.uom || item.uom || "unit", price: Number(line.price || 0) };
     });
-    return { id: po.id, client: po.client, area: po.area || client?.area || "Region I", salesperson: po.salesperson || currentUser?.name || "System User", date: po.date || fmtDate(today), lines, status: po.status || "For Invoicing" };
+    return { ...po, id: po.id, client: po.client, area: po.area || client?.area || "Region I", salesperson: po.salesperson || currentUser?.name || "System User", date: po.date || fmtDate(today), lines, status: po.status || "For Invoicing" };
   });
   const legacyPoStatus = { "Purchase Receiving": "Pending Approval", "For Receiving": "Pending Approval", Received: "Fully Received" };
-  next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ id: po.id, supplier: po.supplier, branch: po.branch || "", date: po.date || fmtDate(today), terms: po.terms || 30, status: legacyPoStatus[po.status] || po.status || "Pending Approval", approvedBy: po.approvedBy || "", approvedAt: po.approvedAt || "", cancelledBy: po.cancelledBy || "", cancelledAt: po.cancelledAt || "", receivedBy: po.receivedBy || "", receivedAt: po.receivedAt || "", history: po.history || [], lines: (po.lines || []).map((line) => ({ ...line, receivedQty: Number(line.receivedQty || 0) })) }));
+  next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ ...po, id: po.id, supplier: po.supplier, branch: po.branch || "", date: po.date || fmtDate(today), terms: po.terms || 30, status: legacyPoStatus[po.status] || po.status || "Pending Approval", approvedBy: po.approvedBy || "", approvedAt: po.approvedAt || "", cancelledBy: po.cancelledBy || "", cancelledAt: po.cancelledAt || "", receivedBy: po.receivedBy || "", receivedAt: po.receivedAt || "", history: po.history || [], lines: (po.lines || []).map((line) => ({ ...line, receivedQty: Number(line.receivedQty || 0) })) }));
   next.inventoryDemoRequests = withStableFallbackIds(next.inventoryDemoRequests, "DEMO").map((request) => ({ id: request.id, date: request.date || fmtDate(today), requestedBy: request.requestedBy || "System User", client: request.client || "", salesAgent: request.salesAgent || request.requestedBy || "", demoDate: request.demoDate || "", returnDate: request.returnDate || "", purpose: request.purpose || "", location: request.location || "", contactPerson: request.contactPerson || "", contactNumber: request.contactNumber || "", status: request.status || "For Sales Approval", salesApprovedBy: request.salesApprovedBy || "", managementApprovedBy: request.managementApprovedBy || "", closedBy: request.closedBy || "", history: request.history || [], lines: (request.lines || []).map((line) => ({ type: line.type || "Machine", code: line.code || "", item: line.item || "", brand: line.brand || "", qty: Number(line.qty || 0), lot: line.lot || "", notes: line.notes || "" })), ...request }));
   const clientsWithBalance = new Set(next.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
   next.collectionContacts = next.clients.filter((client) => clientsWithBalance.has(client.name)).map((client) => {
@@ -872,6 +872,12 @@ async function buildWithItemRefresh(buildFn) {
 // Masterlist archiving: an archived record keeps `archived === true` and stays in storage (so
 // historical documents and existing transactions still resolve it by code/name) but is hidden
 // from the active masterlist tables and from every picker used to build NEW transactions.
+// Identity keys for duplicate detection: case, extra/internal spaces and punctuation are ignored
+// ("Acme  Corp." == "ACME CORP", "X-RAY" == "XRAY"), TINs compare by digits only.
+function normalizeMasterName(value) { return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, ""); }
+// Codes are only case/space-insensitive: punctuation can distinguish real codes ("AB-01" vs "AB01").
+function normalizeMasterCode(value) { return String(value ?? "").toLowerCase().replace(/\s+/g, ""); }
+function normalizeMasterTin(value) { return String(value ?? "").replace(/\D/g, ""); }
 function isArchived(record) { return Boolean(record && record.archived); }
 function activeRecords(list) { return (list || []).filter((record) => !isArchived(record)); }
 function activeClients() { return activeRecords(data?.clients); }

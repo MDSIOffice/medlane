@@ -93,6 +93,8 @@ async function submitModal(event) {
   if (!form) return toast("Form not found. Close and reopen the modal.");
   if (modalType === "client") syncClientDepartmentContactsHidden();
   const values = formObject(form);
+  // Masterlist text is stored trimmed so " Acme" and "Acme" can never become two records.
+  if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) for (const key of Object.keys(values)) if (typeof values[key] === "string") values[key] = values[key].trim();
   if (["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder"].includes(modalType)) {
     try { values.itemsText = collectInvoiceEditorLines(); }
     catch (error) { return toast(error.message); }
@@ -113,6 +115,9 @@ async function submitModal(event) {
     const moduleKey = masterlistModuleKey(modalType);
     const previousKey = masterlistRecordKey(modalType, previous);
     if (!(await confirmFinalSave(`Save changes to this ${modalType}?`))) return;
+    // The confirm can sit open while other users save — re-check against the latest data.
+    try { validateMasterRecord(modalType, next, editContext.index); }
+    catch (error) { return toast(error.message); }
     editContext.list[editContext.index] = next;
     if (moduleKey) {
       const saveResult = await persistRecords({ [moduleKey]: [next] }, { [moduleKey]: [previousKey] });
@@ -138,6 +143,8 @@ async function submitModal(event) {
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const moduleKey = masterlistModuleKey(modalType);
     if (!(await confirmFinalSave(`Save this new ${modalType}?`))) return;
+    try { validateMasterRecord(modalType, values); }
+    catch (error) { return toast(error.message); }
     listByType[modalType].push(record);
     if (moduleKey) {
       const saveResult = await persistRecords({ [moduleKey]: [record] });
