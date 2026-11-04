@@ -3287,3 +3287,6 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 #inventory table.inv-table td:first-child { max-width: 260px; }
 #inventory .inv-name { overflow-wrap: anywhere; }
 #inventory table.inv-table td.actions-col, #inventory table.inv-table th.actions-col { padding-left: 4px; }
+/* Inventory has its own page header; hide the app shell's duplicate title + description there. */
+body[data-active-section="inventory"] #page-title,
+body[data-active-section="inventory"] #page-description { display: none; }
