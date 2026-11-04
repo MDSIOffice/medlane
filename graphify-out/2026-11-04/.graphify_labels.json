@@ -2,7 +2,6 @@
   "0": "public/scripts/state.js",
   "1": "scripts/state.js",
   "2": "scripts/events-bootstrap.js",
-  "3": "public/scripts/events-bootstrap.js",
   "5": "public/scripts/modules.js",
   "6": "scripts/modules.js",
   "7": "public/scripts/vendor/pdf-lib.min.js",

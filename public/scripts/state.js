@@ -220,11 +220,18 @@ const roleEditableModules = {
   Engineering: ["inventory", "reports", "notifications", "user-settings", "product-issues"],
   HR: ["replenishments", "reports", "notifications", "user-settings", "memos"],
 };
+// Support Tracker: only Sales, Admin, CEO and Superadmin can REQUEST (create) service reports.
+// Engineering and Product Specialist can only update status on existing reports; every other role
+// is view-only. Mirrored server-side in canAccessKey() + assertSupportReportChangesAllowed().
+const supportReportRequesterRoles = ["Sales", "Admin", "CEO", "Superadmin"];
+const supportReportEditorRoles = [...supportReportRequesterRoles, "Engineering", "Product Specialist"];
+function canRequestSupportReport() { return supportReportRequesterRoles.includes(currentUser?.role) && canEditModule("product-issues"); }
 function editableModules() {
   // Same reasoning as effectiveModules(): Superadmin/CEO always get their full editable set so a
   // partial stored permission set can't strip edit access the server would still grant them.
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return roleEditableModules[currentUser.role] || [];
-  return currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || [];
+  const list = currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || [];
+  return supportReportEditorRoles.includes(currentUser?.role) ? list : list.filter((id) => id !== "product-issues");
 }
 function canEditModule(sectionId) { return editableModules().includes(sectionId); }
 function canEditActiveSection() { return editableModules().includes(qs(".section.active")?.id || "dashboard"); }

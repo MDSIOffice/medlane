@@ -1302,6 +1302,27 @@ const DEMO_TRANSITIONS = {
   Approved: { Returned: ["Sales", "Admin", "Superadmin", "CEO", "Logistics"], "To Sales": ["Sales", "Admin", "Superadmin", "CEO", "Logistics"] },
 };
 
+// Engineering / Product Specialist may only move an EXISTING support report through its status
+// workflow: they cannot create reports or change anything beyond these workflow fields.
+const SUPPORT_STATUS_ONLY_ROLES = ["Engineering", "Product Specialist"];
+const SUPPORT_STATUS_FIELDS = new Set(["status", "currentActor", "resolvedBy", "resolvedAt", "history", "actionsTaken"]);
+async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
+  if (!SUPPORT_STATUS_ONLY_ROLES.includes(profile?.role)) return;
+  const incoming = rows.filter((row) => row.module_name === "productIssues");
+  if (!incoming.length) return;
+  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.productIssues&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((row) => row.record_key)))}&select=record_key,data`);
+  const storedByKey = new Map(stored.map((row) => [row.record_key, row.data || {}]));
+  for (const row of incoming) {
+    const prev = storedByKey.get(row.record_key);
+    if (!prev) throw new Error("Only Sales, Admin, CEO or Superadmin can request a service report");
+    const next = row.data || {};
+    for (const field of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+      if (SUPPORT_STATUS_FIELDS.has(field)) continue;
+      if (JSON.stringify(prev[field] ?? null) !== JSON.stringify(next[field] ?? null)) throw new Error(`${profile.role} can only update the status of ${row.record_key}`);
+    }
+  }
+}
+
 async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows) {
   const incoming = rows.filter((row) => row.module_name === "inventoryDemoRequests");
   if (!incoming.length) return;
@@ -1576,6 +1597,9 @@ function canAccessKey(profile, key, mode = "view") {
   // the shared role list above appends "memos" to every role, so the generic writers must not
   // treat that as edit access. Acknowledgments go through /api/memos/:id/acknowledge instead.
   if (mode === "edit" && modulesForKey(key).includes("memos") && !["HR"].includes(profile?.role)) return false;
+  // Support Tracker reports: Sales/Admin (Superadmin/CEO returned above) may create/edit;
+  // Engineering/Product Specialist may only update status (assertSupportReportChangesAllowed).
+  if (mode === "edit" && key === "productIssues" && !["Sales", "Admin", "Engineering", "Product Specialist"].includes(profile?.role)) return false;
   if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
   const allowed = profile?.customPermissions?.[mode] || [];
   const modules = modulesForKey(key);
@@ -4087,6 +4111,7 @@ export default {
               assertMasterlistUnique(env, stateKey, rows, { replaceModules: true }),
               assertFinancialApprovalAllowed(env, stateKey, profile, rows),
               assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
+              assertSupportReportChangesAllowed(env, stateKey, profile, rows),
               assertCreditApprovalAllowed(env, stateKey, profile, rows),
             ]);
 
@@ -4485,6 +4510,7 @@ export default {
           assertMasterlistUnique(env, stateKey, rows),
           assertFinancialApprovalAllowed(env, stateKey, profile, rows),
           assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
+              assertSupportReportChangesAllowed(env, stateKey, profile, rows),
           assertCreditApprovalAllowed(env, stateKey, profile, rows),
         ]);
 

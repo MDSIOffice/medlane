@@ -5104,7 +5104,7 @@ function productIssueActionsMenu(report) {
 }
 
 function renderProductIssues() {
-  qsa("#product-issues [data-action='open-modal']").forEach((btn) => { btn.hidden = !canEditModule("product-issues"); });
+  qsa("#product-issues [data-action='open-modal']").forEach((btn) => { btn.hidden = !canRequestSupportReport(); });
   const statusFilter = qs("#product-issue-status")?.value || "all";
   const reports = data.productIssues.filter((report) => statusFilter === "all" || report.status === statusFilter);
   const open = data.productIssues.filter((report) => report.status === "Open").length;
