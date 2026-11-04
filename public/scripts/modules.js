@@ -2840,19 +2840,26 @@ function addDemoRequestLine() {
 }
 
 function syncDemoRequestLine(input) {
+  // Suggest-only: never rewrite what the user is typing. Fill the OTHER fields only when the typed
+  // value is an exact item code/name (e.g. after picking a suggestion), so every field stays
+  // editable and clearable. Emptying a field leaves the rest untouched.
   const row = input.closest("tr");
-  const match = findItemForSheetRow(row, input, true);
-  if (!row || !match) return;
-  row.querySelector(".demo-line-code").value = match.code;
-  row.querySelector(".demo-line-item").value = match.name;
-  row.querySelector(".demo-line-brand").value = match.brand || "";
+  const typed = input.value.trim().toLowerCase();
+  if (!row || !typed) return;
+  const match = data.items.find((entry) => (input.classList.contains("demo-line-code") ? entry.code : entry.name).toLowerCase() === typed);
+  if (!match) return;
+  const setIfOther = (selector, value) => { const el = row.querySelector(selector); if (el && el !== input) el.value = value; };
+  setIfOther(".demo-line-code", match.code);
+  setIfOther(".demo-line-item", match.name);
+  setIfOther(".demo-line-brand", match.brand || "");
 }
 
 async function saveDemoRequest() {
   const lines = qsa("#demo-request-lines-table tbody tr").map((row) => {
     const code = row.querySelector(".demo-line-code")?.value.trim();
     const itemName = row.querySelector(".demo-line-item")?.value.trim();
-    const item = findItemByCodeOrName(code || itemName);
+    const exactKey = String(code || itemName || "").toLowerCase();
+    const item = exactKey ? data.items.find((entry) => entry.code.toLowerCase() === exactKey || entry.name.toLowerCase() === exactKey) : null;
     const qty = Number(row.querySelector(".demo-line-qty")?.value || 0);
     if (!code && !itemName && !qty) return null;
     return { type: row.querySelector(".demo-line-type")?.value || "Machine", code: item?.code || code, item: item?.name || itemName, brand: row.querySelector(".demo-line-brand")?.value.trim() || item?.brand || "", lot: row.querySelector(".demo-line-lot")?.value.trim(), qty, notes: row.querySelector(".demo-line-notes")?.value.trim() };
