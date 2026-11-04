@@ -36,9 +36,9 @@
     "semantic_hash": ""
   },
   "public/scripts/state.js": {
-    "mtime": 1793761372.213466,
-    "seen": 1793761561.731881,
-    "ast_hash": "11d09d3d5ad53cde9392437d44e3ace8",
+    "mtime": 1793778107.4404075,
+    "seen": 1793778118.313905,
+    "ast_hash": "73d3cf36ed6be2f67e26f972ed3fdea5",
     "semantic_hash": ""
   },
   "public/scripts/ui-utils.js": {
@@ -108,9 +108,9 @@
     "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
   },
   "src/worker.js": {
-    "mtime": 1793759059.5396836,
-    "seen": 1793761561.7318919,
-    "ast_hash": "188f173007e179d9c91d44e8ff994cc0",
+    "mtime": 1793778107.4991353,
+    "seen": 1793778118.313917,
+    "ast_hash": "ba5ccb2a88afac83f13f730e186fca73",
     "semantic_hash": ""
   },
   "Notification Sound.mp3": {
@@ -270,9 +270,9 @@
     "semantic_hash": ""
   },
   "public/index.html": {
-    "mtime": 1793761536.4215372,
-    "seen": 1793761561.731908,
-    "ast_hash": "00ddad320001dadfaf4b7617ced19bbc",
+    "mtime": 1793768952.1626153,
+    "seen": 1793778118.313962,
+    "ast_hash": "a3878ca8246a23aba46f06a66c6d15ed",
     "semantic_hash": ""
   },
   "public/login/index.html": {
@@ -858,9 +858,9 @@
     "semantic_hash": ""
   },
   "specs/006-inventory-redesign/tasks.md": {
-    "mtime": 1793761363.165664,
-    "seen": 1793761561.731926,
-    "ast_hash": "35b462f2e2cee7ea761501a393af4c0b",
+    "mtime": 1793761561.8231173,
+    "seen": 1793778118.313984,
+    "ast_hash": "622cc723d70da9620da8589049ab1ba4",
     "semantic_hash": ""
   }
 }
