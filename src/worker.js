@@ -2636,17 +2636,8 @@ function discordSafeText(value, fallback = "Player") {
   return webhookText(String(value ?? "").replace(/[*_~`|\\>]/g, ""), fallback).slice(0, 60);
 }
 
-// `game-sessions` holds single-use run tokens (30-min expiry). Nothing reads a row older
-// than its run, but they were never deleted — the pile grew one row per play and dragged
-// every bulk app_records read. One filtered DELETE per tick clears whatever has aged out.
-async function pruneGameSessions(env) {
-  const stateKey = appStateKey(env);
-  const cutoff = new Date(Date.now() - GAME_SESSION_TTL_MS).toISOString();
-  await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-sessions&updated_at=lt.${encodeURIComponent(cutoff)}`, {
-    method: "DELETE",
-    headers: { prefer: "return=minimal" },
-  });
-}
+// NOTE: expired `game-sessions` rows are intentionally NOT pruned — app_records deletes are blocked
+// by the app_records_delete_guard trigger (see docs/migrations/2026-08-05-app-records-delete-guard.sql).
 
 // One always-current "🏆 Luksong Medlane — Leaderboard" message in its own Discord channel,
 // edited in place on the same 15-minute cadence as the inventory boards (skips the 18:00 hour
@@ -3053,7 +3044,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // Keep the heavier analytics/pending/inventory monitors out of the 18:00 hour entirely —
   // that hour is reserved for the digest/backup jobs below, and stacking the monitors on the
   // same invocation is part of what used to blow the CPU/subrequest budget.
-  if (!inDigestHour && ["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env), runLuksongLeaderboardMonitor(env), pruneGameSessions(env));
+  if (!inDigestHour && ["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env), runLuksongLeaderboardMonitor(env));
   // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
   // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
