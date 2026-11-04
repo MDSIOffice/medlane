@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "medlane",
   "main": "src/worker.js",
-  "workers_dev": true,
+  "workers_dev": false,
   "compatibility_date": "2026-07-30",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
@@ -42,7 +42,7 @@
   "env": {
     "preview": {
       "name": "medlane-preview",
-      "workers_dev": true,
+      "workers_dev": false,
       "durable_objects": {
         "bindings": [{ "name": "LIVE_HUB", "class_name": "LiveHub" }]
       },
@@ -70,7 +70,7 @@
     },
     "production": {
       "name": "medlane",
-      "workers_dev": true,
+      "workers_dev": false,
       "durable_objects": {
         "bindings": [{ "name": "LIVE_HUB", "class_name": "LiveHub" }]
       },
