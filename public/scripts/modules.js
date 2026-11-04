@@ -2249,7 +2249,44 @@ function inventoryItemLabel(item) {
 }
 
 function demoRequestLineSummary(request) {
-  return itemizedSummary((request.lines || []).map((line) => ({ particulars: `${line.type}: ${line.item || line.code || "Item"} (${line.qty || 0})${line.lot ? ` Lot ${line.lot}` : ""}${line.notes ? ` · ${line.notes}` : ""}`, amount: Number(line.qty || 0) })));
+  return (request.lines || []).map((line) => `${escapeHtml(line.type)}: ${escapeHtml(line.item || line.code || "Item")} (${Number(line.qty || 0)})${line.lot ? ` Lot ${escapeHtml(line.lot)}` : ""}${line.notes ? ` · ${escapeHtml(line.notes)}` : ""}${request.status === "To Sales" && Number(line.price) > 0 ? `<small>${peso.format(line.price)} each</small>` : ""}`).join("<br>") || "-";
+}
+
+function demoSaleTotal(request) {
+  return (request.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0), 0);
+}
+
+function openDemoToSalesDialog(request) {
+  qs("#demo-sales-modal")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal";
+  dialog.id = "demo-sales-modal";
+  const rows = (request.lines || []).map((line, index) => `<tr><td>${escapeHtml(line.item || line.code || "Item")}<small>${escapeHtml(line.type || "")}</small></td><td>${Number(line.qty || 0)}</td><td><input type="number" min="0" step="any" data-demo-price="${index}" value="${line.price ?? ""}" placeholder="0.00" required /></td></tr>`).join("");
+  dialog.innerHTML = `<form id="demo-sales-form">
+    <div class="modal-header"><div><p class="eyebrow">Convert to Sales</p><h2>${escapeHtml(request.id)} · ${escapeHtml(request.client || "")}</h2></div><button class="icon-button" type="button" data-close-demo-sales aria-label="Close">x</button></div>
+    <div class="field"><label for="demo-sales-si">SI Number</label><input id="demo-sales-si" type="text" value="${escapeHtml(request.siNumber || "")}" placeholder="Sales invoice no." required /></div>
+    <div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p><strong>Total:</strong> <span id="demo-sales-total">${peso.format(0)}</span></p>
+    <div class="modal-actions"><button class="ghost-button" type="button" data-close-demo-sales>Cancel</button><button class="primary-button" type="submit">Mark as To Sales</button></div>
+  </form>`;
+  document.body.appendChild(dialog);
+  const total = () => {
+    const sum = [...dialog.querySelectorAll("[data-demo-price]")].reduce((acc, input) => acc + Number(input.value || 0) * Number(request.lines[Number(input.dataset.demoPrice)]?.qty || 0), 0);
+    dialog.querySelector("#demo-sales-total").textContent = peso.format(sum);
+  };
+  dialog.querySelectorAll("[data-demo-price]").forEach((input) => input.addEventListener("input", total));
+  total();
+  dialog.querySelectorAll("[data-close-demo-sales]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  dialog.querySelector("#demo-sales-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const sale = { siNumber: dialog.querySelector("#demo-sales-si").value.trim(), prices: [...dialog.querySelectorAll("[data-demo-price]")].map((input) => Number(input.value || 0)) };
+    if (!sale.siNumber) return toast("SI number is required.");
+    dialog.close();
+    await updateDemoRequestStatus(request.id, "To Sales", sale);
+  });
+  dialog.addEventListener("close", () => dialog.remove());
+  guardDialogEscape(dialog);
+  dialog.showModal();
 }
 
 // Mirrors DEMO_TRANSITIONS / demoRequestInitialStatus in worker.js. Engineering and Product
@@ -2290,7 +2327,7 @@ function demoRequestActions(request) {
 
 function demoRequestHistoryCard(request) {
   const closedLabel = request.status === "To Sales" ? "Routed to Sales" : request.status;
-  return `<article class="panel" data-focus-record="${escapeHtml(request.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.demoDate || request.date || "-")}</p><h2>${escapeHtml(request.id)} · ${escapeHtml(closedLabel || "Demo")}</h2></div><span class="pill ${statusClass(request.status)}">${escapeHtml(request.status || "-")}</span></div><p><strong>Sales Agent:</strong> ${escapeHtml(request.salesAgent || request.requestedBy || "-")}</p><p><strong>Expected Return:</strong> ${escapeHtml(request.returnDate || "-")}</p><p><strong>Purpose:</strong> ${escapeHtml(request.purpose || "-")}</p><div class="table-card compact-table"><table><thead><tr><th>Type</th><th>Item</th><th>Qty</th><th>Lot / Notes</th></tr></thead><tbody>${(request.lines || []).map((line) => `<tr><td>${escapeHtml(line.type || "Item")}</td><td>${escapeHtml(line.item || line.code || "-")}<small>${escapeHtml(line.brand || "")}</small></td><td>${Number(line.qty || 0)}</td><td>${escapeHtml([line.lot, line.notes].filter(Boolean).join(" · ") || "-")}</td></tr>`).join("") || `<tr><td colspan="4">No itemized demo lines.</td></tr>`}</tbody></table></div></article>`;
+  return `<article class="panel" data-focus-record="${escapeHtml(request.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.demoDate || request.date || "-")}</p><h2>${escapeHtml(request.id)} · ${escapeHtml(closedLabel || "Demo")}</h2></div><span class="pill ${statusClass(request.status)}">${escapeHtml(request.status || "-")}</span></div><p><strong>Sales Agent:</strong> ${escapeHtml(request.salesAgent || request.requestedBy || "-")}</p><p><strong>Expected Return:</strong> ${escapeHtml(request.returnDate || "-")}</p>${request.status === "To Sales" ? `<p><strong>SI No.:</strong> ${escapeHtml(request.siNumber || "-")} · <strong>Amount:</strong> ${peso.format(request.saleAmount || 0)}</p>` : ""}<p><strong>Purpose:</strong> ${escapeHtml(request.purpose || "-")}</p><div class="table-card compact-table"><table><thead><tr><th>Type</th><th>Item</th><th>Qty</th><th>Lot / Notes</th></tr></thead><tbody>${(request.lines || []).map((line) => `<tr><td>${escapeHtml(line.type || "Item")}</td><td>${escapeHtml(line.item || line.code || "-")}<small>${escapeHtml(line.brand || "")}</small></td><td>${Number(line.qty || 0)}</td><td>${escapeHtml([line.lot, line.notes].filter(Boolean).join(" · ") || "-")}</td></tr>`).join("") || `<tr><td colspan="4">No itemized demo lines.</td></tr>`}</tbody></table></div></article>`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2536,7 +2573,7 @@ function renderInventory() {
   const activeDemos = demoRequests.filter((request) => !["Returned", "To Sales", "Cancelled"].includes(request.status));
   const closedDemos = demoRequests.filter((request) => ["Returned", "To Sales", "Cancelled"].includes(request.status));
   table("#demo-request-table", ["Request", "Client", "Demo Date", "Items", "Status", "Approvals", "Actions"], activeDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, `${request.salesApprovedBy ? `Sales: ${escapeHtml(request.salesApprovedBy)}` : request.status === "For Logistics Approval" || request.logisticsApprovedBy ? `Logistics: ${escapeHtml(request.logisticsApprovedBy || "Pending")}` : "Logistics: Not needed"}<small>Mgmt: ${escapeHtml(request.managementApprovedBy || "Pending")}</small>`, demoRequestActions(request)] })));
-  table("#demo-history-table", ["Request", "Client", "Demo Date", "Items", "Closed As", "Closed By"], closedDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, escapeHtml(request.closedBy || "-")] })));
+  table("#demo-history-table", ["Request", "Client", "Demo Date", "Items", "Closed As", "SI No. / Amount", "Closed By"], closedDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, request.status === "To Sales" ? `${escapeHtml(request.siNumber || "-")}<small>${peso.format(request.saleAmount || 0)}</small>` : "-", escapeHtml(request.closedBy || "-")] })));
   // entry.date is a locale-formatted display string (not reliably sortable as a Date), but
   // entry.id embeds the real creation timestamp as `TH-<Date.now()>-<random>` — sort on that
   // instead so a server reload (which arrives oldest-first) still shows latest first here.
@@ -2886,10 +2923,14 @@ async function saveDemoRequest() {
   toast(`${request.id} submitted for ${initialStatus === "For Logistics Approval" ? "Logistics" : "Superadmin/CEO"} approval.`);
 }
 
-async function updateDemoRequestStatus(id, status) {
+async function updateDemoRequestStatus(id, status, sale = null) {
   const request = (data.inventoryDemoRequests || []).find((entry) => entry.id === id);
   if (!request) return toast("Demo request not found.");
-  if (!(await confirmFinalSave(`Mark ${request.id} as ${status}?`))) return;
+  if (status === "To Sales" && !sale) {
+    if (!canCloseDemoRequest(request)) return toast("This request is not ready for return/sales closing.");
+    return openDemoToSalesDialog(request);
+  }
+  if (status !== "To Sales" && !(await confirmFinalSave(`Mark ${request.id} as ${status}?`))) return;
   const user = currentUser?.name || "System User";
   if (status === "For Management Approval") {
     if (canApproveDemoLogistics(request)) {
@@ -2906,11 +2947,16 @@ async function updateDemoRequestStatus(id, status) {
   } else if (["Returned", "To Sales"].includes(status)) {
     if (!canCloseDemoRequest(request)) return toast("This request is not ready for return/sales closing.");
     request.closedBy = user;
+    if (status === "To Sales" && sale) {
+      request.siNumber = sale.siNumber;
+      (request.lines || []).forEach((line, index) => { line.price = Number(sale.prices[index] || 0); });
+      request.saleAmount = demoSaleTotal(request);
+    }
     notify("Demo Request", `${request.id} marked ${status}.`, "inventory", request.id);
   }
   request.status = status;
   request.history ||= [];
-  request.history.push({ date: fmtDate(today), status, by: user, note: status === "To Sales" ? "Client may buy the demo-used items; route to sales." : "Workflow status updated." });
+  request.history.push({ date: fmtDate(today), status, by: user, note: status === "To Sales" ? `Converted to sales · SI ${request.siNumber} · ${peso.format(request.saleAmount || 0)}` : "Workflow status updated." });
   const saveResult = await persistRecords({ inventoryDemoRequests: [request] });
   if (!saveResult?.ok) return;
   log("Updated demo request", "Inventory", `${request.id}: ${status}`, { save: false });
