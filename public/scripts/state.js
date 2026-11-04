@@ -35,8 +35,24 @@ let collectionsWorkflowTab = "ledger";
 let collectionsClientSearch = "";
 let collectionMapZoom = 1;
 let inventoryBranchTab = "Las Pinas";
-let inventoryWorkflowTab = "receiving";
-let inventoryCompactView = false;
+// Inventory page view state. Seeded from the URL (?section=inventory&tab=…&branch=…) so a
+// refresh or shared link restores the same view; read here at parse time because showSection()
+// rewrites the URL later during startup.
+const INVENTORY_TABS = ["stocks", "receiving", "receipts", "completed", "transfers", "demos", "rhist", "thist"];
+const INVENTORY_SORT_KEYS = ["item", "lot", "branch", "expiry", "qty"];
+const INVENTORY_STATUS_KEYS = ["all", "available", "near", "low", "critical", "disposal"];
+const inventoryUrlParams = (() => {
+  try { const p = new URLSearchParams(location.search); return p.get("section") === "inventory" ? p : new URLSearchParams(); } catch { return new URLSearchParams(); }
+})();
+let inventoryWorkflowTab = INVENTORY_TABS.includes(inventoryUrlParams.get("tab")) ? inventoryUrlParams.get("tab") : "stocks";
+let inventoryCompactView = inventoryUrlParams.get("compact") === "1";
+let inventoryBranchView = inventoryUrlParams.get("branch") || "all"; // "all" or a branch name
+let inventoryStatusKey = INVENTORY_STATUS_KEYS.includes(inventoryUrlParams.get("status")) ? inventoryUrlParams.get("status") : "all";
+let inventorySearch = inventoryUrlParams.get("q") || "";
+let inventorySort = { key: INVENTORY_SORT_KEYS.includes(inventoryUrlParams.get("sort")) ? inventoryUrlParams.get("sort") : "expiry", dir: inventoryUrlParams.get("dir") === "desc" ? -1 : 1 };
+let inventoryPage = Math.max(0, (Number(inventoryUrlParams.get("page")) || 1) - 1);
+let inventorySelectedRef = null;
+let inventoryFocusQuery = "";
 let poViewMode = "table";
 let poWorkflowTab = "pending";
 let creditInvoiceWorkflowTab = "pending";
@@ -611,6 +627,7 @@ function setGlobalSaveStatus(status, text, detail = "") {
   indicator.classList.remove("saving", "saved", "error");
   indicator.classList.add(status);
   label.textContent = text;
+  if (typeof syncInventorySavedPill === "function") syncInventorySavedPill(status, text);
   // Surfaces the exact underlying error (e.g. the specific timeout/offline/network reason
   // classifyFetchFailure() worked out) as a hover tooltip, without needing a toast — flushPendingSaveQueue
   // deliberately avoids toasts since it runs silently in the background and a toast there can

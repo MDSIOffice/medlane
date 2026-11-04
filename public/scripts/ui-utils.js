@@ -517,6 +517,10 @@ function prepareFocusedSection(section, record) {
   const stock = data.inventory.find((item) => [item.lot, item.serial, item.code, item.item].some((value) => String(value || "").toLowerCase() === query));
   if (stock) {
     inventoryBranchTab = stock.branch;
+    if (inventoryBranchView !== "all") inventoryBranchView = stock.branch;
+    inventoryWorkflowTab = "stocks";
+    inventorySearch = "";
+    inventoryFocusQuery = query;
     renderInventory();
     return;
   }

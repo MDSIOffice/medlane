@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medlane OS — Inventory redesign (reference)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<style>
+/* ---------- Design tokens ---------- */
+:root{
+  --bg:#F3F6F8; --surface:#FFFFFF; --border:#DFE5EA; --border-strong:#CBD3DB; --divider:#EEF2F5;
+  --ink:#12202E; --ink-2:#24313E; --muted:#4F5D6B; --subtle:#5B6876;
+  --accent:#1F5F74; --accent-soft:#E3EEF2; --hover:#EEF3F6;
+  --available:#2F8F6B; --available-bg:#E6F3EC; --available-fg:#17603F;
+  --near:#D9A21B; --near-bg:#FDF5DE; --near-fg:#7A5300;
+  --low:#E07A2F; --low-bg:#FDEEE3; --low-fg:#8F3F07;
+  --critical:#C0392B; --critical-bg:#FBE9E7; --critical-fg:#9B1C1C;
+  --disposal:#4A5565; --disposal-bg:#ECEFF3; --disposal-fg:#2F3946;
+  --radius:10px; --radius-card:14px;
+  --font:'Manrope',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font)}
+button,input,select{font-family:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mono{font-family:var(--mono)}
+.num{font-variant-numeric:tabular-nums}
+
+/* shell */
+.app{min-height:100vh;display:flex}
+.side{width:248px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 6px}
+.brand-mark{width:40px;height:40px;border-radius:10px;border:1px solid #E3E9EE;display:flex;align-items:center;justify-content:center}
+.brand b{display:block;font-weight:800;font-size:15px}.brand small{font-size:12px;color:var(--subtle)}
+.nav{width:100%;height:38px;padding:0 10px;border:0;border-radius:8px;display:flex;align-items:center;gap:12px;text-align:left;font-size:14px;font-weight:600;background:transparent;color:#2B3845}
+.nav:hover{background:var(--hover)}
+.nav[aria-current=page]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.col{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{min-height:64px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 28px}
+main{flex:1;padding:24px 28px 48px;display:flex;flex-direction:column;gap:20px;min-width:0}
+@media (max-width:860px){.side{display:none}main,.topbar{padding-left:16px;padding-right:16px}}
+
+/* controls */
+.field{height:40px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius)}
+.field:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(31,95,116,.15)}
+.field input,.field select{flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:14px;height:100%}
+.btn{height:44px;padding:0 14px;border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--surface);font-size:14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn:hover{background:#F1F5F8;border-color:#B6C2CC}
+.btn.sm{height:40px;font-size:13px;padding:0 12px}
+.btn.xs{height:36px;font-size:13px;padding:0 12px;border-radius:8px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn.primary:hover{filter:brightness(1.1)}
+.icon-btn{width:40px;height:40px;border:0;border-radius:8px;background:transparent;color:var(--muted);display:inline-flex;align-items:center;justify-content:center}
+.icon-btn:hover{background:var(--hover)}
+.seg{display:flex;background:#E7ECF0;border-radius:var(--radius);padding:3px;gap:2px}
+.seg button{height:34px;padding:0 12px;border:0;border-radius:8px;font-size:13px;font-weight:600;background:transparent;color:#3A4754;display:flex;align-items:center;gap:6px}
+.seg button[aria-pressed=true]{background:#fff;color:var(--ink);font-weight:700;box-shadow:0 1px 2px rgba(18,32,46,.12)}
+.dot{width:8px;height:8px;border-radius:99px;flex-shrink:0;display:inline-block}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.count{min-width:22px;height:20px;padding:0 6px;border-radius:999px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;background:#EEF1F4;color:var(--subtle)}
+.count.has{background:var(--accent-soft);color:var(--accent)}
+
+/* tabs */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{height:46px;padding:0 14px;border:0;background:transparent;white-space:nowrap;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected=true]{font-weight:800;color:var(--ink);border-bottom-color:var(--accent)}
+.tab[aria-selected=true] .count{background:var(--accent);color:#fff}
+
+/* cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.kcard{padding:18px;display:flex;flex-direction:column;gap:12px}
+.klabel{font-size:13px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:8px}
+.kval{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.link{border:0;background:none;padding:6px 0;font-size:13px;font-weight:700;color:var(--accent)}
+.link:hover{text-decoration:underline}
+.legend-row{height:32px;border:0;background:transparent;border-radius:6px;padding:0 6px;margin:0 -6px;display:flex;align-items:center;gap:10px;font-size:14px;text-align:left}
+.legend-row:hover{background:#F7FAFB}
+.alist{border-top:1px solid var(--divider)}
+.alist div{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--divider);font-size:13px}
+
+/* chips */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{height:36px;padding:0 12px;border-radius:999px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:#fff;color:var(--ink-2)}
+.chip[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:700}
+.chip .n{font-size:12px;color:var(--subtle)}.chip[aria-pressed=true] .n{color:#fff;opacity:.8}
+
+/* table */
+.tablewrap{overflow-x:auto}
+table{width:100%;min-width:920px;border-collapse:collapse;font-size:14px}
+thead tr{background:#F8FAFB;border-bottom:1px solid var(--border)}
+th{text-align:left;padding:0 8px;height:44px;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+th button{border:0;background:none;padding:6px 0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit}
+th:first-child,td:first-child{padding-left:20px}
+th:last-child,td:last-child{padding-right:16px;text-align:right}
+tbody tr{border-bottom:1px solid var(--divider)}
+tbody tr:hover{background:#F7FAFB}
+tbody tr.sel{background:#EEF5F7;box-shadow:inset 3px 0 0 var(--accent)}
+td{padding:13px 8px;vertical-align:middle}
+.compact td{padding-top:7px;padding-bottom:7px}
+td.actions{padding-top:6px;padding-bottom:6px;white-space:nowrap}
+.compact td.actions{padding-top:2px;padding-bottom:2px}
+.name-btn{border:0;background:none;padding:0;text-align:left;font-size:14px;font-weight:700}
+.name-btn:hover{text-decoration:underline}
+.sub{font-size:12px;color:var(--subtle);margin-top:2px}
+.tfoot{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:10px 20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)}
+.empty{padding:44px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px}
+
+/* detail */
+.detail{flex:1 1 300px;max-width:370px;padding:20px;display:flex;flex-direction:column;gap:16px}
+dl{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;font-size:14px}
+dt{font-size:12px;color:var(--subtle);margin-bottom:2px}dd{margin:0}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useMemo } = React;
+
+/* ---------- Status model (counts are from the current production screen) ---------- */
+const STATUS = {
+  available: { label: 'Available',    count: 62 },
+  near:      { label: 'Near expiry',  count: 7 },
+  low:       { label: 'Low stock',    count: 21 },
+  critical:  { label: 'Critical',     count: 119 },
+  disposal:  { label: 'For disposal', count: 7 },
+};
+const ORDER = ['available', 'near', 'low', 'critical', 'disposal'];
+const TOTAL = 216;
+const cssVar = (k, part = '') => `var(--${k}${part})`;
+
+/* ---------- Sample rows (replace with API data) ---------- */
+const ROWS = [
+  { brand: 'Zybio',   code: 'G78', name: 'HBA1C', lot: '678923', exp: '2027-06-30', qty: 3, branch: 'lp', status: 'available', min: null },
+  { brand: 'Zybio',   code: 'G78', name: 'HBA1C', lot: '272821', exp: '2027-09-30', qty: 4, branch: 'lp', status: 'low', min: 14 },
+  { brand: 'Vedalab', code: 'J89', name: 'FOB', lot: '218289', exp: '2027-02-28', qty: 6, branch: 'lp', status: 'available', min: null },
+  { brand: 'Vedalab', code: 'F76', name: 'VEDA8900', lot: '1230104910203', exp: null, qty: 1, branch: 'lp', status: 'available', min: null },
+  { brand: 'Zybio',   code: 'H80', name: 'EXC200', lot: '838920930409', exp: null, qty: 1, branch: 'lp', status: 'available', min: null },
+  { brand: 'Medlane', code: '01.09.31.02.Z3.05', name: 'ZY Z3 Diluent (20 L)', lot: '260116', exp: '2028-01-19', qty: 111, branch: 'lp', status: 'low', min: 121 },
+];
+const BRANCH = { lp: 'Las Piñas', naga: 'Naga' };
+
+const ALERTS = [
+  { title: 'Low & critical', count: 140, unit: 'records', key: 'critical', items: [
+    ['HBA1C · Lot 272821', '10 short'], ['ZY Z3 Diluent (20 L) · Lot 260116', '10 short'], ['ZY Probe Cleanser (50 mL)', '10 short'], ['CY URIC ACID LIQUID 2X1', '10 short'], ['I-SMART CONTROL', '10 short'] ] },
+  { title: 'Near expiry', count: 7, unit: 'lots', key: 'near', items: [
+    ['ZY CRP 25 T/kit', '31 days'], ['ZYBIO Z5 CONTROL', '44 days'], ['ZYBIO Z5 HEMATOLOGY C…', '44 days'], ['Reagent · Lot lotnumber', '59 days'], ['Reagent · Lot lotnumber', '59 days'] ] },
+  { title: 'For disposal', count: 7, unit: 'expired lots', key: 'disposal', items: [
+    ['Reagent · Lot asds', '48d expired'], ['ZY Wash solution', '31d expired'], ['CY BILIRUBIN TOT…', '14d expired'], ['LIFO AFP (ALPHA-…', '11d expired'], ['ZY cTn I (TROPONIN…', '5d expired'] ] },
+];
+
+const TABS = [['stocks','Stocks',216],['rpo','Receiving POs',2],['pending','Pending receipts',0],['done','Completed POs',3],['transfers','Transfers',2],['demo','Demo requests',0],['rhist','Receiving history',null],['thist','Transfer history',null]];
+
+const APP_NAV = [
+  ['Masterlists','M4 6h16M4 12h16M4 18h10'],['Inventory','M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8'],
+  ['Item Forecast','M3 17l6-6 4 4 8-8M15 7h6v6'],['Purchase Orders','M3 4h2l2.4 11h11L21 7H6.2M9 20h.01M18 20h.01'],
+  ['Sales','M4 19V11M10 19V5M16 19v-6M3 21h18'],['Invoicing','M6 3h9l4 4v14H6zM9 12h7M9 16h7'],
+  ['Collections','M3 6h18v13H3zM3 10h18'],['Receivables','M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12h8M13 9l3 3-3 3'],
+  ['Warranty','M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'],['Support Tracker','M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z'],
+  ['History','M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2'],['Payables','M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 21h18'],
+  ['Expenses','M6 3h12v18H6zM9 8h6M9 12h6M9 16h3'],['Import','M12 15V3M7 8l5-5 5 5M5 21h14'],
+  ['Reports','M5 21V3h14v18zM9 8h6M9 12h6M9 16h6'],['Recon','M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12l3 3 5-6'],
+  ['Users','M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6'],
+  ['Settings','M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1'],
+  ['Print Templates','M7 8V3h10v5M6 17H4v-7h16v7h-2M7 14h10v7H7z'],
+];
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function expiryInfo(exp) {
+  if (!exp) return { days: null, label: 'No expiry', rel: 'Serial-tracked' };
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(exp + 'T00:00:00');
+  const days = Math.round((d - today) / 86400000);
+  const rel = days < 0 ? `${-days} days ago` : days < 60 ? `in ${days} days` : `in ${Math.round(days/30)} months`;
+  return { days, label: `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`, rel };
+}
+
+const Icon = ({ d, size = 17, w = 2 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+);
+const I = {
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-3.5-3.5',
+  transfer: 'M7 7h13l-4-4M17 17H4l4 4', edit: 'M4 20h4L19 9l-4-4L4 16v4z',
+  history: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2', plus: 'M12 5v14M5 12h14',
+  close: 'M6 6l12 12M18 6L6 18', check: 'M5 12l5 5L20 7', rows: 'M4 6h16M4 10h16M4 14h16M4 18h16',
+  bell: 'M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0',
+};
+
+function StatusPill({ status, label }) {
+  return <span className="pill" style={{ background: cssVar(status,'-bg'), color: cssVar(status,'-fg') }}>
+    <span className="dot" style={{ background: cssVar(status) }} />{label}
+  </span>;
+}
+
+function App() {
+  const [tab, setTab] = useState('stocks');
+  const [branch, setBranch] = useState('all');
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('all');
+  const [sort, setSort] = useState({ key: 'expiry', dir: 1 });
+  const [selId, setSelId] = useState(null);
+  const [compact, setCompact] = useState(false);
+
+  const all = useMemo(() => ROWS.map((r, id) => {
+    const e = expiryInfo(r.exp);
+    const statusLabel = r.status === 'low' && r.min ? `${STATUS.low.label} · ${r.min - r.qty} short` : STATUS[r.status].label;
+    return { ...r, id, ...e, branchLabel: BRANCH[r.branch], statusLabel };
+  }), []);
+
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const val = r => sort.key === 'item' ? r.name + r.lot : sort.key === 'lot' ? r.lot : sort.key === 'branch' ? r.branchLabel : sort.key === 'qty' ? r.qty : (r.days ?? Infinity);
+    return all
+      .filter(r => branch === 'all' || r.branch === branch)
+      .filter(r => status === 'all' || r.status === status)
+      .filter(r => !needle || [r.name, r.code, r.brand, r.lot].join(' ').toLowerCase().includes(needle))
+      .sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * sort.dir; });
+  }, [all, branch, status, q, sort]);
+
+  const sel = all.find(r => r.id === selId);
+  const sortBy = key => setSort(s => ({ key, dir: s.key === key ? -s.dir : 1 }));
+  const arrow = key => sort.key === key ? (sort.dir === 1 ? ' ↑' : ' ↓') : '';
+  const filterStatus = k => { setStatus(k); setTab('stocks'); setSelId(null); };
+  const tabLabel = TABS.find(t => t[0] === tab)[1];
+
+  return (
+    <div className="app">
+      {/* Existing Medlane OS sidebar — keep yours, shown here for context only */}
+      <nav className="side" aria-label="Medlane OS">
+        <div className="brand">
+          <div className="brand-mark"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19L10 6l3 5" fill="none" stroke="#D9682B" strokeWidth="2.2" strokeLinejoin="round"/><path d="M7 19l7-11 7 11z" fill="none" stroke="#1F5F74" strokeWidth="2.2" strokeLinejoin="round"/></svg></div>
+          <div><b>Medlane OS</b><small>Diagnostics Distribution</small></div>
+        </div>
+        <div>{APP_NAV.map(([label, d]) => (
+          <button key={label} className="nav" aria-current={label === 'Inventory' ? 'page' : undefined}><Icon d={d} size={18} w={1.9} />{label}</button>
+        ))}</div>
+      </nav>
+
+      <div className="col">
+        <header className="topbar">
+          <label className="field" style={{ flex: '1 1 280px', maxWidth: 420, background: '#F6F8FA', borderColor: 'var(--border)' }}>
+            <Icon d={I.search} size={16} /><span className="sr">Search Medlane OS</span>
+            <input type="search" placeholder="Search client, reagent, invoice" />
+          </label>
+          <div style={{ flex: 1 }} />
+          <div className="seg" role="group" aria-label="Workspace">
+            <button aria-pressed="true"><span className="dot" style={{ background: 'var(--available)', width: 7, height: 7 }} />Live</button>
+            <button aria-pressed="false">Sales</button><button aria-pressed="false">Warehouse</button><button aria-pressed="false">Accounting</button>
+          </div>
+          <button className="icon-btn" aria-label="Notifications"><Icon d={I.bell} size={19} w={1.9} /></button>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Geo</span>
+          <div style={{ width: 36, height: 36, borderRadius: 999, border: '2px solid var(--accent)', color: 'var(--accent)', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>GD</div>
+        </header>
+
+        <main>
+          {/* Page header */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 640 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h1 style={{ margin: 0, fontSize: 30, fontWeight: 800, letterSpacing: '-.025em' }}>Inventory</h1>
+                <StatusPill status="available" label="All changes saved" />
+              </div>
+              <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: 'var(--muted)' }}>Track branch stock by item, lot, serial, expiry, quantity and minimum level.</p>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <label className="field" style={{ height: 44 }}>
+                <span style={{ fontSize: 13, color: 'var(--subtle)' }}>Area</span>
+                <select style={{ fontWeight: 600 }}><option>All areas</option><option>Las Piñas</option><option>Naga</option></select>
+              </label>
+              <button className="btn">New PO</button>
+              <button className="btn">Request demo</button>
+              <button className="btn"><Icon d={I.transfer} size={16} />Transfer stock</button>
+              <button className="btn primary"><Icon d={I.plus} size={16} w={2.4} />Receive stock</button>
+            </div>
+          </div>
+
+          {/* One row of module tabs (replaces the two rows of tab buttons) */}
+          <div className="tabs" role="tablist" aria-label="Inventory sections">
+            {TABS.map(([k, label, count]) => (
+              <button key={k} className="tab" role="tab" aria-selected={tab === k} onClick={() => { setTab(k); setSelId(null); }}>
+                {label}{count !== null && <span className={'count num' + (count > 0 ? ' has' : '')}>{count}</span>}
+              </button>
+            ))}
+          </div>
+
+          {tab !== 'stocks' ? (
+            <div className="card empty" style={{ padding: '56px 24px' }}>
+              <div style={{ fontSize: 17, fontWeight: 800 }}>{tabLabel}</div>
+              <div style={{ fontSize: 14, color: 'var(--muted)' }}>Uses the same filter bar, table and detail panel as Stocks.</div>
+              <button className="btn sm" onClick={() => setTab('stocks')}>Back to Stocks</button>
+            </div>
+          ) : (<>
+            {/* Task queue — collapses to one line when empty */}
+            <div className="card" style={{ padding: '12px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, borderRadius: 12 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 999, background: 'var(--available-bg)', color: 'var(--available-fg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon d={I.check} size={16} w={2.4} /></div>
+              <div style={{ flex: '1 1 300px', fontSize: 14 }}><strong>Warehouse task queue is clear.</strong> <span style={{ color: 'var(--muted)' }}>No urgent recommendations for Inventory right now.</span></div>
+              <span className="pill" style={{ background: '#EEF2F5', color: 'var(--muted)' }}>0 recommendations</span>
+            </div>
+
+            {/* Health + alert cards */}
+            <div className="cards">
+              <section className="card kcard" aria-label="Stock health">
+                <div className="klabel" style={{ justifyContent: 'space-between' }}>Stock health <span style={{ fontWeight: 500, fontSize: 12, color: 'var(--subtle)' }}>records</span></div>
+                <div className="kval num">{TOTAL}</div>
+                <div aria-hidden="true" style={{ display: 'flex', height: 10, borderRadius: 999, overflow: 'hidden', gap: 2 }}>
+                  {ORDER.map(k => <span key={k} style={{ flex: `${STATUS[k].count} 1 0`, minWidth: 4, background: cssVar(k) }} />)}
+                </div>
+                <div>{ORDER.map(k => (
+                  <button key={k} className="legend-row" style={{ width: 'calc(100% + 12px)' }} onClick={() => filterStatus(k)}>
+                    <span className="dot" style={{ background: cssVar(k) }} /><span style={{ flex: 1 }}>{STATUS[k].label}</span><b className="num">{STATUS[k].count}</b>
+                  </button>
+                ))}</div>
+              </section>
+              {ALERTS.map(a => (
+                <section key={a.title} className="card kcard" aria-label={a.title}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                    <span className="klabel"><span className="dot" style={{ background: cssVar(a.key) }} />{a.title}</span>
+                    <button className="link" onClick={() => filterStatus(a.key)}>View all</button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}><span className="kval num">{a.count}</span><span style={{ fontSize: 14, color: 'var(--muted)' }}>{a.unit}</span></div>
+                  <div className="alist">{a.items.map(([n, m], i) => (
+                    <div key={i}><span className="trunc" style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>{n}</span><b className="num" style={{ color: a.key === 'near' ? 'var(--near-fg)' : 'var(--critical-fg)', whiteSpace: 'nowrap' }}>{m}</b></div>
+                  ))}</div>
+                </section>
+              ))}
+            </div>
+
+            {/* Stock table */}
+            <section aria-label="Stock list" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: '-.015em' }}>Stock by branch, lot, expiry and serial</h2>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <div className="seg" role="group" aria-label="Branch">
+                    {[['all','All branches'],['lp','Las Piñas'],['naga','Naga']].map(([k, l]) => (
+                      <button key={k} aria-pressed={branch === k} onClick={() => { setBranch(k); setSelId(null); }}>{l}</button>
+                    ))}
+                  </div>
+                  <label className="field" style={{ width: 280, maxWidth: '100%' }}>
+                    <Icon d={I.search} size={16} /><span className="sr">Search stock</span>
+                    <input type="search" value={q} onChange={e => { setQ(e.target.value); setSelId(null); }} placeholder="Item, code, brand or lot no." />
+                  </label>
+                  <button className="btn sm" aria-pressed={compact} onClick={() => setCompact(c => !c)}><Icon d={I.rows} size={16} />{compact ? 'Comfortable view' : 'Compact view'}</button>
+                  <button className="btn sm">Export</button>
+                </div>
+              </div>
+
+              <div className="chips" role="group" aria-label="Filter by status">
+                {[['all', 'All', TOTAL]].concat(ORDER.map(k => [k, STATUS[k].label, STATUS[k].count])).map(([k, l, n]) => (
+                  <button key={k} className="chip" aria-pressed={status === k} onClick={() => filterStatus(k)}>
+                    <span className="dot" style={{ background: status === k ? '#fff' : k === 'all' ? '#8A96A3' : cssVar(k) }} />{l} <span className="n num">{n}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
+                <div className="card" style={{ flex: '999 1 640px', minWidth: 0, overflow: 'hidden' }}>
+                  <div className="tablewrap">
+                    <table className={compact ? 'compact' : ''}>
+                      <thead><tr>
+                        <th scope="col"><button onClick={() => sortBy('item')}>Item{arrow('item')}</button></th>
+                        <th scope="col"><button onClick={() => sortBy('lot')}>Lot / Serial{arrow('lot')}</button></th>
+                        <th scope="col"><button onClick={() => sortBy('branch')}>Branch{arrow('branch')}</button></th>
+                        <th scope="col"><button onClick={() => sortBy('expiry')}>Expiry{arrow('expiry')}</button></th>
+                        <th scope="col" style={{ textAlign: 'right' }}><button onClick={() => sortBy('qty')}>Qty{arrow('qty')}</button></th>
+                        <th scope="col" style={{ paddingLeft: 20 }}>Status</th>
+                        <th scope="col">Actions</th>
+                      </tr></thead>
+                      <tbody>{rows.map(r => (
+                        <tr key={r.id} className={selId === r.id ? 'sel' : ''}>
+                          <td><button className="name-btn" onClick={() => setSelId(r.id)}>{r.name}</button><div className="sub">{r.brand} · <span className="mono">{r.code}</span></div></td>
+                          <td className="mono" style={{ fontSize: 13 }}>{r.lot}</td>
+                          <td>{r.branchLabel}</td>
+                          <td><div className="num">{r.label}</div><div className="sub">{r.rel}</div></td>
+                          <td className="num" style={{ textAlign: 'right', fontSize: 15, fontWeight: 700 }}>{r.qty}</td>
+                          <td style={{ paddingLeft: 20 }}><StatusPill status={r.status} label={r.statusLabel} /></td>
+                          <td className="actions">
+                            <button className="icon-btn" title="Transfer" aria-label={`Transfer ${r.name} lot ${r.lot}`}><Icon d={I.transfer} /></button>
+                            <button className="icon-btn" title="Edit" aria-label={`Edit ${r.name} lot ${r.lot}`}><Icon d={I.edit} /></button>
+                            <button className="icon-btn" title="History" aria-label={`History for ${r.name} lot ${r.lot}`} onClick={() => setSelId(r.id)}><Icon d={I.history} /></button>
+                          </td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                  {rows.length === 0 && (
+                    <div className="empty">
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>No stock matches these filters</div>
+                      <div style={{ fontSize: 14, color: 'var(--muted)' }}>Try another branch or status, or clear the search.</div>
+                      <button className="btn sm" onClick={() => { setBranch('all'); setQ(''); setStatus('all'); }}>Clear filters</button>
+                    </div>
+                  )}
+                  <div className="tfoot">
+                    <span>Showing {rows.length} of {TOTAL} records</span>
+                    <div style={{ display: 'flex', gap: 6 }}><button className="btn xs">Previous</button><button className="btn xs">Next</button></div>
+                  </div>
+                </div>
+
+                {sel && (
+                  <aside className="card detail" aria-label="Stock record details">
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--subtle)', letterSpacing: '.06em', textTransform: 'uppercase' }}>{sel.brand}</span>
+                        <span style={{ fontSize: 20, fontWeight: 800 }}>{sel.name}</span>
+                        <StatusPill status={sel.status} label={sel.statusLabel} />
+                      </div>
+                      <button className="icon-btn" aria-label="Close details" onClick={() => setSelId(null)}><Icon d={I.close} size={18} /></button>
+                    </div>
+                    <dl>
+                      <div><dt>Item code</dt><dd className="mono" style={{ fontSize: 13 }}>{sel.code}</dd></div>
+                      <div><dt>Lot / Serial</dt><dd className="mono" style={{ fontSize: 13, wordBreak: 'break-all' }}>{sel.lot}</dd></div>
+                      <div><dt>Branch</dt><dd>{sel.branchLabel}</dd></div>
+                      <div><dt>Expiry</dt><dd>{sel.label}</dd></div>
+                      <div><dt>On hand</dt><dd className="num" style={{ fontSize: 22, fontWeight: 800 }}>{sel.qty}</dd></div>
+                      <div><dt>Minimum level</dt><dd>{sel.min ?? '—'}</dd></div>
+                    </dl>
+                    <div style={{ borderTop: '1px solid var(--divider)', paddingTop: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Recent movements</div>
+                      <div style={{ fontSize: 13, color: 'var(--muted)' }}>Receiving and transfer history for this lot goes here.</div>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <button className="btn primary" style={{ flex: '1 1 120px' }}>Transfer</button>
+                      <button className="btn" style={{ flex: '1 1 90px' }}>Edit</button>
+                      <button className="btn" style={{ flex: '1 1 90px' }}>History</button>
+                    </div>
+                  </aside>
+                )}
+              </div>
+            </section>
+          </>)}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
