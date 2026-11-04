@@ -929,18 +929,82 @@ qs("#total-collections-annual")?.addEventListener("click", () => { resetCollecti
 qs("#client-invoices-status-filter")?.addEventListener("change", renderClientInvoices);
 qs("#client-invoices-from")?.addEventListener("change", renderClientInvoices);
 qs("#client-invoices-to")?.addEventListener("change", renderClientInvoices);
-qs("#inventory-branch-tabs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-inventory-branch]");
-  if (!button) return;
-  inventoryBranchTab = button.dataset.inventoryBranch;
+// ---- Inventory page (redesign) — delegated handlers; markup/state in modules.js / state.js ----
+function inventoryChangeView(mutate, { resetPage = true, closeDetail = false } = {}) {
+  mutate();
+  if (resetPage) inventoryPage = 0;
+  if (closeDetail) inventorySelectedRef = null;
   renderInventory();
+}
+function inventorySetStatus(key) {
+  const meta = INVENTORY_STATUS_META.find((entry) => entry.key === key);
+  qs("#inventory-status").value = meta ? meta.name : "all";
+  inventoryWorkflowTab = "stocks";
+  inventoryChangeView(() => {}, { closeDetail: true });
+}
+qs("#inventory").addEventListener("click", (event) => {
+  const target = event.target;
+  const tab = target.closest("[data-inventory-workflow]");
+  if (tab) {
+    inventoryWorkflowTab = tab.dataset.inventoryWorkflow;
+    inventorySelectedRef = null;
+    renderInventory();
+    if (inventoryWorkflowTab === "rhist") qs("#open-stock-receipt-history")?.click();
+    if (inventoryWorkflowTab === "thist") qs("#open-transfer-history")?.click();
+    return;
+  }
+  const filter = target.closest("[data-inventory-filter]");
+  if (filter) return inventorySetStatus(filter.dataset.inventoryFilter);
+  const branch = target.closest("[data-inventory-branch]");
+  if (branch) return inventoryChangeView(() => { inventoryBranchView = branch.dataset.inventoryBranch; if (inventoryBranchView !== "all") inventoryBranchTab = inventoryBranchView; }, { closeDetail: true });
+  const sort = target.closest("[data-inventory-sort]");
+  if (sort) return inventoryChangeView(() => { const key = sort.dataset.inventorySort; inventorySort = { key, dir: inventorySort.key === key ? -inventorySort.dir : 1 }; });
+  if (target.closest("#inventory-compact-toggle")) return inventoryChangeView(() => { inventoryCompactView = !inventoryCompactView; }, { resetPage: false });
+  if (target.closest("#inventory-export")) return exportInventoryCsv();
+  if (target.closest("#inventory-prev")) return inventoryChangeView(() => { inventoryPage -= 1; }, { resetPage: false });
+  if (target.closest("#inventory-next")) return inventoryChangeView(() => { inventoryPage += 1; }, { resetPage: false });
+  if (target.closest("#inventory-clear-filters")) {
+    qs("#inventory-status").value = "all";
+    return inventoryChangeView(() => { inventoryBranchView = "all"; inventorySearch = ""; }, { closeDetail: true });
+  }
+  const select = target.closest("[data-inventory-select]");
+  if (select) { inventorySelectedRef = select.dataset.inventorySelect; renderInventory(); return qs("#inventory-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  if (target.closest("[data-inventory-close]")) return inventoryChangeView(() => {}, { resetPage: false, closeDetail: true });
+  const transfer = target.closest("[data-inventory-transfer]");
+  if (transfer) return openTransferForStock(transfer.dataset.inventoryTransfer);
 });
-qs("#inventory-workflow-tabs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-inventory-workflow]");
-  if (!button) return;
-  inventoryWorkflowTab = button.dataset.inventoryWorkflow;
-  renderInventory();
+qs("#inventory-search").addEventListener("input", (event) => {
+  clearTimeout(inventorySearchTimer);
+  const value = event.target.value;
+  inventorySearchTimer = setTimeout(() => inventoryChangeView(() => { inventorySearch = value; }, { closeDetail: true }), 150);
 });
+let inventorySearchTimer = null;
+qs("#inventory-area").addEventListener("change", (event) => {
+  const source = qs("#branch-filter");
+  source.value = event.target.value;
+  source.dispatchEvent(new Event("change", { bubbles: true }));
+});
+function openTransferForStock(ref) {
+  const stock = stockRowByRef(ref);
+  if (!stock) return toast("Stock record no longer exists.");
+  renderTransferSheet();
+  restoreTransferSheetDraft();
+  qs("#transfer-sheet-modal").showModal();
+  const from = qs("#transfer-sheet-from");
+  if (from && [...from.options].some((option) => option.value === stock.branch)) { from.value = stock.branch; from.dispatchEvent(new Event("change", { bubbles: true })); }
+  const row = qs("#transfer-sheet-table tbody tr:last-child");
+  if (!row) return;
+  const set = (selector, value) => { const input = row.querySelector(selector); if (!input) return; input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new Event("change", { bubbles: true })); };
+  set(".transfer-code", stock.code);
+  set(".transfer-lot", stock.lot || stock.serial || "");
+}
+function exportInventoryCsv() {
+  const rows = inventorySortRows(inventoryFilteredRows().filter((m) => inventoryStatusKey === "all" || m.meta.key === inventoryStatusKey));
+  if (!rows.length) return toast("No stock in the current view to export.");
+  const header = ["Branch", "Brand", "Item Code", "Item Name", "Serial", "Lot", "Expiry", "Qty", "Min", "Status", "Notes"];
+  downloadCsv("inventory-stock.csv", [header, ...rows.map((m) => [m.item.branch, m.item.brand, m.item.code, m.item.item, m.item.serial || "", m.item.lot || "", inventoryHasExpiry(m.item) ? m.item.expiry : "", m.item.qty, m.item.min, m.statusText, m.item.note || ""])]);
+  log("Exported inventory stock (CSV)", "Inventory", `${rows.length} records`, { save: false });
+}
 qs("#po-workflow-tabs")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-po-workflow]");
   if (!button) return;
@@ -1025,7 +1089,6 @@ qs("#replenishments-table")?.addEventListener("click", (event) => {
   const row = event.target.closest("[data-expense-detail]");
   if (row) showExpenseDetail(row.dataset.expenseDetail);
 });
-qs("#inventory-compact-toggle").addEventListener("click", () => { inventoryCompactView = !inventoryCompactView; renderInventory(); });
 qs("#po-view-toggle").addEventListener("click", (event) => {
   const btn = event.target.closest("[data-po-view]");
   if (!btn) return;
@@ -1444,11 +1507,6 @@ qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
 qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
 qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
 qs("#inventory-status").addEventListener("change", renderInventory);
-["stock-filter-brand", "stock-filter-code", "stock-filter-item", "stock-filter-lot", "stock-filter-expiry", "stock-filter-qty-min", "stock-filter-qty-max", "stock-filter-notes"].forEach((id) => qs(`#${id}`)?.addEventListener("input", renderInventory));
-qs("#stock-filter-clear")?.addEventListener("click", () => {
-  ["stock-filter-brand", "stock-filter-code", "stock-filter-item", "stock-filter-lot", "stock-filter-expiry", "stock-filter-qty-min", "stock-filter-qty-max", "stock-filter-notes"].forEach((id) => { const el = qs(`#${id}`); if (el) el.value = ""; });
-  renderInventory();
-});
 let salesClientFilterTimer = null;
 qs("#sales-client").addEventListener("input", () => {
   clearTimeout(salesClientFilterTimer);

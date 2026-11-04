@@ -124,6 +124,12 @@ function renderWorkflowAssist(sectionId) {
   panel.querySelector("h2").textContent = workflowTitle(sectionId);
   panel.querySelector("p:not(.eyebrow)").textContent = "Recommended next actions to reduce manual work, prevent errors, and finish recurring tasks faster.";
   panel.querySelector(".badge").textContent = `${items.length} recommendation${items.length === 1 ? "" : "s"}`;
+  const slim = sectionId === "inventory" && !items.length;
+  panel.classList.toggle("is-clear", slim);
+  if (slim) {
+    panel.querySelector("h2").textContent = "Warehouse task queue is clear.";
+    panel.querySelector("p:not(.eyebrow)").textContent = "No urgent recommendations for Inventory right now.";
+  }
   panel.querySelector(".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
@@ -886,7 +892,7 @@ function showSection(sectionId, options = {}) {
   document.body.dataset.activeSection = sectionId;
   // Keep the URL on the current page so a browser refresh stays here instead of bouncing to the
   // dashboard. Detail pages keep whatever list page the user came from.
-  if (location.protocol !== "file:" && document.body.classList.contains("app-route") && canRestoreSection(sectionId)) history.replaceState(null, "", sectionId === "dashboard" ? "/dashboard" : `/dashboard?section=${encodeURIComponent(sectionId)}`);
+  if (location.protocol !== "file:" && document.body.classList.contains("app-route") && canRestoreSection(sectionId)) history.replaceState(null, "", sectionId === "dashboard" ? "/dashboard" : sectionId === "inventory" ? `/dashboard?${inventoryQueryString()}` : `/dashboard?section=${encodeURIComponent(sectionId)}`);
   qsa(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === sectionId));
   qsa(".section").forEach((section) => section.classList.toggle("active", section.id === sectionId));
   const activeButton = qs(`.nav-item[data-section="${sectionId}"]`);
@@ -1336,8 +1342,11 @@ function branchOptions(selected = "") {
 }
 
 function renderInventoryBranchTabs() {
-  if (!platformBranches().includes(inventoryBranchTab)) inventoryBranchTab = platformBranches()[0] || "";
-  qs("#inventory-branch-tabs").innerHTML = platformBranches().map((branch) => `<button class="tab ${branch === inventoryBranchTab ? "active" : ""}" data-inventory-branch="${escapeHtml(branch)}">${escapeHtml(branch)} Stocks</button>`).join("");
+  const host = qs("#inventory-branch-tabs");
+  if (!host) return;
+  if (inventoryBranchView !== "all" && !platformBranches().includes(inventoryBranchView)) inventoryBranchView = "all";
+  const options = [["all", "All branches"], ...platformBranches().map((branch) => [branch, branch === "Las Pinas" ? "Las Piñas" : branch])];
+  host.innerHTML = options.map(([value, label]) => `<button type="button" aria-pressed="${inventoryBranchView === value}" data-inventory-branch="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join("");
 }
 
 function transferAuthorizationCell(transfer, index) {
@@ -2284,6 +2293,171 @@ function demoRequestHistoryCard(request) {
   return `<article class="panel" data-focus-record="${escapeHtml(request.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.demoDate || request.date || "-")}</p><h2>${escapeHtml(request.id)} · ${escapeHtml(closedLabel || "Demo")}</h2></div><span class="pill ${statusClass(request.status)}">${escapeHtml(request.status || "-")}</span></div><p><strong>Sales Agent:</strong> ${escapeHtml(request.salesAgent || request.requestedBy || "-")}</p><p><strong>Expected Return:</strong> ${escapeHtml(request.returnDate || "-")}</p><p><strong>Purpose:</strong> ${escapeHtml(request.purpose || "-")}</p><div class="table-card compact-table"><table><thead><tr><th>Type</th><th>Item</th><th>Qty</th><th>Lot / Notes</th></tr></thead><tbody>${(request.lines || []).map((line) => `<tr><td>${escapeHtml(line.type || "Item")}</td><td>${escapeHtml(line.item || line.code || "-")}<small>${escapeHtml(line.brand || "")}</small></td><td>${Number(line.qty || 0)}</td><td>${escapeHtml([line.lot, line.notes].filter(Boolean).join(" · ") || "-")}</td></tr>`).join("") || `<tr><td colspan="4">No itemized demo lines.</td></tr>`}</tbody></table></div></article>`;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Inventory page (redesign — specs/006-inventory-redesign). View state lives in state.js
+// (inventory*), is mirrored to the URL, and all markup is emitted here.
+// ---------------------------------------------------------------------------------------------
+const INVENTORY_STATUS_META = [
+  { key: "available", name: "Available", label: "Available" },
+  { key: "near", name: "Near Expiry", label: "Near expiry" },
+  { key: "low", name: "Low Stock", label: "Low stock" },
+  { key: "critical", name: "Critical", label: "Critical" },
+  { key: "disposal", name: "For Disposal", label: "For disposal" },
+];
+const INVENTORY_STATUS_BY_NAME = Object.fromEntries(INVENTORY_STATUS_META.map((meta) => [meta.name, meta]));
+const INVENTORY_PAGE_SIZE = 25;
+const INVENTORY_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const INVENTORY_TAB_LABELS = { stocks: "Stocks", receiving: "Receiving POs", receipts: "Pending receipts", completed: "Completed POs", transfers: "Transfers", demos: "Demo requests", rhist: "Receiving history", thist: "Transfer history" };
+const INVENTORY_ICONS = {
+  transfer: "M7 7h13l-4-4M17 17H4l4 4",
+  edit: "M4 20h4L19 9l-4-4L4 16v4z",
+  history: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2",
+  close: "M6 6l12 12M18 6L6 18",
+};
+function inventoryIcon(name, size = 17) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${INVENTORY_ICONS[name]}"/></svg>`;
+}
+
+function inventoryHasExpiry(item) { return Boolean(item.expiry) && item.expiry !== "N/A"; }
+function inventoryExpiryInfo(item) {
+  if (!inventoryHasExpiry(item)) return { days: null, label: "No expiry", rel: item.serial ? "Serial-tracked" : "Not applicable" };
+  const days = daysUntil(item.expiry);
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(item.expiry));
+  const label = match ? `${Number(match[3])} ${INVENTORY_MONTHS[Number(match[2]) - 1]} ${match[1]}` : String(item.expiry);
+  const rel = days < 0 ? `${-days} day${days === -1 ? "" : "s"} ago` : days === 0 ? "today" : days < 60 ? `in ${days} day${days === 1 ? "" : "s"}` : `in ${Math.round(days / 30)} months`;
+  return { days, label, rel };
+}
+function inventoryRef(item) { return `${item.code}|${item.branch}|${item.lot || item.serial}`; }
+function inventoryRowModel(item) {
+  const meta = INVENTORY_STATUS_BY_NAME[inventoryStatus(item)] || INVENTORY_STATUS_META[0];
+  const expiry = inventoryExpiryInfo(item);
+  const min = Number(item.min) || 0;
+  const short = Math.max(min - Number(item.qty || 0), 0);
+  const statusText = meta.key === "low" && short > 0 ? `${meta.label} · ${short} short` : meta.label;
+  return { item, meta, expiry, ref: inventoryRef(item), lotText: String(item.serial || item.lot || "—"), statusText, short };
+}
+function inventoryStatusPill(model) {
+  return `<span class="inv-pill s-${model.meta.key}"><span class="dot"></span>${escapeHtml(model.statusText)}</span>`;
+}
+
+function inventoryQueryString() {
+  const p = new URLSearchParams({ section: "inventory" });
+  if (inventoryWorkflowTab !== "stocks") p.set("tab", inventoryWorkflowTab);
+  if (inventoryBranchView !== "all") p.set("branch", inventoryBranchView);
+  if (inventoryStatusKey !== "all") p.set("status", inventoryStatusKey);
+  if (inventorySearch) p.set("q", inventorySearch);
+  if (inventorySort.key !== "expiry" || inventorySort.dir !== 1) { p.set("sort", inventorySort.key); p.set("dir", inventorySort.dir === 1 ? "asc" : "desc"); }
+  if (inventoryCompactView) p.set("compact", "1");
+  if (inventoryPage > 0) p.set("page", String(inventoryPage + 1));
+  return p.toString();
+}
+function syncInventoryUrl() {
+  if (location.protocol === "file:" || !document.body.classList.contains("app-route") || document.body.dataset.activeSection !== "inventory") return;
+  try { history.replaceState(null, "", `/dashboard?${inventoryQueryString()}`); } catch { /* URL sync is best-effort */ }
+}
+
+function syncInventorySavedPill(status, text) {
+  const pill = qs("#inventory-saved-pill");
+  const label = qs("#inventory-saved-text");
+  if (!pill || !label) return;
+  pill.dataset.state = status === "error" ? "error" : status === "saving" ? "saving" : "saved";
+  label.textContent = status === "saved" ? "All changes saved" : (text || (status === "saving" ? "Saving…" : "Save failed"));
+}
+
+function inventoryFilteredRows() {
+  const needle = inventorySearch.trim().toLowerCase();
+  const matchesBranch = (item) => inventoryBranchView === "all" || item.branch === inventoryBranchView;
+  const matchesSearch = (item) => !needle || [item.item, item.code, item.brand, item.lot, item.serial].join(" ").toLowerCase().includes(needle);
+  return data.inventory
+    .filter(matchesBranch)
+    .filter((item) => includesSearch(Object.entries(item).filter(([key]) => key !== "history").map(([, value]) => value)))
+    .filter(matchesSearch)
+    .map(inventoryRowModel);
+}
+function inventorySortRows(rows) {
+  const { key, dir } = inventorySort;
+  const text = (value) => String(value || "").toLowerCase();
+  const value = (model) => key === "item" ? `${text(model.item.item)} ${text(model.lotText)}` : key === "lot" ? text(model.lotText) : key === "branch" ? text(model.item.branch) : key === "qty" ? Number(model.item.qty || 0) : model.expiry.days;
+  return rows.slice().sort((a, b) => {
+    const x = value(a), y = value(b);
+    if (key === "expiry") { // rows without an expiry always sort last, in either direction
+      if (x === null && y === null) return 0;
+      if (x === null) return 1;
+      if (y === null) return -1;
+    }
+    return (x > y ? 1 : x < y ? -1 : 0) * dir;
+  });
+}
+
+function inventoryCardsHtml() {
+  const all = (data.inventory || []).map(inventoryRowModel);
+  const by = (key) => all.filter((model) => model.meta.key === key);
+  const total = all.length;
+  const legend = INVENTORY_STATUS_META.map((meta) => ({ ...meta, count: by(meta.key).length }));
+  const health = `<section class="inv-card inv-kcard" aria-label="Stock health">
+    <div class="inv-klabel"><span>Stock health</span><small>records</small></div>
+    <div class="inv-kval">${total}</div>
+    <div class="inv-bar" aria-hidden="true">${legend.filter((m) => m.count).map((m) => `<span class="s-${m.key}" style="flex:${m.count} 1 0"></span>`).join("")}</div>
+    <div class="inv-legend">${legend.map((m) => `<button class="inv-legend-row" type="button" data-inventory-filter="${m.key}"><span class="dot s-${m.key}"></span><span class="grow">${m.label}</span><b>${m.count}</b></button>`).join("")}</div>
+  </section>`;
+  const alertCard = (title, key, unit, models, items, itemText, tone) => `<section class="inv-card inv-kcard" aria-label="${escapeHtml(title)}">
+    <div class="inv-klabel"><span class="inv-klabel-t"><span class="dot s-${key}"></span>${escapeHtml(title)}</span><button class="inv-link" type="button" data-inventory-filter="${key}">View all</button></div>
+    <div class="inv-kcount"><span class="inv-kval">${models.length}</span><span class="inv-unit">${unit}</span></div>
+    <div class="inv-alist">${items.length ? items.map((model) => `<div><span class="inv-trunc" title="${escapeHtml(inventoryItemLabel(model.item))}">${escapeHtml(inventoryItemLabel(model.item))}</span><b class="${tone}">${escapeHtml(itemText(model))}</b></div>`).join("") : `<div class="inv-none">Nothing to show.</div>`}</div>
+  </section>`;
+  const lowCritical = all.filter((model) => ["low", "critical"].includes(model.meta.key));
+  const near = by("near");
+  const disposal = by("disposal");
+  const top = (list, sorter) => list.slice().sort(sorter).slice(0, 5);
+  return [
+    health,
+    alertCard("Low & critical", "critical", "records", lowCritical, top(lowCritical, (a, b) => b.short - a.short), (m) => `${m.short} short`, "t-critical"),
+    alertCard("Near expiry", "near", "lots", near, top(near, (a, b) => a.expiry.days - b.expiry.days), (m) => `${m.expiry.days} days`, "t-near"),
+    alertCard("For disposal", "disposal", "expired lots", disposal, top(disposal, (a, b) => b.expiry.days - a.expiry.days), (m) => `${Math.abs(m.expiry.days)}d expired`, "t-critical"),
+  ].join("");
+}
+
+function renderInventoryAreaSelect() {
+  const select = qs("#inventory-area");
+  const source = qs("#branch-filter");
+  if (!select || !source) return;
+  select.innerHTML = source.innerHTML;
+  select.value = source.value;
+  select.disabled = source.disabled;
+}
+
+function renderInventoryDetail(models) {
+  const panel = qs("#inventory-detail");
+  if (!panel) return;
+  const model = inventorySelectedRef ? (data.inventory || []).map(inventoryRowModel).find((m) => m.ref === inventorySelectedRef) : null;
+  if (!model) { inventorySelectedRef = null; panel.hidden = true; panel.innerHTML = ""; return; }
+  const item = model.item;
+  const ref = escapeHtml(model.ref);
+  const reserved = typeof competingPurchaseOrdersForItem === "function" ? competingPurchaseOrdersForItem(item.code, item.branch).reduce((sum, entry) => sum + entry.pending, 0) : 0;
+  const movements = (item.history || []).slice(0, 4);
+  const movementHtml = movements.length
+    ? movements.map((entry) => `<li><time>${escapeHtml(entry.at || "")}</time><span>${escapeHtml(entry.by || "System User")}${(entry.changes || []).length ? ` — ${escapeHtml((entry.changes || []).map((change) => (typeof STOCK_EDIT_FIELD_LABELS !== "undefined" && STOCK_EDIT_FIELD_LABELS[change.field]) || change.field).join(", "))}` : ""}</span></li>`).join("")
+    : `<li class="inv-none">No recorded changes for this lot yet.</li>`;
+  panel.hidden = false;
+  panel.innerHTML = `<div class="inv-detail-head"><div><span class="inv-eyebrow">${escapeHtml(item.brand || "—")}</span><h3>${escapeHtml(item.item)}</h3>${inventoryStatusPill(model)}</div><button class="inv-icon-btn" type="button" data-inventory-close aria-label="Close details" title="Close">${inventoryIcon("close", 18)}</button></div>
+    <dl class="inv-dl">
+      <div><dt>Item code</dt><dd class="mono">${escapeHtml(item.code)}</dd></div>
+      <div><dt>Lot / Serial</dt><dd class="mono break">${escapeHtml(item.serial ? (item.lot && item.lot !== item.serial ? `${item.serial} / ${item.lot}` : item.serial) : (item.lot || "—"))}</dd></div>
+      <div><dt>Branch</dt><dd>${escapeHtml(item.branch)}</dd></div>
+      <div><dt>Expiry</dt><dd>${escapeHtml(model.expiry.label)}<small>${escapeHtml(model.expiry.rel)}</small></dd></div>
+      <div><dt>On hand</dt><dd class="inv-big">${Number(item.qty || 0)}</dd></div>
+      <div><dt>Minimum level</dt><dd>${Number(item.min) > 0 ? Number(item.min) : "—"}</dd></div>
+      ${reserved ? `<div><dt>Reserved (open POs)</dt><dd>${reserved}</dd></div>` : ""}
+      ${item.note ? `<div class="wide"><dt>Note</dt><dd>${escapeHtml(item.note)}</dd></div>` : ""}
+    </dl>
+    <div class="inv-movements"><h4>Recent movements</h4><ul>${movementHtml}</ul></div>
+    <div class="inv-detail-actions">
+      <button class="inv-btn primary" type="button" data-inventory-transfer="${ref}">Transfer</button>
+      ${canEditStockRecord() ? `<button class="inv-btn" type="button" data-stock-edit="${ref}">Edit</button>` : ""}
+      <button class="inv-btn" type="button" data-stock-history="${ref}">History</button>
+    </div>`;
+}
+
 function renderInventory() {
   // Engineering / Product Specialist see only the demo-request workflow; Request Demo itself is
   // limited to those roles (and Superadmin/CEO). Server-side, canAccessKey() limits their writes.
@@ -2292,36 +2466,67 @@ function renderInventory() {
   if (demoOnly) inventoryWorkflowTab = "demos";
   const demoButton = qs("#open-demo-request");
   if (demoButton) demoButton.style.display = canRequestDemo() ? "" : "none";
-  const status = qs("#inventory-status").value;
+  if (!platformBranches().includes(inventoryBranchView) && inventoryBranchView !== "all") inventoryBranchView = "all";
+  // The hidden #inventory-status select stays the source of truth for the status filter so the
+  // dashboard/workflow deep-links (which set it to "all") keep working.
+  const statusSelect = qs("#inventory-status");
+  if (statusSelect.dataset.synced !== "1") { // first render: seed the select from the URL
+    statusSelect.value = inventoryStatusKey === "all" ? "all" : INVENTORY_STATUS_META.find((meta) => meta.key === inventoryStatusKey).name;
+    statusSelect.dataset.synced = "1";
+  }
+  inventoryStatusKey = INVENTORY_STATUS_BY_NAME[statusSelect.value]?.key || "all";
   renderInventoryWorkflowTabs();
   renderInventoryBranchTabs();
+  renderInventoryAreaSelect();
+  syncInventorySavedPill(...(() => { const el = qs("#save-status-indicator"); const s = el?.classList.contains("saving") ? "saving" : el?.classList.contains("error") ? "error" : "saved"; return [s, qs("#save-status-text")?.textContent]; })());
   ensureInventoryDatalists();
-  const stockFilters = stockColumnFilters();
-  const rows = data.inventory.filter((item) => item.branch === inventoryBranchTab).filter((item) => status === "all" || inventoryStatus(item) === status).filter((item) => includesSearch(Object.entries(item).filter(([key]) => key !== "history").map(([, value]) => value))).filter((item) => matchesStockColumnFilters(item, stockFilters));
-  const visibleInventory = data.inventory;
-  const low = visibleInventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
-  const nearExpiry = visibleInventory.filter((item) => inventoryStatus(item) === "Near Expiry");
-  const forDisposal = visibleInventory.filter((item) => inventoryStatus(item) === "For Disposal");
-  const visualCardRowLimit = 5;
-  const worstLow = low.slice().sort((a, b) => Math.max(b.min - b.qty, 0) - Math.max(a.min - a.qty, 0)).slice(0, visualCardRowLimit);
-  const expiringSoon = nearExpiry.slice().sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, visualCardRowLimit);
-  const mostOverdueDisposal = forDisposal.slice().sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, visualCardRowLimit);
-  const overflowNote = (list, label) => list.length > visualCardRowLimit ? `Showing the top ${visualCardRowLimit} of ${list.length} ${label} records.` : "";
-  qs("#inventory-visuals").innerHTML = [
-    visualCard("!", "Low Stock", `${low.length} records`, barRows(worstLow.map((item) => [inventoryItemLabel(item), Math.max(item.min - item.qty, 0)]), (value) => `${value} short`, ["red", "orange"]), "risk", overflowNote(low, "low/critical") || "Computed as minimum stock minus current quantity for records below minimum."),
-    visualCard("⌁", "Near Expiry", `${nearExpiry.length} lots`, barRows(expiringSoon.map((item) => [inventoryItemLabel(item), daysUntil(item.expiry)]), (value) => value < 0 ? "expired" : `${value} days`, ["red", "orange", "green"]), "warning", overflowNote(nearExpiry, "near-expiry") || "Computed from lot expiry dates and days remaining from today."),
-    visualCard("×", "For Disposal", `${forDisposal.length} expired`, barRows(mostOverdueDisposal.map((item) => [inventoryItemLabel(item), Math.abs(daysUntil(item.expiry))]), (value) => `${value} days expired`, ["red", "orange"]), "risk", overflowNote(forDisposal, "for-disposal") || "Expired inventory is marked for disposal and blocked from SI/TS/DR invoicing."),
-    visualCard("▤", "Stock Health", `${visibleInventory.length} total`, barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((itemStatus) => [itemStatus, visibleInventory.filter((item) => inventoryStatus(item) === itemStatus).length]), (value) => `${value} records`, ["green", "orange", "red", "red", "red"]), "info", "Computed by classifying each inventory record by quantity and expiry rules."),
-  ].join("");
-  qs("#inventory-compact-toggle")?.classList.toggle("active", inventoryCompactView);
-  const inventoryHeaders = inventoryCompactView ? ["Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Reserved", "Min", "Status", "Notes", "Actions"] : ["Receiving Branch", "Brand", "Item Code", "Item Name", "Serial No./Lot No.", "Expiry Date", "Qty", "Reserved", "Min", "Status", "Notes", "Actions"];
-  table("#inventory-table", inventoryHeaders, rows.map((i) => {
-    const stockRef = escapeHtml(`${i.code}|${i.branch}|${i.lot || i.serial}`);
-    const noteCell = i.note ? `<span class="inventory-note-cell" title="${escapeHtml(i.note)}">${escapeHtml(i.note)}</span>` : `<span class="muted-cell">—</span>`;
-    const actionCell = `${canEditStockRecord() ? `<button class="mini-button" data-stock-edit="${stockRef}">Edit</button> ` : ""}<button class="mini-button" data-stock-history="${stockRef}">History</button>`;
-    const fullCells = [i.branch, i.brand, i.code, i.item, i.serial ? `${i.serial}<small>${i.lot}</small>` : i.lot, i.expiry, i.qty, inventoryReservedCellHtml(i), i.min, `<span class="pill ${statusClass(inventoryStatus(i))}">${inventoryStatus(i)}</span>`, noteCell, actionCell];
-    return { focus: i.lot, cells: inventoryCompactView ? fullCells.slice(3) : fullCells };
-  }));
+
+  // ----- Stocks tab: cards, chips, table, detail -----
+  qs("#inventory-visuals").innerHTML = inventoryCardsHtml();
+  const baseRows = inventoryFilteredRows();
+  const chipDefs = [{ key: "all", label: "All", count: baseRows.length }, ...INVENTORY_STATUS_META.map((meta) => ({ key: meta.key, label: meta.label, count: baseRows.filter((m) => m.meta.key === meta.key).length }))];
+  qs("#inventory-status-chips").innerHTML = chipDefs.map((chip) => `<button class="inv-chip" type="button" aria-pressed="${inventoryStatusKey === chip.key}" data-inventory-filter="${chip.key}"><span class="dot ${chip.key === "all" ? "s-all" : `s-${chip.key}`}"></span>${chip.label} <span class="n">${chip.count}</span></button>`).join("");
+  const sorted = inventorySortRows(baseRows.filter((m) => inventoryStatusKey === "all" || m.meta.key === inventoryStatusKey));
+  if (inventoryFocusQuery) {
+    const at = sorted.findIndex((m) => [m.item.lot, m.item.serial, m.item.code, m.item.item].some((v) => String(v || "").toLowerCase() === inventoryFocusQuery));
+    if (at >= 0) inventoryPage = Math.floor(at / INVENTORY_PAGE_SIZE);
+    inventoryFocusQuery = "";
+  }
+  const pageCount = Math.max(1, Math.ceil(sorted.length / INVENTORY_PAGE_SIZE));
+  inventoryPage = Math.min(Math.max(inventoryPage, 0), pageCount - 1);
+  const pageRows = sorted.slice(inventoryPage * INVENTORY_PAGE_SIZE, (inventoryPage + 1) * INVENTORY_PAGE_SIZE);
+  const search = qs("#inventory-search");
+  if (search && document.activeElement !== search) search.value = inventorySearch;
+  const compactButton = qs("#inventory-compact-toggle");
+  if (compactButton) { compactButton.setAttribute("aria-pressed", String(inventoryCompactView)); compactButton.textContent = inventoryCompactView ? "Comfortable view" : "Compact view"; }
+  const sortHead = (key, label, extra = "") => {
+    const active = inventorySort.key === key;
+    return `<th scope="col" class="${extra}" aria-sort="${active ? (inventorySort.dir === 1 ? "ascending" : "descending") : "none"}"><button type="button" data-inventory-sort="${key}">${label}${active ? (inventorySort.dir === 1 ? " ↑" : " ↓") : ""}</button></th>`;
+  };
+  const canEdit = canEditStockRecord();
+  const tableEl = qs("#inventory-table");
+  tableEl.classList.toggle("compact", inventoryCompactView);
+  tableEl.innerHTML = `<thead><tr>${sortHead("item", "Item")}${sortHead("lot", "Lot / Serial")}${sortHead("branch", "Branch")}${sortHead("expiry", "Expiry")}${sortHead("qty", "Qty", "num")}<th scope="col" class="status-col">Status</th><th scope="col" class="actions-col">Actions</th></tr></thead><tbody>${pageRows.map((m) => {
+    const ref = escapeHtml(m.ref);
+    const label = escapeHtml(`${m.item.item} lot ${m.lotText}`);
+    return `<tr class="${m.ref === inventorySelectedRef ? "sel" : ""}" data-focus-record="${escapeHtml(m.item.lot || m.item.serial || "")}" data-focus-text="${escapeHtml([m.item.item, m.item.code, m.item.brand, m.item.lot, m.item.serial].join(" "))}">
+      <td><button class="inv-name" type="button" data-inventory-select="${ref}">${escapeHtml(m.item.item)}</button><div class="inv-sub">${escapeHtml(m.item.brand || "—")} · <span class="mono">${escapeHtml(m.item.code)}</span></div></td>
+      <td class="mono lot">${escapeHtml(m.lotText)}</td>
+      <td>${escapeHtml(m.item.branch)}</td>
+      <td><div class="num">${escapeHtml(m.expiry.label)}</div><div class="inv-sub">${escapeHtml(m.expiry.rel)}</div></td>
+      <td class="num qty">${Number(m.item.qty || 0)}</td>
+      <td class="status-col">${inventoryStatusPill(m)}</td>
+      <td class="actions-col"><button class="inv-icon-btn" type="button" data-inventory-transfer="${ref}" title="Transfer" aria-label="Transfer ${label}">${inventoryIcon("transfer")}</button>${canEdit ? `<button class="inv-icon-btn" type="button" data-stock-edit="${ref}" title="Edit" aria-label="Edit ${label}">${inventoryIcon("edit")}</button>` : ""}<button class="inv-icon-btn" type="button" data-inventory-select="${ref}" data-inventory-history="${ref}" title="History" aria-label="History for ${label}">${inventoryIcon("history")}</button></td>
+    </tr>`;
+  }).join("")}</tbody>`;
+  qs("#inventory-empty").hidden = sorted.length > 0;
+  qs("#inventory-foot-text").textContent = `Showing ${pageRows.length} of ${sorted.length} records${pageCount > 1 ? ` · page ${inventoryPage + 1} of ${pageCount}` : ""}`;
+  qs("#inventory-prev").disabled = inventoryPage <= 0;
+  qs("#inventory-next").disabled = inventoryPage >= pageCount - 1;
+  renderInventoryDetail(sorted);
+  syncInventoryUrl();
+
+  // ----- Other workflow tabs (unchanged tables) -----
   const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
   table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], receivingPurchaseOrders().reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
   renderStockReceipts();
@@ -2385,19 +2590,18 @@ function renderInventoryWorkflowTabs() {
   const tabs = qs("#inventory-workflow-tabs");
   if (!tabs) return;
   const counts = {
+    stocks: (data.inventory || []).length,
     receiving: receivingPurchaseOrders().length,
     receipts: (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval").length,
     completed: (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).length,
     transfers: (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status)).length,
     demos: (data.inventoryDemoRequests || []).filter((request) => !["Returned", "To Sales", "Cancelled"].includes(request.status)).length,
-    stocks: (data.inventory || []).filter((item) => item.branch === inventoryBranchTab).length,
   };
-  const labels = { receiving: "Receiving POs", receipts: "Pending Receipts", completed: "Completed POs", transfers: "Transfers", demos: "Demo Requests", stocks: "Stocks" };
-  tabs.querySelectorAll("[data-inventory-workflow]").forEach((button) => {
-    const tab = button.dataset.inventoryWorkflow;
-    button.classList.toggle("active", tab === inventoryWorkflowTab);
-    button.innerHTML = `${escapeHtml(labels[tab] || tab)} <span class="tab-count">${counts[tab] || 0}</span>`;
-  });
+  if (!INVENTORY_TABS.includes(inventoryWorkflowTab)) inventoryWorkflowTab = "stocks";
+  tabs.innerHTML = INVENTORY_TABS.map((tab) => {
+    const count = counts[tab];
+    return `<button class="inv-tab" type="button" role="tab" data-inventory-workflow="${tab}" aria-selected="${tab === inventoryWorkflowTab}" tabindex="${tab === inventoryWorkflowTab ? 0 : -1}">${INVENTORY_TAB_LABELS[tab]}${count === undefined ? "" : `<span class="inv-count${count > 0 ? " has" : ""}">${count}</span>`}</button>`;
+  }).join("");
   qsa(".inventory-workflow-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.inventoryPanel === inventoryWorkflowTab));
 }
 
@@ -2536,36 +2740,6 @@ function showStockHistory(ref) {
   dialog.querySelectorAll("[data-close-stock-history]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
-}
-
-// Per-column filters for the Inventory → Stocks tab table only (not the other inventory workflow
-// tabs) — the top search box is a single free-text OR match across every field, so it can't
-// narrow down e.g. "this brand AND this lot" at once the way these column filters can.
-function stockColumnFilters() {
-  return {
-    brand: (qs("#stock-filter-brand")?.value || "").trim().toLowerCase(),
-    code: (qs("#stock-filter-code")?.value || "").trim().toLowerCase(),
-    item: (qs("#stock-filter-item")?.value || "").trim().toLowerCase(),
-    lot: (qs("#stock-filter-lot")?.value || "").trim().toLowerCase(),
-    expiry: (qs("#stock-filter-expiry")?.value || "").trim().toLowerCase(),
-    qtyMin: qs("#stock-filter-qty-min")?.value || "",
-    qtyMax: qs("#stock-filter-qty-max")?.value || "",
-    notes: (qs("#stock-filter-notes")?.value || "").trim().toLowerCase(),
-  };
-}
-
-function matchesStockColumnFilters(item, filters) {
-  const contains = (value, needle) => !needle || String(value || "").toLowerCase().includes(needle);
-  if (!contains(item.brand, filters.brand)) return false;
-  if (!contains(item.code, filters.code)) return false;
-  if (!contains(item.item, filters.item)) return false;
-  if (!contains(`${item.serial || ""} ${item.lot || ""}`, filters.lot)) return false;
-  if (!contains(item.expiry, filters.expiry)) return false;
-  if (!contains(item.note, filters.notes)) return false;
-  const qty = Number(item.qty || 0);
-  if (filters.qtyMin !== "" && qty < Number(filters.qtyMin)) return false;
-  if (filters.qtyMax !== "" && qty > Number(filters.qtyMax)) return false;
-  return true;
 }
 
 function ensureInventoryDatalists() {
@@ -7317,6 +7491,8 @@ function handleWorkflowAction(action) {
   if (action.startsWith("open-inventory:")) {
     const record = action.slice("open-inventory:".length);
     qs("#inventory-status").value = "all";
+    inventorySearch = "";
+    inventoryWorkflowTab = "stocks";
     renderInventory();
     goToFocused("inventory", record);
     return toast("Inventory record opened.");
