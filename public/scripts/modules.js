@@ -632,7 +632,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="0" step="any" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${uomOptions.map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" step="any" value="${line.price || ""}" required /></div>
-      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label>${lotTracked ? `<input class="invoice-lot-input" name="invoice-lot-${uid}" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist>` : `<input class="invoice-lot-input" name="invoice-lot-${uid}" autocomplete="off" value="${escapeHtml(line.lot || "")}" placeholder="No lot on file — enter it here to record it" />`}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
+      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label>${lotTracked ? `<input class="invoice-lot-input" name="invoice-lot-${uid}" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist>` : `<input class="invoice-lot-input" name="invoice-lot-${uid}" autocomplete="off" value="${escapeHtml(line.lot || "")}" placeholder="No lot on file — enter it here to record it" />`}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" data-expiry-lot="${escapeHtml(line.lot || stock.lot || "")}" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" step="any" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
     </div>
     <button class="icon-button remove-invoice-line" type="button" aria-label="Remove item" title="Remove item">×</button>
@@ -776,10 +776,20 @@ function syncInvoiceRowLot(input) {
   const stockHint = row.querySelector("[data-role='stock-hint']");
   if (stockHint) stockHint.outerHTML = invoiceRowStockHintHtml(item, branch, lot) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
   if (!lot) return;
-  const stock = data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.lot === lot && (!branch || entry.branch === branch));
-  if (stock?.expiry && stock.expiry !== "N/A") {
-    const expiryInput = row.querySelector(".invoice-expiry-input");
-    if (expiryInput) expiryInput.value = stock.expiry;
+  const expiryInput = row.querySelector(".invoice-expiry-input");
+  if (!expiryInput || expiryInput.type === "hidden" || isEquipmentItem(item)) return;
+  // Match the lot the way people actually type it (case/space-insensitive), preferring the
+  // selected branch but falling back to any branch — a lot's expiry is the same wherever it sits.
+  const sameLot = (entry) => (entry.code === item.code || entry.item === item.name) && String(entry.lot || "").trim().toLowerCase() === lot.toLowerCase();
+  const stock = data.inventory.find((entry) => sameLot(entry) && (!branch || entry.branch === branch)) || data.inventory.find(sameLot);
+  if (stock) {
+    expiryInput.value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
+    expiryInput.dataset.expiryLot = lot;
+  } else if (expiryInput.dataset.expiryLot !== lot) {
+    // Unknown lot: the expiry on the line belongs to the previous lot (e.g. copied from the PO),
+    // so clear it and make the user enter the real one instead of silently keeping the old date.
+    expiryInput.value = "";
+    expiryInput.dataset.expiryLot = lot;
   }
 }
 
@@ -822,6 +832,7 @@ function syncInvoiceRowItem(input, options = {}) {
   if (stock) {
     row.querySelector(".invoice-lot-input").value = stock.lot || "";
     if (!equipment) row.querySelector(".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
+    const expiryEl = row.querySelector(".invoice-expiry-input"); if (expiryEl) expiryEl.dataset.expiryLot = stock.lot || "";
   }
   refreshStockHint(row.querySelector(".invoice-lot-input")?.value.trim() || "");
 }
@@ -1855,7 +1866,7 @@ function renderAnalytics() {
     salespersonTotalSales[agent] = (salespersonTotalSales[agent] || 0) + Number(sale.net || 0);
   });
   const salespersonSales = Object.entries(salespersonTotalSales).sort((a, b) => b[1] - a[1]);
-  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales, (agent) => `Deposited ${peso.format(salespersonCollections[agent] || 0)}`) + graphNote("Bar height is invoice net totals grouped by the client's assigned salesperson, Sales role agents only; deposited collections shown beneath each bar.");
+  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales, (agent) => `Deposited ${peso.format(salespersonCollections[agent] || 0)}`);
   const branchSales = Object.entries(sumBy(visibleSales, "area", (sale) => sale.net));
   qs("#analytics-branch-sales").innerHTML = barRows(branchSales, (value) => peso.format(value), ["", "green"]) + graphNote("Computed from invoice net totals grouped by client sales area.");
   const dealerClients = data.clients.filter((client) => client.dealer !== "Direct");
@@ -1866,7 +1877,7 @@ function renderAnalytics() {
   const dealerEnd = totalSales ? Math.round((directSales / totalSales) * 100) : 0;
   qs("#analytics-area-dealer").innerHTML = `<div class="donut" style="--paid:${dealerEnd}%; --partial:${dealerEnd}%; --end:100%;" data-label="${totalSales ? Math.round((dealerSales / totalSales) * 100) : 0}%\ndealer"></div><div class="legend"><span class="green">Direct ${peso.format(directSales)}</span><span class="red">Dealer ${peso.format(dealerSales)}</span></div>${graphNote("Computed from invoice net totals split by client account type: Direct vs Dealer.")}`;
   // "AR" entries are added purely to track receivable history, not actual sold items/brands.
-  const isTrackingOnlyAR = (value) => String(value || "").trim().toUpperCase() === "AR";
+  const isTrackingOnlyAR = (value) => String(value || "").trim().toUpperCase() === "AR" || isBookkeepingOnlyLine(value, "");
   const topBrands = Object.entries(sumBy(visibleSales.filter((sale) => !isTrackingOnlyAR(sale.brand)), "brand", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 5);
   qs("#analytics-top-brands").innerHTML = barRows(topBrands, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Computed from invoice line subtotals grouped by item brand.");
 
