@@ -22,8 +22,7 @@ const clientContactDepartments = [["admin", "Administration Department"], ["purc
 const deliveryStatusOptions = ["Pending", "Document Delivered", "Copy Received w/ Proof of Receipt from Customer"];
 const supportTypeOptions = ["Application Troubleshooting", "Training Support", "Technical Support"];
 const supportTopicOptions = ["Theories and Principles", "Unit Operation", "Parameter Prog.", "Unit Maintenance", "Basic Troubleshooting", "PM and Calibration"];
-const tableInitialBatchSize = 20;
-const tableBatchSize = 10;
+const tablePageSize = 25;
 const tableState = new Map();
 
 const initialData = {

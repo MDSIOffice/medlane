@@ -285,20 +285,20 @@ function table(target, headers, rows) {
     const focusRecord = Array.isArray(rowSpec) ? "" : rowSpec.focus || "";
     return { cells: row, focus: focusRecord, attrs: Array.isArray(rowSpec) ? {} : rowSpec.attrs || {}, focusText: row.map((cell) => String(cell).replace(/<[^>]*>/g, "")).join(" ") };
   });
-  tableState.set(target, { headers, rows: normalizedRows, rendered: 0 });
+  tableState.set(target, { headers, rows: normalizedRows, rendered: 0, page: 0 });
   const tableEl = qs(target);
   tableEl.dataset.tableTarget = target;
   tableEl.classList.remove("is-loading-table");
   tableEl.innerHTML = `<thead><tr>${headers.map((h, index) => `<th><button class="sort-button" type="button" data-sort-col="${index}">${escapeHtml(h)}</button></th>`).join("")}</tr></thead><tbody></tbody>`;
-  if (!normalizedRows.length) { tableEl.tBodies[0].innerHTML = `<tr><td colspan="${headers.length}">No records found.</td></tr>`; renderViewMoreButton(target); }
-  else appendTableRows(target, tableInitialBatchSize);
+  if (!normalizedRows.length) { tableEl.tBodies[0].innerHTML = `<tr><td colspan="${headers.length}">No records found.</td></tr>`; renderTablePager(target); }
+  else showTablePage(target, 0);
   requestAnimationFrame(updateTableScrollHints);
 }
 
 function tableSkeleton(target, headers, rowCount = 5) {
   const tableEl = qs(target);
   if (!tableEl) return;
-  tableState.set(target, { headers, rows: [], rendered: 0 });
+  tableState.set(target, { headers, rows: [], rendered: 0, page: 0 });
   tableEl.dataset.tableTarget = target;
   tableEl.classList.add("is-loading-table");
   tableEl.innerHTML = `<thead><tr>${headers.map((h) => `<th><span>${escapeHtml(h)}</span></th>`).join("")}</tr></thead><tbody>${Array.from({ length: rowCount }, () => `<tr>${headers.map((header, index) => `<td data-label="${escapeHtml(header)}"><span class="skeleton-cell" style="--skeleton-width:${Math.max(38, 88 - index * 6)}%"></span></td>`).join("")}</tr>`).join("")}</tbody>`;
@@ -337,92 +337,77 @@ function rowHtml(row, headers = []) {
   return `<tr ${attrs} ${row.focus ? `data-focus-record="${escapeHtml(row.focus)}"` : ""} data-focus-text="${escapeHtml(row.focusText)}">${row.cells.map((cell, index) => `<td data-label="${escapeHtml(headers[index] || "")}">${sanitizeHtml(cell)}</td>`).join("")}</tr>`;
 }
 
-function appendTableRows(target, count = tableBatchSize) {
+// Tables paginate like Inventory: a fixed page of rows plus a "Showing X of N records · page p of
+// P" footer with Previous/Next. Rows are the locally loaded ones; for server-paginated modules
+// (modulePagination[key].hasMore) the footer shows "N+" and Next on the last local page fetches
+// the next server page, then advances into it.
+function showTablePage(target, page) {
   const state = tableState.get(target);
   const tableEl = qs(target);
   if (!state || !tableEl?.tBodies[0]) return;
+  const pageCount = Math.max(1, Math.ceil(state.rows.length / tablePageSize));
+  state.page = Math.min(Math.max(page, 0), pageCount - 1);
+  const start = state.page * tablePageSize;
+  const pageRows = state.rows.slice(start, start + tablePageSize);
   tableEl.classList.remove("is-loading-table");
-  const nextRows = state.rows.slice(state.rendered, state.rendered + count);
-  tableEl.tBodies[0].insertAdjacentHTML("beforeend", nextRows.map((row) => rowHtml(row, state.headers)).join(""));
-  state.rendered += nextRows.length;
-  renderViewMoreButton(target);
+  tableEl.tBodies[0].innerHTML = pageRows.map((row) => rowHtml(row, state.headers)).join("");
+  state.rendered = start + pageRows.length;
+  renderTablePager(target);
+  requestAnimationFrame(updateTableScrollHints);
 }
 
-// Scrolling the "View More" button into view fires the same loadMoreTableRows() a click would,
-// so every table auto-paginates as the user scrolls down instead of requiring a click. One
-// shared observer (lazily created) watches every table's button; rootMargin starts the load
-// ~400px before the button actually reaches the viewport so more rows are ready by the time the
-// user gets there. button.dataset.tableTarget carries the target since entries only expose the
-// observed element, not the closure that created it.
-let viewMoreObserver = null;
-function ensureViewMoreObserver() {
-  if (viewMoreObserver) return viewMoreObserver;
-  viewMoreObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return;
-      const button = entry.target;
-      const target = button.dataset.tableTarget;
-      if (target && !button.hidden && !button.disabled) loadMoreTableRows(target);
-    });
-  }, { rootMargin: "0px 0px 400px 0px" });
-  return viewMoreObserver;
-}
-
-function renderViewMoreButton(target) {
+function renderTablePager(target) {
   const state = tableState.get(target);
   const tableEl = qs(target);
   const card = tableEl?.closest(".table-card");
   if (!state || !card) return;
-  const remaining = state.rows.length - state.rendered;
-  const serverHasMore = paginatedModuleButtons[target] && entryHasMore(paginatedModuleButtons[target]);
-  let button = card.nextElementSibling;
-  if (!button?.classList?.contains("table-view-more")) {
-    button = document.createElement("button");
-    button.type = "button";
-    button.className = "ghost-button table-view-more";
-    button.dataset.tableTarget = target;
-    card.insertAdjacentElement("afterend", button);
-    button.addEventListener("click", () => loadMoreTableRows(target));
-    ensureViewMoreObserver().observe(button);
+  const total = state.rows.length;
+  const serverHasMore = Boolean(paginatedModuleButtons[target] && entryHasMore(paginatedModuleButtons[target]));
+  const pageCount = Math.max(1, Math.ceil(total / tablePageSize));
+  const page = Math.min(state.page || 0, pageCount - 1);
+  let pager = card.nextElementSibling;
+  if (!pager?.classList?.contains("table-pager")) {
+    pager = document.createElement("div");
+    pager.className = "table-pager";
+    pager.dataset.tableTarget = target;
+    pager.innerHTML = `<span class="table-pager-text"></span><div class="table-pager-buttons"><button type="button" class="ghost-button" data-pager-dir="-1">Previous</button><button type="button" class="ghost-button" data-pager-dir="1">Next</button></div>`;
+    card.insertAdjacentElement("afterend", pager);
+    pager.querySelectorAll("[data-pager-dir]").forEach((button) => button.addEventListener("click", () => changeTablePage(target, Number(button.dataset.pagerDir))));
   }
-  button.hidden = remaining <= 0 && !serverHasMore;
-  button.disabled = false;
-  button.textContent = remaining > 0 ? `View More (${remaining} more)` : "View More";
+  const plus = serverHasMore ? "+" : "";
+  const shown = Math.min(tablePageSize, Math.max(total - page * tablePageSize, 0));
+  pager.hidden = total === 0 && !serverHasMore;
+  pager.querySelector(".table-pager-text").textContent = `Showing ${shown} of ${total}${plus} records · page ${page + 1} of ${pageCount}${plus}`;
+  const [prev, next] = pager.querySelectorAll("button");
+  prev.disabled = page <= 0;
+  next.disabled = page >= pageCount - 1 && !serverHasMore;
   refreshLoadPreviousButton(target);
 }
 
-// "View More" reveals rows already loaded locally, 10 at a time. Once a table's local rows run
-// out, there may still be older records on the server (modulePagination[key].hasMore) that
-// /api/modules/state trimmed away — previously the only way to get those was a separate "Load
-// Previous" button, which a bug kept permanently hidden. Instead of relying on that button, this
-// fetches the next server page transparently and keeps revealing 10 at a time, so one button,
-// clicked repeatedly, walks all the way to the end.
-async function loadMoreTableRows(target) {
+async function changeTablePage(target, delta) {
   const state = tableState.get(target);
-  if (state && state.rendered < state.rows.length) { appendTableRows(target); return; }
+  if (!state) return;
+  const pageCount = Math.max(1, Math.ceil(state.rows.length / tablePageSize));
+  const targetPage = (state.page || 0) + delta;
   const entry = paginatedModuleButtons[target];
-  if (!entry || !entryHasMore(entry)) return;
-  const tableEl = qs(target);
-  const card = tableEl?.closest(".table-card");
-  const button = card?.nextElementSibling;
-  const revealedBefore = state ? state.rendered : 0;
-  if (button) button.disabled = true;
-  try {
-    await entry.loadMore();
-    const newState = tableState.get(target);
-    if (newState) appendTableRows(target, Math.max(revealedBefore - newState.rendered, 0) + tableBatchSize);
-  } finally {
-    if (button) button.disabled = false;
+  if (delta > 0 && targetPage >= pageCount && entry && entryHasMore(entry)) {
+    const pager = qs(target)?.closest(".table-card")?.nextElementSibling;
+    pager?.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    try { await entry.loadMore(); } finally { /* table() re-render below rebuilds button state */ }
+    showTablePage(target, targetPage);
+    return;
   }
+  showTablePage(target, targetPage);
 }
 
 // A "Load Previous" button (server pagination, fetches older records not loaded locally yet)
 // sits right after the same table-card as the "View More" button above (client-side reveal of
 // rows already loaded). Showing both at once reads as two competing pagination controls, so
 // "Load Previous" only appears once "View More" has nothing left to reveal.
+// Superseded by the table pager: Next now fetches server pages itself, so these separate
+// buttons stay hidden (callers hide them when this returns false).
 function tableFullyRevealed(target) {
-  const state = tableState.get(target);
-  return !state || state.rendered >= state.rows.length;
+  return false;
 }
 
 // Each render*() function (renderSales(), renderPayables(), ...) sets its "Load Previous"
@@ -464,8 +449,8 @@ function ensureFocusedRecordsRendered(records) {
     const target = tableEl.dataset.tableTarget;
     const state = tableState.get(target);
     if (!state) return;
-    const needsRecord = records.some((record) => state.rows.some((row) => String(row.focus || "").toLowerCase().split("|").map((item) => item.trim()).includes(record) || row.focusText.toLowerCase().includes(record)));
-    if (needsRecord && state.rendered < state.rows.length) appendTableRows(target, state.rows.length - state.rendered);
+    const index = state.rows.findIndex((row) => records.some((record) => String(row.focus || "").toLowerCase().split("|").map((item) => item.trim()).includes(record) || row.focusText.toLowerCase().includes(record)));
+    if (index >= 0 && Math.floor(index / tablePageSize) !== (state.page || 0)) showTablePage(target, Math.floor(index / tablePageSize));
   });
 }
 
@@ -560,9 +545,7 @@ function sortTable(button) {
     const result = Number.isFinite(an) && Number.isFinite(bn) && av.match(/\d/) && bv.match(/\d/) ? an - bn : av.localeCompare(bv);
     return dir === "asc" ? result : -result;
   });
-  state.rendered = 0;
-  tableEl.tBodies[0].innerHTML = "";
-  appendTableRows(target);
+  showTablePage(target, 0);
 }
 
 function sumBy(items, key, valueFn) {

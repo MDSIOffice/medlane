@@ -1419,6 +1419,9 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (event.target.id === "role" && modalType === "user") syncInviteUserPermissions();
   if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
   if (event.target.classList.contains("invoice-lot-input")) syncInvoiceRowLot(event.target);
+  // A date typed by hand belongs to whatever lot is on the row now, so a later lot edit that
+  // matches nothing in stock won't wipe it unless the lot actually changes again.
+  if (event.target.classList.contains("invoice-expiry-input")) event.target.dataset.expiryLot = event.target.closest(".invoice-line-row")?.querySelector(".invoice-lot-input")?.value.trim() || "";
   if (["invoice", "cancelReplace"].includes(modalType)) renderInvoiceComputePreview();
 });
 qs("#modal-fields").addEventListener("change", (event) => {
