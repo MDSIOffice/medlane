@@ -2467,7 +2467,9 @@ async function initializeRoute() {
   document.body.classList.add("login-route");
   document.body.classList.remove("public-landing", "app-route");
   applyRole();
-  renderAll();
+  // No renderAll() here: nobody is logged in, so it would only fire the dashboard's API calls with
+  // no token, and those 401s pop a false "session expired" toast. It would also mark the first
+  // render as done, leaving the render after login to redraw just one section.
   setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 650);
 }
 initializeRoute();
