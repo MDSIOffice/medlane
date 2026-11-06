@@ -7,7 +7,7 @@ const jsonHeaders = {
   "cache-control": "no-store",
 };
 
-/** @type {Record<string, any>} */
+/** @type {Record<AppRole, string[]>} */
 const roleModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   CEO: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
@@ -25,14 +25,16 @@ Object.values(roleModules).forEach((modules) => modules.push("memos"));
 
 // Modules a role may never see, even if an admin granted them in per-user module_permissions
 // (profileForUser strips them). Logistics has no business in the audit trail or support tracker.
-/** @type {Record<string, any>} */
+/** @type {Partial<Record<AppRole, string[]>>} */
 const ROLE_BLOCKED_MODULES = {
   Logistics: ["logs", "product-issues"],
 };
 // Engineering and Product (Application) Specialists use Inventory only to file demo requests:
 // they keep read access to stock (for lot/serial pickers) but can write nothing in the
 // inventory group except inventoryDemoRequests. Enforced in canAccessKey().
+/** @type {AppRole[]} */
 const DEMO_ONLY_ROLES = ["Engineering", "Product Specialist"];
+/** @type {AppRole[]} */
 const DEMO_REQUESTER_ROLES = [...DEMO_ONLY_ROLES, "Superadmin", "CEO"];
 
 const DISCORD_ROLE_IDS = {
@@ -642,7 +644,7 @@ function discordFieldValue(lines, limit = 900, totalCount = lines.length) {
   return value || "None";
 }
 
-/** @param {any} rows @param {any} moduleName */
+/** @param {AppRecordRow[]} rows @param {any} moduleName */
 function moduleRecordMap(rows, moduleName) {
   const map = new Map();
   rows.filter((/** @type {any} */ row) => row.module_name === moduleName).forEach((/** @type {any} */ row) => map.set(String(row.record_key), row.data || {}));
@@ -659,7 +661,7 @@ function salesPoTotal(po) {
   return Number(po.amount || po.total || po.net || 0);
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function eventActor(profile) {
   return profile.name || profile.email || "System User";
 }
@@ -670,7 +672,7 @@ function webhookText(value, fallback = "-") {
   return text || fallback;
 }
 
-/** @param {any} title @param {any} color @param {any} fields @param {any} profile */
+/** @param {any} title @param {any} color @param {any} fields @param {Profile} profile */
 function discordEventEmbed(title, color, fields, profile) {
   return {
     title,
@@ -688,14 +690,14 @@ function discordEventEmbed(title, color, fields, profile) {
 // (with data) so the poster can diff before/after.
 const DISCORD_EVENT_MODULES = ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers", "payments"];
 
-/** @param {WorkerEnv} env @param {any} profile @param {{ title: any, color: any, fields: any, label: any }} options */
+/** @param {WorkerEnv} env @param {Profile} profile @param {{ title: any, color: any, fields: any, label: any }} options */
 async function postWorkflowEventToDiscord(env, profile, { title, color, fields, label }) {
   if (!env.DISCORD_WEBHOOK_URL) return;
   await sendDiscordWebhook(env, { embeds: [discordEventEmbed(title, color, fields, profile)] })
     .catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `${label}: ${error.message}` }).catch(() => null));
 }
 
-/** @param {WorkerEnv} env @param {any} profile @param {any} beforeRows @param {any} savedRows */
+/** @param {WorkerEnv} env @param {Profile} profile @param {any} beforeRows @param {any} savedRows */
 async function postRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
   if (!env.DISCORD_WEBHOOK_URL || !savedRows.length) return;
   /** @type {Record<string, any>} */
@@ -847,7 +849,7 @@ async function findAuthUserByEmail(env, email) {
   return null;
 }
 
-/** @param {WorkerEnv} env @param {any} profile @param {string} email */
+/** @param {WorkerEnv} env @param {Profile} profile @param {string} email */
 async function findAuthUserForProfileOrEmail(env, profile, email) {
   if (profile?.id) {
     const user = await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(profile.id)}`).catch(() => null);
@@ -962,7 +964,7 @@ function sessionHeader(request) {
   return /^[0-9a-f-]{36}$/i.test(value) ? value : "";
 }
 
-/** @param {WorkerEnv} env @param {Request} request @param {any} userId */
+/** @param {WorkerEnv} env @param {Request} request @param {string} userId */
 async function createAppSession(env, request, userId) {
   const userAgent = request.headers.get("user-agent") || "";
   try {
@@ -980,7 +982,7 @@ async function createAppSession(env, request, userId) {
 
 const APP_SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
-/** @param {WorkerEnv} env @param {Request} request @param {any} userId */
+/** @param {WorkerEnv} env @param {Request} request @param {string} userId */
 async function validateAppSession(env, request, userId) {
   const id = sessionHeader(request);
   if (!id) {
@@ -1014,14 +1016,14 @@ async function validateAppSession(env, request, userId) {
 
 const PASSWORD_KYC_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
-/** @param {WorkerEnv} env @param {any} userId @param {string} email */
+/** @param {WorkerEnv} env @param {string} userId @param {string} email @returns {Promise<Profile>} */
 async function profileForUser(env, userId, email) {
-  const profile = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`);
+  const profile = /** @type {ProfileRow[]} */ (await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`));
   if (!profile[0]) throw new Error(`No Medlane profile found for ${email || "this account"}`);
-  const permissions = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}&select=module_key,can_view,can_edit`);
+  const permissions = /** @type {ModulePermissionRow[]} */ (await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}&select=module_key,can_view,can_edit`));
   const fallback = roleModules[profile[0].role] || roleModules.Sales;
-  const view = permissions.length ? permissions.filter((/** @type {any} */ item) => item.can_view).map((/** @type {any} */ item) => item.module_key) : fallback;
-  const edit = permissions.length ? permissions.filter((/** @type {any} */ item) => item.can_edit).map((/** @type {any} */ item) => item.module_key) : fallback;
+  const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
+  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : fallback;
   // Every role can view memos regardless of when their module_permissions rows were created —
   // this is a newer module that predates most existing users' explicit permission grants, and
   // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
@@ -1055,7 +1057,7 @@ async function profileForUser(env, userId, email) {
   };
 }
 
-/** @param {WorkerEnv} env @param {any} userId */
+/** @param {WorkerEnv} env @param {string} userId */
 async function markPasswordConfirmed(env, userId) {
   try {
     await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
@@ -1075,22 +1077,22 @@ async function authenticatedProfile(request, env) {
   return { authUser: user, profile: await profileForUser(env, user.id, user.email) };
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function canWrite(profile) {
   return Boolean(profile?.customPermissions?.edit?.length || ["Superadmin", "CEO", "Admin"].includes(profile?.role));
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requireWriteAccess(profile) {
   if (!canWrite(profile)) throw new Error("You do not have permission to edit production data");
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requireUserAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage users");
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requireMemoAdmin(profile) {
   if (!["Superadmin", "CEO", "HR"].includes(profile?.role)) throw new Error("Only Superadmin, CEO, or HR can post a memo");
 }
@@ -1101,42 +1103,42 @@ function requireMemoAdmin(profile) {
 // overselling stock. This re-checks those specific invariants server-side for newly created
 // invoices only — editing an already-saved sale (status/payment updates) is left alone, since
 // re-validating stock against a historical sale would fight the stock that sale already consumed.
-/** @param {any} code @param {any} branch @param {any} lot */
+/** @param {string | undefined} code @param {string | undefined} branch @param {string | undefined} lot */
 function saleStockLookupKey(code, branch, lot) {
   return [code, branch, lot].map((part) => String(part || "").trim().toLowerCase()).join("|");
 }
 
-/** @param {any} value */
+/** @param {string} value */
 function daysUntilIso(value) {
   const target = new Date(value);
   if (Number.isNaN(target.getTime())) return Infinity;
   return Math.floor((target.getTime() - Date.now()) / 86400000);
 }
 
-/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} newSaleRows */
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow<IncomingSale>[]} newSaleRows */
 async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   const canAuthorizeDiscount = ["Superadmin", "CEO", "Admin"].includes(profile?.role);
-  /** @type {Map<any, any> | null} */
+  /** @type {Map<string, number> | null} */
   let inventoryByKey = null;
   // Mirrors clientCreditState() in ui-utils.js, which only gates the UI (canAuthorize there is
   // client-trusted). Lazily loaded and keyed by client name; projectedBalanceByClient accumulates
   // net across every new row in this same save so splitting one over-limit order into several
   // rows in one batch can't slip past the per-row check.
-  /** @type {Map<any, any> | null} */
+  /** @type {Map<string | undefined, number> | null} */
   let creditLimitByClient = null;
-  /** @type {Map<any, any> | null} */
+  /** @type {Map<string, number> | null} */
   let projectedBalanceByClient = null;
   // Lazily loaded set of archived client names. buildSale() (modules.js) already blocks a
   // skip-PO invoice against an archived client client-side, but that check is client-trusted —
   // this mirrors it server-side the same way the credit-limit check above does.
-  /** @type {Set<any> | null} */
+  /** @type {Set<string | undefined> | null} */
   let archivedClientNames = null;
   // archivedClientNames and creditLimitByClient both come from the same clients table — share one
   // fetch instead of pulling the entire clients masterlist twice in the same save when a batch
   // needs both (e.g. a skip-PO invoice plus a discount-restricted row for a different client).
-  /** @type {Promise<any> | null} */
+  /** @type {Promise<StoredRow<ClientRowData>[]> | null} */
   let clientRowsPromise = null;
-  const loadClientRows = () => (clientRowsPromise ||= supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`));
+  const loadClientRows = /** @type {() => Promise<StoredRow<ClientRowData>[]>} */ (() => (clientRowsPromise ||= supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`)));
 
   // Every item code this batch will actually check stock for, gathered up front so the inventory
   // fetch below can be scoped to just those codes instead of the entire inventory table (every
@@ -1152,11 +1154,11 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   // Credit-limit gate for a new invoice by a non-authorizer. Shared by the normal path and the
   // noPo/migrated path below — those client-set flags skip stock/amount validation but must not
   // also skip the discount and credit controls.
-  const checkCredit = async (/** @type {any} */ sale, /** @type {any} */ label) => {
+  const checkCredit = async (/** @type {IncomingSale} */ sale, /** @type {string} */ label) => {
   if (!canAuthorizeDiscount && sale.client) {
     if (!creditLimitByClient) {
       const clientRows = await loadClientRows();
-      creditLimitByClient = new Map(clientRows.map((/** @type {any} */ clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
+      creditLimitByClient = new Map(clientRows.map((clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
     }
     const limit = creditLimitByClient.get(sale.client) || 0;
     if (limit > 0) {
@@ -1172,7 +1174,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
         projectedBalanceByClient.set(sale.client, Number(balanceRow?.balance ?? 0));
       }
       const net = Number(sale.net ?? sale.amount ?? 0);
-      const projected = projectedBalanceByClient.get(sale.client) + net;
+      const projected = /** @type {number} */ (projectedBalanceByClient.get(sale.client)) + net;
       if (projected > limit) throw new Error(`Invoice ${label}: credit limit exceeded for ${sale.client} (${projected.toFixed(2)} / ${limit.toFixed(2)}). Needs Admin/CEO/Superadmin authorization.`);
       projectedBalanceByClient.set(sale.client, projected);
     }
@@ -1188,7 +1190,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     if (sale.noPo && !sale.migrated && sale.client) {
       if (!archivedClientNames) {
         const clientRows = await loadClientRows();
-        archivedClientNames = new Set(clientRows.filter((/** @type {any} */ clientRow) => clientRow.data?.archived).map((/** @type {any} */ clientRow) => clientRow.data?.name));
+        archivedClientNames = new Set(clientRows.filter((clientRow) => clientRow.data?.archived).map((clientRow) => clientRow.data?.name));
       }
       if (archivedClientNames.has(sale.client)) throw new Error(`Invoice ${sale.documentNo || row.record_key}: ${sale.client} is archived and can no longer be used on a new invoice.`);
     }
@@ -1218,7 +1220,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     }
 
     if (sale.type !== "DR") {
-      const recomputedAmount = lines.reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + Math.max(0, Number(line.qty) * Number(line.price)), 0);
+      const recomputedAmount = lines.reduce((/** @type {number} */ sum, line) => sum + Math.max(0, Number(line.qty) * Number(line.price)), 0);
       const submittedAmount = Number(sale.amount || 0);
       if (Math.abs(recomputedAmount - submittedAmount) > 0.01) throw new Error(`Invoice ${label}: amount does not match its line items.`);
 
@@ -1234,6 +1236,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     await checkCredit(sale, label);
 
     if (!inventoryByKey) {
+      /** @type {StoredRow<InventoryRowData>[]} */
       const invRows = stockCheckedCodes.size
         ? await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&data->>code=in.${encodeURIComponent(postgrestIn([...stockCheckedCodes]))}&select=data`)
         : [];
@@ -1269,16 +1272,16 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
 // client client-side — this mirrors it server-side, the same way validateNewSaleRows() above
 // mirrors buildSale()'s skip-PO archived-client check. Checked for every incoming PO row (new
 // or edited), since buildPurchaseOrder() allows changing the client on an edit too.
-/** @param {WorkerEnv} env @param {any} stateKey @param {any} poRows */
+/** @param {WorkerEnv} env @param {string} stateKey @param {AppRecordRow<PoRowData>[]} poRows */
 async function assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) {
-  const clientNames = [...new Set(poRows.map((/** @type {any} */ row) => row.data?.client).filter(Boolean))];
+  const clientNames = [...new Set(poRows.map((row) => row.data?.client).filter(Boolean))];
   if (!clientNames.length) return;
-  const [clientRows, storedPoRows] = await Promise.all([
+  const [clientRows, storedPoRows] = /** @type {[StoredRow<ClientRowData>[], StoredRow<PoRowData>[]]} */ (await Promise.all([
     supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`),
-    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(poRows.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`),
-  ]);
-  const archivedClientNames = new Set(clientRows.filter((/** @type {any} */ clientRow) => clientRow.data?.archived).map((/** @type {any} */ clientRow) => clientRow.data?.name));
-  const storedClientByKey = new Map(storedPoRows.map((/** @type {any} */ entry) => [entry.record_key, entry.data?.client]));
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(poRows.map((row) => row.record_key)))}&select=record_key,data`),
+  ]));
+  const archivedClientNames = new Set(clientRows.filter((clientRow) => clientRow.data?.archived).map((clientRow) => clientRow.data?.name));
+  const storedClientByKey = new Map(storedPoRows.map((entry) => [entry.record_key, entry.data?.client]));
   for (const row of poRows) {
     const client = row.data?.client;
     // A PO already saved against this client (e.g. client archived afterwards, then the PO is
@@ -1314,17 +1317,18 @@ function masterlistIdentity(data, spec) {
   };
 }
 
-/** @param {WorkerEnv} env @param {any} stateKey @param {any} rows @param {{ replaceModules?: any }} options */
+/** @param {WorkerEnv} env @param {string} stateKey @param {AppRecordRow[]} rows @param {{ replaceModules?: any }} options */
 async function assertMasterlistUnique(env, stateKey, rows, { replaceModules = false } = {}) {
-  /** @type {Record<string, any>} */
+  /** @type {Record<string, AppRecordRow[]>} */
   const incomingByModule = {};
   for (const row of rows) if (MASTERLIST_UNIQUE_FIELDS[row.module_name] && !row.data?.archived) (incomingByModule[row.module_name] ||= []).push(row);
   for (const [moduleName, incoming] of Object.entries(incomingByModule)) {
     const spec = MASTERLIST_UNIQUE_FIELDS[moduleName];
-    const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&select=record_key,data`);
+    const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&select=record_key,data`));
     const storedByKey = new Map(stored.map((/** @type {any} */ entry) => [entry.record_key, entry.data || {}]));
-    const incomingKeys = new Set(incoming.map((/** @type {any} */ row) => row.record_key));
+    const incomingKeys = new Set(incoming.map((row) => row.record_key));
     // A whole-module state save replaces the module: stored rows missing from it are being removed.
+    /** @type {{ key: string, id: any, incoming?: boolean }[]} */
     const active = stored.filter((/** @type {any} */ entry) => !replaceModules && !entry.data?.archived && !incomingKeys.has(entry.record_key)).map((/** @type {any} */ entry) => ({ key: entry.record_key, id: masterlistIdentity(entry.data, spec) }));
     // Rows in this same save count as "existing" for each other.
     for (const row of incoming) active.push({ key: row.record_key, id: masterlistIdentity(row.data, spec), incoming: true });
@@ -1367,27 +1371,27 @@ async function postMemoToDiscord(env, memo) {
   });
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requireBackupAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage backups");
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requireDigestAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can send digests");
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requirePoApprover(profile) {
   if (profile?.role !== "Superadmin") throw new Error("Only Superadmin can approve purchase orders");
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requirePoReceiver(profile) {
   if (!["Superadmin", "Logistics"].includes(profile?.role)) throw new Error("Only Logistics/Superadmin can update purchase order receiving");
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requirePaymentRequestApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve payment requests");
 }
@@ -1398,12 +1402,12 @@ function requirePaymentRequestApprover(profile) {
 //   any consumable line        -> "For Logistics Approval" (Logistics) -> "For Management Approval" -> "Approved"
 //   "Approved" -> "Returned" / "To Sales" when the units come back.
 // "For Sales Approval" is the retired first step; it is still honoured for requests filed before it.
-/** @param {any} request */
+/** @param {DemoRequestData} request */
 function demoRequestInitialStatus(request) {
-  return (request?.lines || []).some((/** @type {any} */ line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
+  return (request?.lines || []).some((line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
 }
 
-/** @type {Record<string, any>} */
+/** @type {Record<string, Record<string, AppRole[]> | undefined>} */
 const DEMO_TRANSITIONS = {
   "For Logistics Approval": { "For Management Approval": ["Logistics", "Superadmin", "CEO"] },
   "For Sales Approval": { "For Management Approval": ["Sales", "Admin", "Superadmin", "CEO"] },
@@ -1413,15 +1417,16 @@ const DEMO_TRANSITIONS = {
 
 // Engineering / Product Specialist may only move an EXISTING support report through its status
 // workflow: they cannot create reports or change anything beyond these workflow fields.
+/** @type {AppRole[]} */
 const SUPPORT_STATUS_ONLY_ROLES = ["Engineering", "Product Specialist"];
 const SUPPORT_STATUS_FIELDS = new Set(["status", "currentActor", "resolvedBy", "resolvedAt", "history", "actionsTaken"]);
-/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} rows */
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
 async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
   if (!SUPPORT_STATUS_ONLY_ROLES.includes(profile?.role)) return;
-  const incoming = rows.filter((/** @type {any} */ row) => row.module_name === "productIssues");
+  const incoming = rows.filter((row) => row.module_name === "productIssues");
   if (!incoming.length) return;
-  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.productIssues&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`);
-  const storedByKey = new Map(stored.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
+  const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.productIssues&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((row) => row.record_key)))}&select=record_key,data`));
+  const storedByKey = new Map(stored.map((row) => [row.record_key, row.data || {}]));
   for (const row of incoming) {
     const prev = storedByKey.get(row.record_key);
     if (!prev) throw new Error("Only Sales, Admin, CEO or Superadmin can request a service report");
@@ -1434,15 +1439,15 @@ async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
   }
 }
 
-/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} rows */
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
 async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows) {
-  const incoming = rows.filter((/** @type {any} */ row) => row.module_name === "inventoryDemoRequests");
+  const incoming = rows.filter((row) => row.module_name === "inventoryDemoRequests");
   if (!incoming.length) return;
-  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryDemoRequests&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`);
-  const storedByKey = new Map(stored.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
+  const stored = /** @type {StoredRow<DemoRequestData>[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryDemoRequests&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((row) => row.record_key)))}&select=record_key,data`));
+  const storedByKey = new Map(stored.map((row) => [row.record_key, row.data || {}]));
   const role = profile?.role;
   for (const row of incoming) {
-    /** @type {Record<string, any>} */
+    /** @type {DemoRequestData} */
     const next = row.data || {};
     const prev = storedByKey.get(row.record_key);
     if (!prev) {
@@ -1451,7 +1456,7 @@ async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows)
       continue;
     }
     if (String(prev.status || "") === String(next.status || "")) continue;
-    const allowed = DEMO_TRANSITIONS[prev.status]?.[next.status];
+    const allowed = DEMO_TRANSITIONS[/** @type {string} */ (prev.status)]?.[/** @type {string} */ (next.status)];
     if (!allowed) throw new Error(`Demo request ${row.record_key} cannot move from ${prev.status} to ${next.status}`);
     if (!allowed.includes(role)) throw new Error(`Only ${allowed.join("/")} can move ${row.record_key} to ${next.status}`);
   }
@@ -1461,24 +1466,24 @@ async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows)
 // Superadmin/CEO-only, and Accounting (who prepares both) can never approve either. Diffs each
 // incoming payables/replenishments row against the stored one so only an actual transition into
 // "Approved" is checked — ordinary edits and payment confirmation on already-approved rows pass.
-/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} rows */
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
 async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
   const role = profile?.role;
   const isManagement = ["Superadmin", "CEO"].includes(role);
-  const lower = (/** @type {any} */ value) => String(value ?? "").trim().toLowerCase();
-  const fetchStored = async (/** @type {any} */ moduleName, /** @type {any} */ candidates) => {
+  const lower = (/** @type {unknown} */ value) => String(value ?? "").trim().toLowerCase();
+  const fetchStored = async (/** @type {string} */ moduleName, /** @type {AppRecordRow[]} */ candidates) => {
     if (!candidates.length) return new Map();
-    const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`);
-    return new Map(stored.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
+    const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=record_key,data`));
+    return new Map(stored.map((row) => [row.record_key, row.data || {}]));
   };
 
   // Payables / expense requests: any approved-or-paid-looking state (not just the literal
   // requestStatus) counts, compared case-insensitively against the stored row, so a non-approver
   // can't reach it by writing status/paymentConfirmed instead of requestStatus.
   if (!isManagement) {
-    const approvedLike = (/** @type {any} */ data) => lower(data?.requestStatus) === "approved" || ["approved", "paid"].includes(lower(data?.status)) || data?.paymentConfirmed === true || data?.paymentConfirmed === "true";
+    const approvedLike = (/** @type {Record<string, unknown>} */ data) => lower(data?.requestStatus) === "approved" || ["approved", "paid"].includes(lower(data?.status)) || data?.paymentConfirmed === true || data?.paymentConfirmed === "true";
     for (const moduleName of ["payables", "replenishments"]) {
-      const candidates = rows.filter((/** @type {any} */ row) => row.module_name === moduleName && approvedLike(row.data));
+      const candidates = rows.filter((row) => row.module_name === moduleName && approvedLike(row.data));
       if (!candidates.length) continue;
       const stored = await fetchStored(moduleName, candidates);
       for (const row of candidates) {
@@ -1490,7 +1495,7 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
 
     // Collection payment requests: only Superadmin/CEO move one into Approved (the dedicated
     // approver guard was never wired into these generic writers).
-    const prCandidates = rows.filter((/** @type {any} */ row) => row.module_name === "paymentRequests" && (lower(row.data?.requestStatus) === "approved" || lower(row.data?.status) === "approved"));
+    const prCandidates = rows.filter((row) => row.module_name === "paymentRequests" && (lower(row.data?.requestStatus) === "approved" || lower(row.data?.status) === "approved"));
     if (prCandidates.length) {
       const stored = await fetchStored("paymentRequests", prCandidates);
       for (const row of prCandidates) {
@@ -1501,7 +1506,7 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
     }
 
     // Stock receipts: approving or cancelling one is Superadmin/CEO-only (requireStockReceiptApprover).
-    const receiptCandidates = rows.filter((/** @type {any} */ row) => row.module_name === "stockReceipts" && lower(row.data?.status) !== "pending approval");
+    const receiptCandidates = rows.filter((row) => row.module_name === "stockReceipts" && lower(row.data?.status) !== "pending approval");
     if (receiptCandidates.length) {
       const stored = await fetchStored("stockReceipts", receiptCandidates);
       for (const row of receiptCandidates) {
@@ -1513,7 +1518,7 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
 
   // Inventory purchase orders: approval is Superadmin-only (requirePoApprover) — CEO included.
   if (role !== "Superadmin") {
-    const poCandidates = rows.filter((/** @type {any} */ row) => row.module_name === "inventoryPurchaseOrders" && lower(row.data?.status) === "approved");
+    const poCandidates = rows.filter((row) => row.module_name === "inventoryPurchaseOrders" && lower(row.data?.status) === "approved");
     if (poCandidates.length) {
       const stored = await fetchStored("inventoryPurchaseOrders", poCandidates);
       for (const row of poCandidates) {
@@ -1528,20 +1533,20 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
 // but it lands in pendingCreditInvoices with status "Pending" rather than becoming a sale — only
 // Superadmin/CEO/Admin may move it to "Approved" or "Rejected". Diffs against the stored status so
 // only an actual transition out of "Pending" is checked.
-/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} rows */
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
 async function assertCreditApprovalAllowed(env, stateKey, profile, rows) {
   if (["Superadmin", "CEO", "Admin"].includes(profile?.role)) return;
-  const candidates = rows.filter((/** @type {any} */ row) => row.module_name === "pendingCreditInvoices" && ["Approved", "Rejected"].includes(row.data?.status));
+  const candidates = rows.filter((row) => row.module_name === "pendingCreditInvoices" && ["Approved", "Rejected"].includes(/** @type {string} */ (row.data?.status)));
   if (!candidates.length) return;
-  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.pendingCreditInvoices&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`);
-  const storedStatus = new Map(stored.map((/** @type {any} */ row) => [row.record_key, row.data?.status]));
+  const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.pendingCreditInvoices&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=record_key,data`));
+  const storedStatus = new Map(stored.map((row) => [row.record_key, row.data?.status]));
   for (const row of candidates) {
     if (storedStatus.get(row.record_key) === row.data.status) continue;
     throw new Error("Only Superadmin, CEO, or Admin can approve or reject a credit-limit invoice request");
   }
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function requireStockReceiptApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve stock receipts");
 }
@@ -1564,20 +1569,21 @@ function validateReceivingMeta(body) {
 // preferred but any open line for the same item code is accepted. `allocated` tracks quantity
 // already claimed by earlier rows in the same receipt, so one item split across several lots
 // can't over-receive a single PO line.
-/** @param {any} po @param {any} code @param {any} lot @param {any} allocated */
+/** @param {InventoryPO} po @param {string} code @param {string} lot @param {Map<PoLine, number>} allocated */
 function matchReceivingPoLine(po, code, lot, allocated) {
-  const open = (po.lines || []).filter((/** @type {any} */ entry) => entry.code === code && Number(entry.qty || 0) - Number(entry.receivedQty || 0) - (allocated.get(entry) || 0) > 0);
-  return open.find((/** @type {any} */ entry) => entry.lot && entry.lot === lot) || open.find((/** @type {any} */ entry) => !entry.lot) || open[0] || null;
+  const open = (po.lines || []).filter((entry) => entry.code === code && Number(entry.qty || 0) - Number(entry.receivedQty || 0) - (allocated.get(entry) || 0) > 0);
+  return open.find((entry) => entry.lot && entry.lot === lot) || open.find((entry) => !entry.lot) || open[0] || null;
 }
 
-/** @param {any} po @param {any} submittedLines @param {any} items */
+/** @param {InventoryPO | null | undefined} po @param {ReceivingLineInput[]} submittedLines @param {MasterItem[]} items */
 function validateReceivingLines(po, submittedLines, items) {
   if (!Array.isArray(submittedLines) || !submittedLines.length) throw new Error("No receiving lines provided");
+  /** @type {Map<PoLine, number>} */
   const allocated = new Map();
   return submittedLines.map((submitted) => {
     const code = String(submitted.code || "").trim();
     if (!code) throw new Error("Item code is required for every receiving line");
-    const item = items.find((/** @type {any} */ entry) => entry.code === code);
+    const item = items.find((entry) => entry.code === code);
     if (!item) throw new Error(`Unknown item code: ${code}`);
     const equipment = isEquipmentItem(item);
     const qty = Number(submitted.qty || 0);
@@ -1586,7 +1592,7 @@ function validateReceivingLines(po, submittedLines, items) {
     if (!branch) throw new Error(`Branch is required for ${code}`);
     const lot = String(submitted.lot || "").trim();
     const expiry = equipment ? "N/A" : String(submitted.expiry || "").trim();
-    /** @type {any} */
+    /** @type {PoLine | null} */
     let poLine = null;
     if (po) {
       poLine = matchReceivingPoLine(po, code, lot, allocated);
@@ -1630,16 +1636,16 @@ function userStatusFromAuth(authUser) {
   return "Pending";
 }
 
-/** @param {any} profile @param {any} authUser @param {string} [email] */
+/** @param {ProfileRow | null | undefined} profile @param {any} authUser @param {string} [email] */
 function userDisplayName(profile, authUser, email = "") {
   const value = profile?.full_name || authUser?.user_metadata?.full_name || authUser?.raw_user_meta_data?.full_name || authUser?.user_metadata?.name || "";
   return String(value || "").trim() || (profile || authUser ? email : "Unlinked Auth Account (no profile)");
 }
 
-/** @param {any} profile @param {any} authUser @param {any[]} [permissions] */
+/** @param {ProfileRow | null | undefined} profile @param {any} authUser @param {ModulePermissionRow[]} [permissions] */
 function userFromProfileAndAuth(profile, authUser, permissions = []) {
   const role = profile?.role || authUser?.user_metadata?.role || "Sales";
-  const fallback = roleModules[role] || roleModules.Sales;
+  const fallback = roleModules[/** @type {AppRole} */ (role)] || roleModules.Sales;
   const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
   const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : roleEditableFallback(role, view);
   const email = cleanEmail(profile?.email || authUser?.email || "");
@@ -1694,9 +1700,9 @@ function validEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-/** @param {any} role */
+/** @param {unknown} role @returns {role is AppRole} */
 function validRole(role) {
-  return Object.prototype.hasOwnProperty.call(roleModules, role);
+  return Object.prototype.hasOwnProperty.call(roleModules, /** @type {PropertyKey} */ (role));
 }
 
 // Maps the ad-hoc `recordType` strings the client tags uploads with (see uploadPhysicalCopy
@@ -1724,7 +1730,7 @@ function modulesForKey(key) {
   return Object.entries(moduleRecordKeys).filter(([, keys]) => keys.includes(key)).map(([module]) => module);
 }
 
-/** @param {any} profile @param {string} key @param {string} [mode] */
+/** @param {Profile} profile @param {string} key @param {AccessMode} [mode] */
 function canAccessKey(profile, key, mode = "view") {
   if (["Superadmin", "CEO"].includes(profile?.role)) return true;
   // Memos are view-for-all, but posting/overwriting is Superadmin/CEO/HR only (requireMemoAdmin) —
@@ -1740,14 +1746,14 @@ function canAccessKey(profile, key, mode = "view") {
   return modules.some((module) => allowed.includes(module));
 }
 
-/** @param {any} profile */
+/** @param {Profile} profile */
 function writableKeys(profile) {
   return persistedKeys.filter((key) => !genericStateBlockedKeys.has(key) && canAccessKey(profile, key, "edit"));
 }
 
-/** @param {any} records @param {any} profile @param {string} [mode] */
+/** @param {AppRecordRow[]} records @param {Profile} profile @param {AccessMode} [mode] */
 function filterRecordsForProfile(records, profile, mode = "view") {
-  return records.filter((/** @type {any} */ row) => canAccessKey(profile, row.module_name, mode));
+  return records.filter((row) => canAccessKey(profile, row.module_name, mode));
 }
 
 /** @param {string} key @param {any} value @param {number} index */
@@ -1801,7 +1807,7 @@ function enrichAuditLogEntry(entry, auditContext) {
   return { ...entry, device: auditContext.device, browser: auditContext.browser, ipAddress: auditContext.ipAddress, userAgent: auditContext.userAgent, serverCapturedAt: entry.serverCapturedAt || auditContext.serverCapturedAt };
 }
 
-/** @param {any} data @param {any} userId @param {any} stateKey @param {any} [allowedKeys] @param {any} [auditContext] */
+/** @param {any} data @param {string} userId @param {string} stateKey @param {any} [allowedKeys] @param {any} [auditContext] */
 function recordsFromState(data, userId, stateKey, allowedKeys = persistedKeys, auditContext = null) {
   const rows = [];
   for (const key of allowedKeys) {
@@ -1825,7 +1831,7 @@ function recordsFromState(data, userId, stateKey, allowedKeys = persistedKeys, a
 // resolve to the same derived key (e.g. an import with a repeated code) must never be
 // allowed to reach that statement — collapse them here, keeping the last occurrence so
 // the most recently supplied version of a record wins, matching normal upsert semantics.
-/** @param {any} rows */
+/** @param {AppRecordRow[]} rows */
 function dedupeRowsByRecordKey(rows) {
   const seen = new Map();
   const order = [];
@@ -1900,7 +1906,7 @@ function gameResolveSkin(requested, stored, level, badge) {
 // Writes directly to the "logs" module so a save's trail survives even if the
 // save that produced it gets rejected — never routed through the same
 // delete-then-insert path used for regular module state.
-/** @param {WorkerEnv} env @param {any} stateKey @param {{ actor: any, role: any, action: string, module: any, record: any }} options @param {any} userId @param {any} context */
+/** @param {WorkerEnv} env @param {string} stateKey @param {{ actor: any, role: any, action: string, module: any, record: any }} options @param {string} userId @param {any} context */
 async function writeAuditTrace(env, stateKey, { actor, role, action, module, record }, userId, context) {
   const entry = {
     date: manilaTimestamp(),
@@ -2034,7 +2040,7 @@ function saleTaxBreakdown(sale) {
   return { totalSalesVatInclusive, amountNetVat: totalSalesVatInclusive - addVat, addVat, totalAmountDue };
 }
 
-/** @param {any} profile @param {any} sale */
+/** @param {Profile} profile @param {any} sale */
 function printableBranchAllowed(profile, sale) {
   const branch = String(profile?.branch || "all");
   return ["all", "Both", "All"].includes(branch) || sale.area === branch || sale.branch === branch;
@@ -2509,7 +2515,7 @@ function paginatedModulePredicates(servedQtyByPo) {
 // updated_at}) down to "open ∪ most recent PAGINATED_MODULE_PAGE_SIZE", leaving every other
 // module untouched. Returns the trimmed row list plus per-module { hasMore, cursor } metadata
 // for the client's "Load previous" control (cursor = the `before` value for /api/modules/page).
-/** @param {any} rows */
+/** @param {AppRecordRow[]} rows */
 function trimPaginatedModuleRows(rows) {
   const servedQtyByPo = buildServedQtyByPo(rows.filter((/** @type {any} */ row) => row.module_name === "sales"));
   const predicates = paginatedModulePredicates(servedQtyByPo);
@@ -3585,7 +3591,7 @@ function digestSectionHtml(sections) {
   }).join("");
 }
 
-/** @param {any} rows */
+/** @param {AppRecordRow[]} rows */
 function auditLogTableHtml(rows) {
   if (!rows.length) return `<div style="border:1px solid ${DIGEST_COLORS.border};border-radius:16px;padding:16px;background:${DIGEST_COLORS.surface};color:${DIGEST_COLORS.muted};">No recorded actions in this period.</div>`;
   const truncated = rows.length >= 200;
@@ -5294,7 +5300,7 @@ export default {
         const fullName = String(body.name || "").trim();
         const role = String(body.role || "").trim();
         const branch = "all";
-        const view = Array.isArray(body.modules) ? body.modules.filter(Boolean) : roleModules[role] || [];
+        const view = Array.isArray(body.modules) ? body.modules.filter(Boolean) : roleModules[/** @type {AppRole} */ (role)] || [];
         const edit = Array.isArray(body.editModules) ? body.editModules.filter((/** @type {any} */ module) => view.includes(module)) : view;
         if (!fullName) return json({ error: "Name is required" }, { status: 400 });
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });

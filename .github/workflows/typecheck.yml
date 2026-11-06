@@ -21,5 +21,9 @@ jobs:
         run: npm run typecheck:worker
       - name: noImplicitAny gate (per file)
         run: npm run check:noimplicitany
+      - name: No new any
+        run: npm run check:any
+      - name: Rule tests
+        run: npm test
       - name: Syntax check
         run: for f in public/scripts/*.js src/*.js; do node --check "$f"; done
