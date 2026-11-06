@@ -63,12 +63,12 @@ test("the app still loads for logins, invites and unrecognised links", async ({ 
     const appScripts = trackScripts(page);
     await page.goto(url);
     await page.waitForTimeout(800);
-    expect(appScripts.length, url).toBeGreaterThanOrEqual(8);
+    expect(appScripts.length, url).toBeGreaterThanOrEqual(7);
   }
   const appScripts = trackScripts(page);
   await page.goto(`/#access_token=${token("Superadmin", 3600)}&type=invite`);
   await page.waitForTimeout(800);
-  expect(appScripts.length).toBeGreaterThanOrEqual(8);
+  expect(appScripts.length).toBeGreaterThanOrEqual(7);
   await expect(page.locator("#reset-new-password")).toBeVisible();
 });
 
@@ -261,4 +261,61 @@ test("reconciliation doesn't flag documents that were uploaded, even when opened
   await expect(page.locator("section.section#reconciliation")).toHaveClass(/active/);
   await expect(page.locator("#reconciliation")).not.toContainText("Client Docs");
   expect(problems).toEqual([]);
+});
+
+const PDF_LIB = "**/scripts/vendor/pdf-lib.min.js";
+const makeBir2307 = (page) => page.evaluate(async () => {
+  const pdf = await generateBir2307Pdf({ id: "PAY-1", supplier: "Reagent Supply Co", date: "2026-11-01", amount: 5000, grossAmount: 5000, withholdingTax1: 50 });
+  return pdf === undefined ? "no result" : "made";
+});
+
+test("the PDF tool isn't downloaded until a 2307 is made, then only once", async ({ page }) => {
+  const { problems } = await watch(page);
+  const requests = [];
+  page.on("request", (request) => { if (request.url().includes("pdf-lib")) requests.push(request.url()); });
+  await logIn(page);
+  await page.waitForTimeout(1000);
+  expect(requests).toEqual([]);
+  await makeBir2307(page);
+  await makeBir2307(page);
+  expect(requests.length).toBe(1);
+  expect(problems).toEqual([]);
+});
+
+test("a failed PDF tool download explains itself and the next try works", async ({ page }) => {
+  await watch(page);
+  await logIn(page);
+  await page.route(PDF_LIB, (route) => route.abort());
+  await expect(makeBir2307(page)).rejects.toThrow(/Could not load the PDF tool/);
+  await page.unroute(PDF_LIB);
+  await makeBir2307(page);
+});
+
+test("every partner links to its own site in a new tab, and every logo loads", async ({ page }) => {
+  const { problems } = await watch(page);
+  await page.goto("/");
+  const partners = page.locator("#lr-partners .lr-partner");
+  await partners.last().scrollIntoViewIfNeeded();
+  const found = await partners.evaluateAll((links) => links.map((link) => [link.getAttribute("aria-label").split(" website")[0], link.getAttribute("href"), link.target, link.rel]));
+  expect(found).toEqual([
+    ["Balio Diagnostics", "https://baliodiagnostics.com/"], ["Cypress Diagnostics", "https://diagnostics.be/"], ["iMedikers", "http://i-medikers.com/"], ["iMediSync", "https://www.imedisync.com/"],
+    ["Lifotronic", "https://en.lifotronic.com/"], ["VedaLab", "https://www.vedalab.com/"], ["Zybio", "https://www.zybio.com/"],
+  ].map((partner) => [...partner, "_blank", "noopener noreferrer"]));
+  const logos = page.locator("#lr-partners img");
+  for (const logo of await logos.all()) {
+    await logo.scrollIntoViewIfNeeded();
+    await expect.poll(() => logo.evaluate((image) => image.complete && image.naturalWidth > 0), await logo.getAttribute("alt")).toBe(true);
+  }
+  await expect(logos).toHaveCount(7);
+  await expect(page.locator("#lr-partners .lr-partner-grid li").last()).toHaveCSS("opacity", "1");
+  expect(problems).toEqual([]);
+});
+
+test("partner tiles are visible straight away for people who turn off animation", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await watch(page);
+  await page.goto("/");
+  await page.locator("#lr-partners").scrollIntoViewIfNeeded();
+  await expect(page.locator("#lr-partners .lr-partner-grid li").first()).toHaveCSS("opacity", "1");
+  await expect(page.locator("#lr-partners .lr-partner-grid li").first()).toHaveCSS("animation-name", "none");
 });

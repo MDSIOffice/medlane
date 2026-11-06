@@ -6337,11 +6337,31 @@ function bir2307Rows(payable, supplier) {
   return rows;
 }
 
+// pdf-lib is the app's largest script and only the 2307 needs it, so it loads on first use.
+/** @type {Promise<void> | null} */
+let pdfLibLoadPromise = null;
+function loadPdfLib() {
+  if (window.PDFLib) return Promise.resolve();
+  pdfLibLoadPromise ||= new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "scripts/vendor/pdf-lib.min.js";
+    script.onload = () => /** @type {() => void} */ (resolve)();
+    script.onerror = () => {
+      pdfLibLoadPromise = null; // Let the next click try again.
+      script.remove();
+      reject(new Error("Could not load the PDF tool. Check your connection and try again."));
+    };
+    document.body.appendChild(script);
+  });
+  return pdfLibLoadPromise;
+}
+
 /** @param {Record<string, any>} payable */
 async function generateBir2307Pdf(payable) {
   const supplier = data.suppliers.find((entry) => entry.name === payable.supplier);
   const rows = bir2307Rows(payable, supplier);
   if (!rows.length) throw new Error("This payable has no withholding tax applied — nothing to certify on a 2307.");
+  await loadPdfLib();
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const templateResponse = await fetch("/assets/bir-2307-blank.pdf").catch(() => {
     throw new Error("Could not reach the 2307 template file. If you have an ad blocker or privacy extension enabled, try disabling it for this site and retry.");
