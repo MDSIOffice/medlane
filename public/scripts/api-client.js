@@ -33,12 +33,46 @@ const MedlaneAPI = (() => {
         });
         const payload = await response.json().catch(() => null);
         if (!response.ok || !payload?.session?.access_token) throw new Error(payload?.error || "Session refresh failed");
+        // The user may have logged out, or logged in as someone else, while this was running.
+        // Saving now would bring the old session back after they thought it was gone.
+        const current = session();
+        if (!current || (current.app_session_id || null) !== (active.app_session_id || null)) return payload;
         setSession({ ...payload.session, app_session_id: active.app_session_id || null });
         if (payload.user) localStorage.setItem("medlane-session", JSON.stringify(payload.user));
         return payload;
       })().finally(() => { refreshInFlight = null; });
     }
     return refreshInFlight;
+  }
+
+  /** @param {string | undefined} token @returns {number | null} When the JWT expires, in ms, or null if it can't be read. */
+  function tokenExpiryMs(token) {
+    try {
+      const claims = JSON.parse(atob(String(token).split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return Number.isFinite(claims.exp) ? claims.exp * 1000 : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const TOKEN_RENEW_MARGIN_MS = 60 * 1000;
+  const TOKEN_RENEW_COOLDOWN_MS = 60 * 1000;
+  let lastTokenRenewAttempt = 0;
+  // Renews a token that is about to expire before it gets sent, so an expired login doesn't cost a
+  // burst of 401s. Never throws: if renewing fails the request still goes out, and the 401 handling
+  // in requestInner decides what happens. The cooldown stops a wrong device clock, which would make
+  // every token look expired, from turning each request into a refresh.
+  async function ensureFreshSession() {
+    if (refreshInFlight) {
+      await refreshInFlight.catch(() => null);
+      return;
+    }
+    const active = session();
+    const expiresAt = active?.refresh_token ? tokenExpiryMs(active.access_token) : null;
+    if (expiresAt === null || expiresAt - Date.now() > TOKEN_RENEW_MARGIN_MS) return;
+    if (Date.now() - lastTokenRenewAttempt < TOKEN_RENEW_COOLDOWN_MS) return;
+    lastTokenRenewAttempt = Date.now();
+    await refreshSession().catch(() => null);
   }
 
   /** @param {string} reason */
@@ -102,6 +136,7 @@ const MedlaneAPI = (() => {
 
   /** @param {string} path @param {Record<string, any>} [options] @param {boolean} [retried] @returns {Promise<any>} */
   async function requestInner(path, options = {}, retried = false) {
+    await ensureFreshSession();
     const active = session();
     const headers = { ...(options.headers || {}) };
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
@@ -188,13 +223,27 @@ const MedlaneAPI = (() => {
   // spinner) because it runs in the background every few seconds.
   async function loadChanges() {
     if (!changesCursor) return null;
-    const active = session();
-    if (!active?.access_token) return null;
-    /** @type {Record<string, string>} */
-    const headers = { Authorization: `Bearer ${active.access_token}` };
-    if (active.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
-    const response = await fetch(`/api/modules/changes?${new URLSearchParams({ since: changesCursor })}`, { headers });
-    if (!response.ok) return null;
+    const since = changesCursor;
+    await ensureFreshSession();
+    const send = () => {
+      const active = session();
+      if (!active?.access_token) return null;
+      /** @type {Record<string, string>} */
+      const headers = { Authorization: `Bearer ${active.access_token}` };
+      if (active.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+      return fetch(`/api/modules/changes?${new URLSearchParams({ since })}`, { headers });
+    };
+    let response = await send();
+    if (response?.status === 401) {
+      // Renew and retry once, but never log anyone out from here: this runs in the background, so
+      // a failed renewal just means trying again on the next poll.
+      const error = (await response.json().catch(() => null))?.error || "";
+      if (!/Invalid or expired session|Authentication required/i.test(error)) return null;
+      const renewed = await refreshSession().then(() => true, () => false);
+      if (!renewed) return null;
+      response = await send();
+    }
+    if (!response?.ok) return null;
     const payload = await response.json().catch(() => null);
     if (payload?.cursor) changesCursor = payload.cursor;
     return payload;
@@ -232,6 +281,7 @@ const MedlaneAPI = (() => {
 
   /** @param {string | undefined} id */
   async function viewFile(id) {
+    await ensureFreshSession();
     const active = session();
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
@@ -507,6 +557,7 @@ const MedlaneAPI = (() => {
 
   /** @param {string} id */
   async function downloadBackup(id) {
+    await ensureFreshSession();
     const active = session();
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
@@ -531,6 +582,7 @@ const MedlaneAPI = (() => {
 
   /** @param {string} key */
   async function downloadBackupObject(key) {
+    await ensureFreshSession();
     const active = session();
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
