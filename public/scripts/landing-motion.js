@@ -35,6 +35,7 @@
         const target = Number(el.dataset.count) || 0;
         const suffix = el.dataset.suffix || "";
         const started = performance.now();
+        /** @param {number} now */
         const step = (now) => {
           const p = Math.min(1, (now - started) / 1100);
           el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3))) + suffix;
@@ -54,6 +55,7 @@
   const nav = document.getElementById("lr-nav");
   const hero = $(".lr-hero");
   if (hero && !reduceMotion) hero.classList.add("lr-parallax");
+  /** @type {{ el: HTMLElement, range: number }[]} */
   const parallaxItems = [];
   let ticking = false;
   function updateScrollUi() {
@@ -89,14 +91,17 @@
   // ---- Nav: scroll-spy + sliding ink indicator + magnetic links ----
   const navLinks = [...$$(".lr-nav-links a")];
   const ink = $(".lr-nav-ink");
+  /** @param {string} id */
   const linkFor = (id) => navLinks.find((a) => a.getAttribute("href") === "#" + id);
   let activeLink = navLinks[0] || null;
+  /** @param {HTMLElement | null} el */
   function moveInk(el) {
     if (!ink || !el) return;
     ink.style.opacity = "1";
     ink.style.width = el.offsetWidth + "px";
     ink.style.transform = `translateX(${el.offsetLeft}px)`;
   }
+  /** @param {HTMLElement | null | undefined} el */
   function setActive(el) {
     if (!el) return;
     navLinks.forEach((a) => a.classList.toggle("is-active", a === el));

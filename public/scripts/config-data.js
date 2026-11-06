@@ -3,6 +3,7 @@ const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP"
 // Full peso.format() amounts (₱73,500.00) wrap onto two lines inside narrow chart labels (e.g.
 // vertical bar columns), crowding whatever sits above them. Used wherever a value label has to
 // fit a fixed narrow column; the exact amount still shows via the element's title attribute.
+/** @param {unknown} value */
 function pesoCompact(value) {
   const amount = Number(value) || 0;
   const sign = amount < 0 ? "-" : "";
@@ -24,6 +25,7 @@ const deliveryStatusOptions = ["Pending", "Document Delivered", "Copy Received w
 const supportTypeOptions = ["Application Troubleshooting", "Training Support", "Technical Support"];
 const supportTopicOptions = ["Theories and Principles", "Unit Operation", "Parameter Prog.", "Unit Maintenance", "Basic Troubleshooting", "PM and Calibration"];
 const tablePageSize = 25;
+/** @type {Map<string, any>} */
 const tableState = new Map();
 
 const initialData = {

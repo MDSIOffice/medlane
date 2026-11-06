@@ -1,4 +1,5 @@
 // @ts-check
+/** @param {AnyEl} container @param {string} message */
 function showActionLoading(container, message) {
   if (!container) return;
   container.querySelector(":scope > .action-loading-overlay")?.remove();
@@ -7,12 +8,15 @@ function showActionLoading(container, message) {
   overlay.innerHTML = `<div class="action-loading-card"><div class="action-loading-orbit"><img src="medlane.jpg" alt="" /><span></span></div><small>${escapeHtml(message || "Working...")}</small></div>`;
   container.appendChild(overlay);
 }
+/** @param {AnyEl} container */
 function hideActionLoading(container) {
   container?.querySelector(":scope > .action-loading-overlay")?.remove();
 }
+/** @param {boolean} active */
 function setGlobalLoading(active) {
   document.getElementById("global-loading-bar")?.classList.toggle("active", active);
 }
+/** @param {Sale} sale */
 function statusForSale(sale) {
   if (sale.status === "Cancelled") return "Cancelled";
   const balance = sale.net - sale.paid;
@@ -23,12 +27,14 @@ function statusForSale(sale) {
   if (sale.paid > 0) return "Partially Paid";
   return "Unpaid";
 }
+/** @param {Sale} sale */
 function paymentStatusForSale(sale) {
   const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
   if (balance <= 0) return "Paid";
   if (Number(sale.paid || 0) > 0) return "Partially Paid";
   return "Unpaid";
 }
+/** @param {{ keepsDraft?: any }} options */
 function confirmCloseDialog({ keepsDraft = false } = {}) {
   if (keepsDraft) {
     return confirmDetailsModal({
@@ -47,6 +53,7 @@ function confirmCloseDialog({ keepsDraft = false } = {}) {
     danger: true,
   });
 }
+/** @param {() => any} closeFn @param {Record<string, any>} [options] */
 async function guardedDialogClose(closeFn, options) {
   if (await confirmCloseDialog(options)) closeFn();
 }
@@ -56,6 +63,7 @@ async function guardedDialogClose(closeFn, options) {
 // button, everywhere a save/write is about to happen. Stacks as its own native
 // <dialog> on top of whatever modal triggered it (including another confirm
 // dialog), so no manual z-index bookkeeping is needed.
+/** @param {string} [title] @param {string} [note] */
 function confirmFinalSave(title = "Save this change?", note = "This will write the change to the database. Please confirm you meant to click Save.") {
   return confirmDetailsModal({
     eyebrow: "Final Confirmation",
@@ -65,13 +73,16 @@ function confirmFinalSave(title = "Save this change?", note = "This will write t
     danger: true,
   });
 }
+/** @param {AnyEl} dialog @param {Record<string, any>} [options] */
 function guardDialogEscape(dialog, options) {
   dialog?.addEventListener("cancel", (event) => {
     event.preventDefault();
     guardedDialogClose(() => dialog.close(), options);
   });
 }
+/** @param {string} filename @param {any[]} rows */
 function downloadCsv(filename, rows) {
+  /** @param {any} value */
   const escapeCsv = (value) => {
     const text = String(value ?? "");
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -87,6 +98,7 @@ function downloadCsv(filename, rows) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+/** @param {Record<string, any>} item */
 function inventoryStatus(item) {
   if (item.expiry !== "N/A" && daysUntil(item.expiry) < 0) return "For Disposal";
   if (item.qty <= Math.ceil(item.min * 0.5)) return "Critical";
@@ -94,6 +106,7 @@ function inventoryStatus(item) {
   if (item.expiry !== "N/A" && daysUntil(item.expiry) <= 183) return "Near Expiry";
   return "Available";
 }
+/** @param {string} status */
 function statusClass(status) {
   const value = String(status).toLowerCase();
   if (value.includes("paid") && !value.includes("unpaid") && !value.includes("partial")) return "green";
@@ -102,31 +115,40 @@ function statusClass(status) {
   if (value.includes("si") || value.includes("admin")) return "purple";
   return "gray";
 }
+/** @param {string} status */
 function deliveryStatusPillClass(status) { return status === "Pending" || !status ? "orange" : "green"; }
+/** @param {string} type */
 function documentType(type) { return type === "DRS" ? "DR" : type; }
+/** @param {string} type */
 function invoiceTypeIcon(type) {
   return ({ SI: "₱", TS: "T", DR: "D", DRS: "D" }[type] || "#");
 }
+/** @param {string} type */
 function invoiceTypeLabel(type) {
   return ({ SI: "Sales Invoice", TS: "Transmittal Slip", DR: "Delivery Receipt", DRS: "Delivery Receipt" }[type] || "Document");
 }
+/** @param {string} status */
 function contactStatusClass(status) {
   return String(status || "Pending").toLowerCase().replace(/\s+/g, "-");
 }
+/** @param {string} status */
 function contactStatusLabel(status) {
   if (status === "Called") return "Unreached";
   if (status === "No Response") return "No Reply";
   if (status === "Cheque Available") return "Cheque Available";
   return status || "Pending";
 }
+/** @param {string} status */
 function contactStatusFromLabel(status) {
   if (status === "Unreached") return "Unreached";
   if (status === "No Reply") return "No Response";
   return status;
 }
+/** @param {string} clientName */
 function clientBalance(clientName) {
   return data.sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
 }
+/** @param {string} clientName @param {number} [pendingAmount] */
 function clientCreditState(clientName, pendingAmount = 0) {
   const client = data.clients.find((item) => item.name === clientName);
   const used = clientBalance(clientName);
@@ -136,22 +158,27 @@ function clientCreditState(clientName, pendingAmount = 0) {
 // Leaves an explicitly-cleared or user-set range alone — only fills in both fields when both
 // are empty, so "Clear Dates" buttons (which blank both before re-rendering) land on this
 // default instead of an unbounded range.
+/** @param {string} fromId @param {string} toId */
 function defaultDateRangeIfEmpty(fromId, toId) {
   const fromEl = qs(`#${fromId}`), toEl = qs(`#${toId}`);
   if (!fromEl || !toEl || fromEl.value || toEl.value) return;
   fromEl.value = `${fmtDate(today).slice(0, 4)}-01-01`;
   toEl.value = fmtDate(today);
 }
+/** @param {Record<string, any> | undefined} client */
 function clientTaxRate(client) {
   return (client?.withholdingTax ? 0.05 : 0) + (client?.expandedWithholdingTax ? 0.01 : 0);
 }
+/** @param {Record<string, any> | undefined} client */
 function clientTaxLabels(client) {
   return [client?.withholdingTax ? "Withholding Tax 5%" : "", client?.expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean);
 }
+/** @param {Record<string, any> | undefined} client */
 function clientTaxBadge(client) {
   const labels = clientTaxLabels(client);
   return labels.length ? labels.map((label) => `<span class="pill orange">${escapeHtml(label)}</span>`).join(" ") : "";
 }
+/** @param {Sale} sale */
 function saleTaxBreakdown(sale) {
   const subtotal = Number(sale.amount || 0) - Number(sale.discount || 0);
   const totalAmountDue = Number(sale.net || subtotal);
@@ -162,9 +189,11 @@ function saleTaxBreakdown(sale) {
   const amountNetVat = totalSalesVatInclusive - addVat;
   return { totalSalesVatInclusive, withholdingTax: 0, expandedWithholdingTax: 0, amountNetVat, addVat, totalAmountDue };
 }
+/** @param {Sale} sale */
 function saleTaxSummary(sale) {
   return "";
 }
+/** @param {Sale} sale */
 function arTrackerStage(sale) {
   if (sale.status === "Cancelled") return "cancelled";
   if (sale.paid >= sale.net) return "completed";
@@ -173,6 +202,7 @@ function arTrackerStage(sale) {
   if (dueIn <= 7) return "due-soon";
   return "open-ar";
 }
+/** @param {Sale[]} sales */
 function arTrackerTabs(sales) {
   return [
     ["all", "All", sales.length],
@@ -182,9 +212,11 @@ function arTrackerTabs(sales) {
     ["cancelled", "Cancelled", sales.filter((sale) => arTrackerStage(sale) === "cancelled").length],
   ];
 }
+/** @param {string} area */
 function warehouseForArea(area) {
   return ["Region I", "Region II", "Region III", "Region IV-A", "Visayas Dealer", "Mindanao Dealer"].includes(area) ? "Las Pinas" : "Naga";
 }
+/** @param {string} dateValue @param {string} [from] @param {string} [to] */
 function dateInRange(dateValue, from = "", to = "") {
   if (!dateValue) return !from && !to;
   const value = fmtDate(dateValue);
@@ -193,18 +225,21 @@ function dateInRange(dateValue, from = "", to = "") {
 function getDashboardRange() {
   return { from: qs("#dashboard-date-from")?.value || "", to: qs("#dashboard-date-to")?.value || "" };
 }
+/** @param {string} action @param {string} module @param {string} record @param {Record<string, any>} [options] */
 function log(action, module, record, options = {}) {
   MedlaneAPI.recordLog({ action, module, record: String(record ?? "") }).catch(() => {});
   if (options.save !== false) saveData();
 }
 /** @param {string} type @param {string} message @param {string} [section] @param {string} [record] @param {string[] | null} [audience] @param {string | null} [targetUser] */
 function notify(type, message, section = "notifications", record = "", audience = null, targetUser = null) {
+  /** @type {AppNotification} */
   const entry = { date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), type, message, section, record, status: "Unread" };
   if (Array.isArray(audience)) entry.audience = audience;
   if (targetUser) entry.targetUser = targetUser;
   data.notifications.unshift(entry);
   data.notifications = data.notifications.slice(0, 80);
 }
+/** @param {AppNotification} notice */
 function canSeeNotification(notice) {
   // A notice with targetUser is private to that one account — it bypasses every other rule
   // (including the Superadmin/CEO see-everything rule and the security-keyword blackout below)
@@ -227,7 +262,9 @@ function syncGeneratedNotifications() {
   if (!data?.notifications) return;
   const previous = new Map(data.notifications.filter((notice) => notice.generated && notice.key).map((notice) => [notice.key, notice]));
   const dismissed = new Set(data.notificationsDismissed || []);
+  /** @type {AppNotification[]} */
   const notices = [];
+  /** @param {string} key @param {string} type @param {string} message @param {string} [section] @param {string} [record] */
   const add = (key, type, message, section = "notifications", record = "") => {
     const existing = previous.get(key);
     if (existing) { notices.push({ key, generated: true, date: existing.date, type, message, section, record, status: existing.status }); return; }
@@ -269,6 +306,7 @@ function syncGeneratedNotifications() {
   const manual = data.notifications.filter((notice) => !notice.generated);
   data.notifications = [...notices, ...manual].slice(0, 100);
 }
+/** @param {string} message */
 function toast(message) {
   const el = qs("#toast");
   const activeDialog = qsa("dialog[open]").at(-1);
@@ -281,11 +319,12 @@ function toast(message) {
   el.classList.add("show");
   setTimeout(() => el.classList.remove("show"), 2600);
 }
+/** @param {string} target @param {string[]} headers @param {any[]} rows */
 function table(target, headers, rows) {
   const normalizedRows = rows.map((rowSpec) => {
     const row = Array.isArray(rowSpec) ? rowSpec : rowSpec.cells;
     const focusRecord = Array.isArray(rowSpec) ? "" : rowSpec.focus || "";
-    return { cells: row, focus: focusRecord, attrs: Array.isArray(rowSpec) ? {} : rowSpec.attrs || {}, focusText: row.map((cell) => String(cell).replace(/<[^>]*>/g, "")).join(" ") };
+    return { cells: row, focus: focusRecord, attrs: Array.isArray(rowSpec) ? {} : rowSpec.attrs || /** @type {Record<string, any>} */ ({}), focusText: row.map((/** @type {any} */ cell) => String(cell).replace(/<[^>]*>/g, "")).join(" ") };
   });
   tableState.set(target, { headers, rows: normalizedRows, rendered: 0, page: 0 });
   const tableEl = qs(target);
@@ -297,6 +336,7 @@ function table(target, headers, rows) {
   requestAnimationFrame(updateTableScrollHints);
 }
 
+/** @param {string} target @param {string[]} headers @param {number} [rowCount] */
 function tableSkeleton(target, headers, rowCount = 5) {
   const tableEl = qs(target);
   if (!tableEl) return;
@@ -312,6 +352,7 @@ function tableSkeleton(target, headers, rowCount = 5) {
 // — active elements, on* handlers, javascript:/data: URLs — while keeping normal markup,
 // classes, data-* attributes and styles used by the app's own templates.
 const SANITIZE_DROP_TAGS = new Set(["SCRIPT", "IFRAME", "FRAME", "FRAMESET", "OBJECT", "EMBED", "APPLET", "LINK", "META", "BASE", "FORM", "NOSCRIPT", "TEMPLATE"]);
+/** @param {string} html */
 function sanitizeHtml(html) {
   const template = document.createElement("template");
   template.innerHTML = String(html ?? "");
@@ -334,15 +375,17 @@ function sanitizeHtml(html) {
   return template.innerHTML;
 }
 
+/** @param {AnyEl} row @param {any[]} [headers] */
 function rowHtml(row, headers = []) {
-  const attrs = Object.entries(row.attrs || {}).map(([key, value]) => `${key}="${escapeHtml(value)}"`).join(" ");
-  return `<tr ${attrs} ${row.focus ? `data-focus-record="${escapeHtml(row.focus)}"` : ""} data-focus-text="${escapeHtml(row.focusText)}">${row.cells.map((cell, index) => `<td data-label="${escapeHtml(headers[index] || "")}">${sanitizeHtml(cell)}</td>`).join("")}</tr>`;
+  const attrs = Object.entries(row.attrs || /** @type {Record<string, any>} */ ({})).map(([key, value]) => `${key}="${escapeHtml(value)}"`).join(" ");
+  return `<tr ${attrs} ${row.focus ? `data-focus-record="${escapeHtml(row.focus)}"` : ""} data-focus-text="${escapeHtml(row.focusText)}">${row.cells.map((/** @type {any} */ cell, /** @type {number} */ index) => `<td data-label="${escapeHtml(headers[index] || "")}">${sanitizeHtml(cell)}</td>`).join("")}</tr>`;
 }
 
 // Tables paginate like Inventory: a fixed page of rows plus a "Showing X of N records · page p of
 // P" footer with Previous/Next. Rows are the locally loaded ones; for server-paginated modules
 // (modulePagination[key].hasMore) the footer shows "N+" and Next on the last local page fetches
 // the next server page, then advances into it.
+/** @param {string} target @param {number} page */
 function showTablePage(target, page) {
   const state = tableState.get(target);
   const tableEl = qs(target);
@@ -352,12 +395,13 @@ function showTablePage(target, page) {
   const start = state.page * tablePageSize;
   const pageRows = state.rows.slice(start, start + tablePageSize);
   tableEl.classList.remove("is-loading-table");
-  tableEl.tBodies[0].innerHTML = pageRows.map((row) => rowHtml(row, state.headers)).join("");
+  tableEl.tBodies[0].innerHTML = pageRows.map((/** @type {any} */ row) => rowHtml(row, state.headers)).join("");
   state.rendered = start + pageRows.length;
   renderTablePager(target);
   requestAnimationFrame(updateTableScrollHints);
 }
 
+/** @param {string} target */
 function renderTablePager(target) {
   const state = tableState.get(target);
   const tableEl = qs(target);
@@ -374,7 +418,7 @@ function renderTablePager(target) {
     pager.dataset.tableTarget = target;
     pager.innerHTML = `<span class="table-pager-text"></span><div class="table-pager-buttons"><button type="button" class="ghost-button" data-pager-dir="-1">Previous</button><button type="button" class="ghost-button" data-pager-dir="1">Next</button></div>`;
     card.insertAdjacentElement("afterend", pager);
-    pager.querySelectorAll("[data-pager-dir]").forEach((button) => button.addEventListener("click", () => changeTablePage(target, Number(button.dataset.pagerDir))));
+    pager.querySelectorAll("[data-pager-dir]").forEach((/** @type {AnyEl} */ button) => button.addEventListener("click", () => changeTablePage(target, Number(/** @type {string} */ (button.dataset.pagerDir)))));
   }
   const plus = serverHasMore ? "+" : "";
   const shown = Math.min(tablePageSize, Math.max(total - page * tablePageSize, 0));
@@ -386,6 +430,7 @@ function renderTablePager(target) {
   refreshLoadPreviousButton(target);
 }
 
+/** @param {string} target @param {number} delta */
 async function changeTablePage(target, delta) {
   const state = tableState.get(target);
   if (!state) return;
@@ -408,6 +453,7 @@ async function changeTablePage(target, delta) {
 // "Load Previous" only appears once "View More" has nothing left to reveal.
 // Superseded by the table pager: Next now fetches server pages itself, so these separate
 // buttons stay hidden (callers hide them when this returns false).
+/** @param {string} target */
 function tableFullyRevealed(target) {
   return false;
 }
@@ -424,6 +470,7 @@ function tableFullyRevealed(target) {
 // logs-style tables below instead read their own nextCursor via `hasMore()` — without an entry
 // here at all, the scroll observer stops dead once the locally-loaded page is exhausted, since
 // loadMoreTableRows() has nothing to call to fetch the next page from the server.
+/** @type {Record<string, any>} */
 const paginatedModuleButtons = {
   "#sales-table": { button: "#load-more-sales", key: "sales", loadMore: () => loadMoreSales() },
   "#purchase-order-table": { button: "#load-more-purchase-orders", key: "purchaseOrders", loadMore: () => loadMorePurchaseOrders() },
@@ -436,9 +483,11 @@ const paginatedModuleButtons = {
   "#notification-logs-table": { button: "#load-more-notification-logs", hasMore: () => Boolean(notificationLogsState.nextCursor), loadMore: () => loadMoreNotificationLogs() },
   "#collections-history-table": { button: "#load-more-collections-history", hasMore: () => Boolean(collectionsHistoryState.nextCursor), loadMore: () => loadMoreCollectionsHistory() },
 };
+/** @param {Record<string, any>} entry */
 function entryHasMore(entry) {
   return entry.hasMore ? Boolean(entry.hasMore()) : Boolean(modulePagination[entry.key]?.hasMore);
 }
+/** @param {string} target */
 function refreshLoadPreviousButton(target) {
   const entry = paginatedModuleButtons[target];
   if (!entry) return;
@@ -446,12 +495,13 @@ function refreshLoadPreviousButton(target) {
   if (button) button.hidden = !entryHasMore(entry) || !tableFullyRevealed(target);
 }
 
+/** @param {string[]} records */
 function ensureFocusedRecordsRendered(records) {
   qsa(".section.active table[data-table-target]").forEach((tableEl) => {
-    const target = tableEl.dataset.tableTarget;
+    const target = /** @type {string} */ (tableEl.dataset.tableTarget);
     const state = tableState.get(target);
     if (!state) return;
-    const index = state.rows.findIndex((row) => records.some((record) => String(row.focus || "").toLowerCase().split("|").map((item) => item.trim()).includes(record) || row.focusText.toLowerCase().includes(record)));
+    const index = state.rows.findIndex((/** @type {any} */ row) => records.some((record) => String(row.focus || "").toLowerCase().split("|").map((item) => item.trim()).includes(record) || row.focusText.toLowerCase().includes(record)));
     if (index >= 0 && Math.floor(index / tablePageSize) !== (state.page || 0)) showTablePage(target, Math.floor(index / tablePageSize));
   });
 }
@@ -466,12 +516,14 @@ function updateTableScrollHints() {
   });
 }
 
+/** @param {string} section @param {string} [record] */
 function goToFocused(section, record = "") {
   prepareFocusedSection(section, record);
   showSection(section);
   if (record) setTimeout(() => focusRecord(record), 80);
 }
 
+/** @param {string} section @param {string} record */
 function prepareFocusedSection(section, record) {
   if (!record) return;
   if (qs("#global-search")?.value) qs("#global-search").value = "";
@@ -515,6 +567,7 @@ function prepareFocusedSection(section, record) {
   if (transfer) renderInventory();
 }
 
+/** @param {string} record */
 function focusRecord(record) {
   const queries = String(record).split("|").map((item) => item.trim().toLowerCase()).filter(Boolean);
   if (!queries.length) return;
@@ -531,16 +584,17 @@ function focusRecord(record) {
   setTimeout(() => targets.forEach((target) => target.classList.remove("focus-target")), 5200);
 }
 
+/** @param {AnyEl} button */
 function sortTable(button) {
   const tableEl = button.closest("table");
-  const target = tableEl?.dataset.tableTarget;
+  const target = /** @type {string} */ (tableEl?.dataset.tableTarget);
   const state = tableState.get(target);
   if (!tableEl?.tBodies[0] || !state) return;
-  const col = Number(button.dataset.sortCol);
+  const col = Number(/** @type {string} */ (button.dataset.sortCol));
   const dir = button.dataset.sortDir === "asc" ? "desc" : "asc";
-  tableEl.querySelectorAll("[data-sort-dir]").forEach((item) => delete item.dataset.sortDir);
+  tableEl.querySelectorAll("[data-sort-dir]").forEach((item) => delete /** @type {AnyEl} */ (item).dataset.sortDir);
   button.dataset.sortDir = dir;
-  state.rows.sort((a, b) => {
+  state.rows.sort((/** @type {any} */ a, /** @type {any} */ b) => {
     const av = String(a.cells[col] || "").replace(/<[^>]*>/g, "").trim();
     const bv = String(b.cells[col] || "").replace(/<[^>]*>/g, "").trim();
     const an = Number(av.replace(/[^0-9.-]/g, ""));
@@ -551,6 +605,7 @@ function sortTable(button) {
   showTablePage(target, 0);
 }
 
+/** @param {any[]} items @param {string} key @param {(row: any) => number} valueFn */
 function sumBy(items, key, valueFn) {
   return items.reduce((acc, item) => {
     const label = item[key];
@@ -559,24 +614,30 @@ function sumBy(items, key, valueFn) {
   }, {});
 }
 
-function barRows(entries, formatter = (value) => value, colors = []) {
+/** @param {any[]} entries @param {any} [formatter] @param {any[]} [colors] */
+function barRows(entries, formatter = (/** @type {any} */ value) => value, colors = []) {
   if (!entries.length) return `<p>No data available for this view.</p>`;
   const max = Math.max(...entries.map(([, value]) => value), 1);
   return entries.map(([label, value], index) => `<div class="chart-row"><span class="chart-label">${escapeHtml(label)}</span><div class="chart-track"><span class="chart-fill ${colors[index] || ""}" style="width:${Math.max(4, Math.round((value / max) * 100))}%"></span></div><span class="chart-value">${formatter(value)}</span></div>`).join("");
 }
 
+/** @param {string} text */
 function graphNote(text) { return `<p class="graph-note">${escapeHtml(text)}</p>`; }
+/** @param {string} icon @param {string} title @param {any} value @param {string} body @param {string} [tone] @param {string} [note] */
 function visualCard(icon, title, value, body, tone = "info", note = "") {
   return `<article class="visual-card ${tone}"><div class="visual-card-head"><span class="feature-icon">${escapeHtml(icon)}</span><div><small>${escapeHtml(title)}</small><strong>${escapeHtml(value)}</strong></div></div><div class="visual-card-body">${body}${note ? graphNote(note) : ""}</div></article>`;
 }
 
+/** @param {string} label @param {string} section @param {string} [record] @param {string} [action] */
 function workflowButton(label, section, record = "", action = "") {
   const actionAttr = action ? ` data-workflow-action="${escapeHtml(action)}"` : ` data-go-section="${escapeHtml(section)}" data-focus-record="${escapeHtml(record)}"`;
   return `<button class="mini-button workflow-action" type="button"${actionAttr}>${escapeHtml(label)}</button>`;
 }
 
+/** @type {Record<string, string>} */
 const WORKFLOW_TONE_BADGE = { risk: "Urgent", warning: "Action Needed", info: "Review", success: "On Track" };
 
+/** @param {{ title: string, text: string, section?: string, record?: string, action?: string, actionLabel?: string, tone?: string, meta?: string, badge?: string }} options */
 function workflowCard({ title, text, section = "", record = "", action = "", actionLabel = "Open", tone = "info", meta = "", badge = "" }) {
   const hasTarget = action || section || record;
   const badgeLabel = badge || WORKFLOW_TONE_BADGE[tone] || "";
@@ -602,8 +663,11 @@ function workflowFacts() {
   return { activeSales, openSales, overdue, nearDue, lowStock, nearExpiry, missingDocs, pendingContacts, pendingTransfers, pendingExpenses, duePayables, chequeReviews, duplicateClients, openIssues, escalatedIssues };
 }
 
+/** @param {number} year @param {number} month */
 function calendarEventsForMonth(year, month) {
+  /** @type {Record<string, any[]>} */
   const events = {};
+  /** @param {any} dateValue @param {Record<string, any>} entry */
   const add = (dateValue, entry) => {
     const key = String(dateValue || "").slice(0, 10);
     if (!key) return;
@@ -638,6 +702,7 @@ function calendarEventsForMonth(year, month) {
 }
 
 const calendarToneOrder = ["red", "orange", "purple", "teal", "blue", "green", "gray"];
+/** @param {number} year @param {number} month @param {Record<string, Record<string, any>[]>} events @param {Record<string, any>} [opts] */
 function calendarWidgetHtml(year, month, events, opts = {}) {
   const { compact = false, idPrefix = "calendar" } = opts;
   const firstOfMonth = new Date(year, month - 1, 1);
@@ -665,6 +730,7 @@ function calendarWidgetHtml(year, month, events, opts = {}) {
     <div class="calendar-day-detail" id="${idPrefix}-day-detail" hidden></div>
   </div>`;
 }
+/** @param {string} dateKey @param {any[]} entries */
 function calendarDayDetailHtml(dateKey, entries) {
   const label = new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const rows = entries.length
@@ -684,23 +750,26 @@ function calendarDayDetailHtml(dateKey, entries) {
 let comboOpenInput = null;
 let comboHighlightIndex = -1;
 
+/** @param {AnyEl} input */
 function comboSuppressNative(input) {
   if (input.tagName === "INPUT" && input.hasAttribute("list")) {
-    input.dataset.comboList = input.getAttribute("list");
+    input.dataset.comboList = /** @type {string} */ (input.getAttribute("list"));
     input.removeAttribute("list");
   }
 }
 
+/** @param {AnyEl} input */
 function comboOptionsFor(input) {
-  const datalist = /** @type {HTMLDataListElement | null} */ (input.dataset.comboList ? document.getElementById(input.dataset.comboList) : null);
+  const datalist = /** @type {HTMLDataListElement | null} */ (input.dataset.comboList ? document.getElementById(/** @type {string} */ (input.dataset.comboList)) : null);
   if (!datalist) return [];
   return Array.from(datalist.options).map((option) => ({ value: option.value, label: option.textContent || "" }));
 }
 
+/** @param {Record<string, any>} options @param {string} query */
 function comboFilter(options, query) {
   const q = String(query || "").trim().toLowerCase();
   if (!q) return options;
-  return options.filter((option) => option.value.toLowerCase().includes(q) || option.label.toLowerCase().includes(q));
+  return options.filter((/** @type {Record<string, string>} */ option) => option.value.toLowerCase().includes(q) || option.label.toLowerCase().includes(q));
 }
 
 function comboClose() {
@@ -721,13 +790,15 @@ function comboReposition() {
   panel.style.width = `${rect.width}px`;
 }
 
+/** @param {Record<string, any>} options */
 function comboRenderOptions(options) {
   const panel = document.getElementById("combo-dropdown");
   if (!panel) return;
   if (!options.length) { comboClose(); return; }
-  panel.innerHTML = options.map((option, i) => `<div class="combo-option${i === comboHighlightIndex ? " active" : ""}" role="option" data-combo-value="${escapeHtml(option.value)}"><span>${escapeHtml(option.value)}</span>${option.label ? `<small>${escapeHtml(option.label)}</small>` : ""}</div>`).join("");
+  panel.innerHTML = options.map((/** @type {Record<string, string>} */ option, /** @type {number} */ i) => `<div class="combo-option${i === comboHighlightIndex ? " active" : ""}" role="option" data-combo-value="${escapeHtml(option.value)}"><span>${escapeHtml(option.value)}</span>${option.label ? `<small>${escapeHtml(option.label)}</small>` : ""}</div>`).join("");
 }
 
+/** @param {AnyEl} input */
 function comboOpen(input) {
   comboSuppressNative(input);
   if (!input.dataset.comboList) return;
@@ -753,12 +824,14 @@ function comboOpen(input) {
   window.addEventListener("resize", comboReposition);
 }
 
+/** @param {AnyEl} input */
 function comboRefresh(input) {
   if (input !== comboOpenInput) return;
   comboHighlightIndex = -1;
   comboRenderOptions(comboFilter(comboOptionsFor(input), input.value));
 }
 
+/** @param {AnyEl} input @param {any} value */
 function comboSelect(input, value) {
   input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -766,6 +839,7 @@ function comboSelect(input, value) {
   comboClose();
 }
 
+/** @param {KeyboardEvent} event */
 function comboHandleKeydown(event) {
   if (!comboOpenInput || event.target !== comboOpenInput) return;
   const panel = document.getElementById("combo-dropdown");

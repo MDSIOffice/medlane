@@ -18,12 +18,13 @@ window.addEventListener("beforeunload", (event) => {
 });
 qs("#save-guard-dialog")?.addEventListener("cancel", (event) => event.preventDefault());
 
+/** @param {AppUser[]} [users] */
 function mergeUsersFromBackend(users = []) {
   const byEmail = new Map(data.users.map((user) => [String(user.email || "").trim().toLowerCase(), user]));
   users.forEach((user) => {
     const email = String(user.email || "").trim().toLowerCase();
     if (!email) return;
-    const previous = byEmail.get(email) || {};
+    const previous = byEmail.get(email) || /** @type {Record<string, any>} */ ({});
     const incomingName = String(user.name || user.full_name || "").trim();
     const previousName = String(previous.name || previous.full_name || "").trim();
     const name = incomingName && incomingName.toLowerCase() !== email ? incomingName : previousName && previousName.toLowerCase() !== email ? previousName : incomingName || previousName || email;
@@ -36,13 +37,14 @@ async function syncBackendUsers() {
   if (!currentUser || !MedlaneAPI?.session()?.access_token || !["Superadmin", "CEO"].includes(currentUser.role)) return;
   const payload = await MedlaneAPI.listUsers().catch(() => null);
   if (!payload?.users) return;
-  const backendEmails = new Set(payload.users.map((user) => String(user.email || "").trim().toLowerCase()));
+  const backendEmails = new Set(/** @type {AppUser[]} */ (payload.users).map((user) => String(user.email || "").trim().toLowerCase()));
   const staleCount = data.users.filter((user) => !backendEmails.has(String(user.email || "").trim().toLowerCase())).length;
   data.users = data.users.filter((user) => backendEmails.has(String(user.email || "").trim().toLowerCase()));
   mergeUsersFromBackend(payload.users);
   if (staleCount) saveData();
 }
 
+/** @param {Record<string, any>} values @param {any} view @param {any} edit */
 function confirmInviteUser(values, view, edit) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
@@ -55,6 +57,7 @@ function confirmInviteUser(values, view, edit) {
 }
 
 let inviteInFlight = false;
+/** @param {Record<string, any>} values @param {any} view @param {any} edit */
 async function handleUserInvite(values, view, edit) {
   if (inviteInFlight) return toast("An invite for this user is already in progress.");
   inviteInFlight = true;
@@ -78,6 +81,7 @@ async function handleUserInvite(values, view, edit) {
   }
 }
 
+/** @param {string} password */
 function passwordPolicyError(password) {
   const value = String(password || "");
   if (value.length < 8) return "Password must be at least 8 characters.";
@@ -88,6 +92,7 @@ function passwordPolicyError(password) {
   return "";
 }
 
+/** @param {SubmitEvent} event */
 async function submitModal(event) {
   event.preventDefault();
   const form = qs("#modal-form");
@@ -141,6 +146,7 @@ async function submitModal(event) {
     const record = modalType === "client" ? { ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" }
       : modalType === "employee" ? { ...values, salary: canManageEmployeeSalary() ? Number(values.salary || 0) : 0, targetSales: Number(values.targetSales || 0) }
       : values;
+    /** @type {Record<string, any[]>} */
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const moduleKey = masterlistModuleKey(modalType);
     if (!(await confirmFinalSave(`Save this new ${modalType}?`))) return;
@@ -326,7 +332,7 @@ async function submitModal(event) {
       createdAt: fmtDate(today),
     };
     if (!(await confirmFinalSave("Save this payment request?"))) return;
-    data.paymentRequests.unshift(paymentRequest);
+    data.paymentRequests.unshift(/** @type {PaymentRequest} */ (/** @type {any} */ (paymentRequest)));
     const saveResult = await persistRecords({ paymentRequests: [paymentRequest] });
     if (!saveResult?.ok) return;
     log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`, { save: false });
@@ -346,7 +352,7 @@ async function submitModal(event) {
     if (!items.length || deductions.total <= 0) return toast("Add at least one payable item with amount.");
     const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, grossAmount: deductions.grossAmount, withholdingTax1: deductions.withholdingTax1, withholdingTax2: deductions.withholdingTax2, amount: deductions.total, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, createdByUser: currentUser?.email || "" };
     if (!(await confirmFinalSave("Save this payable?"))) return;
-    data.payables.push(payable);
+    data.payables.push(/** @type {Payable} */ (/** @type {unknown} */ (payable)));
     const saveResult = await persistRecords({ payables: [payable] });
     if (!saveResult?.ok) return;
     log("Created payable", "Payables", `${payable.id} · ${/** @type {any} */ (payable).supplier || "Supplier"}`, { save: false });
@@ -401,7 +407,7 @@ async function submitModal(event) {
     values.currentActor = values.originRole;
     values.history = [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: values.status || "Open", note: values.remarks?.trim() ? `Report started: ${values.remarks.trim()}` : "Report started", by: values.performedBy || currentUser?.name || "System User" }];
     if (!(await confirmFinalSave(`Save this ${modalConfigs[modalType].title.toLowerCase()}?`))) return;
-    data.productIssues.push(values);
+    data.productIssues.push(/** @type {ProductIssue} */ (values));
     const saveResult = await persistRecords({ productIssues: [values] });
     if (!saveResult?.ok) return;
     log(`Created ${modalConfigs[modalType].title.toLowerCase()}`, "Support Tracker", `${values.id} · ${values.companyName}`, { save: false });
@@ -433,33 +439,33 @@ async function submitModal(event) {
 qsa(".nav-item").forEach((button) => button.addEventListener("click", (event) => {
   if (event.ctrlKey || event.metaKey || event.shiftKey || event.button === 1) return; // let the browser open a new tab/window natively
   event.preventDefault();
-  showSection(button.dataset.section, { scrollTop: true });
+  showSection(/** @type {string} */ (button.dataset.section), { scrollTop: true });
   if (location.protocol !== "file:") history.replaceState(null, "", `/dashboard?section=${button.dataset.section}`);
 }));
 document.body.addEventListener("click", (event) => {
   const modalButton = closestEl(event.target, "[data-action='open-modal']");
   if (modalButton) {
     if (qs("#report-preview-modal")?.open) qs("#report-preview-modal").close();
-    return canEditActiveSection() ? openModal(modalButton.dataset.type) : toast("Editing is disabled for this module in User Settings.");
+    return canEditActiveSection() ? openModal(/** @type {string} */ (modalButton.dataset.type)) : toast("Editing is disabled for this module in User Settings.");
   }
   const sortButton = closestEl(event.target, "[data-sort-col]");
   if (sortButton) return sortTable(sortButton);
   if (!closestEl(event.target, ".notification-menu")) { qs("#notification-popover").hidden = true; qs("#notification-toggle").setAttribute("aria-expanded", "false"); }
   if (!closestEl(event.target, ".user-menu")) { qs("#user-popover").hidden = true; qs("#user-menu-toggle").setAttribute("aria-expanded", "false"); }
   const workflowAction = closestEl(event.target, "[data-workflow-action]");
-  if (workflowAction) return handleWorkflowAction(workflowAction.dataset.workflowAction);
+  if (workflowAction) return handleWorkflowAction(/** @type {string} */ (workflowAction.dataset.workflowAction));
   const paymentRequestPreview = closestEl(event.target, "[data-payment-request-preview]");
-  if (paymentRequestPreview) { qs("#payment-request-more-modal")?.close(); return previewPaymentRequest(paymentRequestPreview.dataset.paymentRequestPreview); }
+  if (paymentRequestPreview) { qs("#payment-request-more-modal")?.close(); return previewPaymentRequest(/** @type {string} */ (paymentRequestPreview.dataset.paymentRequestPreview)); }
   const paymentRequestApprove = closestEl(event.target, "[data-payment-request-approve]");
-  if (paymentRequestApprove) return approvePaymentRequest(paymentRequestApprove.dataset.paymentRequestApprove);
+  if (paymentRequestApprove) return approvePaymentRequest(/** @type {string} */ (paymentRequestApprove.dataset.paymentRequestApprove));
   const paymentRequestCancel = closestEl(event.target, "[data-payment-request-cancel]");
-  if (paymentRequestCancel) return cancelPaymentRequest(paymentRequestCancel.dataset.paymentRequestCancel);
+  if (paymentRequestCancel) return cancelPaymentRequest(/** @type {string} */ (paymentRequestCancel.dataset.paymentRequestCancel));
   const paymentRequestTimeline = closestEl(event.target, "[data-payment-request-timeline]");
-  if (paymentRequestTimeline) { qs("#payment-request-more-modal")?.close(); return renderPaymentRequestDetail(paymentRequestTimeline.dataset.paymentRequestTimeline); }
+  if (paymentRequestTimeline) { qs("#payment-request-more-modal")?.close(); return renderPaymentRequestDetail(/** @type {string} */ (paymentRequestTimeline.dataset.paymentRequestTimeline)); }
   const paymentRequestMore = closestEl(event.target, "[data-payment-request-more]");
-  if (paymentRequestMore) return openPaymentRequestMoreMenu(paymentRequestMore.dataset.paymentRequestMore);
+  if (paymentRequestMore) return openPaymentRequestMoreMenu(/** @type {string} */ (paymentRequestMore.dataset.paymentRequestMore));
   const openPaymentRequest = closestEl(event.target, "[data-open-payment-request]");
-  if (openPaymentRequest) { closeReportPreview(); return renderPaymentRequestDetail(openPaymentRequest.dataset.openPaymentRequest); }
+  if (openPaymentRequest) { closeReportPreview(); return renderPaymentRequestDetail(/** @type {string} */ (openPaymentRequest.dataset.openPaymentRequest)); }
   const requestPreview = closestEl(event.target, "[data-request-preview]");
   if (requestPreview) { const [type, id] = /** @type {string} */ (requestPreview.dataset.requestPreview).split(":"); return previewFinancialRequest(type, id); }
   const requestApprove = closestEl(event.target, "[data-request-approve]");
@@ -467,19 +473,19 @@ document.body.addEventListener("click", (event) => {
   const requestCancel = closestEl(event.target, "[data-request-cancel]");
   if (requestCancel) { const [type, id] = /** @type {string} */ (requestCancel.dataset.requestCancel).split(":"); return cancelFinancialRequest(type, id); }
   const creditApprove = closestEl(event.target, "[data-credit-approve]");
-  if (creditApprove) return approveCreditInvoice(creditApprove.dataset.creditApprove);
+  if (creditApprove) return approveCreditInvoice(/** @type {string} */ (creditApprove.dataset.creditApprove));
   const creditReject = closestEl(event.target, "[data-credit-reject]");
-  if (creditReject) return rejectCreditInvoice(creditReject.dataset.creditReject);
+  if (creditReject) return rejectCreditInvoice(/** @type {string} */ (creditReject.dataset.creditReject));
   const generate2307 = closestEl(event.target, "[data-generate2307]");
-  if (generate2307) return downloadBir2307(generate2307.dataset.generate2307);
+  if (generate2307) return downloadBir2307(/** @type {string} */ (generate2307.dataset.generate2307));
   const viewUserSessions = closestEl(event.target, "[data-view-user-sessions]");
-  if (viewUserSessions) return openUserSessions(Number(viewUserSessions.dataset.viewUserSessions));
+  if (viewUserSessions) return openUserSessions(Number(/** @type {string} */ (viewUserSessions.dataset.viewUserSessions)));
   const revokeSession = closestEl(event.target, "[data-revoke-session]");
-  if (revokeSession) return forceLogoutSession(revokeSession.dataset.revokeSession);
+  if (revokeSession) return forceLogoutSession(/** @type {string} */ (revokeSession.dataset.revokeSession));
   const downloadBackup = closestEl(event.target, "[data-download-backup]");
-  if (downloadBackup) return downloadBackupFile(downloadBackup.dataset.downloadBackup);
+  if (downloadBackup) return downloadBackupFile(/** @type {string} */ (downloadBackup.dataset.downloadBackup));
   const downloadBackupKey = closestEl(event.target, "[data-download-backup-key]");
-  if (downloadBackupKey) return downloadBackupObjectFile(downloadBackupKey.dataset.downloadBackupKey);
+  if (downloadBackupKey) return downloadBackupObjectFile(/** @type {string} */ (downloadBackupKey.dataset.downloadBackupKey));
   const restoreBackupId = closestEl(event.target, "[data-restore-backup-id]");
   if (restoreBackupId) return restoreBackupFromRef({ id: restoreBackupId.dataset.restoreBackupId, created: restoreBackupId.dataset.restoreBackupCreated, records: restoreBackupId.dataset.restoreBackupRecords, size: restoreBackupId.dataset.restoreBackupSize, source: restoreBackupId.dataset.restoreBackupSource });
   const restoreBackupKey = closestEl(event.target, "[data-restore-backup-key]");
@@ -487,47 +493,47 @@ document.body.addEventListener("click", (event) => {
   const confirmPayment = closestEl(event.target, "[data-confirm-payment]");
   if (confirmPayment) { const [type, id, method] = /** @type {string} */ (confirmPayment.dataset.confirmPayment).split(":"); return confirmFinancialPayment(type, id, method); }
   const makePaymentRequest = closestEl(event.target, "[data-make-payment-request]");
-  if (makePaymentRequest) return openPaymentRequestForInvoice(makePaymentRequest.dataset.makePaymentRequest);
+  if (makePaymentRequest) return openPaymentRequestForInvoice(/** @type {string} */ (makePaymentRequest.dataset.makePaymentRequest));
   const collectionStatus = closestEl(event.target, "[data-collection-status]");
   if (collectionStatus) { const [receiptNo, status] = /** @type {string} */ (collectionStatus.dataset.collectionStatus).split(":"); return updateCollectionPaymentStatus(receiptNo, status); }
   const addressButton = closestEl(event.target, "[data-edit-branch-address]");
-  if (addressButton) return editPlatformBranchAddress(addressButton.dataset.editBranchAddress);
+  if (addressButton) return editPlatformBranchAddress(/** @type {string} */ (addressButton.dataset.editBranchAddress));
   const removeBranchButton = closestEl(event.target, "[data-remove-platform-branch]");
-  if (removeBranchButton) return removePlatformBranch(removeBranchButton.dataset.removePlatformBranch);
+  if (removeBranchButton) return removePlatformBranch(/** @type {string} */ (removeBranchButton.dataset.removePlatformBranch));
   const inventoryPoPrint = closestEl(event.target, "[data-inventory-po-print]");
-  if (inventoryPoPrint) return previewInventoryPurchaseOrder(inventoryPoPrint.dataset.inventoryPoPrint);
+  if (inventoryPoPrint) return previewInventoryPurchaseOrder(/** @type {string} */ (inventoryPoPrint.dataset.inventoryPoPrint));
   const inventoryPoTimeline = closestEl(event.target, "[data-inventory-po-timeline]");
-  if (inventoryPoTimeline) return renderInventoryPoDetail(inventoryPoTimeline.dataset.inventoryPoTimeline);
+  if (inventoryPoTimeline) return renderInventoryPoDetail(/** @type {string} */ (inventoryPoTimeline.dataset.inventoryPoTimeline));
   const inventoryPoApprove = closestEl(event.target, "[data-inventory-po-approve]");
-  if (inventoryPoApprove) return approvePurchaseOrder(Number(inventoryPoApprove.dataset.inventoryPoApprove));
+  if (inventoryPoApprove) return approvePurchaseOrder(Number(/** @type {string} */ (inventoryPoApprove.dataset.inventoryPoApprove)));
   const inventoryPoAdvance = closestEl(event.target, "[data-inventory-po-advance]");
-  if (inventoryPoAdvance) return advancePurchaseOrderStatus(Number(inventoryPoAdvance.dataset.inventoryPoAdvance));
+  if (inventoryPoAdvance) return advancePurchaseOrderStatus(Number(/** @type {string} */ (inventoryPoAdvance.dataset.inventoryPoAdvance)));
   const inventoryPoCancel = closestEl(event.target, "[data-inventory-po-cancel]");
-  if (inventoryPoCancel) return cancelPurchaseOrder(Number(inventoryPoCancel.dataset.inventoryPoCancel));
+  if (inventoryPoCancel) return cancelPurchaseOrder(Number(/** @type {string} */ (inventoryPoCancel.dataset.inventoryPoCancel)));
   const inventoryPoReceive = closestEl(event.target, "[data-inventory-po-receive]");
-  if (inventoryPoReceive) { const po = data.inventoryPurchaseOrders[Number(inventoryPoReceive.dataset.inventoryPoReceive)]; if (po) openStockSheetForPo(po.id); return; }
+  if (inventoryPoReceive) { const po = data.inventoryPurchaseOrders[Number(/** @type {string} */ (inventoryPoReceive.dataset.inventoryPoReceive))]; if (po) openStockSheetForPo(po.id); return; }
   const stockReceiptApprove = closestEl(event.target, "[data-stock-receipt-approve]");
-  if (stockReceiptApprove) return approveStockReceipt(Number(stockReceiptApprove.dataset.stockReceiptApprove));
+  if (stockReceiptApprove) return approveStockReceipt(Number(/** @type {string} */ (stockReceiptApprove.dataset.stockReceiptApprove)));
   const stockReceiptEdit = closestEl(event.target, "[data-stock-receipt-edit]");
-  if (stockReceiptEdit) return openStockSheetForReceiptEdit(Number(stockReceiptEdit.dataset.stockReceiptEdit));
+  if (stockReceiptEdit) return openStockSheetForReceiptEdit(Number(/** @type {string} */ (stockReceiptEdit.dataset.stockReceiptEdit)));
   const stockReceiptCancel = closestEl(event.target, "[data-stock-receipt-cancel]");
-  if (stockReceiptCancel) return cancelStockReceipt(Number(stockReceiptCancel.dataset.stockReceiptCancel));
+  if (stockReceiptCancel) return cancelStockReceipt(Number(/** @type {string} */ (stockReceiptCancel.dataset.stockReceiptCancel)));
   const stockEditButton = closestEl(event.target, "[data-stock-edit]");
-  if (stockEditButton) return openStockEditDialog(stockEditButton.dataset.stockEdit);
+  if (stockEditButton) return openStockEditDialog(/** @type {string} */ (stockEditButton.dataset.stockEdit));
   const stockHistoryButton = closestEl(event.target, "[data-stock-history]");
-  if (stockHistoryButton) return showStockHistory(stockHistoryButton.dataset.stockHistory);
+  if (stockHistoryButton) return showStockHistory(/** @type {string} */ (stockHistoryButton.dataset.stockHistory));
   const revertImport = closestEl(event.target, "[data-revert-import]");
-  if (revertImport) return revertImportBatch(Number(revertImport.dataset.revertImport));
+  if (revertImport) return revertImportBatch(Number(/** @type {string} */ (revertImport.dataset.revertImport)));
   const productIssuePrint = closestEl(event.target, "[data-product-issue-print]");
-  if (productIssuePrint) return previewProductIssue(productIssuePrint.dataset.productIssuePrint);
+  if (productIssuePrint) return previewProductIssue(/** @type {string} */ (productIssuePrint.dataset.productIssuePrint));
   const productIssueTimeline = closestEl(event.target, "[data-product-issue-timeline]");
-  if (productIssueTimeline) return renderProductIssueDetail(productIssueTimeline.dataset.productIssueTimeline);
+  if (productIssueTimeline) return renderProductIssueDetail(/** @type {string} */ (productIssueTimeline.dataset.productIssueTimeline));
   const productIssueStatus = closestEl(event.target, "[data-product-issue-status]");
   if (productIssueStatus) { const [issueId, issueStatus] = /** @type {string} */ (productIssueStatus.dataset.productIssueStatus).split(":"); return updateProductIssueStatus(issueId, issueStatus); }
   const poEditButton = closestEl(event.target, "[data-po-edit]");
-  if (poEditButton) return editPurchaseOrder(poEditButton.dataset.poEdit);
+  if (poEditButton) return editPurchaseOrder(/** @type {string} */ (poEditButton.dataset.poEdit));
   const invoicePoButton = closestEl(event.target, "[data-create-invoice-po]");
-  if (invoicePoButton) return openInvoiceForPurchaseOrder(invoicePoButton.dataset.createInvoicePo);
+  if (invoicePoButton) return openInvoiceForPurchaseOrder(/** @type {string} */ (invoicePoButton.dataset.createInvoicePo));
   const clientInvoices = closestEl(event.target, "[data-client-invoices]");
   if (clientInvoices) {
     const nextClient = clientInvoices.dataset.clientInvoices;
@@ -550,34 +556,34 @@ document.body.addEventListener("click", (event) => {
   const clientInvoicesResetFilters = closestEl(event.target, "#client-invoices-reset-filters");
   if (clientInvoicesResetFilters) return resetClientInvoicesFilters();
   const logDetail = closestEl(event.target, "[data-log-detail]");
-  if (logDetail) return showAuditLogDetail(Number(logDetail.dataset.logDetail));
+  if (logDetail) return showAuditLogDetail(Number(/** @type {string} */ (logDetail.dataset.logDetail)));
   const createSoa = closestEl(event.target, "[data-create-soa]");
-  if (createSoa) return previewSoa(createSoa.dataset.createSoa);
+  if (createSoa) return previewSoa(/** @type {string} */ (createSoa.dataset.createSoa));
   const invoiceFlow = closestEl(event.target, "[data-invoice-flow]");
-  if (invoiceFlow) return renderInvoiceFlowDetail(invoiceFlow.dataset.invoiceFlow);
+  if (invoiceFlow) return renderInvoiceFlowDetail(/** @type {string} */ (invoiceFlow.dataset.invoiceFlow));
   const calendarNav = closestEl(event.target, "[data-calendar-nav]");
   if (calendarNav) {
     const widget = closestEl(calendarNav, ".calendar-widget");
     const prefix = widget?.dataset.calendarPrefix;
-    if (prefix) navigateCalendarWidget(prefix, Number(calendarNav.dataset.calendarNav));
+    if (prefix) navigateCalendarWidget(prefix, Number(/** @type {string} */ (calendarNav.dataset.calendarNav)));
     return;
   }
   const calendarDay = closestEl(event.target, "[data-calendar-day]");
   if (calendarDay) {
     const widget = closestEl(calendarDay, ".calendar-widget");
     const prefix = widget?.dataset.calendarPrefix;
-    if (prefix) showCalendarDayDetail(prefix, calendarDay.dataset.calendarDay);
+    if (prefix) showCalendarDayDetail(prefix, /** @type {string} */ (calendarDay.dataset.calendarDay));
     return;
   }
   const target = closestEl(event.target, "[data-go-section]");
   if (!target) return;
   const notice = closestEl(event.target, "[data-notice-index]");
   if (notice) {
-    data.notifications[Number(notice.dataset.noticeIndex)].status = "Seen";
+    data.notifications[Number(/** @type {string} */ (notice.dataset.noticeIndex))].status = "Seen";
     saveData();
     renderNotifications();
   }
-  goToFocused(target.dataset.goSection, target.dataset.focusRecord || "");
+  goToFocused(/** @type {string} */ (target.dataset.goSection), target.dataset.focusRecord || "");
   qs("#notification-popover").hidden = true;
 });
 qs("#notification-toggle").addEventListener("click", (event) => {
@@ -607,6 +613,7 @@ function syncThemeToggleLabel() {
   const label = qs("#theme-switch-label");
   if (label) label.textContent = isDark ? "Dark mode" : "Light mode";
 }
+/** @param {string} theme */
 function setThemePreference(theme) {
   applyThemePreference(theme);
   syncThemeToggleLabel();
@@ -703,7 +710,7 @@ qs("#platform-branch-form").addEventListener("submit", async (event) => {
 });
 document.body.addEventListener("click", (event) => {
   const openDocs = closestEl(event.target, "[data-open-client-docs]");
-  if (openDocs) return openClientDocsModal(openDocs.dataset.openClientDocs);
+  if (openDocs) return openClientDocsModal(/** @type {string} */ (openDocs.dataset.openClientDocs));
   const closeDocs = closestEl(event.target, "[data-close-client-docs]");
   if (closeDocs) return qs("#client-docs-modal")?.close();
   const closeMemoCompose = closestEl(event.target, "[data-close-memo-compose]");
@@ -721,17 +728,18 @@ document.addEventListener("change", (event) => {
 qs("#post-memo-button").addEventListener("click", openMemoComposeModal);
 qs("#memo-list").addEventListener("click", (event) => {
   const ack = closestEl(event.target, "[data-acknowledge-memo]");
-  if (ack) return acknowledgeMemo(ack.dataset.acknowledgeMemo);
+  if (ack) return acknowledgeMemo(/** @type {string} */ (ack.dataset.acknowledgeMemo));
   const print = closestEl(event.target, "[data-print-memo]");
-  if (print) return printMemo(print.dataset.printMemo);
+  if (print) return printMemo(/** @type {string} */ (print.dataset.printMemo));
 });
 qs("#platform-branch-list").addEventListener("click", /** @returns {any} */ (event) => {
   const addressButton = closestEl(event.target, "[data-edit-branch-address]");
-  if (addressButton) return editPlatformBranchAddress(addressButton.dataset.editBranchAddress);
+  if (addressButton) return editPlatformBranchAddress(/** @type {string} */ (addressButton.dataset.editBranchAddress));
   const button = closestEl(event.target, "[data-remove-platform-branch]");
-  if (button) return removePlatformBranch(button.dataset.removePlatformBranch);
+  if (button) return removePlatformBranch(/** @type {string} */ (button.dataset.removePlatformBranch));
 });
 
+/** @param {string} branch */
 async function editPlatformBranchAddress(branch) {
   if (!canEditModule("masterlists")) return toast("Branch masterlist changes need approval from Admin or Superadmin.");
   const nextAddress = prompt(`Address for ${branch}:`, data.branchAddresses?.[branch] || "") || data.branchAddresses?.[branch] || "";
@@ -745,6 +753,7 @@ async function editPlatformBranchAddress(branch) {
   toast(`${branch} address saved.`);
 }
 
+/** @param {string} branch */
 async function removePlatformBranch(branch) {
   if (!canEditModule("masterlists")) return toast("Branch masterlist changes need approval from Admin or Superadmin.");
   const reasons = branchUsageReasons(branch);
@@ -762,24 +771,25 @@ async function removePlatformBranch(branch) {
 qs("#master-add-button").addEventListener("click", () => {
   if (!canEditActiveSection()) return toast("Masterlist changes need approval from Admin or Superadmin.");
   if (data.masterTab === "branches") return qs("#platform-branch-name").focus();
+  /** @type {Record<string, string>} */
   const modalByTab = { clients: "client", items: "item", suppliers: "supplier", employees: "employee", banks: "bank" };
   openModal(modalByTab[data.masterTab]);
 });
 qs("#users-table").addEventListener("click", async (event) => {
   const resendButton = closestEl(event.target, "[data-resend-invite]");
-  if (resendButton) return resendUserInvite(Number(resendButton.dataset.resendInvite));
+  if (resendButton) return resendUserInvite(Number(/** @type {string} */ (resendButton.dataset.resendInvite)));
   const statusButton = closestEl(event.target, "[data-toggle-user-disabled]");
-  if (statusButton) return toggleUserDisabled(Number(statusButton.dataset.toggleUserDisabled));
+  if (statusButton) return toggleUserDisabled(Number(/** @type {string} */ (statusButton.dataset.toggleUserDisabled)));
   const resetButton = closestEl(event.target, "[data-reset-user-password]");
-  if (resetButton) return setUserPasswordPrompt(Number(resetButton.dataset.resetUserPassword));
+  if (resetButton) return setUserPasswordPrompt(Number(/** @type {string} */ (resetButton.dataset.resetUserPassword)));
   const copyLinkButton = closestEl(event.target, "[data-copy-invite-link]");
-  if (copyLinkButton) return copyInviteLink(Number(copyLinkButton.dataset.copyInviteLink));
+  if (copyLinkButton) return copyInviteLink(Number(/** @type {string} */ (copyLinkButton.dataset.copyInviteLink)));
   const resetPermissionsButton = closestEl(event.target, "[data-reset-user-permissions]");
-  if (resetPermissionsButton) return resetUserPermissions(Number(resetPermissionsButton.dataset.resetUserPermissions));
+  if (resetPermissionsButton) return resetUserPermissions(Number(/** @type {string} */ (resetPermissionsButton.dataset.resetUserPermissions)));
   const button = closestEl(event.target, "[data-archive-user]");
   if (!button) return;
   if (!canManageUsers()) return toast("Only Superadmin/CEO can archive users.");
-  const index = Number(button.dataset.archiveUser);
+  const index = Number(/** @type {string} */ (button.dataset.archiveUser));
   const user = data.users[index];
   if (!user) return;
   if (String(user.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase()) return toast("You cannot archive your own account.");
@@ -800,6 +810,7 @@ qs("#users-table").addEventListener("click", async (event) => {
   toast(`${user.name || user.email} archived.`);
 });
 
+/** @param {number} index */
 async function toggleUserDisabled(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can disable users.");
   const user = data.users[index];
@@ -822,6 +833,7 @@ async function toggleUserDisabled(index) {
   toast(`${user.name || user.email} ${disabled ? "disabled" : "enabled"}.`);
 }
 
+/** @param {number} index */
 async function resendUserInvite(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can resend invitations.");
   const user = data.users[index];
@@ -831,6 +843,7 @@ async function resendUserInvite(index) {
   toast(result.emailDelivery?.sent ? `Invitation resent to ${user.email}.` : result.emailDelivery?.reason || "Invite link generated, but email was not sent.");
 }
 
+/** @param {number} index */
 async function resetUserPermissions(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can reset user permissions.");
   const user = data.users[index];
@@ -848,7 +861,7 @@ qs("#users-table").addEventListener("change", async (event) => {
   const checkbox = closestEl(event.target, "[data-user-superadmin]");
   if (!checkbox) return;
   if (!canManageUsers()) { checkbox.checked = !checkbox.checked; return toast("Only Superadmin/CEO can grant Superadmin permissions."); }
-  const index = Number(checkbox.dataset.userSuperadmin);
+  const index = Number(/** @type {string} */ (checkbox.dataset.userSuperadmin));
   const user = data.users[index];
   if (!user) return;
   const granted = checkbox.checked;
@@ -873,7 +886,7 @@ qs("#users-table").addEventListener("change", async (event) => {
 document.addEventListener("input", (event) => {
   if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target);
   if (/** @type {AnyEl} */ (event.target).matches(".transfer-lot")) updateTransferBalanceHint(closestEl(event.target, "tr"));
-  comboRefresh(event.target);
+  comboRefresh(/** @type {AnyEl} */ (event.target));
 });
 document.addEventListener("blur", (event) => {
   if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
@@ -881,7 +894,7 @@ document.addEventListener("blur", (event) => {
 // Custom combobox wiring — see ui-utils.js for why <input list> + <datalist> is no longer
 // used directly to drive the suggestions popup.
 document.addEventListener("focusin", (event) => {
-  if (/** @type {AnyEl} */ (event.target).tagName === "INPUT" && (/** @type {AnyEl} */ (event.target).hasAttribute("list") || /** @type {AnyEl} */ (event.target).dataset.comboList)) comboOpen(event.target);
+  if (/** @type {AnyEl} */ (event.target).tagName === "INPUT" && (/** @type {AnyEl} */ (event.target).hasAttribute("list") || /** @type {AnyEl} */ (event.target).dataset.comboList)) comboOpen(/** @type {AnyEl} */ (event.target));
 }, true);
 document.addEventListener("focusout", (event) => {
   if (event.target === comboOpenInput) setTimeout(() => { if (!document.activeElement?.closest?.("#combo-dropdown")) comboClose(); }, 0);
@@ -889,7 +902,7 @@ document.addEventListener("focusout", (event) => {
 document.addEventListener("keydown", comboHandleKeydown);
 document.addEventListener("mousedown", (event) => {
   const option = closestEl(event.target, ".combo-option");
-  if (option && comboOpenInput) { event.preventDefault(); comboSelect(comboOpenInput, option.dataset.comboValue); }
+  if (option && comboOpenInput) { event.preventDefault(); comboSelect(comboOpenInput, /** @type {string} */ (option.dataset.comboValue)); }
   else if (comboOpenInput && event.target !== comboOpenInput && !closestEl(event.target, "#combo-dropdown")) comboClose();
 });
 document.addEventListener("click", (event) => {
@@ -898,14 +911,14 @@ document.addEventListener("click", (event) => {
   const uploadCopyButton = closestEl(event.target, "[data-upload-copy]");
   if (uploadCopyButton) /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (uploadCopyButton.parentElement).querySelector(".physical-copy-input"))?.click();
   const viewFileButton = closestEl(event.target, "[data-view-file]");
-  if (viewFileButton) MedlaneAPI.viewFile(viewFileButton.dataset.viewFile).catch((error) => toast(error.message || "Unable to open file."));
+  if (viewFileButton) MedlaneAPI.viewFile(/** @type {string} */ (viewFileButton.dataset.viewFile)).catch((error) => toast(error.message || "Unable to open file."));
   const viewCollectionHistory = closestEl(event.target, "[data-view-collection-history]");
-  if (viewCollectionHistory) openCollectionHistoryModal(viewCollectionHistory.dataset.viewCollectionHistory);
+  if (viewCollectionHistory) openCollectionHistoryModal(/** @type {string} */ (viewCollectionHistory.dataset.viewCollectionHistory));
   const clientHistoryTabButton = closestEl(event.target, "[data-client-history-tab]");
   if (clientHistoryTabButton) { clientHistoryTab = clientHistoryTabButton.dataset.clientHistoryTab; renderClientHistoryTabs(currentClientView || data.sales[0]?.client); }
   const purchaseHistoryMoreButton = closestEl(event.target, "[data-purchase-history-more]");
   if (purchaseHistoryMoreButton) {
-    const agent = purchaseHistoryMoreButton.dataset.purchaseHistoryMore;
+    const agent = /** @type {string} */ (purchaseHistoryMoreButton.dataset.purchaseHistoryMore);
     purchaseHistoryVisibleCounts[agent] = (purchaseHistoryVisibleCounts[agent] || purchaseHistoryDefaultLimit(agent)) + purchaseHistoryDefaultLimit(agent);
     renderPurchaseHistory();
   }
@@ -931,12 +944,14 @@ qs("#client-invoices-status-filter")?.addEventListener("change", renderClientInv
 qs("#client-invoices-from")?.addEventListener("change", renderClientInvoices);
 qs("#client-invoices-to")?.addEventListener("change", renderClientInvoices);
 // ---- Inventory page (redesign) — delegated handlers; markup/state in modules.js / state.js ----
+/** @param {() => void} mutate @param {{ resetPage?: boolean, closeDetail?: boolean }} [options] */
 function inventoryChangeView(mutate, { resetPage = true, closeDetail = false } = {}) {
   mutate();
   if (resetPage) inventoryPage = 0;
   if (closeDetail) inventorySelectedRef = null;
   renderInventory();
 }
+/** @param {string} key */
 function inventorySetStatus(key) {
   const meta = INVENTORY_STATUS_META.find((entry) => entry.key === key);
   qs("#inventory-status").value = meta ? meta.name : "all";
@@ -955,7 +970,7 @@ qs("#inventory").addEventListener("click", (event) => {
     return;
   }
   const filter = closestEl(target, "[data-inventory-filter]");
-  if (filter) return inventorySetStatus(filter.dataset.inventoryFilter);
+  if (filter) return inventorySetStatus(/** @type {string} */ (filter.dataset.inventoryFilter));
   const branch = closestEl(target, "[data-inventory-branch]");
   if (branch) return inventoryChangeView(() => { inventoryBranchView = branch.dataset.inventoryBranch; if (inventoryBranchView !== "all") inventoryBranchTab = inventoryBranchView; }, { closeDetail: true });
   const sort = closestEl(target, "[data-inventory-sort]");
@@ -972,7 +987,7 @@ qs("#inventory").addEventListener("click", (event) => {
   if (select) { inventorySelectedRef = select.dataset.inventorySelect; renderInventory(); return qs("#inventory-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
   if (closestEl(target, "[data-inventory-close]")) return inventoryChangeView(() => {}, { resetPage: false, closeDetail: true });
   const transfer = closestEl(target, "[data-inventory-transfer]");
-  if (transfer) return openTransferForStock(transfer.dataset.inventoryTransfer);
+  if (transfer) return openTransferForStock(/** @type {string} */ (transfer.dataset.inventoryTransfer));
 });
 qs("#inventory-search").addEventListener("input", (event) => {
   clearTimeout(inventorySearchTimer);
@@ -986,6 +1001,7 @@ qs("#inventory-area").addEventListener("change", (event) => {
   source.value = /** @type {AnyEl} */ (event.target).value;
   source.dispatchEvent(new Event("change", { bubbles: true }));
 });
+/** @param {string} ref */
 function openTransferForStock(ref) {
   const stock = stockRowByRef(ref);
   if (!stock) return toast("Stock record no longer exists.");
@@ -996,7 +1012,8 @@ function openTransferForStock(ref) {
   if (from && [...from.options].some((option) => option.value === stock.branch)) { from.value = stock.branch; from.dispatchEvent(new Event("change", { bubbles: true })); }
   const row = qs("#transfer-sheet-table tbody tr:last-child");
   if (!row) return;
-  const set = (selector, value) => { const input = row.querySelector(selector); if (!input) return; input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new Event("change", { bubbles: true })); };
+  /** @param {string} selector @param {any} value */
+  const set = (selector, value) => { const input = /** @type {AnyEl | null} */ (row.querySelector(selector)); if (!input) return; input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new Event("change", { bubbles: true })); };
   set(".transfer-code", stock.code);
   set(".transfer-lot", stock.lot || stock.serial || "");
 }
@@ -1037,18 +1054,20 @@ qs("#print-template-panel")?.addEventListener("click", (event) => {
   const nudge = closestEl(event.target, "[data-pt-nudge]");
   if (nudge) {
     const step = ptStepIn;
+    /** @type {Record<string, [number, number]>} */
     const map = { up: [0, -step], down: [0, step], left: [-step, 0], right: [step, 0] };
-    nudgePtSelected(...map[nudge.dataset.ptNudge]);
+    nudgePtSelected(...map[/** @type {string} */ (nudge.dataset.ptNudge)]);
     return;
   }
   const resetField = closestEl(event.target, "[data-pt-reset-field]");
-  if (resetField) { resetPtField(resetField.dataset.ptResetField); return; }
+  if (resetField) { resetPtField(/** @type {string} */ (resetField.dataset.ptResetField)); return; }
   const resetRow = closestEl(event.target, "[data-pt-reset-row]");
   if (resetRow) resetPtRow();
 });
 qs("#print-template-panel")?.addEventListener("input", (event) => {
   if (!ptSelectedField) return;
   const id = /** @type {AnyEl} */ (event.target).id;
+  /** @param {any} v */
   const num = (v) => Number(v || 0);
   if (ptSelectedKind === "row-spacing") { if (id === "pt-input-spacing") applyPtRowOverride({ spacing: num(/** @type {AnyEl} */ (event.target).value) }); return; }
   if (ptSelectedKind === "row") {
@@ -1089,7 +1108,7 @@ qs("#replenishments-workflow-tabs").addEventListener("click", (event) => {
 });
 qs("#replenishments-table")?.addEventListener("click", (event) => {
   const row = closestEl(event.target, "[data-expense-detail]");
-  if (row) showExpenseDetail(row.dataset.expenseDetail);
+  if (row) showExpenseDetail(/** @type {string} */ (row.dataset.expenseDetail));
 });
 qs("#po-view-toggle").addEventListener("click", (event) => {
   const btn = closestEl(event.target, "[data-po-view]");
@@ -1107,7 +1126,7 @@ qs("#invoicing-type-filter")?.addEventListener("change", renderInvoicing);
 qs("#item-forecast-preset-toggle")?.addEventListener("click", (event) => {
   const btn = closestEl(event.target, "[data-forecast-months]");
   if (!btn) return;
-  itemForecastMonths = Number(btn.dataset.forecastMonths);
+  itemForecastMonths = Number(/** @type {string} */ (btn.dataset.forecastMonths));
   renderItemForecast();
 });
 qs("#item-forecast-custom-months")?.addEventListener("change", (event) => {
@@ -1152,7 +1171,7 @@ qs("#stock-receipt-history-close")?.addEventListener("click", () => qs("#stock-r
 qs("#stock-receipt-history-cancel")?.addEventListener("click", () => qs("#stock-receipt-history-modal").close());
 qs("#stock-receipt-history-table")?.addEventListener("click", (event) => {
   const detail = closestEl(event.target, "[data-stock-receipt-detail]");
-  if (detail) return showStockReceiptDetail(detail.dataset.stockReceiptDetail);
+  if (detail) return showStockReceiptDetail(/** @type {string} */ (detail.dataset.stockReceiptDetail));
 });
 qs("#stock-receipt-history-modal")?.addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "stock-receipt-history-modal") qs("#stock-receipt-history-modal").close(); });
 qs("#stock-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#stock-sheet-modal").close(), { keepsDraft: true }));
@@ -1193,29 +1212,29 @@ qs("#save-transfer-sheet").addEventListener("click", saveTransferSheet);
 qs("#demo-request-modal")?.addEventListener("input", (event) => { if (/** @type {AnyEl} */ (event.target).matches(".demo-line-code, .demo-line-item")) syncDemoRequestLine(event.target); });
 qs("#demo-request-table")?.addEventListener("click", /** @returns {any} */ (event) => {
   const salesApprove = closestEl(event.target, "[data-demo-sales-approve]");
-  if (salesApprove) return updateDemoRequestStatus(salesApprove.dataset.demoSalesApprove, "For Management Approval");
+  if (salesApprove) return updateDemoRequestStatus(/** @type {string} */ (salesApprove.dataset.demoSalesApprove), "For Management Approval");
   const logisticsApprove = closestEl(event.target, "[data-demo-logistics-approve]");
-  if (logisticsApprove) return updateDemoRequestStatus(logisticsApprove.dataset.demoLogisticsApprove, "For Management Approval");
+  if (logisticsApprove) return updateDemoRequestStatus(/** @type {string} */ (logisticsApprove.dataset.demoLogisticsApprove), "For Management Approval");
   const managementApprove = closestEl(event.target, "[data-demo-management-approve]");
-  if (managementApprove) return updateDemoRequestStatus(managementApprove.dataset.demoManagementApprove, "Approved");
+  if (managementApprove) return updateDemoRequestStatus(/** @type {string} */ (managementApprove.dataset.demoManagementApprove), "Approved");
   const returned = closestEl(event.target, "[data-demo-returned]");
-  if (returned) return updateDemoRequestStatus(returned.dataset.demoReturned, "Returned");
+  if (returned) return updateDemoRequestStatus(/** @type {string} */ (returned.dataset.demoReturned), "Returned");
   const toSales = closestEl(event.target, "[data-demo-to-sales]");
-  if (toSales) return updateDemoRequestStatus(toSales.dataset.demoToSales, "To Sales");
+  if (toSales) return updateDemoRequestStatus(/** @type {string} */ (toSales.dataset.demoToSales), "To Sales");
 });
 qs("#transfer-table").addEventListener("click", (event) => {
   const dispatch = closestEl(event.target, "[data-dispatch-transfer]");
-  if (dispatch) return openTransferDispatchModal(Number(dispatch.dataset.dispatchTransfer));
+  if (dispatch) return openTransferDispatchModal(Number(/** @type {string} */ (dispatch.dataset.dispatchTransfer)));
   const receive = closestEl(event.target, "[data-receive-transfer]");
-  if (receive) return openTransferReceiveModal(Number(receive.dataset.receiveTransfer));
+  if (receive) return openTransferReceiveModal(Number(/** @type {string} */ (receive.dataset.receiveTransfer)));
   const transferTimeline = closestEl(event.target, "[data-transfer-timeline]");
-  if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
+  if (transferTimeline) return showTransferTimeline(/** @type {string} */ (transferTimeline.dataset.transferTimeline));
   const transferPrint = closestEl(event.target, "[data-transfer-print]");
-  if (transferPrint) return printTransferRequest(transferPrint.dataset.transferPrint);
+  if (transferPrint) return printTransferRequest(/** @type {string} */ (transferPrint.dataset.transferPrint));
 });
 qs("#transfer-history-table").addEventListener("click", (event) => {
   const transferTimeline = closestEl(event.target, "[data-transfer-timeline]");
-  if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
+  if (transferTimeline) return showTransferTimeline(/** @type {string} */ (transferTimeline.dataset.transferTimeline));
 });
 document.body.addEventListener("click", /** @returns {any} */ (event) => {
   const closeReview = closestEl(event.target, "[data-close-transfer-review]");
@@ -1234,11 +1253,11 @@ document.body.addEventListener("input", (event) => {
 });
 qs("#collections").addEventListener("click", (event) => {
   const statusButton = closestEl(event.target, "[data-contact-status]");
-  if (statusButton) return updateCollectionContact(statusButton.dataset.contactClient, statusButton.dataset.contactStatus);
+  if (statusButton) return updateCollectionContact(/** @type {string} */ (statusButton.dataset.contactClient), /** @type {string} */ (statusButton.dataset.contactStatus));
   const channelButton = closestEl(event.target, "[data-contact-channel]");
-  if (channelButton) return toggleContactChannel(channelButton.dataset.contactClient, channelButton.dataset.contactChannel);
+  if (channelButton) return toggleContactChannel(/** @type {string} */ (channelButton.dataset.contactClient), /** @type {string} */ (channelButton.dataset.contactChannel));
   const mapTarget = closestEl(event.target, "[data-map-region]");
-  if (mapTarget) return openContactRegion(mapTarget.dataset.mapRegion, mapTarget.dataset.mapClient || "", false);
+  if (mapTarget) return openContactRegion(/** @type {string} */ (mapTarget.dataset.mapRegion), mapTarget.dataset.mapClient || "", false);
 });
 qs("#ar-tracker-tabs").addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-ar-tab]");
@@ -1264,17 +1283,17 @@ qs("#invoice-grid").addEventListener("click", (event) => {
   const printButton = closestEl(event.target, "[data-print-invoice]");
   const detailButton = closestEl(event.target, "[data-sale-detail]");
   const cancelButton = closestEl(event.target, "[data-cancel-replace]");
-  if (printButton) printInvoice(printButton.dataset.printInvoice);
-  if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
-  if (cancelButton) openCancelReplaceModal(cancelButton.dataset.cancelReplace);
+  if (printButton) printInvoice(/** @type {string} */ (printButton.dataset.printInvoice));
+  if (detailButton) showSaleDetail(/** @type {string} */ (detailButton.dataset.saleDetail));
+  if (cancelButton) openCancelReplaceModal(/** @type {string} */ (cancelButton.dataset.cancelReplace));
 });
 qs("#invoice-table")?.addEventListener("click", (event) => {
   const printButton = closestEl(event.target, "[data-print-invoice]");
   const detailButton = closestEl(event.target, "[data-sale-detail]");
   const cancelButton = closestEl(event.target, "[data-cancel-replace]");
-  if (printButton) printInvoice(printButton.dataset.printInvoice);
-  if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
-  if (cancelButton) openCancelReplaceModal(cancelButton.dataset.cancelReplace);
+  if (printButton) printInvoice(/** @type {string} */ (printButton.dataset.printInvoice));
+  if (detailButton) showSaleDetail(/** @type {string} */ (detailButton.dataset.saleDetail));
+  if (cancelButton) openCancelReplaceModal(/** @type {string} */ (cancelButton.dataset.cancelReplace));
 });
 qs("#invoice-grid").addEventListener("change", (event) => {
   const select = closestEl(event.target, ".delivery-status-select");
@@ -1300,26 +1319,26 @@ qs("#invoice-table")?.addEventListener("change", (event) => {
 });
 qs("#sales-table").addEventListener("click", (event) => {
   const timelineButton = closestEl(event.target, "[data-sale-timeline]");
-  if (timelineButton) return renderSaleDetail(timelineButton.dataset.saleTimeline);
+  if (timelineButton) return renderSaleDetail(/** @type {string} */ (timelineButton.dataset.saleTimeline));
   const detailButton = closestEl(event.target, "[data-sale-detail]");
-  if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
+  if (detailButton) showSaleDetail(/** @type {string} */ (detailButton.dataset.saleDetail));
   const row = closestEl(event.target, "tr[data-sale-row]");
-  if (row && !closestEl(event.target, "button")) showSaleDetail(row.dataset.saleRow);
+  if (row && !closestEl(event.target, "button")) showSaleDetail(/** @type {string} */ (row.dataset.saleRow));
 });
 qs("#replenishments-table").addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-approve-expense]");
-  if (button) approveExpense(Number(button.dataset.approveExpense), button.dataset.nextStatus);
+  if (button) approveExpense(Number(/** @type {string} */ (button.dataset.approveExpense)), /** @type {string} */ (button.dataset.nextStatus));
 });
 qs("#master-table").addEventListener("click", (event) => {
   const editButton = closestEl(event.target, "[data-master-edit]");
   if (editButton) {
     if (!canEditActiveSection()) return toast("Masterlist edits need approval from Admin or Superadmin.");
-    return openMasterEditModal(editButton.dataset.masterEdit, Number(editButton.dataset.index));
+    return openMasterEditModal(/** @type {string} */ (editButton.dataset.masterEdit), Number(/** @type {string} */ (editButton.dataset.index)));
   }
   const archiveButton = closestEl(event.target, "[data-master-archive]");
-  if (archiveButton) return archiveMasterlistRecord(archiveButton.dataset.masterArchive, Number(archiveButton.dataset.index));
+  if (archiveButton) return archiveMasterlistRecord(/** @type {string} */ (archiveButton.dataset.masterArchive), Number(/** @type {string} */ (archiveButton.dataset.index)));
   const restoreButton = closestEl(event.target, "[data-master-restore]");
-  if (restoreButton) return restoreMasterlistRecord(restoreButton.dataset.masterRestore, Number(restoreButton.dataset.index));
+  if (restoreButton) return restoreMasterlistRecord(/** @type {string} */ (restoreButton.dataset.masterRestore), Number(/** @type {string} */ (restoreButton.dataset.index)));
 });
 qs("#master-archived-toggle")?.addEventListener("click", () => {
   masterShowArchived = !masterShowArchived;
@@ -1327,9 +1346,9 @@ qs("#master-archived-toggle")?.addEventListener("click", () => {
 });
 qs("#report-grid").addEventListener("click", (event) => {
   const reportButton = closestEl(event.target, "[data-operational-report]");
-  if (reportButton) return renderOperationalReport(reportButton.dataset.operationalReport);
+  if (reportButton) return renderOperationalReport(/** @type {string} */ (reportButton.dataset.operationalReport));
   const breakdownButton = closestEl(event.target, "[data-sales-breakdown]");
-  if (breakdownButton) renderSalesBreakdownReport(breakdownButton.dataset.salesBreakdown);
+  if (breakdownButton) renderSalesBreakdownReport(/** @type {string} */ (breakdownButton.dataset.salesBreakdown));
 });
 qs("#report-detail-print")?.addEventListener("click", () => window.print());
 qs("#report-detail-status-filter")?.addEventListener("change", () => applyOperationalReport(currentOperationalReportKey));
@@ -1351,7 +1370,7 @@ qs("#sales-breakdown-clear-dates")?.addEventListener("click", () => {
 });
 qs("#reconciliation-history-table").addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-recon-history]");
-  if (button) applyReconciliationHistory(Number(button.dataset.reconHistory));
+  if (button) applyReconciliationHistory(Number(/** @type {string} */ (button.dataset.reconHistory)));
 });
 qs("#reconciliation-tabs").addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-recon-tab]");
@@ -1596,6 +1615,7 @@ qs("#print-value-report")?.addEventListener("click", printSystemValueReport);
 qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
 qs("#user-status-filter")?.addEventListener("change", (event) => { userStatusFilter = /** @type {AnyEl} */ (event.target).value; renderUsers(); });
 
+/** @param {string} title @param {string} [detail] @param {number} [progress] @param {string} [tone] */
 function setBackupStatus(title, detail = "", progress = 0, tone = "active") {
   const panel = qs("#backup-status-panel");
   if (!panel) return;
@@ -1640,6 +1660,7 @@ async function runManualBackup() {
   }
 }
 
+/** @param {string} periodLabel */
 async function runManualDigest(periodLabel) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can send digests.");
   const button = qs(periodLabel === "Weekly" ? "#run-manual-digest-weekly" : "#run-manual-digest-daily");
@@ -1680,6 +1701,7 @@ async function runManualBirthdayTest() {
   }
 }
 
+/** @param {string} id */
 async function downloadBackupFile(id) {
   try {
     setBackupStatus("Preparing download", "Fetching backup metadata and R2 object...", -1);
@@ -1694,6 +1716,7 @@ async function downloadBackupFile(id) {
   }
 }
 
+/** @param {string} key */
 async function downloadBackupObjectFile(key) {
   try {
     setBackupStatus("Preparing R2 download", "Fetching backup object directly from R2...", -1);
@@ -1708,6 +1731,7 @@ async function downloadBackupObjectFile(key) {
   }
 }
 
+/** @param {{ id?: string, key?: string, source?: string, created?: string, records?: string, size?: string }} ref */
 async function restoreBackupFromRef(ref) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can restore backups.");
   const label = ref.key || ref.id || "backup";
@@ -1733,6 +1757,7 @@ async function restoreBackupFromRef(ref) {
   }
 }
 
+/** @param {number} index */
 function openUserSessions(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can view device sessions.");
   const user = data.users[index];
@@ -1741,6 +1766,7 @@ function openUserSessions(index) {
   qs("#user-devices-modal")?.showModal();
 }
 
+/** @param {string} sessionId */
 async function forceLogoutSession(sessionId) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can force logout devices.");
   if (!sessionId) return toast("Session id is missing.");
@@ -1754,6 +1780,7 @@ async function forceLogoutSession(sessionId) {
     toast(error.message || "Unable to revoke session.");
   }
 }
+/** @type {string | null} */
 let lastImportFileName = null;
 qs("#import-sample").addEventListener("click", () => {
   lastImportFileName = null;
@@ -1778,7 +1805,7 @@ qs("#run-import").addEventListener("click", async () => {
   const checked = renderImportCheck();
   const ready = checked.filter((row) => row.status === "Ready");
   if (!ready.length) return toast("No valid rows to import. Review the skipped-row warnings first.");
-  const moduleLabel = { clientsMasterlist: "Clients", suppliersMasterlist: "Suppliers/Vendors", productsMasterlist: "Products/Services" }[ready[0]?.kind] || "Records";
+  const moduleLabel = /** @type {Record<string, string>} */ ({ clientsMasterlist: "Clients", suppliersMasterlist: "Suppliers/Vendors", productsMasterlist: "Products/Services" })[ready[0]?.kind] || "Records";
   const ok = await confirmDetailsModal({
     eyebrow: "Confirm Migration Import",
     title: `Import ${ready.length} ${moduleLabel} record(s)`,
@@ -1798,7 +1825,7 @@ qs("#run-import").addEventListener("click", async () => {
     const importEntry = { id: `IMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }), module: result.module, file: lastImportFileName || "Pasted CSV/TSV", records: result.records, status: result.records ? `Imported (${result.skipped || 0} skipped)` : "No valid rows", recordType: result.recordType || "", recordKeys: result.recordKeys || [], reverted: false, approvedBy: currentUser?.name || "System User" };
     data.imports.unshift(importEntry);
     if (progressLabel) progressLabel.textContent = "Saving to server...";
-    const saveResult = await persistRecords({ ...(result.createdRecords || {}), imports: [importEntry] });
+    const saveResult = await persistRecords({ ...(result.createdRecords || /** @type {Record<string, any>} */ ({})), imports: [importEntry] });
     if (!saveResult?.ok) return;
     log("Imported confirmed CSV/TSV rows", "Imports", `${result.records} ${result.module} records · ${result.skipped || 0} skipped`, { save: false });
     renderAll();
@@ -1872,8 +1899,8 @@ async function tryBiometricLogin() {
   const email = qs("#login-email");
   const password = qs("#login-password");
   if (email && cred.id) email.value = cred.id;
-  if (password && cred.password) password.value = cred.password;
-  if (password && cred.password) submitLoginIfReady();
+  if (password && /** @type {any} */ (cred).password) password.value = /** @type {any} */ (cred).password;
+  if (password && /** @type {any} */ (cred).password) submitLoginIfReady();
   else scheduleAutofillLoginSubmit();
 }
 function startLoginAutoSignIn() {
@@ -2038,6 +2065,7 @@ function playDashboardLoginSound() {
   audio.play().catch(() => null);
 }
 
+/** @param {string} name @param {() => void} done */
 function showWelcomeTransition(name, done) {
   const overlay = qs("#welcome-transition");
   qs("#welcome-transition-name").textContent = `Welcome ${name}`;
@@ -2050,6 +2078,7 @@ function showWelcomeTransition(name, done) {
   }, 2950);
 }
 
+/** @param {number} index */
 async function setUserPasswordPrompt(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can set passwords.");
   const user = data.users[index];
@@ -2066,6 +2095,7 @@ async function setUserPasswordPrompt(index) {
   toast(`Password set for ${user.name || email}. Share it with them securely.`);
 }
 
+/** @param {number} index */
 async function copyInviteLink(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can generate invite links.");
   const user = data.users[index];
@@ -2082,6 +2112,7 @@ async function copyInviteLink(index) {
   }
 }
 
+/** @param {string} email @param {string} token */
 function openPasswordResetPage(email, token) {
   qs("#reset-email").value = email;
   qs("#reset-token").value = token;
@@ -2096,6 +2127,7 @@ function authHashParams() {
   return new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
 }
 
+/** @param {string} token */
 function jwtEmail(token) {
   try {
     const payload = JSON.parse(atob(String(token || "").split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/") || ""));
@@ -2189,6 +2221,7 @@ function isSafeToApplyAppUpdate() {
   return qsa("dialog[open]").length === 0 && Object.keys(readPendingSaveQueue()).length === 0;
 }
 
+/** @param {number} delay */
 function scheduleAppVersionCheck(delay) {
   clearTimeout(appVersionTimer);
   appVersionTimer = setTimeout(runAppVersionCheck, delay);
@@ -2387,7 +2420,7 @@ async function hydrateAuthenticatedSession() {
   if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state. Refusing to load blank data over it.");
   serverRevision = Number(serverState.revision || 0);
   data = normalizeData({ ...emptyProductionData(), ...serverState.data });
-  modulePagination = serverState.pagination || {};
+  modulePagination = serverState.pagination || /** @type {Record<string, any>} */ ({});
   await ensurePendingSaveQueueHydrated();
   applyPendingSaveQueueToLocal();
   await syncBackendUsers();
