@@ -1529,7 +1529,7 @@ async function approvePurchaseOrder(index) {
   const po = (data.inventoryPurchaseOrders || [])[index];
   if (!po || po.status !== "Pending Approval") return toast("This purchase order is not pending approval.");
   if (!confirm(`Approve ${po.id} for ${po.supplier}?`)) return;
-  const result = await MedlaneAPI.approvePurchaseOrder(po.id).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<InventoryPoResponse>} */ (await MedlaneAPI.approvePurchaseOrder(po.id).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to approve purchase order.");
   replacePoRecord(result.po);
   log("Approved purchase order", "Inventory", po.id);
@@ -1547,7 +1547,7 @@ async function advancePurchaseOrderStatus(index) {
   const next = po && inventoryPoNextStatus[po.status];
   if (!next) return toast("This purchase order cannot be advanced right now.");
   if (!confirm(`Mark ${po.id} as ${poStatusLabel(next)}?`)) return;
-  const result = await MedlaneAPI.advancePurchaseOrder(po.id).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<InventoryPoResponse>} */ (await MedlaneAPI.advancePurchaseOrder(po.id).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to update purchase order status.");
   replacePoRecord(result.po);
   log("Updated purchase order status", "Inventory", `${po.id}: ${next}`);
@@ -1563,7 +1563,7 @@ async function cancelPurchaseOrder(index) {
   if (!po || !inventoryPoCancellableStatuses.includes(po.status)) return toast("This purchase order cannot be cancelled right now.");
   const reason = (prompt(`Reason for cancelling ${po.id}:`, "") || "").trim();
   if (!confirm(`Cancel ${po.id}? This cannot be undone.`)) return;
-  const result = await MedlaneAPI.cancelPurchaseOrder(po.id, reason).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<InventoryPoResponse>} */ (await MedlaneAPI.cancelPurchaseOrder(po.id, reason).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to cancel purchase order.");
   replacePoRecord(result.po);
   log("Cancelled purchase order", "Inventory", po.id);
@@ -1632,7 +1632,7 @@ async function approveStockReceipt(index) {
   const receipt = (data.stockReceipts || [])[index];
   if (!receipt || receipt.status !== "Pending Approval") return toast("This stock receipt is not pending approval.");
   if (!confirm(`Approve ${receipt.id} and post it to inventory?`)) return;
-  const result = await MedlaneAPI.approveStockReceipt(receipt.id).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<StockReceiptResponse>} */ (await MedlaneAPI.approveStockReceipt(receipt.id).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to approve this stock receipt.");
   replaceStockReceiptRecord(result.receipt);
   if (result.po) replacePoRecord(result.po);
@@ -1667,7 +1667,7 @@ async function cancelStockReceipt(index) {
   });
   if (!ok) return;
   if (!reason) return toast("A cancellation reason is required.");
-  const result = await MedlaneAPI.cancelStockReceipt(receipt.id, reason).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<StockReceiptResponse>} */ (await MedlaneAPI.cancelStockReceipt(receipt.id, reason).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to cancel this stock receipt.");
   replaceStockReceiptRecord(result.receipt);
   log("Cancelled stock receipt", "Inventory", receipt.id);
@@ -2363,14 +2363,14 @@ function clientDocRecordId(clientName, doc) {
   return `${clientName}::${doc}`;
 }
 
-/** @param {any} client */
+/** @param {Client} client */
 function docUploadButtons(client) {
   const uploadedCount = requiredClientDocs.filter((doc) => attachedFilesFor("client-doc", clientDocRecordId(client.name, doc)).length).length;
   const complete = uploadedCount === requiredClientDocs.length;
   return `<button class="ghost-button${complete ? " docs-complete" : ""}" data-open-client-docs="${escapeHtml(client.name)}" type="button">Docs (${uploadedCount}/${requiredClientDocs.length})</button>`;
 }
 
-/** @param {any} client */
+/** @param {Client} client */
 function clientDocsModalRowsHtml(client) {
   return requiredClientDocs.map((doc) => {
     const files = attachedFilesFor("client-doc", clientDocRecordId(client.name, doc));
@@ -2792,7 +2792,7 @@ async function renderDashboardBackupStatus() {
       ["Type", latest ? String(latest.backup_type || "backup") : "No successful backup"],
       ["Size", latest ? formatBytes(latest.size_bytes) : "-"],
       ["Result", status.stale ? `Alert: ${ageLabel}` : `Successful: ${ageLabel}`],
-      ...(storagePercent !== null ? [["Storage used", `${formatBytes(usage.usedBytes)} of ${formatBytes(usage.maxBytes)} (${storagePercent}%)`]] : []),
+      ...(storagePercent !== null ? [["Storage used", `${formatBytes(/** @type {StorageUsageResponse} */ (usage).usedBytes)} of ${formatBytes(/** @type {StorageUsageResponse} */ (usage).maxBytes)} (${storagePercent}%)`]] : []),
     ].map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join("");
     if (status.stale && !qs("#alerts-list")?.textContent.includes("No successful backup")) renderDashboard();
   } catch (/** @type {any} */ error) {
@@ -3119,7 +3119,7 @@ async function saveDemoRequest() {
   toast(`${request.id} submitted for ${initialStatus === "For Logistics Approval" ? "Logistics" : "Superadmin/CEO"} approval.`);
 }
 
-/** @param {string | undefined} id @param {string} status @param {any} [sale] */
+/** @param {string | undefined} id @param {string} status @param {{ siNumber: string, prices: number[] } | null} [sale] */
 async function updateDemoRequestStatus(id, status, sale = null) {
   const request = (data.inventoryDemoRequests || []).find((entry) => entry.id === id);
   if (!request) return toast("Demo request not found.");
@@ -3331,7 +3331,7 @@ async function saveStockSheet() {
   if (rows.some((row) => row.expiry && row.expiry !== "N/A" && daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
   const lines = rows.map(({ item, branch, lot, expiry, qty }) => ({ code: item.code, branch, lot, expiry, qty }));
   if (editingStockReceiptId) {
-    const result = await MedlaneAPI.editStockReceipt(editingStockReceiptId, lines, meta).catch((error) => ({ error }));
+    const result = /** @type {OrApiError<StockReceiptResponse>} */ (await MedlaneAPI.editStockReceipt(editingStockReceiptId, lines, meta).catch((error) => ({ error })));
     if (result.error) return toast(result.error.message || "Unable to update this stock receipt.");
     replaceStockReceiptRecord(result.receipt);
     log("Edited stock receipt", "Inventory", `${result.receipt.id}: ${rows.length} row(s)`);
@@ -3342,7 +3342,7 @@ async function saveStockSheet() {
     toast(`${result.receipt.id} updated — still awaiting Superadmin/CEO approval.`);
     return;
   }
-  const result = await MedlaneAPI.submitStockReceipt(po?.id || null, lines, meta).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<StockReceiptResponse>} */ (await MedlaneAPI.submitStockReceipt(po?.id || null, lines, meta).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to submit stock for receiving.");
   data.stockReceipts.push(result.receipt);
   clearPendingSaveQueueKeys(["stockReceipts"]);
@@ -3666,7 +3666,7 @@ function renderSalesTargetPanel() {
   target.innerHTML = agents.length ? `<article class="panel"><div class="panel-header"><div><p class="eyebrow">${new Date().getFullYear()} Sales Targets</p><h2>${agents.length} agent${agents.length === 1 ? "" : "s"} with a target set</h2></div></div><div class="table-card compact-table"><table><thead><tr><th>Agent</th><th>Target</th><th>Current Year Sales</th><th>% Complete</th></tr></thead><tbody>${agents.map((a) => `<tr><td data-label="Agent">${escapeHtml(a.agent)}</td><td data-label="Target">${peso.format(a.target)}</td><td data-label="Current Year Sales">${peso.format(a.currentSales)}</td><td data-label="% Complete"><span class="pill ${a.pct >= 100 ? "green" : a.pct >= 60 ? "orange" : "red"}">${a.pct}%</span></td></tr>`).join("")}</tbody></table></div></article>` : "";
 }
 
-/** @param {any} sales */
+/** @param {Sale[]} sales */
 function populateSalesClientFilter(sales) {
   const list = qs("#sales-client-options");
   if (!list) return;
@@ -5123,7 +5123,7 @@ function openContactRegion(area, client = "", shouldScroll = true) {
   if (shouldScroll) focusRecord(client || area);
 }
 
-/** @param {any} client @param {string} channel */
+/** @param {string} client @param {string} channel */
 function toggleContactChannel(client, channel) {
   const contact = data.collectionContacts.find((item) => item.client === client);
   if (!contact) return;
@@ -5136,7 +5136,7 @@ function toggleContactChannel(client, channel) {
   openContactRegion(contact.area, client, false);
 }
 
-/** @param {any} client @param {string} status */
+/** @param {string} client @param {string} status */
 function updateCollectionContact(client, status) {
   status = contactStatusFromLabel(status);
   const contact = data.collectionContacts.find((item) => item.client === client);
@@ -5257,7 +5257,7 @@ function clientSupportHistoryCard(report) {
   return `<article class="panel" data-focus-record="${escapeHtml(report.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(typeLabel)} · ${escapeHtml(report.startDate || "-")}</p><h2>${escapeHtml(report.id)}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Remarks:</strong> ${escapeHtml(report.remarks || report.concerns || "-")}</p><div class="modal-actions"><button class="ghost-button" data-product-issue-timeline="${escapeHtml(report.id)}">View Full Report</button></div></article>`;
 }
 
-/** @param {any} client */
+/** @param {string} client */
 function renderClientHistoryTabs(client) {
   qsa("#client-history-tabs .order-status-tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.clientHistoryTab === clientHistoryTab));
   qs("#client-history-invoices-panel").hidden = clientHistoryTab !== "invoices";
@@ -5323,7 +5323,7 @@ function exportItemizedInvoicingCsv() {
   const rows = invoicingVisibleSales();
   if (!rows.length) return toast("No invoices in the current view to export.");
   const header = ["Document No.", "Client", "Date", "Item", "Brand", "Qty", "UOM", "Price", "Amount"];
-  const body = rows.flatMap((s) => (s.lines?.length ? s.lines : [{ item: s.item, brand: s.brand, qty: s.qty, uom: s.uom, price: s.price }]).map((line) => [s.documentNo || s.id, s.client, s.date, line.item || "-", line.brand || "-", Number(line.qty || 0), line.uom || "-", Number(line.price || 0).toFixed(2), lineSubtotal(line).toFixed(2)]));
+  const body = rows.flatMap((s) => (s.lines?.length ? s.lines : /** @type {SaleLine[]} */ ([{ item: s.item, brand: s.brand, qty: s.qty, uom: s.uom, price: s.price }])).map((line) => [s.documentNo || s.id, s.client, s.date, line.item || "-", line.brand || "-", Number(line.qty || 0), line.uom || "-", Number(line.price || 0).toFixed(2), lineSubtotal(line).toFixed(2)]));
   downloadCsv("invoices-itemized.csv", [header, ...body]);
   log("Exported itemized invoices (CSV)", "Invoicing", `${rows.length} invoices`, { save: false });
 }
@@ -5354,7 +5354,7 @@ function exportClientInvoicesCsv() {
   log("Exported client invoice report (CSV)", "Client History", client, { save: false });
 }
 
-/** @param {any} client @param {any} filtered */
+/** @param {string} client @param {any} filtered */
 function clientInvoiceReportHtml(client, filtered) {
   const status = qs("#client-invoices-status-filter")?.value || "all";
   const from = qs("#client-invoices-from")?.value || "";
@@ -5378,7 +5378,7 @@ function printClientInvoicesReport() {
   log("Exported client invoice report (PDF)", "Client History", client, { save: false });
 }
 
-/** @param {any} client */
+/** @param {string} client */
 function soaHtml(client) {
   const clientRecord = data.clients.find((item) => item.name === client) || /** @type {Record<string, any>} */ ({});
   // An invoice whose collection is marked "Posted Date" is already settled by a dated cheque in
@@ -5402,7 +5402,7 @@ function soaHtml(client) {
   return `<section class="soa-print"><header><img src="medlane.jpg" alt="Medlane Diagnostic Solutions" /><h1>Statement of Account</h1></header><div class="soa-meta"><div><span>Account Name:</span><strong>${escapeHtml(client)}</strong></div><div><span>Terms:</span><strong>${escapeHtml(`${Number(clientRecord.terms || 30)} Days`)}</strong></div><div><span>Address:</span><strong>${escapeHtml(clientRecord.address || "No address recorded")}</strong></div><div><span>TIN No.:</span><strong>${escapeHtml(clientRecord.tin || "")}</strong></div><div><span>SOA Date:</span><strong>${escapeHtml(shortDate(today))}</strong></div></div><table><thead><tr><th>Date</th><th>Reference Number</th><th>Amount</th><th>Days Due</th></tr></thead><tbody>${rows.join("") || `<tr><td colspan="4">No open invoices.</td></tr>`}${blankRows}<tr class="soa-total-row"><td></td><td>Total</td><td>${peso.format(totalBalance).replace("₱", "")}</td><td></td></tr></tbody></table><div class="soa-notes"><p>Should there be any discrepancies, you may reach us through our company's contact number.</p><p>We respectfully request that all <strong>overdue accounts</strong>, if any, be settled immediately to <strong>avoid delays in your future orders and transactions.</strong> Kindly make all checks payable to <strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong></p><p>Please note that any payments and/or orders made <strong>after this billing date</strong> may not yet be reflected in this SOA. If payment has already been made, kindly disregard this notice.</p><p>Thank you very much.</p></div><div class="soa-signature"><p>Very truly yours,</p><strong>${escapeHtml(currentUser?.name || "Jessica Berry")}</strong><span>Accounting Staff</span><span>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</span></div><footer>MEDLANE DIAGNOSTIC SOLUTIONS, INC.<br />13 Gumamela St. Pilar Village, Las Piñas<br />Las Piñas City 1740<br />Tel. No. (02) 8836-2853 Email: receivables.mdsi@gmail.com</footer></section>`;
 }
 
-/** @param {any} client */
+/** @param {string} client */
 function previewSoa(client) {
   const dialog = qs("#payment-request-preview-modal");
   qs("#payment-request-preview-title").textContent = `Statement of Account — ${client}`;
@@ -6737,7 +6737,7 @@ async function confirmFinancialPayment(type, id, method) {
   saveData(["notifications"]); renderAll(); toast(`${record.id} marked paid by ${method}.`);
 }
 
-/** @param {any} expense @param {any} index */
+/** @param {Replenishment} expense @param {any} index */
 function expenseApprovalAction(expense, index) {
   if (expense.status === "For HR Approval") return `<button class="mini-button" data-approve-expense="${index}" data-next-status="Approved by HR">Approve HR</button>`;
   if (expense.status === "Approved by HR" || expense.status === "For Accounting Approval") return `<button class="mini-button" data-approve-expense="${index}" data-next-status="Approved">Approve Accounting</button>`;
@@ -7080,7 +7080,7 @@ function salesBreakdownScope() {
 // older sales were saved with item/brand/qty/price on the sale itself, not a lines[] array.
 /** @param {Sale} sale */
 function salesBreakdownLines(sale) {
-  return sale.lines?.length ? sale.lines : [{ item: sale.item, code: sale.code, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: sale.price }];
+  return sale.lines?.length ? sale.lines : /** @type {SaleLine[]} */ ([{ item: sale.item, code: sale.code, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: sale.price }]);
 }
 
 /** @param {PoLine} line */
@@ -7184,7 +7184,7 @@ function getReconScope(range = getReconRange()) {
   return { range, sales, payments, clients, transfers };
 }
 
-/** @param {string} clientName @param {any} sales */
+/** @param {string} clientName @param {Sale[]} sales */
 function getScopedClientBalance(clientName, sales) {
   return sales.filter((/** @type {Sale} */ sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
 }

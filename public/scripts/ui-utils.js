@@ -115,7 +115,7 @@ function statusClass(status) {
   if (value.includes("si") || value.includes("admin")) return "purple";
   return "gray";
 }
-/** @param {string} status */
+/** @param {string | undefined} status */
 function deliveryStatusPillClass(status) { return status === "Pending" || !status ? "orange" : "green"; }
 /** @param {string} type */
 function documentType(type) { return type === "DRS" ? "DR" : type; }

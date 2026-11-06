@@ -1996,7 +1996,7 @@ function addDays(date, days) {
   return d.toISOString().slice(0, 10);
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function saleStatus(sale) {
   if (sale.status === "Cancelled") return "Cancelled";
   const balance = Number(sale.net || 0) - Number(sale.paid || 0);
@@ -2024,16 +2024,16 @@ function generateReportsFromState(data, branch = "all") {
   const byBranch = (/** @type {any} */ rows, key = "branch") => branch === "all" ? rows : rows.filter((/** @type {any} */ row) => row[key] === branch || row.area === branch);
   const sales = byBranch(data.sales || [], "area");
   const inventory = byBranch(data.inventory || []);
-  const totalSales = sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.net || 0), 0);
-  const totalPaid = sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.paid || 0), 0);
-  const overdue = sales.filter((/** @type {any} */ sale) => saleStatus(sale) === "Overdue").length;
+  const totalSales = sales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0);
+  const totalPaid = sales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.paid || 0), 0);
+  const overdue = sales.filter((/** @type {Sale} */ sale) => saleStatus(sale) === "Overdue").length;
   const lowStock = inventory.filter((/** @type {any} */ item) => ["Low Stock", "Critical"].includes(inventoryState(item))).length;
   return [
-    { icon: "₱", title: "Sales by Territory", body: `Area, client, salesperson, SI/TS/DR, and item movement. ${money(totalSales)} current view.`, section: "sales", actionLabel: "Open Sales", rows: sales.map((/** @type {any} */ sale) => [sale.area, sale.client, sale.salesperson, sale.documentNo || sale.id, `${sale.qty || ""} ${sale.uom || ""} ${sale.item || ""}`.trim(), money(sale.net)]) },
-    { icon: "●", title: "Collections & AR", body: `${money(totalPaid)} collected. ${overdue} overdue invoice/s.`, section: "collections", actionLabel: "Open Collections", rows: sales.map((/** @type {any} */ sale) => [sale.id, sale.client, saleStatus(sale), money(sale.paid), money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0)), addDays(sale.date, sale.terms || 0)]) },
+    { icon: "₱", title: "Sales by Territory", body: `Area, client, salesperson, SI/TS/DR, and item movement. ${money(totalSales)} current view.`, section: "sales", actionLabel: "Open Sales", rows: sales.map((/** @type {Sale} */ sale) => [sale.area, sale.client, sale.salesperson, sale.documentNo || sale.id, `${sale.qty || ""} ${sale.uom || ""} ${sale.item || ""}`.trim(), money(sale.net)]) },
+    { icon: "●", title: "Collections & AR", body: `${money(totalPaid)} collected. ${overdue} overdue invoice/s.`, section: "collections", actionLabel: "Open Collections", rows: sales.map((/** @type {Sale} */ sale) => [sale.id, sale.client, saleStatus(sale), money(sale.paid), money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0)), addDays(sale.date, sale.terms || 0)]) },
     { icon: "▤", title: "Reagent Expiry", body: `${lowStock} low or critical stock records with lot and expiry tracking.`, section: "inventory", actionLabel: "Open Inventory", rows: inventory.map((/** @type {any} */ item) => [item.item, item.branch, item.lot, item.expiry, item.qty, inventoryState(item)]) },
-    { icon: "◆", title: "Client Documents", body: "BIR, SEC, TIN, required permits, and account attachments.", section: "masterlists", actionLabel: "Open Masterlists", rows: (data.clients || []).map((/** @type {any} */ client) => [client.name, client.area, client.tin, money(client.creditLimit), client.docs]) },
-    { icon: "◇", title: "Supplier Payables", body: `${(data.payables || []).length} supplier payable records with payment method tracking.`, section: "payables", actionLabel: "Open Payables", rows: (data.payables || []).map((/** @type {any} */ payable) => [payable.supplier, payable.item, payable.method, money(payable.amount), money(payable.paid), money(Number(payable.amount || 0) - Number(payable.paid || 0)), payable.status]) },
+    { icon: "◆", title: "Client Documents", body: "BIR, SEC, TIN, required permits, and account attachments.", section: "masterlists", actionLabel: "Open Masterlists", rows: (data.clients || []).map((/** @type {Client} */ client) => [client.name, client.area, client.tin, money(client.creditLimit), client.docs]) },
+    { icon: "◇", title: "Supplier Payables", body: `${(data.payables || []).length} supplier payable records with payment method tracking.`, section: "payables", actionLabel: "Open Payables", rows: (data.payables || []).map((/** @type {Payable} */ payable) => [payable.supplier, payable.item, payable.method, money(payable.amount), money(payable.paid), money(Number(payable.amount || 0) - Number(payable.paid || 0)), payable.status]) },
     { icon: "◉", title: "Service & Warranty", body: "Equipment install, serial number, warranty, and customer support history.", section: "warranty", actionLabel: "Open Warranty", rows: (data.warranties || []).map((/** @type {any} */ warranty) => [warranty.client, warranty.equipment, warranty.serial, warranty.installDate, warranty.warrantyEnd, warranty.status]) },
     { icon: "◎", title: "Compliance Audit", body: `${(data.logs || []).length} traceable changes for corrections, exports, and approvals.`, section: "logs", actionLabel: "Open Audit Logs", rows: (data.logs || []).map((/** @type {any} */ log) => [log.date, log.user, log.module, log.action, log.record]) },
   ];
@@ -2080,7 +2080,7 @@ function isEquipmentItem(item) {
   return category === "equipment";
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function saleTaxBreakdown(sale) {
   const subtotal = Number(sale.amount || 0) - Number(sale.discount || 0);
   const totalAmountDue = Number(sale.net || subtotal);
@@ -2091,7 +2091,7 @@ function saleTaxBreakdown(sale) {
   return { totalSalesVatInclusive, amountNetVat: totalSalesVatInclusive - addVat, addVat, totalAmountDue };
 }
 
-/** @param {Profile} profile @param {any} sale */
+/** @param {Profile} profile @param {Sale} sale */
 function printableBranchAllowed(profile, sale) {
   const branch = String(profile?.branch || "all");
   return ["all", "Both", "All"].includes(branch) || sale.area === branch || sale.branch === branch;
@@ -2137,7 +2137,7 @@ function round3(value) {
   return Math.round(Number(value || 0) * 1000) / 1000;
 }
 
-/** @param {any} sale @param {any} variant @param {any} templateOverrides */
+/** @param {Sale} sale @param {any} variant @param {any} templateOverrides */
 function printableRows(sale, variant, templateOverrides) {
   const lines = sale.lines?.length ? sale.lines : [{ item: sale.item, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: Number(sale.amount || 0) / Math.max(Number(sale.qty || 1), 1), lot: "", expiry: "" }];
   const fields = templateOverrides?.fields || {};
@@ -2434,7 +2434,7 @@ function digestInventoryStatus(item) {
   return "Available";
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function digestSaleStatus(sale) {
   if (sale.status === "Cancelled") return "Cancelled";
   const balance = Number(sale.net || 0) - Number(sale.paid || 0);
@@ -2446,31 +2446,31 @@ function digestSaleStatus(sale) {
   return "Unpaid";
 }
 
-/** @param {any} clientName @param {any} sales */
+/** @param {any} clientName @param {Sale[]} sales */
 function digestClientBalance(clientName, sales) {
-  return sales.filter((/** @type {any} */ sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  return sales.filter((/** @type {Sale} */ sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
 }
 
 const LARGE_TRANSACTION_THRESHOLD = 100000;
 
-/** @param {any} po @param {any} sales */
+/** @param {any} po @param {Sale[]} sales */
 function poFullyPaidServer(po, sales) {
-  const linkedSales = sales.filter((/** @type {any} */ sale) => sale.po === po.id && sale.status !== "Cancelled");
-  return linkedSales.length > 0 && linkedSales.every((/** @type {any} */ sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
+  const linkedSales = sales.filter((/** @type {Sale} */ sale) => sale.po === po.id && sale.status !== "Cancelled");
+  return linkedSales.length > 0 && linkedSales.every((/** @type {Sale} */ sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
 }
 
-/** @param {any} po @param {any} sales */
+/** @param {any} po @param {Sale[]} sales */
 function salesPoStatusServer(po, sales) {
   const lines = po.lines || [];
-  const linkedSales = sales.filter((/** @type {any} */ sale) => sale.po === po.id && sale.status !== "Cancelled");
+  const linkedSales = sales.filter((/** @type {Sale} */ sale) => sale.po === po.id && sale.status !== "Cancelled");
   if (!linkedSales.length) return "For Invoicing";
   const pendingQty = lines.reduce((/** @type {number} */ sum, /** @type {any} */ line) => {
-    const served = linkedSales.flatMap((/** @type {any} */ sale) => sale.lines || []).filter((/** @type {any} */ saleLine) => (saleLine.code && line.code && saleLine.code === line.code) || saleLine.item === line.item).reduce((/** @type {any} */ lineSum, /** @type {any} */ saleLine) => lineSum + Number(saleLine.qty || 0), 0);
+    const served = linkedSales.flatMap((/** @type {Sale} */ sale) => sale.lines || []).filter((/** @type {SaleLine} */ saleLine) => (saleLine.code && line.code && saleLine.code === line.code) || saleLine.item === line.item).reduce((/** @type {any} */ lineSum, /** @type {SaleLine} */ saleLine) => lineSum + Number(saleLine.qty || 0), 0);
     return sum + Math.max(Number(line.qty || 0) - served, 0);
   }, 0);
   if (pendingQty > 0) return "Pending Orders";
-  if (linkedSales.some((/** @type {any} */ sale) => sale.type === "SI")) return "Sales Invoice";
-  if (linkedSales.some((/** @type {any} */ sale) => sale.type === "DR")) return "Delivery Receipt";
+  if (linkedSales.some((/** @type {Sale} */ sale) => sale.type === "SI")) return "Sales Invoice";
+  if (linkedSales.some((/** @type {Sale} */ sale) => sale.type === "DR")) return "Delivery Receipt";
   return "Transmittal Slip";
 }
 
@@ -2616,9 +2616,9 @@ function pendingSummaryFields(state) {
   // Payment requests awaiting approval are surfaced once, under "Pending Approvals" —
   // repeating them under "Collections" as well just duplicates the same rows and was
   // a big part of why this digest read as noisy.
-  const collectionApprovals = (state.paymentRequests || []).filter((/** @type {any} */ request) => request.invoice && request.requestStatus === "Pending");
-  const payables = (state.payables || []).filter((/** @type {any} */ payable) => (payable.requestStatus || payable.status) === "For Approval");
-  const expenses = (state.replenishments || []).filter((/** @type {any} */ expense) => (expense.requestStatus || expense.status) === "For Approval");
+  const collectionApprovals = (state.paymentRequests || []).filter((/** @type {PaymentRequest} */ request) => request.invoice && request.requestStatus === "Pending");
+  const payables = (state.payables || []).filter((/** @type {Payable} */ payable) => (payable.requestStatus || payable.status) === "For Approval");
+  const expenses = (state.replenishments || []).filter((/** @type {Replenishment} */ expense) => (expense.requestStatus || expense.status) === "For Approval");
   const PREVIEW_ROWS = 6;
   const field = (/** @type {any} */ emoji, /** @type {any} */ name, /** @type {any} */ rows, /** @type {(row: any) => string} */ mapper) => {
     if (!rows.length) return null;
@@ -2658,10 +2658,10 @@ function detectThresholdsAndApprovals(state) {
 
   const sales = state.sales || [];
   const clients = state.clients || [];
-  const overdue = sales.filter((/** @type {any} */ sale) => digestSaleStatus(sale) === "Overdue").sort((/** @type {any} */ a, /** @type {any} */ b) => Math.max(Number(b.net || 0) - Number(b.paid || 0), 0) - Math.max(Number(a.net || 0) - Number(a.paid || 0), 0));
-  if (overdue.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Overdue Invoices", overdue.map((/** @type {any} */ sale) => `${sale.documentNo || sale.id} — ${sale.client}, ${money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))} overdue`));
-  const creditBreach = clients.filter((/** @type {any} */ client) => Number(client.creditLimit || 0) > 0 && digestClientBalance(client.name, sales) > Number(client.creditLimit)).sort((/** @type {any} */ a, /** @type {any} */ b) => (digestClientBalance(b.name, sales) - Number(b.creditLimit)) - (digestClientBalance(a.name, sales) - Number(a.creditLimit)));
-  if (creditBreach.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Credit Limit Breach", creditBreach.map((/** @type {any} */ client) => `${client.name} — ${money(digestClientBalance(client.name, sales))} used / ${money(client.creditLimit)} limit`));
+  const overdue = sales.filter((/** @type {Sale} */ sale) => digestSaleStatus(sale) === "Overdue").sort((/** @type {any} */ a, /** @type {any} */ b) => Math.max(Number(b.net || 0) - Number(b.paid || 0), 0) - Math.max(Number(a.net || 0) - Number(a.paid || 0), 0));
+  if (overdue.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Overdue Invoices", overdue.map((/** @type {Sale} */ sale) => `${sale.documentNo || sale.id} — ${sale.client}, ${money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))} overdue`));
+  const creditBreach = clients.filter((/** @type {Client} */ client) => Number(client.creditLimit || 0) > 0 && digestClientBalance(client.name, sales) > Number(client.creditLimit)).sort((/** @type {any} */ a, /** @type {any} */ b) => (digestClientBalance(b.name, sales) - Number(b.creditLimit)) - (digestClientBalance(a.name, sales) - Number(a.creditLimit)));
+  if (creditBreach.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Credit Limit Breach", creditBreach.map((/** @type {Client} */ client) => `${client.name} — ${money(digestClientBalance(client.name, sales))} used / ${money(client.creditLimit)} limit`));
 
   const warranties = state.warranties || [];
   const warrantyEnding = warranties.filter((/** @type {any} */ item) => { const d = digestDaysUntil(item.warrantyEnd); return d >= 0 && d <= 30; });
@@ -2674,14 +2674,14 @@ function detectThresholdsAndApprovals(state) {
   if (poPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPo, "Purchase Orders Awaiting Approval", poPending.map((/** @type {any} */ po) => `${po.id} — ${po.supplier}`));
 
   const paymentRequests = state.paymentRequests || [];
-  const paymentPending = paymentRequests.filter((/** @type {any} */ request) => request.invoice && request.requestStatus === "Pending");
+  const paymentPending = paymentRequests.filter((/** @type {PaymentRequest} */ request) => request.invoice && request.requestStatus === "Pending");
   if (paymentPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPaymentRequest, "Payments Received Awaiting Approval", paymentPending.map((/** @type {any} */ request) => `${request.cvNo} — ${request.invoice}, ${money(request.total)}`));
 
   const payables = state.payables || [];
-  const payablesPending = payables.filter((/** @type {any} */ payable) => (payable.requestStatus || payable.status) === "For Approval");
+  const payablesPending = payables.filter((/** @type {Payable} */ payable) => (payable.requestStatus || payable.status) === "For Approval");
   const replenishments = state.replenishments || [];
-  const replenishmentsPending = replenishments.filter((/** @type {any} */ item) => (item.requestStatus || item.status) === "For Approval");
-  const financialPending = [...payablesPending.map((/** @type {any} */ p) => `Payable — ${p.supplier}, ${money(p.amount)}`), ...replenishmentsPending.map((/** @type {any} */ r) => `Expense — ${r.type}, ${money(r.amount)}`)];
+  const replenishmentsPending = replenishments.filter((/** @type {Replenishment} */ item) => (item.requestStatus || item.status) === "For Approval");
+  const financialPending = [...payablesPending.map((/** @type {Payable} */ p) => `Payable — ${p.supplier}, ${money(p.amount)}`), ...replenishmentsPending.map((/** @type {Replenishment} */ r) => `Expense — ${r.type}, ${money(r.amount)}`)];
   if (financialPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPayable, "Payables / Expenses Awaiting Approval", financialPending);
 
   const demoRequests = state.inventoryDemoRequests || [];
@@ -2701,18 +2701,18 @@ function detectThresholdsAndApprovals(state) {
 
 /** @param {any} state */
 function computeBusinessMetrics(state) {
-  const sales = (state.sales || []).filter((/** @type {any} */ sale) => sale.status !== "Cancelled");
+  const sales = (state.sales || []).filter((/** @type {Sale} */ sale) => sale.status !== "Cancelled");
   const payments = state.payments || [];
   const inventory = state.inventory || [];
   const payables = state.payables || [];
   const replenishments = state.replenishments || [];
   const demoRequests = state.inventoryDemoRequests || [];
-  const totalSales = sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.net || 0), 0);
-  const totalCollected = sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.paid || 0), 0);
+  const totalSales = sales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0);
+  const totalCollected = sales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.paid || 0), 0);
   const totalExpenses = [...payables, ...replenishments].reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0);
-  const overdueCount = sales.filter((/** @type {any} */ sale) => digestSaleStatus(sale) === "Overdue").length;
-  const pendingDeposit = payments.filter((/** @type {any} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
-  const bounced = payments.filter((/** @type {any} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
+  const overdueCount = sales.filter((/** @type {Sale} */ sale) => digestSaleStatus(sale) === "Overdue").length;
+  const pendingDeposit = payments.filter((/** @type {Payment} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
+  const bounced = payments.filter((/** @type {Payment} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
   const lowStock = inventory.filter((/** @type {any} */ item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).length;
   const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || "")).length;
   return {
@@ -2759,8 +2759,8 @@ function financialDigestLines(state, sinceIso) {
   const newClientPos = purchaseOrders.filter((/** @type {any} */ po) => inPeriod(po.date));
   const openInventoryPos = inventoryPurchaseOrders.filter((/** @type {any} */ po) => !/completed|cancelled|received/i.test(po.status || ""));
   const inventoryPoTotal = openInventoryPos.reduce((/** @type {number} */ sum, /** @type {any} */ po) => sum + (po.lines || []).reduce((/** @type {any} */ lineSum, /** @type {any} */ line) => lineSum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0), 0);
-  const openPayables = payables.filter((/** @type {any} */ payable) => !/paid|cancelled|rejected/i.test(payable.requestStatus || payable.status || ""));
-  const pendingExpenses = replenishments.filter((/** @type {any} */ expense) => !/paid|liquidated|cancelled|rejected/i.test(expense.requestStatus || expense.status || ""));
+  const openPayables = payables.filter((/** @type {Payable} */ payable) => !/paid|cancelled|rejected/i.test(payable.requestStatus || payable.status || ""));
+  const pendingExpenses = replenishments.filter((/** @type {Replenishment} */ expense) => !/paid|liquidated|cancelled|rejected/i.test(expense.requestStatus || expense.status || ""));
   const combinedExpenses = [...payables, ...replenishments];
   const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
   const newDemos = demoRequests.filter((/** @type {any} */ request) => inPeriod(request.date || request.demoDate));
@@ -2768,8 +2768,8 @@ function financialDigestLines(state, sinceIso) {
     `Client purchase orders open: ${openClientPos.length}`,
     `Client purchase orders created: ${newClientPos.length}`,
     `Inventory purchase orders open: ${openInventoryPos.length} (${money(inventoryPoTotal)})`,
-    `Payables open/for approval: ${openPayables.length} (${money(openPayables.reduce((/** @type {number} */ sum, /** @type {any} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
-    `Expenses pending/for approval: ${pendingExpenses.length} (${money(pendingExpenses.reduce((/** @type {number} */ sum, /** @type {any} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
+    `Payables open/for approval: ${openPayables.length} (${money(openPayables.reduce((/** @type {number} */ sum, /** @type {Payable} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
+    `Expenses pending/for approval: ${pendingExpenses.length} (${money(pendingExpenses.reduce((/** @type {number} */ sum, /** @type {Replenishment} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
     `All expenses booked (payables + expenses): ${combinedExpenses.length} (${money(combinedExpenses.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
     `Demo requests active/created: ${activeDemos.length} active / ${newDemos.length} created`,
   ];
@@ -2793,30 +2793,30 @@ function recordMonthKey(value) {
 
 /** @param {any} state @param {any} monthKey */
 function dashboardAnalyticsFields(state, monthKey) {
-  const sales = (state.sales || []).filter((/** @type {any} */ sale) => sale.status !== "Cancelled");
+  const sales = (state.sales || []).filter((/** @type {Sale} */ sale) => sale.status !== "Cancelled");
   const payments = state.payments || [];
   const inventory = state.inventory || [];
   const payables = state.payables || [];
   const replenishments = state.replenishments || [];
   const demoRequests = state.inventoryDemoRequests || [];
-  const monthSales = sales.filter((/** @type {any} */ sale) => recordMonthKey(sale.date) === monthKey);
-  const monthPayments = payments.filter((/** @type {any} */ payment) => recordMonthKey(payment.dateRecorded || payment.date || payment.postedDate) === monthKey);
-  const monthPayables = payables.filter((/** @type {any} */ payable) => recordMonthKey(payable.date) === monthKey);
-  const monthExpenses = replenishments.filter((/** @type {any} */ expense) => recordMonthKey(expense.date) === monthKey);
-  const totalSales = monthSales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.net || 0), 0);
-  const totalCollected = monthPayments.reduce((/** @type {number} */ sum, /** @type {any} */ payment) => sum + Number(payment.amount || 0), 0);
-  const openReceivables = Math.max(sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.net || 0), 0) - sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.paid || 0), 0), 0);
-  const overdue = sales.filter((/** @type {any} */ sale) => digestSaleStatus(sale) === "Overdue");
+  const monthSales = sales.filter((/** @type {Sale} */ sale) => recordMonthKey(sale.date) === monthKey);
+  const monthPayments = payments.filter((/** @type {Payment} */ payment) => recordMonthKey(payment.dateRecorded || payment.date || payment.postedDate) === monthKey);
+  const monthPayables = payables.filter((/** @type {Payable} */ payable) => recordMonthKey(payable.date) === monthKey);
+  const monthExpenses = replenishments.filter((/** @type {Replenishment} */ expense) => recordMonthKey(expense.date) === monthKey);
+  const totalSales = monthSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0);
+  const totalCollected = monthPayments.reduce((/** @type {number} */ sum, /** @type {Payment} */ payment) => sum + Number(payment.amount || 0), 0);
+  const openReceivables = Math.max(sales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0) - sales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.paid || 0), 0), 0);
+  const overdue = sales.filter((/** @type {Sale} */ sale) => digestSaleStatus(sale) === "Overdue");
   const lowStock = inventory.filter((/** @type {any} */ item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item)));
-  const pendingPayables = monthPayables.filter((/** @type {any} */ payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
-  const pendingExpenses = monthExpenses.filter((/** @type {any} */ expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
+  const pendingPayables = monthPayables.filter((/** @type {Payable} */ payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
+  const pendingExpenses = monthExpenses.filter((/** @type {Replenishment} */ expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
   const monthExpenseTotal = [...monthPayables, ...monthExpenses].reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0);
   const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
   return [
     { name: "💰 Sales", value: [`**Invoices this month:** ${monthSales.length}`, `**Month invoiced:** ${money(totalSales)}`, `**Open AR total:** ${money(openReceivables)}`].join("\n"), inline: true },
-    { name: "🏦 Collections", value: [`**Collected this month:** ${money(totalCollected)}`, `**Deposits pending:** ${payments.filter((/** @type {any} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`, `**Overdue invoices:** ${overdue.length}`].join("\n"), inline: true },
+    { name: "🏦 Collections", value: [`**Collected this month:** ${money(totalCollected)}`, `**Deposits pending:** ${payments.filter((/** @type {Payment} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`, `**Overdue invoices:** ${overdue.length}`].join("\n"), inline: true },
     { name: "📦 Operations", value: [`**Low / critical stock:** ${lowStock.length}`, `**Business expenses this month:** ${monthPayables.length + monthExpenses.length}`, `**Expense amount:** ${money(monthExpenseTotal)}`].join("\n"), inline: true },
-    { name: "⚠️ Attention", value: [`**Payables/expenses pending:** ${pendingPayables.length + pendingExpenses.length}`, `**Active demo requests:** ${activeDemos.length}`, `**Bounced payments:** ${payments.filter((/** @type {any} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length}`].join("\n"), inline: true },
+    { name: "⚠️ Attention", value: [`**Payables/expenses pending:** ${pendingPayables.length + pendingExpenses.length}`, `**Active demo requests:** ${activeDemos.length}`, `**Bounced payments:** ${payments.filter((/** @type {Payment} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length}`].join("\n"), inline: true },
   ];
 }
 
@@ -3832,10 +3832,10 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   const reconHistory = state.reconHistory || [];
   const demoRequests = state.inventoryDemoRequests || [];
 
-  const bouncedCheques = payments.filter((/** @type {any} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
-  const pendingDeposits = payments.filter((/** @type {any} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
-  const largeSales = sales.filter((/** @type {any} */ sale) => sale.status !== "Cancelled" && Number(sale.net || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(sale.date) >= new Date(auditSinceIso));
-  const largePayments = payments.filter((/** @type {any} */ payment) => Number(payment.amount || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(payment.dateRecorded || payment.dateCollected || 0) >= new Date(auditSinceIso));
+  const bouncedCheques = payments.filter((/** @type {Payment} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
+  const pendingDeposits = payments.filter((/** @type {Payment} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
+  const largeSales = sales.filter((/** @type {Sale} */ sale) => sale.status !== "Cancelled" && Number(sale.net || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(sale.date) >= new Date(auditSinceIso));
+  const largePayments = payments.filter((/** @type {Payment} */ payment) => Number(payment.amount || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(payment.dateRecorded || payment.dateCollected || 0) >= new Date(auditSinceIso));
   const blockedImports = imports.filter((/** @type {any} */ item) => /blocked|invalid|skipped|no valid/i.test(item.status || ""));
   const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
   const closedDemos = demoRequests.filter((/** @type {any} */ request) => /[Rr]eturned|To Sales/.test(request.status || "") && new Date(request.history?.at(-1)?.date || request.date || 0) >= new Date(auditSinceIso));
@@ -3850,7 +3850,7 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
     return [];
   });
   const newlyPaidPos = purchaseOrders.filter((/** @type {any} */ po) => newlyPaidPoIds.includes(po.id));
-  const newClientNames = await trackNewOccurrences(env, "discordKnownClients", clients.map((/** @type {any} */ client) => client.name)).catch(async (error) => {
+  const newClientNames = await trackNewOccurrences(env, "discordKnownClients", clients.map((/** @type {Client} */ client) => client.name)).catch(async (error) => {
     await recordSystemLog(env, { action: "Discord digest tracking failed", module: "Discord", record: `discordKnownClients: ${error.message}` }).catch(() => null);
     return [];
   });
@@ -4812,7 +4812,7 @@ export default {
         }
         rows = dedupeRowsByRecordKey(rows);
 
-        const saleCodes = saleScopedInventory ? new Set(records.sales.flatMap((/** @type {any} */ sale) => (sale?.lines || []).map((/** @type {any} */ line) => String(line?.code || ""))).filter(Boolean)) : null;
+        const saleCodes = saleScopedInventory ? new Set(records.sales.flatMap((/** @type {Sale} */ sale) => (sale?.lines || []).map((/** @type {any} */ line) => String(line?.code || ""))).filter(Boolean)) : null;
         const saleStockRows = saleScopedInventory ? rows.filter((row) => row.module_name === "inventory") : [];
 
         // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
@@ -4952,7 +4952,7 @@ export default {
             // every invoice the company has ever issued just to check whether this one PO is locked.
             const poIdFilter = postgrestIn(editedPoRows.map((row) => row.record_key));
             const saleRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&data->>po=in.${encodeURIComponent(poIdFilter)}&select=data`);
-            const lockedPoIds = new Set(saleRows.map((/** @type {any} */ row) => row.data).filter((/** @type {any} */ sale) => sale && sale.po && sale.status !== "Cancelled").map((/** @type {any} */ sale) => sale.po));
+            const lockedPoIds = new Set(saleRows.map((/** @type {any} */ row) => row.data).filter((/** @type {Sale} */ sale) => sale && sale.po && sale.status !== "Cancelled").map((/** @type {Sale} */ sale) => sale.po));
             for (const row of editedPoRows) {
               if (!lockedPoIds.has(row.record_key)) continue;
               const stored = storedPoByKey.get(row.record_key);
@@ -5246,7 +5246,7 @@ export default {
           title: `Print ${type} ${sale.documentNo || sale.id}`,
           description: url.searchParams.get("noDate") === "1" ? "Server-rendered data-only overlay without date. Load the physical template in the printer before printing." : "Server-rendered data-only overlay for the pre-printed form. Load the physical template in the printer before printing.",
           hasCustomTemplate: Boolean(customTemplate),
-          html: printableInvoiceHtml({ sale, client: (state.clients || []).find((/** @type {any} */ client) => client.name === sale.client) || {}, approvals: state.invoiceApprovals || {}, preparedBy: profile.name || "System User", noDate: url.searchParams.get("noDate") === "1", templateOverrides: useCustom ? customTemplate : null }),
+          html: printableInvoiceHtml({ sale, client: (state.clients || []).find((/** @type {Client} */ client) => client.name === sale.client) || {}, approvals: state.invoiceApprovals || {}, preparedBy: profile.name || "System User", noDate: url.searchParams.get("noDate") === "1", templateOverrides: useCustom ? customTemplate : null }),
         });
       }
 

@@ -15,7 +15,17 @@ interface PoLine {
   discountReason?: string;
   lot?: string;
   expiry?: string;
-  [extra: string]: any;
+  serial?: string;
+  vatCode?: string;
+  sourceBranch?: string;
+  branch?: string;
+  receivedQty?: number;
+  requestedQty?: number;
+  requestedLot?: string;
+  requestedExpiry?: string;
+  dispatchedQty?: number;
+  dispatchedLot?: string;
+  dispatchedExpiry?: string;
 }
 
 interface PoHistoryEntry {
@@ -91,12 +101,39 @@ interface Sale {
   net: number;
   paid: number;
   status: string;
+  amount: number;
+  discount?: number;
+  discountReason?: string;
   terms?: number;
   salesperson?: string;
+  agent?: string;
+  dealer?: string;
+  division?: string;
   lines?: SaleLine[];
   noPo?: boolean;
+  migrated?: boolean;
   replacementId?: string;
-  [extra: string]: any;
+  deliveryStatus?: string;
+  vatCode?: string;
+  siNumber?: string;
+  taxTreatment?: string;
+  withholdingTax?: boolean | number;
+  expandedWithholdingTax?: boolean | number;
+  cancelledFrom?: string | null;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
+  // Older single-line invoices keep the line on the invoice itself.
+  item?: string;
+  code?: string;
+  brand?: string;
+  qty?: number;
+  uom?: string;
+  price?: number;
+  lot?: string;
+  expiry?: string;
+  sourceBranch?: string;
+  branch?: string;
 }
 
 /** Login account row (data.users). */
@@ -124,7 +161,29 @@ interface PaymentRequest {
   total: number;
   date?: string;
   history: PoHistoryEntry[];
-  [extra: string]: any;
+  paymentConfirmed?: boolean;
+  paymentType?: string;
+  employee?: string;
+  amount?: number;
+  gross?: number;
+  items?: { amount?: number; netAmount?: number; invoice?: string }[];
+  invoices?: string[];
+  withholdingTax?: boolean | number;
+  expandedWithholdingTax?: boolean | number;
+  bank?: string;
+  bankAccount?: string;
+  chequeDate?: string;
+  transferDate?: string;
+  preparedBy?: string;
+  createdAt?: string;
+  createdByUser?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  completedBy?: string;
+  completedAt?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
 }
 
 interface Employee { name: string; birthday?: string; archived?: boolean; [extra: string]: any }
@@ -151,6 +210,9 @@ interface Client {
   name: string;
   area: string;
   dealer?: string;
+  division?: string;
+  code?: string;
+  contact?: string;
   salesperson?: string;
   terms?: number;
   creditLimit: number;
@@ -158,9 +220,11 @@ interface Client {
   address?: string;
   withholdingTax?: boolean;
   expandedWithholdingTax?: boolean;
-  docs?: any;
+  // Masterlist entries keep a list; imported ones keep the text from the spreadsheet.
+  docs?: string | string[];
+  migrated?: boolean;
+  status?: string;
   archived?: boolean;
-  [extra: string]: any;
 }
 
 /** Product/service masterlist entry (data.items). */
@@ -184,11 +248,79 @@ interface Payment {
   method: string;
   collectionStatus: string;
   amount?: number;
-  [extra: string]: any;
+  appliedToInvoice?: boolean;
+  client?: string;
+  invoice: string;
+  paymentRequestCvNo?: string;
+  bank?: string;
+  bankAccount?: string;
+  transferDate?: string;
+  reference?: string;
+  tag?: string;
+  date?: string;
+  dateRecorded?: string;
+  dateCollected?: string;
+  postedDate?: string;
+  postedReminderKey?: string;
+  chequeDate?: string;
+  cheques?: unknown[];
+  statusHistory?: unknown[];
+  voided?: boolean;
 }
 
-interface Payable { id: string; amount: number; paid: number; supplier: string; [extra: string]: any }
-interface Replenishment { id: string; requestStatus: string; status: string; [extra: string]: any }
+interface Payable {
+  id: string;
+  amount: number;
+  paid: number;
+  supplier: string;
+  date: string;
+  status: string;
+  requestStatus: string;
+  createdByUser?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  method?: string;
+  bank?: string;
+  cheque?: string;
+  chequeDate?: string;
+  grossAmount?: number;
+  withholdingTax?: number;
+  total?: number;
+  item?: string;
+  items?: unknown[];
+  qty?: number;
+  uom?: string;
+  paymentConfirmed?: boolean;
+}
+interface Replenishment {
+  id: string;
+  requestStatus: string;
+  status: string;
+  amount: number;
+  total?: number;
+  paid?: number;
+  createdByUser?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  date?: string;
+  type?: string;
+  label?: string;
+  source?: string;
+  office?: string;
+  employeeName?: string;
+  requester?: string;
+  file?: unknown;
+  items?: unknown[];
+  method?: string;
+  bank?: string;
+  cheque?: string;
+  chequeDate?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  paymentConfirmed?: boolean;
+}
 interface CollectionContact { client: string; area: string; status: string; [extra: string]: any }
 interface PendingTransfer { id: string; status: string; code?: string; lot?: string; from?: string; to?: string; lines: any[]; [extra: string]: any }
 interface ImportBatch { id: string; date: string; module: string; status: string; [extra: string]: any }

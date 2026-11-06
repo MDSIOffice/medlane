@@ -2,11 +2,12 @@
 const MedlaneAPI = (() => {
   const sessionKey = "medlane-api-session";
 
+  /** @returns {ApiSession | null} */
   function session() {
     return JSON.parse(localStorage.getItem(sessionKey) || "null");
   }
 
-  /** @param {any} value */
+  /** @param {ApiSession | null} value */
   function setSession(value) {
     if (value) localStorage.setItem(sessionKey, JSON.stringify(value));
     else localStorage.removeItem(sessionKey);
@@ -128,7 +129,11 @@ const MedlaneAPI = (() => {
     }
   }
 
-  /** @param {string} path @param {Record<string, any>} [options] @param {boolean} [retried] @returns {Promise<any>} */
+  /**
+   * @template [T=unknown]
+   * @param {string} path @param {Record<string, any>} [options] @param {boolean} [retried]
+   * @returns {Promise<T>}
+   */
   async function request(path, options = {}, retried = false) {
     trackGlobalLoading(1);
     try {
@@ -138,7 +143,11 @@ const MedlaneAPI = (() => {
     }
   }
 
-  /** @param {string} path @param {Record<string, any>} [options] @param {boolean} [retried] @returns {Promise<any>} */
+  /**
+   * @template [T=unknown]
+   * @param {string} path @param {Record<string, any>} [options] @param {boolean} [retried]
+   * @returns {Promise<T>}
+   */
   async function requestInner(path, options = {}, retried = false) {
     await ensureFreshSession();
     const active = session();
@@ -190,7 +199,11 @@ const MedlaneAPI = (() => {
   // Worker, brief Supabase 5xx) is safe to resend. Without this the user saw "Server save failed"
   // on the first click and success on the second. 4xx (permission/validation/conflict) and
   // session errors are thrown straight through.
-  /** @param {() => Promise<any>} send @param {number} [attempts] */
+  /**
+   * @template T
+   * @param {() => Promise<T>} send @param {number} [attempts]
+   * @returns {Promise<T>}
+   */
   async function withTransientRetry(send, attempts = 3) {
     let lastError;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -207,29 +220,31 @@ const MedlaneAPI = (() => {
     throw lastError;
   }
 
-  /** @param {string} email @param {string} password */
+  /** @param {string} email @param {string} password @returns {Promise<LoginResponse>} */
   async function login(email, password) {
-    const payload = await request("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+    const payload = /** @type {LoginResponse} */ (await request("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }));
     setSession(payload.session);
     localStorage.setItem("medlane-session", JSON.stringify(payload.user));
     return payload;
   }
 
-  /** @param {string} email */
+  /** @param {string} email @returns {Promise<OkResponse>} */
   async function forgotPassword(email) {
     return request("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
   }
 
   /** @type {string | null} */
   let changesCursor = null;
+  /** @returns {Promise<AppStateResponse>} */
   async function loadAppState() {
-    const payload = await request("/api/modules/state");
+    const payload = /** @type {AppStateResponse} */ (await request("/api/modules/state"));
     if (payload?.changesCursor) changesCursor = payload.changesCursor;
     return payload;
   }
 
   // Live-update feed: records changed since the last full load / poll. Silent (no global loading
   // spinner) because it runs in the background every few seconds.
+  /** @returns {Promise<ChangesResponse | null>} */
   async function loadChanges() {
     if (!changesCursor) return null;
     const since = changesCursor;
@@ -258,11 +273,12 @@ const MedlaneAPI = (() => {
     return payload;
   }
 
+  /** @returns {Promise<MeResponse>} */
   async function me() {
     return request("/api/auth/me");
   }
 
-  /** @param {Record<string, any>} nextData @param {number | null} revision */
+  /** @param {Record<string, any>} nextData @param {number | null} revision @returns {Promise<SaveResponse>} */
   async function saveAppState(nextData, revision) {
     // The server does several sequential Supabase round-trips per save (before-state fetch,
     // event-module diff fetch, validation checks, then the upsert) — under load or a cold
@@ -270,12 +286,12 @@ const MedlaneAPI = (() => {
     return withTransientRetry(() => request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }), timeoutMs: 120000 }));
   }
 
-  /** @param {Record<string, any[]>} records @param {Record<string, any>} [recordKeys] */
+  /** @param {Record<string, any[]>} records @param {Record<string, any>} [recordKeys] @returns {Promise<SaveResponse>} */
   async function saveRecords(records, recordKeys = {}) {
     return withTransientRetry(() => request("/api/modules/records", { method: "POST", body: JSON.stringify({ records, recordKeys }) }));
   }
 
-  /** @param {File | Blob} file @param {Record<string, any>} [metadata] */
+  /** @param {File | Blob} file @param {Record<string, any>} [metadata] @returns {Promise<FileUploadResponse>} */
   async function uploadFile(file, metadata = {}) {
     const form = new FormData();
     form.append("file", file);
@@ -284,6 +300,7 @@ const MedlaneAPI = (() => {
     return request("/api/files", { method: "POST", body: form, timeoutMs: 120000 });
   }
 
+  /** @returns {Promise<FilesResponse>} */
   async function listFiles() {
     return request("/api/files");
   }
@@ -321,26 +338,27 @@ const MedlaneAPI = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
-  /** @param {Record<string, any>} user */
+  /** @param {Record<string, any>} user @returns {Promise<InviteResponse>} */
   async function inviteUser(user) {
     return request("/api/users/invite", { method: "POST", body: JSON.stringify(user) });
   }
 
+  /** @returns {Promise<UsersResponse>} */
   async function listUsers() {
     return request("/api/users");
   }
 
-  /** @param {string} email */
+  /** @param {string} email @returns {Promise<ResendInviteResponse>} */
   async function resendInvite(email) {
     return request("/api/users/invite/resend", { method: "POST", body: JSON.stringify({ email }) });
   }
 
-  /** @param {string} email */
+  /** @param {string} email @returns {Promise<InviteLinkResponse>} */
   async function getInviteLink(email) {
     return request("/api/users/invite/link", { method: "POST", body: JSON.stringify({ email }) });
   }
 
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<InventoryPoResponse>} */
   async function approvePurchaseOrder(id) {
     return withTransientRetry(() => request(`/api/purchase-orders/${encodeURIComponent(id)}/approve`, { method: "POST" }));
   }
@@ -348,12 +366,12 @@ const MedlaneAPI = (() => {
   // Not retried: "advance" steps a PO to whatever status follows its CURRENT one, so a resend
   // after a genuinely successful-but-lost response would read the now-advanced status and step it
   // forward a second time. Approve/cancel are safe to retry because they target a fixed end state.
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<InventoryPoResponse>} */
   async function advancePurchaseOrder(id) {
     return request(`/api/purchase-orders/${encodeURIComponent(id)}/advance`, { method: "POST" });
   }
 
-  /** @param {string} id @param {string} reason */
+  /** @param {string} id @param {string} reason @returns {Promise<InventoryPoResponse>} */
   async function cancelPurchaseOrder(id, reason) {
     return withTransientRetry(() => request(`/api/purchase-orders/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }));
   }
@@ -365,13 +383,13 @@ const MedlaneAPI = (() => {
     return `SR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
   }
 
-  /** @param {string | null} poId @param {any[]} lines @param {Record<string, any>} [meta] */
+  /** @param {string | null} poId @param {any[]} lines @param {Record<string, any>} [meta] @returns {Promise<StockReceiptResponse>} */
   async function submitStockReceipt(poId, lines, meta = {}) {
     const id = generateStockReceiptId();
     return withTransientRetry(() => request("/api/stock-receipts", { method: "POST", body: JSON.stringify({ id, poId, lines, ...meta }) }));
   }
 
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<StockReceiptResponse>} */
   async function approveStockReceipt(id) {
     // Not retried: approving posts to inventory across multiple non-atomic writes, so an
     // automatic resend after a genuinely partial failure risks double-posting stock. The server
@@ -380,52 +398,52 @@ const MedlaneAPI = (() => {
     return request(`/api/stock-receipts/${encodeURIComponent(id)}/approve`, { method: "POST" });
   }
 
-  /** @param {string} id @param {string} reason */
+  /** @param {string} id @param {string} reason @returns {Promise<StockReceiptResponse>} */
   async function cancelStockReceipt(id, reason) {
     return withTransientRetry(() => request(`/api/stock-receipts/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }));
   }
 
-  /** @param {string} id @param {any[]} lines @param {Record<string, any>} [meta] */
+  /** @param {string} id @param {any[]} lines @param {Record<string, any>} [meta] @returns {Promise<StockReceiptResponse>} */
   async function editStockReceipt(id, lines, meta = {}) {
     return withTransientRetry(() => request(`/api/stock-receipts/${encodeURIComponent(id)}/edit`, { method: "POST", body: JSON.stringify({ lines, ...meta }) }));
   }
 
-  /** @param {string} email @param {string} password */
+  /** @param {string} email @param {string} password @returns {Promise<OkResponse>} */
   async function setUserPassword(email, password) {
     return request("/api/users/set-password", { method: "POST", body: JSON.stringify({ email, password }) });
   }
 
-  /** @param {string | undefined} email @param {boolean} disabled @param {string} [reason] */
+  /** @param {string | undefined} email @param {boolean} disabled @param {string} [reason] @returns {Promise<UserStatusResponse>} */
   async function setUserDisabled(email, disabled, reason = "") {
     return request("/api/users/status", { method: "POST", body: JSON.stringify({ email, disabled, reason }) });
   }
 
-  /** @param {string} email @param {boolean} granted */
+  /** @param {string} email @param {boolean} granted @returns {Promise<SuperadminResponse>} */
   async function setUserSuperadmin(email, granted) {
     return request("/api/users/superadmin", { method: "POST", body: JSON.stringify({ email, granted }) });
   }
 
-  /** @param {string} email */
+  /** @param {string} email @returns {Promise<ResetPermissionsResponse>} */
   async function resetUserPermissions(email) {
     return request("/api/users/reset-permissions", { method: "POST", body: JSON.stringify({ email }) });
   }
 
-  /** @param {string} email @param {string} confirmation */
+  /** @param {string} email @param {string} confirmation @returns {Promise<OkResponse>} */
   async function deleteUser(email, confirmation) {
     return request("/api/users/delete", { method: "POST", body: JSON.stringify({ email, confirmation }) });
   }
 
-  /** @param {string} accessToken @param {string} password */
+  /** @param {string} accessToken @param {string} password @returns {Promise<OkResponse>} */
   async function setPassword(accessToken, password) {
     return request("/api/auth/set-password", { method: "POST", body: JSON.stringify({ accessToken, password }) });
   }
 
-  /** @param {{ action: string, module: string, record: string }} options */
+  /** @param {{ action: string, module: string, record: string }} options @returns {Promise<OkResponse>} */
   async function recordLog({ action, module, record }) {
     return request("/api/logs", { method: "POST", body: JSON.stringify({ action, module, record }) });
   }
 
-  /** @param {Record<string, any>} [params] */
+  /** @param {Record<string, any>} [params] @returns {Promise<LogsResponse>} */
   async function listLogs(params = {}) {
     const query = new URLSearchParams();
     if (params.dateFrom) query.set("dateFrom", params.dateFrom);
@@ -438,35 +456,36 @@ const MedlaneAPI = (() => {
     return request(`/api/logs${query.toString() ? `?${query}` : ""}`);
   }
 
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<DigestMessageResponse>} */
   async function getDigestMessage(id) {
     return request(`/api/logs/digest-message?id=${encodeURIComponent(id)}`);
   }
 
   // "Load previous" for a module /api/modules/state trimmed to open + most-recent-50 records —
   // fetches the next older page, shaped like /api/modules/changes so it can be merged the same way.
-  /** @param {{ module: string, before: string | null, limit: number }} options */
+  /** @param {{ module: string, before: string | null, limit: number }} options @returns {Promise<ModulePageResponse>} */
   async function loadModulePage({ module, before, limit }) {
     const query = new URLSearchParams(/** @type {any} */ ({ module, before }));
     if (limit) query.set("limit", /** @type {any} */ (limit));
     return request(`/api/modules/page?${query}`);
   }
 
-  /** @param {string} currentPassword @param {string} newPassword */
+  /** @param {string} currentPassword @param {string} newPassword @returns {Promise<OkResponse>} */
   async function changePassword(currentPassword, newPassword) {
     return request("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
   }
 
+  /** @returns {Promise<OkResponse>} */
   async function keepCurrentPasswordForKyc() {
     return request("/api/auth/password-kyc/keep", { method: "POST" });
   }
 
-  /** @param {string} theme */
+  /** @param {string} theme @returns {Promise<ThemeResponse>} */
   async function setTheme(theme) {
     return request("/api/auth/theme", { method: "POST", body: JSON.stringify({ theme }) });
   }
 
-  /** @param {Record<string, any>} [params] */
+  /** @param {Record<string, any>} [params] @returns {Promise<UserSessionsResponse>} */
   async function listUserSessions(params = {}) {
     const query = new URLSearchParams();
     if (params.userId) query.set("userId", params.userId);
@@ -474,31 +493,34 @@ const MedlaneAPI = (() => {
     return request(`/api/users/sessions${query.toString() ? `?${query}` : ""}`);
   }
 
-  /** @param {string} sessionId */
+  /** @param {string} sessionId @returns {Promise<OkResponse>} */
   async function revokeUserSession(sessionId) {
     return request("/api/users/sessions/revoke", { method: "POST", body: JSON.stringify({ sessionId }) });
   }
 
+  /** @returns {Promise<BackupsResponse>} */
   async function listBackups() {
     return request("/api/backups");
   }
 
+  /** @returns {Promise<BackupStatusResponse>} */
   async function backupStatus() {
     return request("/api/backups/status");
   }
 
+  /** @returns {Promise<StorageUsageResponse>} */
   async function storageUsage() {
     return request("/api/storage/usage");
   }
 
-  /** @param {string} [cursor] */
+  /** @param {string} [cursor] @returns {Promise<BackupObjectsResponse>} */
   async function listBackupObjects(cursor = "") {
     const query = new URLSearchParams();
     if (cursor) query.set("cursor", cursor);
     return request(`/api/backups/objects${query.toString() ? `?${query}` : ""}`);
   }
 
-  /** @param {string} [branch] */
+  /** @param {string} [branch] @returns {Promise<ReportsResponse>} */
   async function listReports(branch = "all") {
     const query = new URLSearchParams({ branch });
     // Aggregates across the whole dataset — give it more room than the default 30s before
@@ -506,17 +528,17 @@ const MedlaneAPI = (() => {
     return request(`/api/reports?${query}`, { timeoutMs: 90000 });
   }
 
-  /** @param {Record<string, any>} payload */
+  /** @param {Record<string, any>} payload @returns {Promise<MemoResponse>} */
   async function createMemo(payload) {
     return request("/api/memos", { method: "POST", body: JSON.stringify(payload) });
   }
 
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<MemoResponse>} */
   async function acknowledgeMemo(id) {
     return request(`/api/memos/${encodeURIComponent(id)}/acknowledge`, { method: "POST" });
   }
 
-  /** @param {string} id @param {boolean} [noDate] @param {string} [templateId] */
+  /** @param {string} id @param {boolean} [noDate] @param {string} [templateId] @returns {Promise<PrintableInvoice>} */
   async function printableInvoice(id, noDate = false, templateId = "default") {
     const query = new URLSearchParams({ id });
     if (noDate) query.set("noDate", "1");
@@ -524,42 +546,43 @@ const MedlaneAPI = (() => {
     return request(`/api/printables/invoice?${query}`);
   }
 
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<PrintableDocument>} */
   async function printablePaymentRequest(id) {
     return request(`/api/printables/payment-request?${new URLSearchParams({ id })}`);
   }
 
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<DescribedPrintable>} */
   async function printableTransfer(id) {
     return request(`/api/printables/transfer?${new URLSearchParams({ id })}`);
   }
 
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<DescribedPrintable>} */
   async function printableInventoryPurchaseOrder(id) {
     return request(`/api/printables/inventory-po?${new URLSearchParams({ id })}`);
   }
 
-  /** @param {string} type @param {string} id */
+  /** @param {string} type @param {string} id @returns {Promise<DescribedPrintable>} */
   async function printableFinancialRequest(type, id) {
     return request(`/api/printables/financial-request?${new URLSearchParams({ type, id })}`);
   }
 
-  /** @param {string} id */
+  /** @param {string} id @returns {Promise<DescribedPrintable>} */
   async function printableProductIssue(id) {
     return request(`/api/printables/product-issue?${new URLSearchParams({ id })}`);
   }
 
-  /** @param {string} [backupType] */
+  /** @param {string} [backupType] @returns {Promise<BackupResponse>} */
   async function runBackup(backupType = "manual") {
     // Snapshots the full dataset and uploads it to R2 — can run well past the default 30s timeout.
     return request("/api/backups", { method: "POST", body: JSON.stringify({ backupType }), timeoutMs: 180000 });
   }
 
-  /** @param {string} [periodLabel] */
+  /** @param {string} [periodLabel] @returns {Promise<DigestRunResponse>} */
   async function runDigest(periodLabel = "Daily") {
     return request("/api/digest/run", { method: "POST", body: JSON.stringify({ periodLabel }) });
   }
 
+  /** @returns {Promise<BirthdayTestResponse>} */
   async function runBirthdayGreetingTest() {
     return request("/api/discord/birthday-test", { method: "POST" });
   }
@@ -614,17 +637,18 @@ const MedlaneAPI = (() => {
     URL.revokeObjectURL(url);
   }
 
-  /** @param {Record<string, any>} ref */
+  /** @param {Record<string, any>} ref @returns {Promise<RestoreResponse>} */
   async function restoreBackup(ref) {
     // Rewrites the full dataset from a snapshot — can run well past the default 30s timeout.
     return request("/api/backups/restore", { method: "POST", body: JSON.stringify(ref), timeoutMs: 180000 });
   }
 
+  /** @returns {Promise<GameSessionResponse>} */
   async function startGameSession() {
     return request("/api/game/session/start", { method: "POST" });
   }
 
-  /** @param {number} score @param {string} token @param {string} skin */
+  /** @param {number} score @param {string} token @param {string} skin @returns {Promise<GameScoreResult>} */
   async function submitGameScore(score, token, skin) {
     // Retry transient failures (offline blip, 5xx, wifi handoff after a long run) a few times —
     // the server treats a repeat submit of the same token as idempotent and returns the stored
@@ -645,16 +669,17 @@ const MedlaneAPI = (() => {
     throw lastError;
   }
 
+  /** @returns {Promise<GameScoreResult>} */
   async function myGameScore() {
     return request("/api/game/score/me");
   }
 
-  /** @param {string | undefined} skin */
+  /** @param {string | undefined} skin @returns {Promise<GameSkinResponse>} */
   async function setGameSkin(skin) {
     return request("/api/game/skin", { method: "POST", body: JSON.stringify({ skin }) });
   }
 
-  /** @param {string} [by] */
+  /** @param {string} [by] @returns {Promise<GameLeaderboardResponse>} */
   async function listGameLeaderboard(by = "score") {
     return request(`/api/game/leaderboard?by=${encodeURIComponent(by)}`);
   }
