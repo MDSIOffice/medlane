@@ -3431,7 +3431,7 @@ body[data-active-section="inventory"] #page-description { display: none; }
 
 /* ---- Story mode: pin the stage and overlay the scenes ---- */
 .lr-journey.is-story { height: 680vh; height: 680svh; }
-.lr-journey.is-story .lr-jr-stage { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; background: #f2f9fd; }
+.lr-journey.is-story .lr-jr-stage { position: sticky; top: 0; height: 100vh; height: 100lvh; overflow: hidden; background: #f2f9fd; }
 .lr-journey.is-story .lr-jr-top-scene { background: none; overflow: visible; }
 .lr-journey.is-story .lr-jr-vroad { top: -120%; bottom: -120%; }
 .lr-journey.is-story .lr-jr-trail { top: 0; height: 47.8%; }
@@ -3440,6 +3440,10 @@ body[data-active-section="inventory"] #page-description { display: none; }
 .lr-journey.is-story .lr-jr-scene { position: absolute; inset: 0; min-height: 0; will-change: opacity, transform; }
 .lr-journey.is-story .lr-jr-top-scene, .lr-journey.is-story .lr-jr-map-scene { visibility: hidden; opacity: 0; }
 .lr-journey.is-story .lr-jr-road-scene { padding-top: 0; }
+/* The stage is as tall as the screen with the phone's toolbar hidden. Keep these scenes' content inside the
+   height that's always visible, and carry their backgrounds down through the rest. */
+.lr-journey.is-story .lr-jr-road-scene { bottom: auto; height: 100vh; height: 100svh; box-shadow: 0 40vh 0 var(--jr-sky-2); }
+.lr-journey.is-story .lr-jr-map-scene { bottom: auto; height: 100vh; height: 100svh; box-shadow: 0 40vh 0 #d7ebf7; }
 .lr-journey.is-story .lr-jr-copy--road { position: absolute; top: calc(var(--jr-nav) + 3vh); right: 0; width: min(46vw, 640px); max-width: none; padding: 0 var(--lr-pad-x) 0 0; }
 .lr-journey.is-story .lr-jr-truck { position: absolute; left: 0; bottom: calc(54% - 62px); width: clamp(330px, 37vw, 660px); margin: 0 0 0 clamp(16px, 4vw, 70px); will-change: transform; }
 .lr-journey.is-story .lr-jr-sign { opacity: 0; will-change: transform; }

@@ -114,7 +114,7 @@
         if (entry.isIntersecting) setActive(linkFor(entry.target.id));
       });
     }, { rootMargin: "-45% 0px -50% 0px" });
-    ["lr-profile", "lr-capabilities", "lr-gallery", "lr-locations", "lr-contact"].forEach((id) => {
+    ["lr-profile", "lr-capabilities", "lr-partners", "lr-gallery", "lr-locations", "lr-contact"].forEach((id) => {
       const section = document.getElementById(id);
       if (section) spy.observe(section);
     });

@@ -319,3 +319,13 @@ test("partner tiles are visible straight away for people who turn off animation"
   await expect(page.locator("#lr-partners .lr-partner-grid li").first()).toHaveCSS("opacity", "1");
   await expect(page.locator("#lr-partners .lr-partner-grid li").first()).toHaveCSS("animation-name", "none");
 });
+
+test("the navbar's Partners link goes to the partners section and lights up there", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await watch(page);
+  await page.goto("/");
+  const link = page.locator('.lr-nav-links a[href="#lr-partners"]');
+  await link.click();
+  await expect(page.locator("#lr-partners")).toBeInViewport();
+  await expect(link).toHaveClass(/is-active/);
+});
