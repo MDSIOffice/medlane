@@ -296,9 +296,9 @@ function isEquipmentItem(item) {
 
 /** @param {any} line */
 function lineSubtotal(line) { return Math.max(0, line.qty * line.price); }
-/** @param {any} sale */
+/** @param {Sale} sale */
 function saleSummary(sale) { return (sale.lines || []).map((line) => `${line.item} (${line.qty} ${line.uom})`).join(", ") || `${sale.item} (${sale.qty || 0} ${sale.uom || "unit"})`; }
-/** @param {any} sale */
+/** @param {Sale} sale */
 function saleBrandSummary(sale) { return [...new Set((sale.lines || []).map((line) => line.brand).filter(Boolean))].join(", ") || sale.brand || "-"; }
 /** @param {any[]} lines */
 function saleAmount(lines) { return lines.reduce((sum, line) => sum + lineSubtotal(line), 0); }
@@ -381,12 +381,12 @@ function openPaymentRequestMoreMenu(cvNo) {
   dialog.showModal();
 }
 
-/** @param {any} payment */
+/** @param {Payment} payment */
 function saleForPayment(payment) {
   return data.sales.find((sale) => (sale.documentNo || sale.id) === payment.invoice || sale.id === payment.invoice || sale.documentNo === payment.invoice);
 }
 
-/** @param {any} payment */
+/** @param {Payment} payment */
 function applyCollectionPayment(payment) {
   const sale = saleForPayment(payment);
   if (!sale) return;
@@ -400,7 +400,7 @@ function applyCollectionPayment(payment) {
   payment.appliedToInvoice = true;
 }
 
-/** @param {any} payment */
+/** @param {Payment} payment */
 function reverseCollectionPayment(payment) {
   const sale = saleForPayment(payment);
   if (!sale) return;
@@ -749,7 +749,7 @@ function pendingPoDemandForItem(code, branch, excludePoId = null) {
   return competingPurchaseOrdersForItem(code, branch, excludePoId).reduce((sum, entry) => sum + entry.pending, 0);
 }
 
-/** @param {any} item */
+/** @param {StockRow} item */
 function inventoryReservedCellHtml(item) {
   const competitors = competingPurchaseOrdersForItem(item.code, item.branch);
   const reserved = competitors.reduce((sum, entry) => sum + entry.pending, 0);
@@ -1442,7 +1442,7 @@ function renderInventoryBranchTabs() {
   host.innerHTML = options.map(([value, label]) => `<button type="button" aria-pressed="${inventoryBranchView === value}" data-inventory-branch="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join("");
 }
 
-/** @param {any} transfer @param {any} index */
+/** @param {PendingTransfer} transfer @param {any} index */
 function transferAuthorizationCell(transfer, index) {
   if (transfer.status === "For Receiving") return canApproveInventoryChanges() ? `<div class="inline-actions"><button class="mini-button" data-dispatch-transfer="${index}">Review &amp; Dispatch</button></div>` : `<div class="inline-actions"><small>Awaiting Admin approval</small></div>`;
   if (transfer.status === "In Transit") return `<div class="inline-actions"><button class="mini-button" data-receive-transfer="${index}">Confirm Received</button></div>`;
@@ -1737,7 +1737,7 @@ function transferLineExpiry(line) {
   return line.dispatchedExpiry || line.requestedExpiry || "N/A";
 }
 
-/** @param {any} transfer */
+/** @param {PendingTransfer} transfer */
 function transferItemizedDetail(transfer) {
   const lines = transfer.lines || [];
   return `<div class="mini-transfer-lines">${lines.map((line) => `<span><strong>${escapeHtml(line.item)}</strong> ${transferLineQty(line)} ${escapeHtml(line.uom || "")}<small>Lot ${escapeHtml(transferLineLot(line))} · Exp ${escapeHtml(transferLineExpiry(line))}</small></span>`).join("")}</div>`;
@@ -2108,7 +2108,7 @@ function demoTurnaroundDays(request) {
   return daysBetween(request.date || request.demoDate, request.history?.at(-1)?.date || request.returnDate);
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function saleFullyPaidDate(sale) {
   const invoiceKey = sale.documentNo || sale.id;
   const linked = data.payments.filter((payment) => payment.invoice === invoiceKey).slice().sort((a, b) => new Date(a.dateRecorded || a.dateCollected || 0).getTime() - new Date(b.dateRecorded || b.dateCollected || 0).getTime());
@@ -2120,7 +2120,7 @@ function saleFullyPaidDate(sale) {
   return null;
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function saleCollectionDays(sale) {
   return daysBetween(sale.date, saleFullyPaidDate(sale));
 }
@@ -2386,7 +2386,7 @@ function openClientDocsModal(clientName) {
   dialog.showModal();
 }
 
-/** @param {any} item */
+/** @param {StockRow} item */
 function inventoryItemLabel(item) {
   return `${item.item} · Lot ${item.lot || "-"} · Exp ${item.expiry || "N/A"}`;
 }
@@ -2509,9 +2509,9 @@ function inventoryIcon(name, size = 17) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${INVENTORY_ICONS[name]}"/></svg>`;
 }
 
-/** @param {any} item */
+/** @param {StockRow} item */
 function inventoryHasExpiry(item) { return Boolean(item.expiry) && item.expiry !== "N/A"; }
-/** @param {any} item */
+/** @param {StockRow} item */
 function inventoryExpiryInfo(item) {
   if (!inventoryHasExpiry(item)) return { days: null, label: "No expiry", rel: item.serial ? "Serial-tracked" : "Not applicable" };
   const days = daysUntil(item.expiry);
@@ -2520,9 +2520,9 @@ function inventoryExpiryInfo(item) {
   const rel = days < 0 ? `${-days} day${days === -1 ? "" : "s"} ago` : days === 0 ? "today" : days < 60 ? `in ${days} day${days === 1 ? "" : "s"}` : `in ${Math.round(days / 30)} months`;
   return { days, label, rel };
 }
-/** @param {any} item */
+/** @param {StockRow} item */
 function inventoryRef(item) { return `${item.code}|${item.branch}|${item.lot || item.serial}`; }
-/** @param {any} item */
+/** @param {StockRow} item */
 function inventoryRowModel(item) {
   const meta = INVENTORY_STATUS_BY_NAME[inventoryStatus(item)] || INVENTORY_STATUS_META[0];
   const expiry = inventoryExpiryInfo(item);
@@ -2805,7 +2805,7 @@ function renderInventoryWorkflowTabs() {
   qsa(".inventory-workflow-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.inventoryPanel === inventoryWorkflowTab));
 }
 
-/** @param {any} transfer @param {string} action @param {any} notes */
+/** @param {PendingTransfer} transfer @param {string} action @param {any} notes */
 function recordTransferHistory(transfer, action, notes) {
   const itemSummary = (transfer.lines || []).map((line) => `${line.item} (${line.dispatchedQty ?? line.requestedQty ?? 0})`).join(", ");
   const entry = { id: `TH-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), transferId: transfer.id, action, item: itemSummary, itemCount: (transfer.lines || []).length, from: transfer.from, to: transfer.to, user: currentUser?.name || "System User", notes };
@@ -2814,7 +2814,7 @@ function recordTransferHistory(transfer, action, notes) {
   return entry;
 }
 
-/** @param {any} transfer */
+/** @param {PendingTransfer} transfer */
 function transferLineComparisonRowsHtml(transfer) {
   return (transfer.lines || []).map((line) => `<tr><td>${escapeHtml(line.item)}<small>${escapeHtml(line.code)}</small></td><td>${Number(line.requestedQty || 0)}<small>Lot ${escapeHtml(line.requestedLot || "-")} · Exp ${escapeHtml(line.requestedExpiry || "N/A")}</small></td><td>${line.dispatchedQty != null ? Number(line.dispatchedQty) : "—"}<small>${line.dispatchedLot ? `Lot ${escapeHtml(line.dispatchedLot)} · Exp ${escapeHtml(line.dispatchedExpiry || "N/A")}` : "Not yet dispatched"}</small></td><td>${line.receivedQty != null ? Number(line.receivedQty) : "—"}<small>${line.receivedLot ? `Lot ${escapeHtml(line.receivedLot)} · Exp ${escapeHtml(line.receivedExpiry || "N/A")}` : "Not yet received"}</small></td></tr>`).join("");
 }
@@ -3444,7 +3444,7 @@ function transferLineAvailableStock(line, branch) {
   return data.inventory.filter((entry) => entry.code === line.code && entry.branch === branch && entry.qty > 0);
 }
 
-/** @param {any} transfer */
+/** @param {PendingTransfer} transfer */
 function transferDispatchModalRowsHtml(transfer) {
   return (transfer.lines || []).map((line, i) => {
     const stock = transferLineAvailableStock(line, transfer.from);
@@ -3528,7 +3528,7 @@ async function confirmTransferDispatch() {
   printTransferRequest(transfer.id);
 }
 
-/** @param {any} transfer */
+/** @param {PendingTransfer} transfer */
 function transferReceiveModalRowsHtml(transfer) {
   return (transfer.lines || []).map((line, i) => {
     const alreadyReceived = Number(line.receivedQty || 0);
@@ -3610,7 +3610,7 @@ function isClientAssignedToAgent(clientName, agentName) {
 function salesAgentNameSet() {
   return new Set(data.users.filter((user) => user.role === "Sales").map((user) => user.name));
 }
-/** @param {any} sale @returns {string} */
+/** @param {Sale} sale @returns {string} */
 function assignedSalesAgent(sale) {
   return /** @type {string} */ (data.clients.find((client) => client.name === sale.client)?.salesperson);
 }
@@ -3765,7 +3765,7 @@ function editPurchaseOrder(poId) {
   openModal("purchaseOrder", { poEdit: po });
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function invoiceTaxMetaHtml(sale) {
   const breakdown = saleTaxBreakdown(sale);
   const salesLabel = sale.type === "SI" ? "Total Sales (VAT Inclusive)" : "Total Sales (VAT Exclusive)";
@@ -4181,13 +4181,13 @@ function changeReportPreviewTemplate(templateId) {
   printInvoice(currentReportSaleId, currentPrintNoDate, templateId);
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function formDocumentNo(sale) {
   const raw = String(sale.documentNo || sale.id || "");
   return raw.match(/\d{3,}$/)?.[0] || raw;
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function saleLinkedPaymentRequests(sale) {
   return data.paymentRequests.filter((request) => request.invoice === sale.documentNo || request.invoice === sale.id);
 }
@@ -4224,7 +4224,7 @@ function showSaleDetail(invoiceId) {
   qs("#report-preview-modal").showModal();
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function saleCollectionTimeline(sale) {
   const events = [];
   events.push({ date: sale.date, status: "Created", note: `${sale.type} ${sale.documentNo || sale.id} created for ${sale.client}, ${peso.format(sale.net || 0)}.${sale.migrated ? " (migrated record)" : ""}`, by: sale.migrated ? "Migrated" : (sale.salesperson || "System User") });
@@ -4324,7 +4324,7 @@ function renderCollections() {
     const latest = payments.at(-1) || /** @type {Record<string, any>} */ ({});
     const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
     const status = latest.collectionStatus || "For Deposition";
-    return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
+    return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(/** @type {Payment} */ (latest), s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Collection Status", "Actions", "Balance", "AR Status"], rows);
   table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Collector", "Payment", "Total", "Status", "Actions"], [...data.paymentRequests].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.preparedBy || "-", r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
@@ -4349,7 +4349,7 @@ function renderCollectionsWorkflowTabs() {
   qsa("[data-collections-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.collectionsPanel === collectionsWorkflowTab));
 }
 
-/** @param {any} payment @param {any} sale */
+/** @param {Payment} payment @param {Sale} sale */
 function collectionStatusActions(payment, sale) {
   const doc = sale?.documentNo || sale?.id;
   if (!doc) return "-";
@@ -4729,7 +4729,7 @@ function renderCollectionContactMap() {
   table("#collection-contact-history", ["Date", "Client", "Area", "Invoice", "Channel", "Status", "Employee", "Notes"], data.collectionContactHistory.map((item) => [item.date, item.client || item.area, item.area, item.invoice || "-", item.channels || "-", `<span class="pill ${statusClass(["Answered", "Cheque Available"].includes(item.status) ? "Paid" : item.status === "No Response" ? "Overdue" : "Near Due")}">${contactStatusLabel(item.status)}</span>`, item.employee, item.notes]));
 }
 
-/** @param {any} contact */
+/** @param {CollectionContact} contact */
 function contactActionCard(contact) {
   const channels = contact.channels || [];
   const pendingInvoices = data.sales.filter((sale) => sale.client === contact.client && Number(sale.net || 0) - Number(sale.paid || 0) > 0);
@@ -5165,7 +5165,7 @@ function renderReceivablesTracker() {
   }).join("") || `<article class="panel"><p>No open regional receivables — everything is collected.</p></article>`;
 }
 
-/** @param {any} sale @param {boolean} [detailed] */
+/** @param {Sale} sale @param {boolean} [detailed] */
 function trackerCard(sale, detailed = false) {
     const status = statusForSale(sale);
     const balance = Math.max(sale.net - sale.paid, 0);
@@ -7018,7 +7018,7 @@ function salesBreakdownScope() {
 
 // Mirrors the legacy single-line fallback already used by exportItemizedInvoicingCsv() —
 // older sales were saved with item/brand/qty/price on the sale itself, not a lines[] array.
-/** @param {any} sale */
+/** @param {Sale} sale */
 function salesBreakdownLines(sale) {
   return sale.lines?.length ? sale.lines : [{ item: sale.item, code: sale.code, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: sale.price }];
 }
@@ -7387,19 +7387,19 @@ function renderRoleTester() {
     ["Risk Level", ["Superadmin", "CEO"].includes(selected) ? "Full platform control" : edit.length ? "Operational editor" : "View / task limited", "Use custom permissions for exceptions."],
   ].map(([title, value, note]) => `<div class="report-preview-card"><small>${escapeHtml(title)}</small><strong>${escapeHtml(value)}</strong><span>${escapeHtml(note)}</span></div>`).join("");
 }
-/** @param {any} user */
+/** @param {AppUser} user */
 function userInviteStatus(user) {
   return user?.inviteStatus || "Active";
 }
 
 // A backend sync rewrites an archived user's inviteStatus back to "Disabled" (Supabase only
 // knows "banned"), so the durable archived signal is the archivedAt stamp set on archive.
-/** @param {any} user */
+/** @param {AppUser} user */
 function userIsArchived(user) {
   return Boolean(user?.archivedAt) || /archived/i.test(userInviteStatus(user));
 }
 
-/** @param {any} user */
+/** @param {AppUser} user */
 function userDisplayStatus(user) {
   return userIsArchived(user) ? "Archived" : userInviteStatus(user);
 }
@@ -8610,7 +8610,7 @@ function buildPurchaseOrder(values, options = {}) {
   return { id, client: client.name, area: client.area, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function inventoryTouchedBySale(sale) {
   // Skip-PO sales never reserve or deduct stock (see buildSale()), so there's nothing to
   // report as touched — including it anyway would ask the server to write an "inventory"
@@ -8755,7 +8755,7 @@ function togglePayableFields() {
   });
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function restoreCancelledStock(sale) {
   // Skip-PO sales never deducted stock in the first place, so cancelling one must not add
   // stock back — that would credit quantity that was never actually reserved.
@@ -8767,7 +8767,7 @@ function restoreCancelledStock(sale) {
   });
 }
 
-/** @param {any} sale */
+/** @param {Sale} sale */
 function deductSaleStock(sale) {
   if (sale.noPo) return;
   const warehouse = warehouseForArea(sale.area);
