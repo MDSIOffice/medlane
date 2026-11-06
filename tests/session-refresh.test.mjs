@@ -102,6 +102,54 @@ describe("when renewal fails", () => {
   });
 });
 
+describe("a temporary failure doesn't end the login", () => {
+  const expired = { status: 401, body: { error: "Invalid or expired session" } };
+  for (const status of [500, 502, 503, 429]) {
+    test(`renewal answering ${status} keeps the session`, async () => {
+      const t = setup({ token: jwt(-10), refresh: () => ({ status, body: {} }) });
+      await assert.rejects(t.api.request("/api/x"), (error) => error.status === status);
+      assert.notEqual(t.api.session(), null);
+      assert.deepEqual(t.toasts, []);
+    });
+  }
+  test("renewal that can't reach the server keeps the session, marked retryable", async () => {
+    const t = setup({ token: jwt(-10), refresh: () => { throw new TypeError("Failed to fetch"); } });
+    await assert.rejects(t.api.request("/api/x"), (error) => error.transient === true);
+    assert.notEqual(t.api.session(), null);
+  });
+  test("renewal returning no token keeps the session", async () => {
+    const t = setup({ token: jwt(-10), refresh: () => ({ status: 200, body: {} }) });
+    await assert.rejects(t.api.request("/api/x"));
+    assert.notEqual(t.api.session(), null);
+  });
+  test("the same request works once the server is back", async () => {
+    let healthy = false;
+    const t = setup({ token: jwt(-10), refresh: () => (healthy ? { status: 200, body: { session: { access_token: jwt(FRESH, "new"), refresh_token: "r2" } } } : { status: 503, body: {} }) });
+    await assert.rejects(t.api.request("/api/x"));
+    healthy = true;
+    assert.equal((await t.api.request("/api/x")).ok, true);
+    assert.notEqual(t.api.session(), null);
+  });
+  test("saves retry through it instead of losing the session", async () => {
+    let refreshes = 0;
+    const t = setup({ token: jwt(-10), refresh: () => { refreshes += 1; return refreshes < 2 ? { status: 503, body: {} } : { status: 200, body: { session: { access_token: jwt(FRESH, "new"), refresh_token: "r2" } } }; } });
+    assert.equal((await t.api.saveAppState({}, 1)).ok, true);
+    assert.notEqual(t.api.session(), null);
+  });
+  for (const status of [400, 401]) {
+    test(`the server refusing the token with ${status} still logs out`, async () => {
+      const t = setup({ token: jwt(-10), refresh: () => ({ status, body: { error: "Invalid Refresh Token" } }) });
+      await assert.rejects(t.api.request("/api/x"), /session has expired/);
+      assert.equal(t.api.session(), null);
+    });
+  }
+  test("a request the client didn't predict gets the same treatment", async () => {
+    const t = setup({ refresh: () => ({ status: 503, body: {} }), api: () => expired });
+    await assert.rejects(t.api.request("/api/x"), (error) => error.status === 503);
+    assert.notEqual(t.api.session(), null);
+  });
+});
+
 describe("logging out during a renewal", () => {
   const gate = () => { let open; const opened = new Promise((r) => { open = r; }); return { opened, open }; };
   const ok = { status: 200, body: { session: { access_token: jwt(FRESH, "old-user"), refresh_token: "r2" } } };

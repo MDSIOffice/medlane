@@ -929,6 +929,8 @@ async function authenticatedUser(request, env) {
   const response = await fetch(`${supabaseBaseUrl(env)}/auth/v1/user`, {
     headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${token}` },
   });
+  // A Supabase outage says nothing about this login. Reporting it as "expired" would log people out.
+  if (response.status >= 500 || response.status === 429) throw new Error("The sign-in service is temporarily unavailable");
   const user = await response.json().catch(() => null);
   if (!response.ok || !user?.id) throw new Error("Invalid or expired session");
   return { token, user };
@@ -4100,6 +4102,9 @@ export default {
         });
         const session = await refreshResponse.json().catch(() => null);
         if (!refreshResponse.ok || !session?.access_token) {
+          // 401 tells the client this login is finished, so keep it to Supabase really refusing the
+          // token. Its outages and rate limits are temporary, and the client should just try again.
+          if (refreshResponse.ok || refreshResponse.status >= 500 || refreshResponse.status === 429) return json({ error: "The sign-in service is temporarily unavailable" }, { status: 503 });
           const authError = session?.error_description || session?.msg || session?.error || "Session refresh failed";
           return json({ error: authError }, { status: 401 });
         }

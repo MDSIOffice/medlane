@@ -8,7 +8,7 @@ const STUB_URL = "medlane-test:cloudflare-workers";
 const EXPOSED = [
   "canWrite", "canAccessKey", "requireWriteAccess", "requireUserAdmin", "requireMemoAdmin", "requireBackupAdmin",
   "requireDigestAdmin", "requirePoApprover", "requirePoReceiver", "requirePaymentRequestApprover", "requireStockReceiptApprover",
-  "validateNewSaleRows", "assertFinancialApprovalAllowed", "assertCreditApprovalAllowed",
+  "authenticatedUser", "validateNewSaleRows", "assertFinancialApprovalAllowed", "assertCreditApprovalAllowed",
   "assertDemoRequestTransitionsAllowed", "assertSupportReportChangesAllowed", "assertPurchaseOrderClientsNotArchived",
   "demoRequestInitialStatus", "validateReceivingLines", "validRole", "roleModules", "ROLE_BLOCKED_MODULES",
 ];
