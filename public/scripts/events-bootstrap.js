@@ -1345,10 +1345,20 @@ qs("#master-archived-toggle")?.addEventListener("click", () => {
   renderMasterlists();
 });
 qs("#report-grid").addEventListener("click", (event) => {
+  const categoryButton = closestEl(event.target, "[data-report-category]");
+  if (categoryButton) {
+    reportHubCategory = /** @type {string} */ (categoryButton.dataset.reportCategory);
+    return renderReports();
+  }
   const reportButton = closestEl(event.target, "[data-operational-report]");
   if (reportButton) return renderOperationalReport(/** @type {string} */ (reportButton.dataset.operationalReport));
   const breakdownButton = closestEl(event.target, "[data-sales-breakdown]");
-  if (breakdownButton) renderSalesBreakdownReport(/** @type {string} */ (breakdownButton.dataset.salesBreakdown));
+  if (breakdownButton) {
+    // Opening from the hub starts at the default range, the same one its card's figures use.
+    qs("#sales-breakdown-date-from").value = "";
+    qs("#sales-breakdown-date-to").value = "";
+    renderSalesBreakdownReport(/** @type {string} */ (breakdownButton.dataset.salesBreakdown));
+  }
 });
 qs("#report-detail-print")?.addEventListener("click", () => window.print());
 qs("#report-detail-status-filter")?.addEventListener("change", () => applyOperationalReport(currentOperationalReportKey));
