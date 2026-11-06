@@ -13,15 +13,16 @@ const DOW_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon..Sun
 const DOW_NAME = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const FOCUS_DOWS = [5, 6]; // Friday + Saturday are the days the owners want watched
 
-export function projectRef(env) {
+export function projectRef(/** @type {any} */ env) {
   if (env.SUPABASE_PROJECT_REF) return env.SUPABASE_PROJECT_REF;
   return new URL(env.SUPABASE_URL).hostname.split(".")[0];
 }
 
-export function hasAccessToken(env) {
+export function hasAccessToken(/** @type {any} */ env) {
   return Boolean(env.SUPABASE_ACCESS_TOKEN);
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {Record<string, any>} [init] */
 async function mgmtFetch(env, path, init = {}) {
   const response = await fetch(`${MGMT_BASE}/${projectRef(env)}${path}`, {
     ...init,
@@ -37,7 +38,7 @@ async function mgmtFetch(env, path, init = {}) {
 
 // Prefer the read-only SQL endpoint so a token granted only "Database: Read" is enough; fall
 // back to the general endpoint if this project/API version doesn't expose the read-only one.
-export async function runSql(env, query) {
+export async function runSql(/** @type {any} */ env, /** @type {any} */ query) {
   const body = JSON.stringify({ query });
   let rows;
   try {
@@ -49,6 +50,7 @@ export async function runSql(env, query) {
   return Array.isArray(rows) ? rows : [];
 }
 
+/** @param {WorkerEnv} env @param {any} sql @param {any} startIso @param {any} endIso */
 async function runLogsSql(env, sql, startIso, endIso) {
   const qs = new URLSearchParams({ sql, iso_timestamp_start: startIso, iso_timestamp_end: endIso });
   const payload = await mgmtFetch(env, `/analytics/endpoints/logs.all?${qs}`);
@@ -69,14 +71,16 @@ select
   (select coalesce(sum(rows), 0) from pg_stat_statements) as stmt_rows
 from pg_stat_database d where d.datname = current_database()`;
 
-const num = (value) => (value === null || value === undefined || value === "" ? null : Number(value));
+const num = (/** @type {any} */ value) => (value === null || value === undefined || value === "" ? null : Number(value));
 
+/** @param {WorkerEnv} env */
 async function sampleDb(env) {
   const [row] = await runSql(env, SAMPLE_SQL);
   if (!row) throw new Error("empty result");
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, num(value)]));
 }
 
+/** @param {any} text */
 function parsePrometheus(text) {
   /** @type {Record<string, any>} */
   const acc = { cpuIdle: 0, cpuTotal: 0, memTotal: null, memAvail: null, ioSec: 0, readB: 0, writeB: 0, fsSize: null, fsAvail: null };
@@ -104,6 +108,7 @@ function parsePrometheus(text) {
   return acc;
 }
 
+/** @param {WorkerEnv} env */
 async function sampleSys(env) {
   if (!env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("service key missing");
   const response = await fetch(`https://${projectRef(env)}.supabase.co/customer/v1/privileged/metrics`, {
@@ -113,6 +118,7 @@ async function sampleSys(env) {
   return parsePrometheus(await response.text());
 }
 
+/** @type {Record<string, any>} */
 const LOG_QUERIES = {
   edge: "select count(*) as total, countif(r.status_code >= 500) as s5xx, countif(r.status_code >= 400 and r.status_code < 500) as s4xx from edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as r",
   auth: "select count(*) as total, countif(m.level = 'error') as errors from auth_logs cross join unnest(metadata) as m",
@@ -120,6 +126,7 @@ const LOG_QUERIES = {
   realtime: "select count(*) as total, countif(m.level = 'error') as errors from realtime_logs cross join unnest(metadata) as m",
 };
 
+/** @param {WorkerEnv} env @param {any} kind @param {any} startIso @param {any} endIso */
 async function sampleLog(env, kind, startIso, endIso) {
   const [row] = await runLogsSql(env, LOG_QUERIES[kind], startIso, endIso);
   if (!row) return { total: 0, errors: 0, s5xx: 0, s4xx: 0 };
@@ -128,7 +135,7 @@ async function sampleLog(env, kind, startIso, endIso) {
 
 // One hourly sample. Counters in db/sys are cumulative (deltas are computed at report time);
 // logs hold the count for the hour that just ended.
-export async function collectSample(env) {
+export async function collectSample(/** @type {any} */ env) {
   const now = Date.now();
   const startIso = new Date(now - 60 * 60 * 1000).toISOString();
   const endIso = new Date(now).toISOString();
@@ -140,6 +147,7 @@ export async function collectSample(env) {
     storage: sampleLog(env, "storage", startIso, endIso),
     realtime: sampleLog(env, "realtime", startIso, endIso),
   };
+  /** @type {Record<string, any>} */
   const sample = { t: endIso, errors: {} };
   const settled = await Promise.allSettled(Object.values(jobs));
   Object.keys(jobs).forEach((key, index) => {
@@ -151,8 +159,8 @@ export async function collectSample(env) {
 }
 
 // Extra "right now" lookups for the report body (top queries, table health, unused indexes).
-export async function collectLiveDetails(env) {
-  const run = async (label, sql) => { try { return { rows: await runSql(env, sql) }; } catch (/** @type {any} */ error) { return { rows: [], error: `${label}: ${error.message}`.slice(0, 200) }; } };
+export async function collectLiveDetails(/** @type {any} */ env) {
+  const run = async (/** @type {any} */ label, /** @type {any} */ sql) => { try { return { rows: await runSql(env, sql) }; } catch (/** @type {any} */ error) { return { rows: [], error: `${label}: ${error.message}`.slice(0, 200) }; } };
   const [queries, tables, indexes] = await Promise.all([
     run("top queries", `select left(regexp_replace(query, '\\s+', ' ', 'g'), 150) as q, calls, round(total_exec_time::numeric) as total_ms, round(mean_exec_time::numeric, 2) as mean_ms, rows
       from pg_stat_statements s join pg_roles r on r.oid = s.userid
@@ -167,18 +175,20 @@ export async function collectLiveDetails(env) {
 
 // ---------- analysis ----------
 
+/** @param {any} ms */
 function manilaParts(ms) {
   const shifted = new Date(ms + MANILA_OFFSET_MS);
   return { dow: shifted.getUTCDay(), hour: shifted.getUTCHours(), dayKey: shifted.toISOString().slice(0, 10) };
 }
 
-const delta = (next, prev) => { const diff = Number(next) - Number(prev); return Number.isFinite(diff) && diff >= 0 ? diff : null; };
-const avg = (values) => { const list = values.filter((v) => v !== null && v !== undefined && Number.isFinite(v)); return list.length ? list.reduce((a, b) => a + b, 0) / list.length : null; };
-const max = (values) => { const list = values.filter((v) => v !== null && v !== undefined && Number.isFinite(v)); return list.length ? Math.max(...list) : null; };
+const delta = (/** @type {any} */ next, /** @type {any} */ prev) => { const diff = Number(next) - Number(prev); return Number.isFinite(diff) && diff >= 0 ? diff : null; };
+const avg = (/** @type {any} */ values) => { const list = values.filter((/** @type {any} */ v) => v !== null && v !== undefined && Number.isFinite(v)); return list.length ? list.reduce((/** @type {any} */ a, /** @type {any} */ b) => a + b, 0) / list.length : null; };
+const max = (/** @type {any} */ values) => { const list = values.filter((/** @type {any} */ v) => v !== null && v !== undefined && Number.isFinite(v)); return list.length ? Math.max(...list) : null; };
 
 // Turns raw hourly samples into per-hour points (gauges + counter deltas).
-export function derivePoints(samples) {
+export function derivePoints(/** @type {any} */ samples) {
   const sorted = [...samples].sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
+  /** @type {any[]} */
   const points = [];
   sorted.forEach((sample, index) => {
     const ms = new Date(sample.t).getTime();
@@ -214,56 +224,60 @@ export function derivePoints(samples) {
   return points;
 }
 
+/** @param {any} points @param {string} key @param {any} [reducer] */
 function gridBy(points, key, reducer = avg) {
-  return Array.from({ length: 7 }, (_, dow) => Array.from({ length: 24 }, (_, hour) => reducer(points.filter((p) => p.dow === dow && p.hour === hour).map((p) => p[key]))));
+  return Array.from({ length: 7 }, (_, dow) => Array.from({ length: 24 }, (_, hour) => reducer(points.filter((/** @type {any} */ p) => p.dow === dow && p.hour === hour).map((/** @type {any} */ p) => p[key]))));
 }
 
+/** @param {any} points @param {any} dows */
 function groupStats(points, dows) {
-  const group = points.filter((p) => dows.includes(p.dow));
-  const calls = group.reduce((sum, p) => sum + (p.calls || 0), 0);
-  const weighted = group.reduce((sum, p) => sum + (p.avgQueryMs && p.calls ? p.avgQueryMs * p.calls : 0), 0);
+  const group = points.filter((/** @type {any} */ p) => dows.includes(p.dow));
+  const calls = group.reduce((/** @type {number} */ sum, /** @type {any} */ p) => sum + (p.calls || 0), 0);
+  const weighted = group.reduce((/** @type {number} */ sum, /** @type {any} */ p) => sum + (p.avgQueryMs && p.calls ? p.avgQueryMs * p.calls : 0), 0);
   return {
     avgQueryMs: calls ? weighted / calls : null,
-    peakActive: max(group.map((p) => p.active)),
-    peakConns: max(group.map((p) => p.conns)),
-    avgCpu: avg(group.map((p) => p.cpu)),
-    peakCpu: max(group.map((p) => p.cpu)),
-    peakDiskBusy: max(group.map((p) => p.diskBusy)),
+    peakActive: max(group.map((/** @type {any} */ p) => p.active)),
+    peakConns: max(group.map((/** @type {any} */ p) => p.conns)),
+    avgCpu: avg(group.map((/** @type {any} */ p) => p.cpu)),
+    peakCpu: max(group.map((/** @type {any} */ p) => p.cpu)),
+    peakDiskBusy: max(group.map((/** @type {any} */ p) => p.diskBusy)),
     calls,
   };
 }
 
+/** @param {any} points */
 function dailyRows(points) {
   const byDay = new Map();
-  points.forEach((p) => { if (!byDay.has(p.dayKey)) byDay.set(p.dayKey, []); byDay.get(p.dayKey).push(p); });
+  points.forEach((/** @type {any} */ p) => { if (!byDay.has(p.dayKey)) byDay.set(p.dayKey, []); byDay.get(p.dayKey).push(p); });
   return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([dayKey, list]) => {
-    const sum = (pick) => list.reduce((total, p) => total + (pick(p) || 0), 0);
-    const calls = sum((p) => p.calls);
-    const weighted = sum((p) => (p.avgQueryMs && p.calls ? p.avgQueryMs * p.calls : 0));
+    const sum = (/** @type {any} */ pick) => list.reduce((/** @type {any} */ total, /** @type {any} */ p) => total + (pick(p) || 0), 0);
+    const calls = sum((/** @type {any} */ p) => p.calls);
+    const weighted = sum((/** @type {any} */ p) => (p.avgQueryMs && p.calls ? p.avgQueryMs * p.calls : 0));
     return {
       dayKey, dow: list[0].dow, samples: list.length,
-      peakActive: max(list.map((p) => p.active)), peakConns: max(list.map((p) => p.conns)),
+      peakActive: max(list.map((/** @type {any} */ p) => p.active)), peakConns: max(list.map((/** @type {any} */ p) => p.conns)),
       avgQueryMs: calls ? weighted / calls : null, calls,
-      peakCpu: max(list.map((p) => p.cpu)), avgCpu: avg(list.map((p) => p.cpu)),
-      requests: sum((p) => p.edge?.total), s5xx: sum((p) => p.edge?.s5xx), s4xx: sum((p) => p.edge?.s4xx),
-      authTotal: sum((p) => p.auth?.total), authErrors: sum((p) => p.auth?.errors),
-      storageTotal: sum((p) => p.storage?.total), storageErrors: sum((p) => p.storage?.errors),
-      realtimeTotal: sum((p) => p.realtime?.total), realtimeErrors: sum((p) => p.realtime?.errors),
-      cacheHit: avg(list.map((p) => p.cacheHit)),
+      peakCpu: max(list.map((/** @type {any} */ p) => p.cpu)), avgCpu: avg(list.map((/** @type {any} */ p) => p.cpu)),
+      requests: sum((/** @type {any} */ p) => p.edge?.total), s5xx: sum((/** @type {any} */ p) => p.edge?.s5xx), s4xx: sum((/** @type {any} */ p) => p.edge?.s4xx),
+      authTotal: sum((/** @type {any} */ p) => p.auth?.total), authErrors: sum((/** @type {any} */ p) => p.auth?.errors),
+      storageTotal: sum((/** @type {any} */ p) => p.storage?.total), storageErrors: sum((/** @type {any} */ p) => p.storage?.errors),
+      realtimeTotal: sum((/** @type {any} */ p) => p.realtime?.total), realtimeErrors: sum((/** @type {any} */ p) => p.realtime?.errors),
+      cacheHit: avg(list.map((/** @type {any} */ p) => p.cacheHit)),
     };
   });
 }
 
 // ---------- recommendations ----------
 
-export function buildRecommendations({ points, prevPoints, days, details, errors }) {
+export function buildRecommendations(/** @type {any} */ { points, prevPoints, days, details, errors }) {
+  /** @type {any[]} */
   const recs = [];
-  const add = (level, title, detail) => recs.push({ level, title, detail });
-  const fmt = (n, d = 1) => (n === null || n === undefined ? "n/a" : Number(n).toFixed(d));
+  const add = (/** @type {any} */ level, /** @type {any} */ title, /** @type {any} */ detail) => recs.push({ level, title, detail });
+  const fmt = (/** @type {any} */ n, d = 1) => (n === null || n === undefined ? "n/a" : Number(n).toFixed(d));
   const focus = groupStats(points, FOCUS_DOWS);
   const rest = groupStats(points, [0, 1, 2, 3, 4]);
   const all = /** @type {any} */ (groupStats(points, [0, 1, 2, 3, 4, 5, 6]));
-  const maxConns = max(points.map((p) => p.maxConns));
+  const maxConns = max(points.map((/** @type {any} */ p) => p.maxConns));
 
   if (!points.length) {
     add("warn", "No samples collected this week", "The hourly sampler has no data. Check that the SUPABASE_ACCESS_TOKEN secret is set on the Worker and that the 5-minute cron is running.");
@@ -274,10 +288,10 @@ export function buildRecommendations({ points, prevPoints, days, details, errors
   if (maxConns && all.peakConns / maxConns > 0.7) add("warn", "Connection usage is high", `Peak ${all.peakConns} of ${maxConns} connections (${fmt((all.peakConns / maxConns) * 100, 0)}%). Reuse connections, check for idle-in-transaction sessions, or upsize compute before a busy Friday/Saturday.`);
   else if (maxConns) add("good", "Connections have plenty of headroom", `Peak ${all.peakConns} of ${maxConns} (${fmt((all.peakConns / maxConns) * 100, 0)}%).`);
 
-  const idleTxPeak = /** @type {number} */ (max(points.map((p) => p.idleTx)));
+  const idleTxPeak = /** @type {number} */ (max(points.map((/** @type {any} */ p) => p.idleTx)));
   if (idleTxPeak >= 3) add("warn", "Sessions stuck 'idle in transaction'", `Up to ${idleTxPeak} at once. These hold locks and connections; look for code paths that open a transaction and do not commit.`);
 
-  const cache = avg(points.map((p) => p.cacheHit));
+  const cache = avg(points.map((/** @type {any} */ p) => p.cacheHit));
   if (cache !== null && cache < 99) add("warn", "Cache hit rate below 99%", `Average ${fmt(cache, 2)}%. The working set no longer fits in memory — add indexes for the heaviest queries or consider more RAM.`);
   else if (cache !== null) add("good", "Cache hit rate is healthy", `Average ${fmt(cache, 2)}%.`);
 
@@ -288,38 +302,38 @@ export function buildRecommendations({ points, prevPoints, days, details, errors
   if (all.peakCpu !== null && all.peakCpu > 80) add("warn", "CPU spiked above 80%", `Peak CPU ${fmt(all.peakCpu, 0)}%. Sustained CPU on a small instance throttles queries; check what ran at that hour or upsize compute.`);
   if (all.peakDiskBusy !== null && all.peakDiskBusy > 70) add("warn", "Disk was busy more than 70% of an hour", `Peak ${fmt(all.peakDiskBusy, 0)}% disk busy time. If the Disk IO balance in Supabase shows draining, reduce write volume or upsize.`);
 
-  const diskUsed = max(points.map((p) => p.diskUsed));
+  const diskUsed = max(points.map((/** @type {any} */ p) => p.diskUsed));
   if (diskUsed !== null && diskUsed > 70) add("warn", "Database disk is filling up", `${fmt(diskUsed, 0)}% used. Plan a disk increase or archive old data (logs, game sessions).`);
 
-  const deadlocks = points.reduce((sum, p) => sum + (p.deadlocks || 0), 0);
+  const deadlocks = points.reduce((/** @type {number} */ sum, /** @type {any} */ p) => sum + (p.deadlocks || 0), 0);
   if (deadlocks > 0) add("warn", "Deadlocks occurred", `${deadlocks} this week. Two writers locked rows in opposite order; review concurrent saves of the same records.`);
 
-  const prevBytes = prevPoints.filter((p) => p.dbBytes).at(0)?.dbBytes;
+  const prevBytes = prevPoints.filter((/** @type {any} */ p) => p.dbBytes).at(0)?.dbBytes;
   const nowBytes = [...points].reverse().find((p) => p.dbBytes)?.dbBytes;
   if (prevBytes && nowBytes) {
     const growth = ((nowBytes - prevBytes) / prevBytes) * 100;
     if (growth > 10) add("info", "Database grew quickly", `+${fmt(growth, 1)}% over the last two weeks (${fmt(nowBytes / 1048576, 0)} MB now).`);
   }
 
-  const reqTotal = days.reduce((s, d) => s + d.requests, 0);
-  const err5 = days.reduce((s, d) => s + d.s5xx, 0);
+  const reqTotal = days.reduce((/** @type {any} */ s, /** @type {any} */ d) => s + d.requests, 0);
+  const err5 = days.reduce((/** @type {any} */ s, /** @type {any} */ d) => s + d.s5xx, 0);
   if (reqTotal && err5 / reqTotal > 0.01) add("warn", "API 5xx error rate above 1%", `${err5} server errors out of ${reqTotal} API requests (${fmt((err5 / reqTotal) * 100, 2)}%). Check Supabase API logs for the failing endpoints.`);
-  const authTotal = days.reduce((s, d) => s + d.authTotal, 0);
-  const authErr = days.reduce((s, d) => s + d.authErrors, 0);
+  const authTotal = days.reduce((/** @type {any} */ s, /** @type {any} */ d) => s + d.authTotal, 0);
+  const authErr = days.reduce((/** @type {any} */ s, /** @type {any} */ d) => s + d.authErrors, 0);
   if (authTotal && authErr / authTotal > 0.2 && authErr > 50) add("warn", "Many Auth errors", `${authErr} of ${authTotal} auth events errored. Could be failed logins or a brute-force attempt — the Worker's per-IP login throttle limits this; check the audit logs for the source.`);
-  const rtErr = days.reduce((s, d) => s + d.realtimeErrors, 0);
+  const rtErr = days.reduce((/** @type {any} */ s, /** @type {any} */ d) => s + d.realtimeErrors, 0);
   if (rtErr > 20) add("warn", "Realtime errors", `${rtErr} Realtime errors this week. The app uses its own live-update hub, so Supabase Realtime is likely unused — consider disabling it.`);
-  const stErr = days.reduce((s, d) => s + d.storageErrors, 0);
+  const stErr = days.reduce((/** @type {any} */ s, /** @type {any} */ d) => s + d.storageErrors, 0);
   if (stErr > 20) add("warn", "Storage errors", `${stErr} Supabase Storage errors this week.`);
 
-  details?.tables?.rows?.forEach((row) => {
+  details?.tables?.rows?.forEach((/** @type {any} */ row) => {
     const live = Number(row.live);
     const dead = Number(row.dead);
     if (live > 1000 && dead / Math.max(1, live) > 0.2) add("warn", `Table ${row.relname} has many dead rows`, `${dead} dead vs ${live} live rows. Autovacuum is behind — consider a manual VACUUM (ANALYZE).`);
     if (Number(row.seq_scan) > 1000 && Number(row.seq_scan) > Number(row.idx_scan) * 5 && live > 5000) add("warn", `Table ${row.relname} is read by sequential scans`, `${row.seq_scan} seq scans vs ${row.idx_scan} index scans on ${live} rows. A covering index for its common filters would help.`);
   });
   const unused = details?.indexes?.rows || [];
-  if (unused.length) add("info", "Unused indexes", `${unused.slice(0, 4).map((r) => `${r.idx} (${r.tbl}, ${fmt(Number(r.bytes) / 1024, 0)} KB)`).join(", ")}. Safe to drop only if they stay unused for weeks; they cost write speed.`);
+  if (unused.length) add("info", "Unused indexes", `${unused.slice(0, 4).map((/** @type {any} */ r) => `${r.idx} (${r.tbl}, ${fmt(Number(r.bytes) / 1024, 0)} KB)`).join(", ")}. Safe to drop only if they stay unused for weeks; they cost write speed.`);
 
   const slowest = details?.queries?.rows?.[0];
   if (slowest && Number(slowest.mean_ms) > 100) add("warn", "A heavy query dominates", `"${slowest.q}" averages ${slowest.mean_ms} ms over ${slowest.calls} calls.`);
@@ -330,6 +344,7 @@ export function buildRecommendations({ points, prevPoints, days, details, errors
 
 // ---------- charts ----------
 
+/** @param {any} title @param {any} grid @param {any} yLabel */
 function dowHourChart(title, grid, yLabel) {
   return {
     type: "line",
@@ -348,17 +363,19 @@ function dowHourChart(title, grid, yLabel) {
   };
 }
 
+/** @param {any} days */
 function requestsChart(days) {
   return {
     type: "bar",
     data: {
-      labels: days.map((d) => `${DOW_NAME[d.dow]} ${d.dayKey.slice(5)}`),
-      datasets: [{ label: "API requests", data: days.map((d) => d.requests), backgroundColor: days.map((d) => (d.dow === 5 ? "#e5484d" : d.dow === 6 ? "#f5a524" : "#6ea8d6")) }],
+      labels: days.map((/** @type {any} */ d) => `${DOW_NAME[d.dow]} ${d.dayKey.slice(5)}`),
+      datasets: [{ label: "API requests", data: days.map((/** @type {any} */ d) => d.requests), backgroundColor: days.map((/** @type {any} */ d) => (d.dow === 5 ? "#e5484d" : d.dow === 6 ? "#f5a524" : "#6ea8d6")) }],
     },
     options: { plugins: { title: { display: true, text: "API requests per day (Fri red, Sat amber)", font: { size: 16 } }, legend: { display: false } }, scales: { y: { beginAtZero: true } } },
   };
 }
 
+/** @param {any} config */
 async function chartImageUrl(config) {
   try {
     const response = await fetch("https://quickchart.io/chart/create", {
@@ -374,30 +391,32 @@ async function chartImageUrl(config) {
 
 // ---------- email body ----------
 
-const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const esc = (/** @type {any} */ value) => String(value ?? "").replace(/[&<>"']/g, (/** @type {string} */ c) => (/** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }))[c]);
 const C = { navy: "#0b2f52", border: "#d8e3ec", soft: "#f4f8fb", warn: "#b4561a", warnBg: "#fff4e8", good: "#157a3c", goodBg: "#e8f7ee", info: "#1d6fa5", infoBg: "#eaf4fb", fri: "#fde8e8", sat: "#fff3dc" };
-const f = (n, d = 0) => (n === null || n === undefined || !Number.isFinite(n) ? "–" : Number(n).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: d }));
+const f = (/** @type {any} */ n, d = 0) => (n === null || n === undefined || !Number.isFinite(n) ? "–" : Number(n).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: d }));
 
 /** @param {any} headers @param {any} rows @param {(i: number) => string} [rowStyle] */
 function table(headers, rows, rowStyle = () => "") {
-  const th = headers.map((h) => `<th style="text-align:${h.align || "left"};padding:6px 8px;background:${C.soft};border-bottom:1px solid ${C.border};font-size:12px;color:${C.navy};">${esc(h.label)}</th>`).join("");
-  const tr = rows.map((row, i) => `<tr style="${rowStyle(i)}">${row.map((cell, j) => `<td style="text-align:${headers[j].align || "left"};padding:6px 8px;border-bottom:1px solid ${C.border};font-size:12px;">${cell}</td>`).join("")}</tr>`).join("");
+  const th = headers.map((/** @type {any} */ h) => `<th style="text-align:${h.align || "left"};padding:6px 8px;background:${C.soft};border-bottom:1px solid ${C.border};font-size:12px;color:${C.navy};">${esc(h.label)}</th>`).join("");
+  const tr = rows.map((/** @type {any} */ row, /** @type {any} */ i) => `<tr style="${rowStyle(i)}">${row.map((/** @type {any} */ cell, /** @type {any} */ j) => `<td style="text-align:${headers[j].align || "left"};padding:6px 8px;border-bottom:1px solid ${C.border};font-size:12px;">${cell}</td>`).join("")}</tr>`).join("");
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid ${C.border};border-collapse:collapse;margin:8px 0 16px;"><tr>${th}</tr>${tr}</table>`;
 }
 
+/** @param {any} label @param {any} value @param {any} sub */
 function statCard(label, value, sub) {
   return `<td style="padding:10px 12px;border:1px solid ${C.border};background:${C.soft};"><div style="font-size:11px;color:#5b6b7a;text-transform:uppercase;letter-spacing:.04em;">${esc(label)}</div><div style="font-size:20px;font-weight:700;color:${C.navy};">${value}</div><div style="font-size:11px;color:#5b6b7a;">${sub}</div></td>`;
 }
 
-export async function buildWeeklyReport({ samples, prevSamples, details, now = Date.now() }) {
+export async function buildWeeklyReport(/** @type {any} */ { samples, prevSamples, details, now = Date.now() }) {
   const points = derivePoints(samples);
   const prevPoints = derivePoints(prevSamples);
   const days = dailyRows(points);
+  /** @type {Record<string, any>} */
   const errors = {};
-  samples.forEach((s) => Object.entries(s.errors || {}).forEach(([k, v]) => { errors[k] = v; }));
+  samples.forEach((/** @type {any} */ s) => Object.entries(s.errors || {}).forEach(([k, v]) => { errors[k] = v; }));
   // Only surface an error if the latest samples are still failing for that section.
   const latest = samples.slice(-3);
-  Object.keys(errors).forEach((k) => { if (!latest.some((s) => s.errors?.[k])) delete errors[k]; });
+  Object.keys(errors).forEach((k) => { if (!latest.some((/** @type {any} */ s) => s.errors?.[k])) delete errors[k]; });
   const recs = buildRecommendations({ points, prevPoints, days, details, errors });
   const focus = groupStats(points, FOCUS_DOWS);
   const rest = groupStats(points, [0, 1, 2, 3, 4]);
@@ -435,13 +454,13 @@ export async function buildWeeklyReport({ samples, prevSamples, details, now = D
   );
 
   const queriesHtml = details?.queries?.rows?.length
-    ? table([{ label: "Query" }, { label: "Calls", align: "right" }, { label: "Total ms", align: "right" }, { label: "Mean ms", align: "right" }], details.queries.rows.map((r) => [`<code style="font-size:11px;">${esc(r.q)}</code>`, f(Number(r.calls)), f(Number(r.total_ms)), f(Number(r.mean_ms), 2)]))
+    ? table([{ label: "Query" }, { label: "Calls", align: "right" }, { label: "Total ms", align: "right" }, { label: "Mean ms", align: "right" }], details.queries.rows.map((/** @type {any} */ r) => [`<code style="font-size:11px;">${esc(r.q)}</code>`, f(Number(r.calls)), f(Number(r.total_ms)), f(Number(r.mean_ms), 2)]))
     : `<p style="font-size:12px;color:#5b6b7a;">${esc(details?.queries?.error || "No query statistics available.")}</p>`;
   const tablesHtml = details?.tables?.rows?.length
-    ? table([{ label: "Table" }, { label: "Size MB", align: "right" }, { label: "Live rows", align: "right" }, { label: "Dead rows", align: "right" }, { label: "Seq scans", align: "right" }, { label: "Index scans", align: "right" }], details.tables.rows.map((r) => [esc(r.relname), f(Number(r.bytes) / 1048576, 1), f(Number(r.live)), f(Number(r.dead)), f(Number(r.seq_scan)), f(Number(r.idx_scan))]))
+    ? table([{ label: "Table" }, { label: "Size MB", align: "right" }, { label: "Live rows", align: "right" }, { label: "Dead rows", align: "right" }, { label: "Seq scans", align: "right" }, { label: "Index scans", align: "right" }], details.tables.rows.map((/** @type {any} */ r) => [esc(r.relname), f(Number(r.bytes) / 1048576, 1), f(Number(r.live)), f(Number(r.dead)), f(Number(r.seq_scan)), f(Number(r.idx_scan))]))
     : `<p style="font-size:12px;color:#5b6b7a;">${esc(details?.tables?.error || "No table statistics available.")}</p>`;
 
-  const h = (text) => `<h3 style="margin:18px 0 8px;color:${C.navy};">${esc(text)}</h3>`;
+  const h = (/** @type {any} */ text) => `<h3 style="margin:18px 0 8px;color:${C.navy};">${esc(text)}</h3>`;
   const bodyHtml = [
     `<p style="font-size:13px;color:#334155;">${warnCount ? `<strong style="color:${C.warn};">${warnCount} item${warnCount > 1 ? "s" : ""} need attention.</strong>` : `<strong style="color:${C.good};">Everything looks healthy.</strong>`} Based on ${samples.length} hourly samples; Friday and Saturday are highlighted.</p>`,
     cards,
