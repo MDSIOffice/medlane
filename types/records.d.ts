@@ -194,6 +194,7 @@ interface PendingTransfer { id: string; status: string; code?: string; lot?: str
 interface ImportBatch { id: string; date: string; module: string; status: string; [extra: string]: any }
 interface Warranty { serial?: string; client?: string; warrantyEnd?: string; [extra: string]: any }
 
+interface ImportCheckRow { row: number; kind: string; status: string; issues: string; [extra: string]: any }
 interface StockReceipt { id: string; status: string; poId?: string; lines: any[]; [extra: string]: any }
 interface DemoRequest { id: string; status: string; client?: string; items?: any[]; [extra: string]: any }
 interface MemoRecord { id: string; [extra: string]: any }
