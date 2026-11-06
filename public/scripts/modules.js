@@ -1,3 +1,4 @@
+// @ts-check
 let currentReportSaleId = null;
 let selectedUserSessionsTarget = null;
 
@@ -309,8 +310,8 @@ function findItemByCodeOrName(value) {
     || data.items.find((entry) => entry.code.toLowerCase().includes(query) || entry.name.toLowerCase().includes(query));
 }
 function findItemForSheetRow(row, changedInput = null, allowPartial = false) {
-  const code = row.querySelector(".stock-code, .transfer-code, .demo-line-code")?.value.trim().toLowerCase() || "";
-  const name = row.querySelector(".stock-item, .transfer-item, .demo-line-item")?.value.trim().toLowerCase() || "";
+  const code = qsIn(row, ".stock-code, .transfer-code, .demo-line-code")?.value.trim().toLowerCase() || "";
+  const name = qsIn(row, ".stock-item, .transfer-item, .demo-line-item")?.value.trim().toLowerCase() || "";
   const changedValue = String(changedInput?.value || "").trim().toLowerCase();
   const exact = data.items.find((entry) => entry.code.toLowerCase() === code)
     || data.items.find((entry) => entry.name.toLowerCase() === name)
@@ -435,7 +436,7 @@ async function approvePaymentRequest(cvNo) {
     });
   } else {
     let remaining = requestedAmount;
-    [...sales].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)).forEach((sale) => {
+    [...sales].sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime()).forEach((sale) => {
       if (remaining <= 0) return;
       const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
       if (balance <= 0) return;
@@ -526,7 +527,7 @@ function renderPaymentRequestDetail(cvNo) {
 
 function openInvoicesForPaymentRequest(clientName = "") {
   return data.sales.filter((sale) => sale.status !== "Cancelled" && Number(sale.net || 0) - Number(sale.paid || 0) > 0 && (!clientName || sale.client === clientName))
-    .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    .sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
 }
 
 function refreshPaymentRequestInvoiceRowOptions() {
@@ -737,17 +738,17 @@ function renderInvoiceEditor(lines = [{}], options = {}) {
 
 function collectInvoiceEditorLines() {
   return qsa(".invoice-line-row").map((row) => {
-    const itemValue = row.querySelector(".invoice-item-input").value.trim();
-    const sourceBranch = qs("#sourceBranch")?.value || row.querySelector(".invoice-source-branch-input")?.value.trim() || "";
-    const brand = row.querySelector(".invoice-brand-input").value.trim();
-    const qty = row.querySelector(".invoice-qty-input").value;
-    const uom = row.querySelector(".invoice-uom-input").value;
-    const price = row.querySelector(".invoice-price-input").value;
-    const lot = row.querySelector(".invoice-lot-input").value.trim();
+    const itemValue = qsIn(row, ".invoice-item-input").value.trim();
+    const sourceBranch = qs("#sourceBranch")?.value || qsIn(row, ".invoice-source-branch-input")?.value.trim() || "";
+    const brand = qsIn(row, ".invoice-brand-input").value.trim();
+    const qty = qsIn(row, ".invoice-qty-input").value;
+    const uom = qsIn(row, ".invoice-uom-input").value;
+    const price = qsIn(row, ".invoice-price-input").value;
+    const lot = qsIn(row, ".invoice-lot-input").value.trim();
     const item = findItemByCodeOrName(itemValue);
-    const expiry = isEquipmentItem(item) ? "N/A" : row.querySelector(".invoice-expiry-input").value;
+    const expiry = isEquipmentItem(item) ? "N/A" : qsIn(row, ".invoice-expiry-input").value;
     if (expiry && expiry !== "N/A" && daysUntil(expiry) < 0) throw new Error("Expiry date cannot be in the past.");
-    const discount = row.querySelector(".invoice-discount-input")?.value || 0;
+    const discount = qsIn(row, ".invoice-discount-input")?.value || 0;
     return `${itemValue}|${brand}|${qty}|${uom}|${price}|${sourceBranch}|${lot}|${expiry}|${discount}`;
   }).filter((line) => line.split("|")[0]).join("\n");
 }
@@ -769,7 +770,7 @@ function syncInvoiceRowLot(input) {
   const item = findItemByCodeOrName(row?.querySelector(".invoice-item-input")?.value);
   const lot = input.value.trim();
   if (!row || !item) return;
-  const branch = row.querySelector(".invoice-source-branch-input")?.value || qs("#sourceBranch")?.value;
+  const branch = qsIn(row, ".invoice-source-branch-input")?.value || qs("#sourceBranch")?.value;
   // Refresh the hint for every lot edit (including clearing it back to the aggregate view) —
   // this is what the "1 available" / "No sufficient stock" mismatch needed: the hint has to
   // react to the exact lot typed, not just to the item changing.
@@ -797,7 +798,7 @@ function syncInvoiceRowItem(input, options = {}) {
   if (!input) return;
   const row = input.closest(".invoice-line-row");
   const item = findItemByCodeOrName(input.value);
-  const warehouse = qs("#sourceBranch")?.value || row.querySelector(".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
+  const warehouse = qs("#sourceBranch")?.value || qsIn(row, ".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
   const lotDatalist = row.querySelector("datalist[id^='invoice-lot-options-']");
   if (lotDatalist) lotDatalist.innerHTML = invoiceRowLotOptionsHtml(item, warehouse);
   // outerHTML replaces the element, so any reference captured before that point is detached —
@@ -813,28 +814,28 @@ function syncInvoiceRowItem(input, options = {}) {
     lotInput.required = lotTracked;
     lotInput.placeholder = lotTracked ? (isEquipmentItem(item) ? "Serial or lot number" : "Lot number") : "No lot on file — enter it here to record it";
   }
-  row.querySelector(".invoice-brand-input").value = item.brand || "";
+  qsIn(row, ".invoice-brand-input").value = item.brand || "";
   const codeInput = row.querySelector(".invoice-code-input");
   if (codeInput) codeInput.value = item.code || "";
   // Skip when re-syncing a line whose unit was already set on purpose (e.g. carried over
   // from the source purchase order line, which can legitimately differ from the item's
   // default uom — a "box" PO line shouldn't get silently reset back to "piece").
-  if (!options.preserveUom) row.querySelector(".invoice-uom-input").value = item.uom || "unit";
+  if (!options.preserveUom) qsIn(row, ".invoice-uom-input").value = item.uom || "unit";
   const expiryField = row.querySelector(".expiry-field");
   const expiryInput = row.querySelector(".invoice-expiry-input");
   const equipment = isEquipmentItem(item);
   expiryField?.classList.toggle("equipment-expiry-field", equipment);
   if (expiryInput) { expiryInput.required = !equipment; if (equipment) expiryInput.value = ""; }
-  if (!row.querySelector(".invoice-price-input").value) row.querySelector(".invoice-price-input").value = "";
+  if (!qsIn(row, ".invoice-price-input").value) qsIn(row, ".invoice-price-input").value = "";
   const stock = data.inventory
     .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
     .sort((a, b) => daysUntil(hasNoExpiry(a.expiry) ? "2099-12-31" : a.expiry) - daysUntil(hasNoExpiry(b.expiry) ? "2099-12-31" : b.expiry))[0];
   if (stock) {
-    row.querySelector(".invoice-lot-input").value = stock.lot || "";
-    if (!equipment) row.querySelector(".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
+    qsIn(row, ".invoice-lot-input").value = stock.lot || "";
+    if (!equipment) qsIn(row, ".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
     const expiryEl = row.querySelector(".invoice-expiry-input"); if (expiryEl) expiryEl.dataset.expiryLot = stock.lot || "";
   }
-  refreshStockHint(row.querySelector(".invoice-lot-input")?.value.trim() || "");
+  refreshStockHint(qsIn(row, ".invoice-lot-input")?.value.trim() || "");
 }
 
 function syncInvoiceLinesForClient() {
@@ -871,9 +872,9 @@ function syncInvoiceFromPurchaseOrder() {
 
 function collectInvoicePreviewLines() {
   return qsa(".invoice-line-row").map((row) => {
-    const itemValue = row.querySelector(".invoice-item-input")?.value.trim() || "";
-    const qty = Number(row.querySelector(".invoice-qty-input")?.value || 0);
-    const price = Number(row.querySelector(".invoice-price-input")?.value || 0);
+    const itemValue = qsIn(row, ".invoice-item-input")?.value.trim() || "";
+    const qty = Number(qsIn(row, ".invoice-qty-input")?.value || 0);
+    const price = Number(qsIn(row, ".invoice-price-input")?.value || 0);
     if (!itemValue || qty <= 0 || price < 0) return null;
     return { item: itemValue, qty, price };
   }).filter(Boolean);
@@ -962,7 +963,7 @@ function renderUserSettings() {
   qs("#settings-branch").value = profile.branch === "all" ? "All Areas" : profile.branch;
   qs("#settings-role").value = profile.role || "";
   qs("#settings-notes").value = profile.notes || "";
-  const permissionToggle = qs("#settings-custom-permissions")?.closest("label, .field, .settings-row") || qs("#settings-custom-permissions");
+  const permissionToggle = /** @type {AnyEl} */ (qs("#settings-custom-permissions")?.closest("label, .field, .settings-row") || qs("#settings-custom-permissions"));
   if (permissionToggle) permissionToggle.hidden = true;
   qs("#settings-permissions-panel").hidden = true;
   qs("#settings-permissions-panel").innerHTML = "";
@@ -1992,7 +1993,7 @@ function demoTurnaroundDays(request) {
 
 function saleFullyPaidDate(sale) {
   const invoiceKey = sale.documentNo || sale.id;
-  const linked = data.payments.filter((payment) => payment.invoice === invoiceKey).slice().sort((a, b) => new Date(a.dateRecorded || a.dateCollected || 0) - new Date(b.dateRecorded || b.dateCollected || 0));
+  const linked = data.payments.filter((payment) => payment.invoice === invoiceKey).slice().sort((a, b) => new Date(a.dateRecorded || a.dateCollected || 0).getTime() - new Date(b.dateRecorded || b.dateCollected || 0).getTime());
   let cumulative = 0;
   for (const payment of linked) {
     cumulative += Number(payment.amount || 0);
@@ -2282,7 +2283,7 @@ function openDemoToSalesDialog(request) {
   </form>`;
   document.body.appendChild(dialog);
   const total = () => {
-    const sum = [...dialog.querySelectorAll("[data-demo-price]")].reduce((acc, input) => acc + Number(input.value || 0) * Number(request.lines[Number(input.dataset.demoPrice)]?.qty || 0), 0);
+    const sum = qsaIn(dialog, "[data-demo-price]").reduce((acc, input) => acc + Number(input.value || 0) * Number(request.lines[Number(input.dataset.demoPrice)]?.qty || 0), 0);
     dialog.querySelector("#demo-sales-total").textContent = peso.format(sum);
   };
   dialog.querySelectorAll("[data-demo-price]").forEach((input) => input.addEventListener("input", total));
@@ -2290,7 +2291,7 @@ function openDemoToSalesDialog(request) {
   dialog.querySelectorAll("[data-close-demo-sales]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   dialog.querySelector("#demo-sales-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const sale = { siNumber: dialog.querySelector("#demo-sales-si").value.trim(), prices: [...dialog.querySelectorAll("[data-demo-price]")].map((input) => Number(input.value || 0)) };
+    const sale = { siNumber: qsIn(dialog, "#demo-sales-si").value.trim(), prices: qsaIn(dialog, "[data-demo-price]").map((input) => Number(input.value || 0)) };
     if (!sale.siNumber) return toast("SI number is required.");
     dialog.close();
     await updateDemoRequestStatus(request.id, "To Sales", sale);
@@ -2718,10 +2719,10 @@ async function openStockEditDialog(ref) {
     <div class="modal-actions"><button class="ghost-button" type="button" data-close-stock-edit>Cancel</button><button class="primary-button" type="submit">Save changes</button></div>
   </form>`;
   document.body.appendChild(dialog);
-  const adjustInput = dialog.querySelector("#stock-edit-adjust");
-  const newQtyInput = dialog.querySelector("#stock-edit-newqty");
-  const reasonInput = dialog.querySelector("#stock-edit-reason");
-  const reasonHint = dialog.querySelector("#stock-edit-reason-hint");
+  const adjustInput = qsIn(dialog, "#stock-edit-adjust");
+  const newQtyInput = qsIn(dialog, "#stock-edit-newqty");
+  const reasonInput = qsIn(dialog, "#stock-edit-reason");
+  const reasonHint = qsIn(dialog, "#stock-edit-reason-hint");
   const recompute = () => {
     const delta = Number(adjustInput.value || 0);
     if (Number.isNaN(delta)) { newQtyInput.value = "—"; return; }
@@ -2742,15 +2743,15 @@ async function saveStockEdit(dialog) {
   if (!row) { dialog.close(); return toast("Stock record no longer exists."); }
   const equipment = stockRecordIsEquipment(row);
   const original = { qty: Number(row.qty || 0), expiry: row.expiry || "N/A", note: row.note || "" };
-  const delta = Number(dialog.querySelector("#stock-edit-adjust").value || 0);
+  const delta = Number(qsIn(dialog, "#stock-edit-adjust").value || 0);
   if (Number.isNaN(delta)) return toast("Adjustment must be a number.");
   if (equipment && !Number.isInteger(delta)) return toast("This item is equipment — the adjustment must be a whole number.");
   const newQty = original.qty + delta;
   if (newQty < -1e-9) return toast("That adjustment would make the quantity negative.");
   const expiryInput = dialog.querySelector("#stock-edit-expiry");
   const nextExpiry = expiryInput ? (expiryInput.value || "N/A") : original.expiry;
-  const nextNote = dialog.querySelector("#stock-edit-note").value.trim();
-  const reason = dialog.querySelector("#stock-edit-reason").value.trim();
+  const nextNote = qsIn(dialog, "#stock-edit-note").value.trim();
+  const reason = qsIn(dialog, "#stock-edit-reason").value.trim();
   const changes = [];
   if (delta !== 0) changes.push({ field: "qty", from: original.qty, to: newQty });
   if (nextExpiry !== original.expiry) changes.push({ field: "expiry", from: original.expiry, to: nextExpiry });
@@ -2855,7 +2856,7 @@ function updateTransferBalanceHint(row) {
   const hint = row?.querySelector(".transfer-balance-hint");
   const code = row?.querySelector(".transfer-code")?.value.trim();
   if (!hint || !code) return;
-  const lot = row.querySelector(".transfer-lot")?.value.trim() || "";
+  const lot = qsIn(row, ".transfer-lot")?.value.trim() || "";
   hint.textContent = lot ? `Lot ${lot} balance — ${itemBranchBalances(code, lot)}` : `Balance (all lots) — ${itemBranchBalances(code)}`;
 }
 
@@ -2904,13 +2905,13 @@ function syncDemoRequestLine(input) {
 
 async function saveDemoRequest() {
   const lines = qsa("#demo-request-lines-table tbody tr").map((row) => {
-    const code = row.querySelector(".demo-line-code")?.value.trim();
-    const itemName = row.querySelector(".demo-line-item")?.value.trim();
+    const code = qsIn(row, ".demo-line-code")?.value.trim();
+    const itemName = qsIn(row, ".demo-line-item")?.value.trim();
     const exactKey = String(code || itemName || "").toLowerCase();
     const item = exactKey ? data.items.find((entry) => entry.code.toLowerCase() === exactKey || entry.name.toLowerCase() === exactKey) : null;
-    const qty = Number(row.querySelector(".demo-line-qty")?.value || 0);
+    const qty = Number(qsIn(row, ".demo-line-qty")?.value || 0);
     if (!code && !itemName && !qty) return null;
-    return { type: row.querySelector(".demo-line-type")?.value || "Machine", code: item?.code || code, item: item?.name || itemName, brand: row.querySelector(".demo-line-brand")?.value.trim() || item?.brand || "", lot: row.querySelector(".demo-line-lot")?.value.trim(), qty, notes: row.querySelector(".demo-line-notes")?.value.trim() };
+    return { type: qsIn(row, ".demo-line-type")?.value || "Machine", code: item?.code || code, item: item?.name || itemName, brand: qsIn(row, ".demo-line-brand")?.value.trim() || item?.brand || "", lot: qsIn(row, ".demo-line-lot")?.value.trim(), qty, notes: qsIn(row, ".demo-line-notes")?.value.trim() };
   }).filter(Boolean);
   const client = qs("#demo-client")?.value.trim();
   if (!client) return toast("Client is required for a demo request.");
@@ -3025,7 +3026,7 @@ function syncStockSheetRow(input, allowPartial = false) {
   }
   const lotInput = row.querySelector(".transfer-lot");
   const lotDatalist = row.querySelector("datalist[id^='transfer-lot-options-']");
-  const from = row.querySelector(".transfer-from")?.value || qs("#transfer-sheet-from")?.value;
+  const from = qsIn(row, ".transfer-from")?.value || qs("#transfer-sheet-from")?.value;
   const matchingStock = data.inventory.filter((entry) => entry.code === match.code && (!from || entry.branch === from) && entry.qty > 0);
   if (lotDatalist) lotDatalist.innerHTML = matchingStock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
   if (lotInput && matchingStock[0] && !lotInput.value.trim()) lotInput.value = matchingStock[0].lot;
@@ -3056,13 +3057,13 @@ function saveStockSheetDraft() {
     const key = stockSheetDraftKey();
     if (!key || !qs("#stock-sheet-modal")?.open) return;
     const rows = qsa("#stock-sheet-table tbody tr").map((row) => ({
-      branch: row.querySelector(".stock-branch")?.value || "",
-      brand: row.querySelector(".stock-brand")?.value || "",
-      code: row.querySelector(".stock-code")?.value || "",
-      item: row.querySelector(".stock-item")?.value || "",
-      lot: row.querySelector(".stock-lot")?.value || "",
-      expiry: row.querySelector(".stock-expiry")?.value || "",
-      qty: row.querySelector(".stock-qty")?.value || "",
+      branch: qsIn(row, ".stock-branch")?.value || "",
+      brand: qsIn(row, ".stock-brand")?.value || "",
+      code: qsIn(row, ".stock-code")?.value || "",
+      item: qsIn(row, ".stock-item")?.value || "",
+      lot: qsIn(row, ".stock-lot")?.value || "",
+      expiry: qsIn(row, ".stock-expiry")?.value || "",
+      qty: qsIn(row, ".stock-qty")?.value || "",
     }));
     const orderNumber = qs("#stock-sheet-order-number")?.value || "";
     if (rows.every(stockSheetRowIsBlank) && !orderNumber) { clearStockSheetDraft(); return; }
@@ -3096,13 +3097,13 @@ function restoreStockSheetDraftIfMatching(poId, editingReceiptId) {
     qsa("#stock-sheet-table tbody tr").forEach((tr, index) => {
       const row = draft.rows[index];
       if (!row) return;
-      if (row.branch && tr.querySelector(".stock-branch")) tr.querySelector(".stock-branch").value = row.branch;
-      if (tr.querySelector(".stock-brand")) tr.querySelector(".stock-brand").value = row.brand || "";
-      if (tr.querySelector(".stock-code")) tr.querySelector(".stock-code").value = row.code || "";
-      if (tr.querySelector(".stock-item")) tr.querySelector(".stock-item").value = row.item || "";
-      if (tr.querySelector(".stock-lot")) tr.querySelector(".stock-lot").value = row.lot || "";
-      if (tr.querySelector(".stock-expiry")) tr.querySelector(".stock-expiry").value = row.expiry || "";
-      if (tr.querySelector(".stock-qty")) tr.querySelector(".stock-qty").value = row.qty || "";
+      if (row.branch && tr.querySelector(".stock-branch")) qsIn(tr, ".stock-branch").value = row.branch;
+      if (tr.querySelector(".stock-brand")) qsIn(tr, ".stock-brand").value = row.brand || "";
+      if (tr.querySelector(".stock-code")) qsIn(tr, ".stock-code").value = row.code || "";
+      if (tr.querySelector(".stock-item")) qsIn(tr, ".stock-item").value = row.item || "";
+      if (tr.querySelector(".stock-lot")) qsIn(tr, ".stock-lot").value = row.lot || "";
+      if (tr.querySelector(".stock-expiry")) qsIn(tr, ".stock-expiry").value = row.expiry || "";
+      if (tr.querySelector(".stock-qty")) qsIn(tr, ".stock-qty").value = row.qty || "";
     });
   }
   toast("Resumed your unsaved stock sheet draft.");
@@ -3123,14 +3124,14 @@ async function saveStockSheet() {
   if (!source) return toast("Select Shipment or Local Purchase.");
   const meta = { orderNumber, dateReceived, source };
   const rows = qsa("#stock-sheet-table tbody tr").map((row) => {
-    const branch = row.querySelector(".stock-branch")?.value;
-    const code = row.querySelector(".stock-code")?.value.trim();
-    const itemName = row.querySelector(".stock-item")?.value.trim();
+    const branch = qsIn(row, ".stock-branch")?.value;
+    const code = qsIn(row, ".stock-code")?.value.trim();
+    const itemName = qsIn(row, ".stock-item")?.value.trim();
     const item = findItemByCodeOrName(code || itemName);
-    const brand = row.querySelector(".stock-brand")?.value.trim() || item?.brand || "Medlane";
-    const lot = row.querySelector(".stock-lot")?.value.trim();
-    const expiry = isEquipmentItem(item) ? "N/A" : row.querySelector(".stock-expiry")?.value;
-    const qty = Number(row.querySelector(".stock-qty")?.value || 0);
+    const brand = qsIn(row, ".stock-brand")?.value.trim() || item?.brand || "Medlane";
+    const lot = qsIn(row, ".stock-lot")?.value.trim();
+    const expiry = isEquipmentItem(item) ? "N/A" : qsIn(row, ".stock-expiry")?.value;
+    const qty = Number(qsIn(row, ".stock-qty")?.value || 0);
     if (!code && !itemName && !lot && !qty) return null;
     return { branch, item, brand, lot, expiry, qty };
   }).filter(Boolean);
@@ -3183,10 +3184,10 @@ function saveTransferSheetDraft() {
     const key = transferSheetDraftKey();
     if (!key || !qs("#transfer-sheet-modal")?.open) return;
     const rows = qsa("#transfer-sheet-table tbody tr").map((row) => ({
-      code: row.querySelector(".transfer-code")?.value || "",
-      item: row.querySelector(".transfer-item")?.value || "",
-      lot: row.querySelector(".transfer-lot")?.value || "",
-      qty: row.querySelector(".transfer-qty")?.value || "",
+      code: qsIn(row, ".transfer-code")?.value || "",
+      item: qsIn(row, ".transfer-item")?.value || "",
+      lot: qsIn(row, ".transfer-lot")?.value || "",
+      qty: qsIn(row, ".transfer-qty")?.value || "",
     }));
     if (rows.every(transferSheetRowIsBlank)) { clearTransferSheetDraft(); return; }
     localStorage.setItem(key, JSON.stringify({
@@ -3213,10 +3214,10 @@ function restoreTransferSheetDraft() {
     qsa("#transfer-sheet-table tbody tr").forEach((tr, index) => {
       const row = draft.rows[index];
       if (!row) return;
-      if (tr.querySelector(".transfer-code")) tr.querySelector(".transfer-code").value = row.code || "";
-      if (tr.querySelector(".transfer-item")) tr.querySelector(".transfer-item").value = row.item || "";
-      if (tr.querySelector(".transfer-lot")) tr.querySelector(".transfer-lot").value = row.lot || "";
-      if (tr.querySelector(".transfer-qty")) tr.querySelector(".transfer-qty").value = row.qty || "";
+      if (tr.querySelector(".transfer-code")) qsIn(tr, ".transfer-code").value = row.code || "";
+      if (tr.querySelector(".transfer-item")) qsIn(tr, ".transfer-item").value = row.item || "";
+      if (tr.querySelector(".transfer-lot")) qsIn(tr, ".transfer-lot").value = row.lot || "";
+      if (tr.querySelector(".transfer-qty")) qsIn(tr, ".transfer-qty").value = row.qty || "";
     });
     qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true));
   }
@@ -3229,10 +3230,10 @@ async function saveTransferSheet() {
   if (!from || !to) return toast("Select a From and To branch.");
   if (from === to) return toast("Transfer source and destination must be different.");
   const rows = qsa("#transfer-sheet-table tbody tr").map((row) => {
-    const code = row.querySelector(".transfer-code")?.value.trim();
-    const itemName = row.querySelector(".transfer-item")?.value.trim();
-    const lot = row.querySelector(".transfer-lot")?.value.trim();
-    const qty = Number(row.querySelector(".transfer-qty")?.value || 0);
+    const code = qsIn(row, ".transfer-code")?.value.trim();
+    const itemName = qsIn(row, ".transfer-item")?.value.trim();
+    const lot = qsIn(row, ".transfer-lot")?.value.trim();
+    const qty = Number(qsIn(row, ".transfer-qty")?.value || 0);
     const item = findItemByCodeOrName(code || itemName);
     if (!code && !itemName && !lot && !qty) return null;
     const source = item && lot ? data.inventory.find((entry) => entry.code === item.code && entry.branch === from && entry.lot === lot && entry.qty >= qty) : null;
@@ -3320,7 +3321,7 @@ async function confirmTransferDispatch() {
   const transfer = data.pendingTransfers[Number(dialog.dataset.transferIndex)];
   if (!transfer) return;
   const rows = [...dialog.querySelectorAll(".transfer-review-row")];
-  const updates = rows.map((row, i) => ({ index: i, qty: Number(row.querySelector(".transfer-review-qty").value || 0), lot: row.querySelector(".transfer-review-lot").value.trim(), expiry: row.querySelector(".transfer-review-expiry").value.trim() }));
+  const updates = rows.map((row, i) => ({ index: i, qty: Number(qsIn(row, ".transfer-review-qty").value || 0), lot: qsIn(row, ".transfer-review-lot").value.trim(), expiry: qsIn(row, ".transfer-review-expiry").value.trim() }));
   if (updates.some((u) => u.qty <= 0 || !u.lot)) return toast("Enter a valid quantity and lot for every item.");
   for (const u of updates) {
     const line = transfer.lines[u.index];
@@ -3380,7 +3381,7 @@ async function confirmTransferReceive() {
   const transfer = data.pendingTransfers[Number(dialog.dataset.transferIndex)];
   if (!transfer) return;
   const rows = [...dialog.querySelectorAll(".transfer-review-row")];
-  const updates = rows.map((row, i) => ({ index: i, qty: Number(row.querySelector(".transfer-receive-qty").value || 0), lot: row.querySelector(".transfer-receive-lot").value.trim(), expiry: row.querySelector(".transfer-receive-expiry").value.trim() }));
+  const updates = rows.map((row, i) => ({ index: i, qty: Number(qsIn(row, ".transfer-receive-qty").value || 0), lot: qsIn(row, ".transfer-receive-lot").value.trim(), expiry: qsIn(row, ".transfer-receive-expiry").value.trim() }));
   if (updates.some((u) => u.qty < 0 || (u.qty > 0 && !u.lot))) return toast("Enter a valid received quantity and lot for every item.");
   const touchedInventory = [];
   updates.forEach((u) => {
@@ -3607,7 +3608,7 @@ function compressImageFile(file, { maxDimension = 1600, quality = 0.72 } = {}) {
           resolve(new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" }));
         }, "image/jpeg", quality);
       };
-      img.src = reader.result;
+      img.src = /** @type {string} */ (reader.result);
     };
     reader.readAsDataURL(file);
   });
@@ -3709,7 +3710,7 @@ function renderMemos() {
   if (!qs("#memo-list")) return;
   ensureUploadedFilesLoaded(renderMemos);
   qs("#post-memo-button").hidden = !canPostMemo();
-  const visible = data.memos.filter(memoVisibleToCurrentUser).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const visible = data.memos.filter(memoVisibleToCurrentUser).slice().sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   qs("#memo-list").innerHTML = visible.map(memoCardHtml).join("") || `<article class="panel"><p>No memos yet.</p></article>`;
   renderMemoBadge();
 }
@@ -4022,7 +4023,7 @@ function saleCollectionTimeline(sale) {
   data.paymentRequests.filter((request) => request.invoice === sale.documentNo || request.invoice === sale.id).forEach((request) => {
     paymentRequestHistory(request).forEach((entry) => events.push({ date: entry.date, status: `Payment Received: ${entry.status}`, note: `${request.cvNo} — ${entry.note || "-"}`, by: entry.by || "-" }));
   });
-  return events.sort((a, b) => new Date(a.date) - new Date(b.date));
+  return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
 function saleEventClass(status) {
@@ -4103,7 +4104,7 @@ function renderCollections() {
     visualCard("◆", "Payment Channels", `${data.payments.length} receipts`, barRows(methodMix, (value) => peso.format(value), ["green", "", "orange"]), "info", "Computed from collection records grouped by payment method."),
   ].join("");
   renderCollectionContactMap();
-  const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((s) => {
+  const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map((s) => {
     const payments = data.payments.filter((payment) => payment.invoice === s.id || payment.invoice === s.documentNo);
     const latest = payments.at(-1) || {};
     const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
@@ -4111,7 +4112,7 @@ function renderCollections() {
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Collection Status", "Actions", "Balance", "AR Status"], rows);
-  table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Collector", "Payment", "Total", "Status", "Actions"], [...data.paymentRequests].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.preparedBy || "-", r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
+  table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Collector", "Payment", "Total", "Status", "Actions"], [...data.paymentRequests].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.preparedBy || "-", r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
   const loadMoreCollectionsButton = qs("#load-more-collections");
   if (loadMoreCollectionsButton) loadMoreCollectionsButton.hidden = !modulePagination.payments?.hasMore || !tableFullyRevealed("#collections-table");
   const loadMorePaymentRequestsButton = qs("#load-more-payment-requests");
@@ -4125,7 +4126,7 @@ function renderCollectionsWorkflowTabs() {
     followups: data.collectionContacts.filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status)).length,
   };
   const labels = { ledger: "AR Ledger", requests: "Payment Received", history: "Collections History", followups: "Follow-ups Map" };
-  qs("#collections-workflow-tabs")?.querySelectorAll("[data-collections-workflow]").forEach((button) => {
+  qsaIn(qs("#collections-workflow-tabs"), "[data-collections-workflow]").forEach((button) => {
     const tab = button.dataset.collectionsWorkflow;
     button.classList.toggle("active", tab === collectionsWorkflowTab);
     button.innerHTML = `${escapeHtml(labels[tab])}${counts[tab] != null ? ` <span class="tab-count">${counts[tab]}</span>` : ""}`;
@@ -4235,20 +4236,20 @@ function renderProductIssueParameterTable(rows = [{}], lots = {}) {
 
 function collectProductIssueParameters() {
   return qsa(".parameter-row").map((row) => ({
-    parameter: row.querySelector(".param-name")?.value.trim() || "",
-    factor: row.querySelector(".param-factor")?.value.trim() || "",
-    l1Range: row.querySelector(".param-l1-range")?.value.trim() || "",
-    l1Result: row.querySelector(".param-l1-result")?.value.trim() || "",
-    l1P: row.querySelector(".param-l1-p")?.checked || false,
-    l1F: row.querySelector(".param-l1-f")?.checked || false,
-    l2Range: row.querySelector(".param-l2-range")?.value.trim() || "",
-    l2Result: row.querySelector(".param-l2-result")?.value.trim() || "",
-    l2P: row.querySelector(".param-l2-p")?.checked || false,
-    l2F: row.querySelector(".param-l2-f")?.checked || false,
-    l3Range: row.querySelector(".param-l3-range")?.value.trim() || "",
-    l3Result: row.querySelector(".param-l3-result")?.value.trim() || "",
-    l3P: row.querySelector(".param-l3-p")?.checked || false,
-    l3F: row.querySelector(".param-l3-f")?.checked || false,
+    parameter: qsIn(row, ".param-name")?.value.trim() || "",
+    factor: qsIn(row, ".param-factor")?.value.trim() || "",
+    l1Range: qsIn(row, ".param-l1-range")?.value.trim() || "",
+    l1Result: qsIn(row, ".param-l1-result")?.value.trim() || "",
+    l1P: qsIn(row, ".param-l1-p")?.checked || false,
+    l1F: qsIn(row, ".param-l1-f")?.checked || false,
+    l2Range: qsIn(row, ".param-l2-range")?.value.trim() || "",
+    l2Result: qsIn(row, ".param-l2-result")?.value.trim() || "",
+    l2P: qsIn(row, ".param-l2-p")?.checked || false,
+    l2F: qsIn(row, ".param-l2-f")?.checked || false,
+    l3Range: qsIn(row, ".param-l3-range")?.value.trim() || "",
+    l3Result: qsIn(row, ".param-l3-result")?.value.trim() || "",
+    l3P: qsIn(row, ".param-l3-p")?.checked || false,
+    l3F: qsIn(row, ".param-l3-f")?.checked || false,
   })).filter((row) => row.parameter || row.factor || row.l1Result || row.l2Result || row.l3Result);
 }
 
@@ -4281,14 +4282,14 @@ function paymentRequestLineTemplate(line = {}) {
 
 function syncPaymentRequestRowDerived(row, { invoiceChanged = false } = {}) {
   const clientName = qs("#employee")?.value.trim() || "";
-  const invoice = row.querySelector(".payment-request-invoice-input")?.value.trim() || "";
+  const invoice = qsIn(row, ".payment-request-invoice-input")?.value.trim() || "";
   const amountDue = paymentRequestRowBalance(clientName, invoice);
   const amountDueInput = row.querySelector(".payment-request-amount-due");
   if (amountDueInput) amountDueInput.value = amountDue.toFixed(2);
   const amountInput = row.querySelector(".payment-request-amount");
   if (invoiceChanged && amountInput) amountInput.value = amountDue || "";
-  const withholdingTax = Boolean(row.querySelector(".payment-request-row-wtax")?.checked);
-  const expandedWithholdingTax = Boolean(row.querySelector(".payment-request-row-ewt")?.checked);
+  const withholdingTax = Boolean(qsIn(row, ".payment-request-row-wtax")?.checked);
+  const expandedWithholdingTax = Boolean(qsIn(row, ".payment-request-row-ewt")?.checked);
   const deductions = paymentRequestRowDeductions({ amountDue, amount: 0, withholdingTax, expandedWithholdingTax });
   const balanceInput = row.querySelector(".payment-request-balance");
   if (balanceInput) balanceInput.value = Math.max(amountDue - Number(amountInput?.value || 0) - deductions.withholdingTax - deductions.expandedWithholdingTax, 0).toFixed(2);
@@ -4305,11 +4306,11 @@ function renderPaymentRequestEditor(lines = [{}], preselectDoc = null) {
 function collectPaymentRequestLines() {
   const clientName = qs("#employee")?.value.trim() || "";
   return qsa(".payment-request-invoice-row").map((row) => {
-    const invoice = row.querySelector(".payment-request-invoice-input")?.value.trim() || "";
+    const invoice = qsIn(row, ".payment-request-invoice-input")?.value.trim() || "";
     const amountDue = paymentRequestRowBalance(clientName, invoice);
-    const amount = Number(row.querySelector(".payment-request-amount")?.value || 0);
-    const withholdingTax = Boolean(row.querySelector(".payment-request-row-wtax")?.checked);
-    const expandedWithholdingTax = Boolean(row.querySelector(".payment-request-row-ewt")?.checked);
+    const amount = Number(qsIn(row, ".payment-request-amount")?.value || 0);
+    const withholdingTax = Boolean(qsIn(row, ".payment-request-row-wtax")?.checked);
+    const expandedWithholdingTax = Boolean(qsIn(row, ".payment-request-row-ewt")?.checked);
     const deductions = paymentRequestRowDeductions({ amountDue, amount, withholdingTax, expandedWithholdingTax });
     return {
       invoice, amountDue, amount,
@@ -4350,11 +4351,11 @@ function enforceExpenseClassification(input) {
 function collectFinancialLines() {
   return qsa(".financial-line-row").map((row) => {
     const line = {
-      vendor: row.querySelector(".payment-request-vendor")?.value.trim() || "",
-      particulars: row.querySelector(".payment-request-particulars")?.value.trim() || "",
-      amount: Number(row.querySelector(".payment-request-amount")?.value || 0),
+      vendor: qsIn(row, ".payment-request-vendor")?.value.trim() || "",
+      particulars: qsIn(row, ".payment-request-particulars")?.value.trim() || "",
+      amount: Number(qsIn(row, ".payment-request-amount")?.value || 0),
     };
-    const classificationInput = row.querySelector(".payment-request-classification");
+    const classificationInput = qsIn(row, ".payment-request-classification");
     if (classificationInput) {
       const value = classificationInput.value.trim();
       line.classification = EXPENSE_CLASSIFICATION_OPTIONS.includes(value) ? value : "";
@@ -4396,7 +4397,7 @@ function togglePaymentRequestChequeFields() {
   const type = qs("#paymentType")?.value;
   syncPaymentRequestBankAccount();
   ["bank", "bankAccount", "cheque", "chequeDate", "transferDate"].forEach((id) => {
-    const field = qs(`#${id}`)?.closest(".field");
+    const field = /** @type {AnyEl} */ (qs(`#${id}`)?.closest(".field"));
     if (!field) return;
     const visible = id === "bank" ? ["Check", "Bank Transfer"].includes(type) : id === "bankAccount" || id === "transferDate" ? type === "Bank Transfer" : type === "Check";
     field.hidden = !visible;
@@ -4686,7 +4687,7 @@ function loadLeafletAssets() {
     document.head.appendChild(css);
     const script = document.createElement("script");
     script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload = () => resolve();
+    script.onload = () => /** @type {() => void} */ (resolve)();
     script.onerror = () => reject(new Error("Unable to load Leaflet assets."));
     document.body.appendChild(script);
   });
@@ -5217,13 +5218,13 @@ function confirmResolveProductIssue(id, currentResolvedBy) {
     dialog.className = "modal invite-confirm-modal";
     dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Confirm Resolution</p><h2>Mark ${escapeHtml(id)} Resolved</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="field"><label for="resolve-by-select">Resolved By</label><select id="resolve-by-select" required><option value="Product Specialist"${currentResolvedBy === "Product Specialist" ? " selected" : ""}>Product Specialist</option><option value="Service Engineer"${currentResolvedBy === "Service Engineer" ? " selected" : ""}>Service Engineer</option></select></div><div class="field full"><label for="resolve-note">Resolution Note</label><textarea id="resolve-note" placeholder="Describe how this was resolved (optional)"></textarea></div><label class="ios-check-row"><input type="checkbox" id="resolve-confirm-check" /><span></span><strong>I confirm this issue has been fully resolved and no further action is needed.</strong></label><div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button" value="confirm" disabled>Mark Resolved</button></div></form>`;
     document.body.appendChild(dialog);
-    const checkbox = dialog.querySelector("#resolve-confirm-check");
-    const confirmBtn = dialog.querySelector(".primary-button");
+    const checkbox = qsIn(dialog, "#resolve-confirm-check");
+    const confirmBtn = qsIn(dialog, ".primary-button");
     checkbox.addEventListener("change", () => { confirmBtn.disabled = !checkbox.checked; });
     dialog.addEventListener("close", () => {
       const ok = dialog.returnValue === "confirm" && checkbox.checked;
-      const resolvedBy = dialog.querySelector("#resolve-by-select").value;
-      const note = dialog.querySelector("#resolve-note").value.trim();
+      const resolvedBy = qsIn(dialog, "#resolve-by-select").value;
+      const note = qsIn(dialog, "#resolve-note").value.trim();
       dialog.remove();
       resolve(ok ? { resolvedBy, note } : null);
     });
@@ -5292,13 +5293,13 @@ function itemForecastRows(allocationMonths) {
   const monthKeys = itemForecastMonthKeys();
   const qtyByCode = {};
   const monthlyQtyByCode = {};
-  const forecastFilters = itemForecastFilters || {};
+  const forecastFilters = /** @type {Record<string, any>} */ (itemForecastFilters || {});
   data.sales.filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, fromDate, toDate)).forEach((sale) => {
     const monthKey = String(sale.date || "").slice(0, 7);
-    (sale.lines?.length ? sale.lines : [{ code: sale.code, qty: sale.qty }]).forEach((line) => {
+    /** @type {any[]} */ (sale.lines?.length ? sale.lines : [{ code: sale.code, qty: sale.qty }]).forEach((line) => {
       if (!line.code) return;
-      const item = data.items.find((entry) => entry.code === line.code || entry.name === line.item) || {};
-      const client = data.clients.find((entry) => entry.name === sale.client) || {};
+      const item = data.items.find((entry) => entry.code === line.code || entry.name === line.item) || /** @type {any} */ ({});
+      const client = data.clients.find((entry) => entry.name === sale.client) || /** @type {any} */ ({});
       if (forecastFilters.brand && (line.brand || item.brand || sale.brand) !== forecastFilters.brand) return;
       if (forecastFilters.client && sale.client !== forecastFilters.client) return;
       if (forecastFilters.item) {
@@ -5408,7 +5409,7 @@ function renderPurchaseHistory() {
     (acc[agent] ||= []).push(client);
     return acc;
   }, {});
-  const agentNames = Object.keys(byAgent).sort((a, b) => (a === "Unassigned") - (b === "Unassigned") || a.localeCompare(b));
+  const agentNames = Object.keys(byAgent).sort((a, b) => Number(a === "Unassigned") - Number(b === "Unassigned") || a.localeCompare(b));
   container.innerHTML = agentNames.length ? agentNames.map((agent) => {
     const agentClientStats = byAgent[agent].map((client) => {
       const purchases = data.sales.filter((sale) => sale.client === client.name);
@@ -6046,7 +6047,7 @@ function renderPayablesWorkflowTabs() {
     all: data.payables.length,
   };
   const labels = { requests: "Requests", payment: "For Payment", all: "All Payables" };
-  qs("#payables-workflow-tabs")?.querySelectorAll("[data-payables-workflow]").forEach((button) => {
+  qsaIn(qs("#payables-workflow-tabs"), "[data-payables-workflow]").forEach((button) => {
     const tab = button.dataset.payablesWorkflow;
     button.classList.toggle("active", tab === payablesWorkflowTab);
     button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
@@ -6091,7 +6092,7 @@ function renderReplenishmentsWorkflowTabs() {
     all: scoped.length,
   };
   const labels = { requests: "Requests", payment: "For Payment", all: "All Expenses" };
-  qs("#replenishments-workflow-tabs")?.querySelectorAll("[data-replenishments-workflow]").forEach((button) => {
+  qsaIn(qs("#replenishments-workflow-tabs"), "[data-replenishments-workflow]").forEach((button) => {
     const tab = button.dataset.replenishmentsWorkflow;
     button.classList.toggle("active", tab === replenishmentsWorkflowTab);
     button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
@@ -6158,7 +6159,7 @@ function confirmDetailsModal({ eyebrow = "Confirm Action", title, fields = [], n
     document.body.appendChild(dialog);
     dialog.addEventListener("close", () => {
       const ok = dialog.returnValue === "confirm";
-      const reason = collectReason ? (dialog.querySelector("#confirm-modal-reason")?.value || "").trim() : "";
+      const reason = collectReason ? (qsIn(dialog, "#confirm-modal-reason")?.value || "").trim() : "";
       dialog.remove();
       resolve(collectReason ? { ok, reason } : ok);
     });
@@ -6272,7 +6273,7 @@ async function rejectCreditInvoice(id) {
 function renderPendingCreditInvoices() {
   const card = qs("#pending-credit-invoices-card");
   if (!card) return;
-  const all = [...data.pendingCreditInvoices].sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+  const all = [...data.pendingCreditInvoices].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
   card.hidden = !all.length;
   if (!all.length) return;
   const pending = all.filter((request) => request.status === "Pending");
@@ -6305,9 +6306,9 @@ function confirmPaymentDetailsModal(record, type, method) {
     document.body.appendChild(dialog);
     dialog.addEventListener("close", () => {
       const ok = dialog.returnValue === "confirm";
-      const bank = needsBank ? dialog.querySelector("#payment-bank-select")?.value || "" : "";
-      const cheque = needsCheque ? dialog.querySelector("#payment-cheque-number")?.value.trim() || "" : "";
-      const chequeDate = needsCheque ? dialog.querySelector("#payment-cheque-date")?.value || "" : "";
+      const bank = needsBank ? qsIn(dialog, "#payment-bank-select")?.value || "" : "";
+      const cheque = needsCheque ? qsIn(dialog, "#payment-cheque-number")?.value.trim() || "" : "";
+      const chequeDate = needsCheque ? qsIn(dialog, "#payment-cheque-date")?.value || "" : "";
       dialog.remove();
       resolve(ok ? { bank, cheque, chequeDate } : null);
     });
@@ -6370,7 +6371,7 @@ function renderReports() {
 // (table()-backed), searchable, filterable breakdown table via the shared #report-detail page.
 
 function setupReportDetailToolbar({ statusLabel, statusOptions, section, sectionLabel, dateFilter = true }) {
-  const statusField = qs("#report-detail-status-filter").closest(".field");
+  const statusField = /** @type {AnyEl} */ (qs("#report-detail-status-filter").closest(".field"));
   if (statusOptions) {
     statusField.hidden = false;
     qs("label[for='report-detail-status-filter']").textContent = statusLabel;
@@ -6378,8 +6379,8 @@ function setupReportDetailToolbar({ statusLabel, statusOptions, section, section
   } else {
     statusField.hidden = true;
   }
-  qs("#report-detail-date-from").closest(".field").hidden = !dateFilter;
-  qs("#report-detail-date-to").closest(".field").hidden = !dateFilter;
+  /** @type {AnyEl} */ (qs("#report-detail-date-from").closest(".field")).hidden = !dateFilter;
+  /** @type {AnyEl} */ (qs("#report-detail-date-to").closest(".field")).hidden = !dateFilter;
   const openModuleButton = qs("#report-detail-open-module");
   openModuleButton.hidden = !section;
   openModuleButton.textContent = `Open ${sectionLabel || ""}`;
@@ -6493,6 +6494,7 @@ function renderCollectionsArReport() {
     return acc;
   }, {})).sort((a, b) => b[1] - a[1]);
   qs("#report-detail-chart-primary").innerHTML = barRows(byStatus, (value) => pesoCompact(value), ["red", "orange", "", "green"]) + graphNote("Open balance grouped by invoice status.");
+  /** @type {[string, number][]} */
   const agingBuckets = [["Not Yet Due", 0], ["1-30 Days Overdue", 0], ["31-60 Days Overdue", 0], ["61-90 Days Overdue", 0], ["90+ Days Overdue", 0]];
   sales.forEach((sale) => {
     const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
@@ -6521,6 +6523,7 @@ function renderReagentExpiryReport() {
   ]);
   const byBranchCount = Object.entries(sumBy(atRisk, "branch", () => 1)).sort((a, b) => b[1] - a[1]);
   qs("#report-detail-chart-primary").innerHTML = barRows(byBranchCount, (value) => `${value} record${value === 1 ? "" : "s"}`, ["red", "orange"]) + graphNote("Low/critical stock record count grouped by branch.");
+  /** @type {[string, number][]} */
   const expiryBuckets = [["Expired", 0], ["≤30 Days", 0], ["31-60 Days", 0], ["61-90 Days", 0], ["91-180 Days", 0], ["Safe / No Expiry", 0]];
   inventory.forEach((item) => {
     if (item.expiry === "N/A") return expiryBuckets[5][1]++;
@@ -6925,7 +6928,7 @@ async function renderBackup() {
     const objectKeys = new Set(backups.map((backup) => backup.object_key).filter(Boolean));
     const r2Only = objects.filter((object) => !objectKeys.has(object.key));
     const totalBytes = [...backups.map((backup) => Number(backup.size_bytes || 0)), ...r2Only.map((object) => Number(object.size || 0))].reduce((sum, size) => sum + size, 0);
-    const latestObject = objects.sort((a, b) => new Date(b.uploaded || 0) - new Date(a.uploaded || 0))[0];
+    const latestObject = objects.sort((a, b) => new Date(b.uploaded || 0).getTime() - new Date(a.uploaded || 0).getTime())[0];
     qs("#backup-summary-grid").innerHTML = [
       ["Backup Files", backups.length + r2Only.length, r2Only.length ? `${r2Only.length} recovered from R2 listing` : "Stored in R2"],
       ["Backup Storage", formatBytes(totalBytes), "Compressed JSON"],
@@ -6954,7 +6957,7 @@ async function renderUserSessions(target = selectedUserSessionsTarget) {
   try {
     const payload = await MedlaneAPI.listUserSessions({ userId: target.id, email: target.email });
     const currentSessionId = MedlaneAPI.session()?.app_session_id || "";
-    const latestSessions = [...(payload.sessions || [])].sort((a, b) => new Date(b.last_seen_at || b.created_at || 0) - new Date(a.last_seen_at || a.created_at || 0)).reduce((map, session) => {
+    const latestSessions = [...(payload.sessions || [])].sort((a, b) => new Date(b.last_seen_at || b.created_at || 0).getTime() - new Date(a.last_seen_at || a.created_at || 0).getTime()).reduce((map, session) => {
       const key = [session.user_id, session.device_name, session.browser, session.ip_address, session.revoked_at ? session.id : "active"].join("|");
       if (!map.has(key)) map.set(key, session);
       return map;
@@ -7884,8 +7887,8 @@ function syncInviteUserPermissions() {
     ["Sales & Receivables", ["sales", "invoicing", "collections", "receivables-tracker", "purchase-history"]],
     ["Support", ["product-issues"]],
     ["Finance", ["payables", "replenishments", "reconciliation", "reports", "imports"]],
-  ].map(([label, items]) => [label, items.filter((module) => modules.includes(module))]).filter(([, items]) => items.length);
-  const renderGroup = (name, items, inputName, defaults) => `<details class="permission-feature-group"><summary><strong>${escapeHtml(name)}</strong><span>${items.filter((module) => defaults.has(module)).length}/${items.length} selected</span></summary><div>${items.map((module) => `<label class="ios-check-row compact-doc-check"><input name="${inputName}" type="checkbox" value="${escapeHtml(module)}" ${defaults.has(module) ? "checked" : ""} /><span></span><strong>${escapeHtml(module)}</strong></label>`).join("")}</div></details>`;
+  ].map((/** @type {[string, string[]]} */ [label, items]) => [label, items.filter((module) => modules.includes(module))]).filter(([, items]) => items.length);
+  const renderGroup = (name, items, inputName, defaults, _index) => `<details class="permission-feature-group"><summary><strong>${escapeHtml(name)}</strong><span>${items.filter((module) => defaults.has(module)).length}/${items.length} selected</span></summary><div>${items.map((module) => `<label class="ios-check-row compact-doc-check"><input name="${inputName}" type="checkbox" value="${escapeHtml(module)}" ${defaults.has(module) ? "checked" : ""} /><span></span><strong>${escapeHtml(module)}</strong></label>`).join("")}</div></details>`;
   panel.innerHTML = `<div class="invite-permission-grid"><section><h3>View Access</h3>${groups.map(([name, items], index) => renderGroup(name, items, "userViewModules", viewDefaults, index)).join("")}</section><section><h3>Edit Access</h3>${groups.map(([name, items], index) => renderGroup(name, items, "userEditModules", editDefaults, index)).join("")}</section></div>`;
 }
 
@@ -7905,7 +7908,7 @@ function toggleProductIssueResolvedByField() {
   const status = qs("#status")?.value;
   const field = qs("#resolvedBy");
   if (!field) return;
-  field.closest(".field").hidden = status !== "Resolved";
+  /** @type {AnyEl} */ (field.closest(".field")).hidden = status !== "Resolved";
   field.required = status === "Resolved";
 }
 
@@ -8060,6 +8063,7 @@ function openCancelReplaceModal(invoiceId) {
   openModal("cancelReplace", { oldInvoice: invoiceId });
 }
 
+/** @param {any} form @returns {Record<string, any>} */
 function formObject(form) { return Object.fromEntries(new FormData(form).entries()); }
 
 function recordLabel(type, record) {
@@ -8069,7 +8073,7 @@ function recordLabel(type, record) {
 function toggleReplenishmentEmployeeField() {
   if (modalType !== "replenishment") return;
   const field = qs("#employeeName");
-  const wrapper = field?.closest(".field");
+  const wrapper = /** @type {AnyEl} */ (field?.closest(".field"));
   if (!field || !wrapper) return;
   const required = ["Per Diem", "Revolving Fund"].includes(qs("#type")?.value || "");
   wrapper.hidden = !required;
@@ -8322,7 +8326,7 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
 
 function toggleInvoiceSkipPoField() {
   const skip = Boolean(qs("#skipPo")?.checked);
-  const poField = qs("#po")?.closest(".field");
+  const poField = /** @type {AnyEl} */ (qs("#po")?.closest(".field"));
   if (poField) poField.hidden = skip;
   if (qs("#po")) {
     qs("#po").required = !skip;
@@ -8333,7 +8337,7 @@ function toggleInvoiceSkipPoField() {
 function togglePayableFields() {
   const method = qs("#method")?.value;
   ["bank", "cheque", "chequeDate"].forEach((id) => {
-    const field = qs(`#${id}`)?.closest(".field");
+    const field = /** @type {AnyEl} */ (qs(`#${id}`)?.closest(".field"));
     if (!field) return;
     field.hidden = method !== "Cheque";
     qs(`#${id}`).required = method === "Cheque" && id !== "chequeDate";

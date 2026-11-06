@@ -1,3 +1,4 @@
+// @ts-check
 const MedlaneAPI = (() => {
   const sessionKey = "medlane-api-session";
 
@@ -48,20 +49,22 @@ const MedlaneAPI = (() => {
   // (offline, DNS/CORS failure, connection dropped mid-request, or our own timeout below all look
   // identical). This turns that one opaque message into the closest we can tell from the client:
   // definitely offline, the request took too long, or the server just couldn't be reached at all.
+  /** @typedef {Error & {code?: string, transient?: boolean, status?: number}} ApiError */
+  /** @param {any} error @returns {ApiError} */
   function classifyFetchFailure(error) {
     if (error?.name === "AbortError") {
-      const timeoutError = new Error("The request timed out waiting for the server to respond. The server may be slow or overloaded — check your connection and try again.");
+      /** @type {ApiError} */ const timeoutError = new Error("The request timed out waiting for the server to respond. The server may be slow or overloaded — check your connection and try again.");
       timeoutError.code = "TIMEOUT";
       timeoutError.transient = true;
       return timeoutError;
     }
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      const offlineError = new Error("You appear to be offline. Check your internet connection and try again.");
+      /** @type {ApiError} */ const offlineError = new Error("You appear to be offline. Check your internet connection and try again.");
       offlineError.code = "OFFLINE";
       offlineError.transient = true;
       return offlineError;
     }
-    const networkError = new Error("Could not reach the Medlane server. It may be temporarily down or restarting, or your connection was interrupted — check your connection and try again.");
+    /** @type {ApiError} */ const networkError = new Error("Could not reach the Medlane server. It may be temporarily down or restarting, or your connection was interrupted — check your connection and try again.");
     networkError.code = "NETWORK";
     networkError.transient = true;
     return networkError;
@@ -125,7 +128,7 @@ const MedlaneAPI = (() => {
       throw new Error("Your session has expired. Please log in again.");
     }
     if (!response.ok) {
-      const error = new Error(payload?.error || `Request failed: ${response.status}`);
+      /** @type {ApiError} */ const error = new Error(payload?.error || `Request failed: ${response.status}`);
       error.status = response.status;
       throw error;
     }

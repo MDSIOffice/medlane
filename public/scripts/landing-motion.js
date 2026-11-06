@@ -1,11 +1,16 @@
+// @ts-check
 (() => {
   const page = document.getElementById("landing-page");
   if (!page) return;
+  /** @param {string} sel */
+  const $ = (sel) => /** @type {HTMLElement | null} */ (page.querySelector(sel));
+  /** @param {string} sel */
+  const $$ = (sel) => /** @type {HTMLElement[]} */ ([...page.querySelectorAll(sel)]);
 
   const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---- Scrollytelling: reveal sections (and their staggered children) on enter ----
-  const revealTargets = page.querySelectorAll(".lr-section:not(.lr-hero)");
+  const revealTargets = $$(".lr-section:not(.lr-hero)");
   if ("IntersectionObserver" in window) {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
@@ -20,12 +25,12 @@
   }
 
   // ---- Count-up metrics when the profile section scrolls into view ----
-  const counters = page.querySelectorAll("[data-count]");
+  const counters = $$("[data-count]");
   if (counters.length && "IntersectionObserver" in window && !reduceMotion) {
     const countObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
-        const el = entry.target;
+        const el = /** @type {HTMLElement} */ (entry.target);
         countObserver.unobserve(el);
         const target = Number(el.dataset.count) || 0;
         const suffix = el.dataset.suffix || "";
@@ -44,10 +49,10 @@
   }
 
   // ---- Scroll UI: progress bar, back-to-top, condensed nav, hero parallax ----
-  const progressBar = page.querySelector(".landing-scroll-progress span");
+  const progressBar = $(".landing-scroll-progress span");
   const backToTop = document.getElementById("landing-back-to-top");
   const nav = document.getElementById("lr-nav");
-  const hero = page.querySelector(".lr-hero");
+  const hero = $(".lr-hero");
   if (hero && !reduceMotion) hero.classList.add("lr-parallax");
   const parallaxItems = [];
   let ticking = false;
@@ -82,8 +87,8 @@
   });
 
   // ---- Nav: scroll-spy + sliding ink indicator + magnetic links ----
-  const navLinks = [...page.querySelectorAll(".lr-nav-links a")];
-  const ink = page.querySelector(".lr-nav-ink");
+  const navLinks = [...$$(".lr-nav-links a")];
+  const ink = $(".lr-nav-ink");
   const linkFor = (id) => navLinks.find((a) => a.getAttribute("href") === "#" + id);
   let activeLink = navLinks[0] || null;
   function moveInk(el) {
@@ -128,7 +133,7 @@
   window.addEventListener("load", () => { moveInk(activeLink); });
 
   // ---- Smooth in-page scrolling for landing anchors ----
-  page.querySelectorAll('a[href^="#lr-"]').forEach((anchor) => {
+  $$('a[href^="#lr-"]').forEach((anchor) => {
     anchor.addEventListener("click", (event) => {
       const target = document.getElementById(anchor.getAttribute("href").slice(1));
       if (!target) return;
@@ -139,7 +144,7 @@
 
   // ================= Expressive motion layer =================
   const heroTitle = document.getElementById("lr-hero-title");
-  const heroCard = page.querySelector(".lr-hero-card");
+  const heroCard = $(".lr-hero-card");
 
   // ---- Split the headline into per-word spans for a staggered rotate-up reveal ----
   if (hero && heroTitle && !reduceMotion) {
@@ -191,7 +196,7 @@
 
   // ---- Pointer-reactive hero (aurora/orb follow + card tilt) and cursor spotlight on dark surfaces ----
   if (!reduceMotion && window.matchMedia("(pointer: fine)").matches) {
-    const darkSurfaces = [...page.querySelectorAll(".lr-hero, .lr-section--dark")];
+    const darkSurfaces = [...$$(".lr-hero, .lr-section--dark")];
     let pointerRaf = 0;
     let lastPointer = null;
     const applyPointer = () => {
@@ -232,7 +237,7 @@
     });
 
     // ---- Magnetic pull on primary CTAs ----
-    page.querySelectorAll(".lr-btn, .lr-nav-cta").forEach((btn) => {
+    $$(".lr-btn, .lr-nav-cta").forEach((btn) => {
       btn.addEventListener("pointermove", (e) => {
         const r = btn.getBoundingClientRect();
         const mx = (e.clientX - r.left - r.width / 2) * 0.25;
@@ -245,10 +250,10 @@
 
   // ---- Register scroll-linked parallax targets (consumed by updateScrollUi) ----
   if (!reduceMotion) {
-    page.querySelectorAll(".lr-bento figure").forEach((fig) => {
+    $$(".lr-bento figure").forEach((fig) => {
       if (fig.querySelector("img")) parallaxItems.push({ el: fig, range: 14 });
     });
-    const profilePhoto = page.querySelector(".lr-profile-photo");
+    const profilePhoto = $(".lr-profile-photo");
     if (profilePhoto) parallaxItems.push({ el: profilePhoto, range: 20 });
     if (parallaxItems.length) onScroll();
   }

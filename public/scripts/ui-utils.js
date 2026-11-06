@@ -1,3 +1,4 @@
+// @ts-check
 function showActionLoading(container, message) {
   if (!container) return;
   container.querySelector(":scope > .action-loading-overlay")?.remove();
@@ -315,7 +316,7 @@ function sanitizeHtml(html) {
   template.innerHTML = String(html ?? "");
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
   const doomed = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+  for (let node = /** @type {Element | null} */ (walker.nextNode()); node; node = /** @type {Element | null} */ (walker.nextNode())) {
     if (SANITIZE_DROP_TAGS.has(node.tagName.toUpperCase()) || /^(script|animate|set|foreignobject)$/i.test(node.localName)) { doomed.push(node); continue; }
     for (const attr of [...node.attributes]) {
       const name = attr.name.toLowerCase();
@@ -365,7 +366,7 @@ function renderTablePager(target) {
   const serverHasMore = Boolean(paginatedModuleButtons[target] && entryHasMore(paginatedModuleButtons[target]));
   const pageCount = Math.max(1, Math.ceil(total / tablePageSize));
   const page = Math.min(state.page || 0, pageCount - 1);
-  let pager = card.nextElementSibling;
+  /** @type {any} */ let pager = card.nextElementSibling;
   if (!pager?.classList?.contains("table-pager")) {
     pager = document.createElement("div");
     pager.className = "table-pager";
@@ -688,7 +689,7 @@ function comboSuppressNative(input) {
 }
 
 function comboOptionsFor(input) {
-  const datalist = input.dataset.comboList && document.getElementById(input.dataset.comboList);
+  const datalist = /** @type {HTMLDataListElement | null} */ (input.dataset.comboList ? document.getElementById(input.dataset.comboList) : null);
   if (!datalist) return [];
   return Array.from(datalist.options).map((option) => ({ value: option.value, label: option.textContent || "" }));
 }
@@ -769,7 +770,7 @@ function comboHandleKeydown(event) {
   const items = Array.from(panel.children);
   if (event.key === "ArrowDown") { event.preventDefault(); comboHighlightIndex = Math.min(comboHighlightIndex + 1, items.length - 1); comboRenderOptions(comboFilter(comboOptionsFor(comboOpenInput), comboOpenInput.value)); }
   else if (event.key === "ArrowUp") { event.preventDefault(); comboHighlightIndex = Math.max(comboHighlightIndex - 1, 0); comboRenderOptions(comboFilter(comboOptionsFor(comboOpenInput), comboOpenInput.value)); }
-  else if (event.key === "Enter") { if (comboHighlightIndex >= 0 && items[comboHighlightIndex]) { event.preventDefault(); comboSelect(comboOpenInput, items[comboHighlightIndex].dataset.comboValue); } }
+  else if (event.key === "Enter") { if (comboHighlightIndex >= 0 && items[comboHighlightIndex]) { event.preventDefault(); comboSelect(comboOpenInput, /** @type {HTMLElement} */ (items[comboHighlightIndex]).dataset.comboValue); } }
   else if (event.key === "Escape") { comboClose(); }
 }
 
