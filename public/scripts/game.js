@@ -114,7 +114,7 @@
       // a currentTime write on a not-ready element was hitching every jump.
       if (!node.ended && node.currentTime > 0.02 && node.readyState >= 3) node.currentTime = 0;
       node.play().catch(() => { /* blocked outside a gesture — silently skip */ });
-    } catch (error) { console.error("[Luksong Medlane] playSfx failed:", error); }
+    } catch (/** @type {any} */ error) { console.error("[Luksong Medlane] playSfx failed:", error); }
   }
 
   function sfxJump() { playSfx("jump"); }
@@ -211,11 +211,15 @@
   const playerLogoImg = new Image();
   playerLogoImg.src = "medlane.jpg";
 
-  let gameCanvas = null;
-  let ctx2d = null;
+  /** @type {HTMLCanvasElement} */
+  let gameCanvas = /** @type {any} */ (null);
+  /** @type {CanvasRenderingContext2D} */
+  let ctx2d = /** @type {any} */ (null);
   let gameRunning = false;
+  /** @type {any} */
   let gameAnimationFrame = null;
   let gameLastTime = 0;
+  /** @type {any} */
   let gameSessionToken = null;
   let gameRunGeneration = 0; // bumped whenever the modal closes, to cancel a pending countdown
 
@@ -244,13 +248,16 @@
   let shakeFrames = 0;
   let shakeFramesMax = 1;
   let flashAlpha = 0;      // full-canvas white flash, decays fast
+  /** @type {any} */
   let milestoneFlash = null; // { text, life, maxLife } rising callout
 
   // getComputedStyle() forces a style recalculation — cheap once, but drawGame()
   // calls this on every animation frame (~60/sec), so a naive per-call read
   // costs more the longer a run goes. The theme only actually changes when
   // <html data-theme> flips, so cache the result and recompute solely on that.
+  /** @type {any} */
   let cachedThemeColors = null;
+  /** @type {any} */
   let cachedSkyGradient = null; // invalidated with cachedThemeColors on theme flip
   // Per-frame effects quantise their intensity into buckets and memoise the rgba
   // strings — building `rgba(… ${x.toFixed(3)})` 60×/s was GC-churning enough to stutter.
@@ -890,7 +897,7 @@
     const size = 48, pad = 5, bw = size - pad * 2, bh = size - pad * 2, bx = pad, by = pad;
     const cv = document.createElement("canvas");
     cv.width = size; cv.height = size;
-    const g = cv.getContext("2d");
+    const g = /** @type {CanvasRenderingContext2D} */ (cv.getContext("2d"));
     roundRectPath(g, bx, by, bw, bh, 10);
     g.fillStyle = "#ffffff"; g.fill();
     if (playerLogoImg.complete && playerLogoImg.naturalWidth) {
@@ -1004,7 +1011,7 @@
     try {
       const session = await MedlaneAPI.startGameSession();
       gameSessionToken = session.token;
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       if (startButton) startButton.disabled = false;
       toast(error.message || "Could not start the game. Try again.");
       return;
@@ -1054,6 +1061,7 @@
   // from the result card, or silently on the next game open. Cleared the moment the server
   // confirms (or replays) it.
   const PENDING_SCORE_KEY = "medlane-game-pending-score";
+  /** @type {any} */
   let pendingScoreRetry = null;
   let scoreSubmitInFlight = false;
   function readPendingScore() {
@@ -1089,7 +1097,7 @@
       if (startBtn) delete startBtn.dataset.retryScore;
       applyScoreResult(finalScore, result, { announce });
       return true;
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       pendingScoreRetry = { score: finalScore, token };
       if (announce) {
         showOverlay({
@@ -1328,7 +1336,7 @@
         ? entries.map((entry, index) => leaderboardRow(entry, index))
         : [["—", "No runs yet — be the first on the board.", "-", "-", "-"]];
       table("#game-leaderboard-table", headers, rows);
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       table("#game-leaderboard-table", headers, [["-", escapeHtml(error.message || "Could not load the leaderboard."), "-", "-", "-"]]);
     }
   }
@@ -1337,8 +1345,8 @@
   // Wiring — script tag loads at the bottom of the body, so these elements
   // already exist in the DOM.
   // ---------------------------------------------------------------------
-  gameCanvas = document.getElementById("game-canvas");
-  ctx2d = gameCanvas ? gameCanvas.getContext("2d") : null;
+  gameCanvas = /** @type {any} */ (document.getElementById("game-canvas"));
+  ctx2d = /** @type {any} */ (gameCanvas ? gameCanvas.getContext("2d") : null);
 
   const soundToggleBtn = document.getElementById("game-sound-toggle");
   if (soundToggleBtn) {
@@ -1429,7 +1437,7 @@
   qsa("#game-leaderboard-tabs .tab").forEach((btn) => btn.addEventListener("click", () => openLeaderboard(btn.dataset.leaderboardTab)));
   document.getElementById("game-leaderboard-close")?.addEventListener("click", () => dialogById("game-leaderboard-modal")?.close());
   document.getElementById("game-leaderboard-cancel")?.addEventListener("click", () => dialogById("game-leaderboard-modal")?.close());
-  dialogById("game-leaderboard-modal")?.addEventListener("click", (event) => { if (/** @type {HTMLElement} */ (event.target).id === "game-leaderboard-modal") dialogById("game-leaderboard-modal").close(); });
+  dialogById("game-leaderboard-modal")?.addEventListener("click", (event) => { if (/** @type {HTMLElement} */ (event.target).id === "game-leaderboard-modal") /** @type {HTMLDialogElement} */ (dialogById("game-leaderboard-modal")).close(); });
 
   window.addEventListener("resize", () => { if (dialogById("game-modal")?.open) { setupCanvasDPR(); drawGame(); } });
 

@@ -70,7 +70,7 @@ async function handleUserInvite(values, view, edit) {
     notify("User Invite", `${result.user.email} ${result.existing ? "already exists and was loaded" : "was invited"} as ${result.user.role}. ${deliveryNote}.`, "users", result.user.email);
     renderAll();
     toast(`${result.user.email} invited. ${deliveryNote}.`);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     console.error("Invite user failed", error);
     toast(`Invite failed: ${error.message || "Unable to invite user."}`);
   } finally {
@@ -98,7 +98,7 @@ async function submitModal(event) {
   if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) for (const key of Object.keys(values)) if (typeof values[key] === "string") values[key] = values[key].trim();
   if (["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder"].includes(modalType)) {
     try { values.itemsText = collectInvoiceEditorLines(); }
-    catch (error) { return toast(error.message); }
+    catch (/** @type {any} */ error) { return toast(error.message); }
   }
   if (editContext) {
     const previous = editContext.list[editContext.index];
@@ -109,7 +109,7 @@ async function submitModal(event) {
     if (modalType === "item" && next.classification) next.category = importedCategory(next.classification);
     if (modalType === "employee" && !canManageEmployeeSalary()) next.salary = editContext.list[editContext.index].salary;
     try { validateMasterRecord(modalType, next, editContext.index); }
-    catch (error) { return toast(error.message); }
+    catch (/** @type {any} */ error) { return toast(error.message); }
     if (modalType === "client") { next.creditLimit = Number(next.creditLimit); next.terms = Number(next.terms || 30); }
     if (modalType === "employee" && canManageEmployeeSalary()) next.salary = Number(next.salary || 0);
     if (modalType === "employee") next.targetSales = Number(next.targetSales || 0);
@@ -118,7 +118,7 @@ async function submitModal(event) {
     if (!(await confirmFinalSave(`Save changes to this ${modalType}?`))) return;
     // The confirm can sit open while other users save — re-check against the latest data.
     try { validateMasterRecord(modalType, next, editContext.index); }
-    catch (error) { return toast(error.message); }
+    catch (/** @type {any} */ error) { return toast(error.message); }
     editContext.list[editContext.index] = next;
     if (moduleKey) {
       const saveResult = await persistRecords({ [moduleKey]: [next] }, { [moduleKey]: [previousKey] });
@@ -135,7 +135,7 @@ async function submitModal(event) {
   if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) {
     if (modalType === "item" && values.classification) values.category = importedCategory(values.classification);
     try { validateMasterRecord(modalType, values); }
-    catch (error) { return toast(error.message); }
+    catch (/** @type {any} */ error) { return toast(error.message); }
   }
   if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) {
     const record = modalType === "client" ? { ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" }
@@ -145,7 +145,7 @@ async function submitModal(event) {
     const moduleKey = masterlistModuleKey(modalType);
     if (!(await confirmFinalSave(`Save this new ${modalType}?`))) return;
     try { validateMasterRecord(modalType, values); }
-    catch (error) { return toast(error.message); }
+    catch (/** @type {any} */ error) { return toast(error.message); }
     listByType[modalType].push(record);
     if (moduleKey) {
       const saveResult = await persistRecords({ [moduleKey]: [record] });
@@ -174,7 +174,7 @@ async function submitModal(event) {
       toast(`${modalConfigs[modalType].title} saved.`);
       return;
     }
-    catch (error) {
+    catch (/** @type {any} */ error) {
       if (error instanceof CreditApprovalRequiredError) {
         if (!(await confirmFinalSave(`${error.message} Submit this invoice for Admin/CEO approval?`))) return;
         const request = { id: `PCA-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, client: error.credit.client, requestedBy: currentUser?.name || "System User", requestedByRole: currentUser?.role, requestedAt: fmtDate(today), projected: error.credit.projected, limit: error.credit.limit, values: { ...values }, status: "Pending" };
@@ -197,7 +197,7 @@ async function submitModal(event) {
     const wasEditing = Boolean(editingPoId);
     let po;
     try { po = await buildWithItemRefresh(() => buildPurchaseOrder(values, { editingId: editingPoId })); }
-    catch (error) { notify("Validation", error.message, "purchase-orders", values.client || ""); saveData(); return toast(error.message); }
+    catch (/** @type {any} */ error) { notify("Validation", error.message, "purchase-orders", values.client || ""); saveData(); return toast(error.message); }
     if (!(await confirmFinalSave(wasEditing ? `Save changes to ${po.id}?` : "Save this purchase order?"))) return;
     if (wasEditing) {
       const index = data.purchaseOrders.findIndex((entry) => entry.id === po.id);
@@ -218,7 +218,7 @@ async function submitModal(event) {
   if (modalType === "inventoryPurchaseOrder") {
     let po;
     try { po = await buildWithItemRefresh(() => buildInventoryPurchaseOrder(values)); }
-    catch (error) { notify("Validation", error.message, "inventory", values.supplier || ""); saveData(); return toast(error.message); }
+    catch (/** @type {any} */ error) { notify("Validation", error.message, "inventory", values.supplier || ""); saveData(); return toast(error.message); }
     if (!(await confirmFinalSave("Save this inventory purchase order?"))) return;
     data.inventoryPurchaseOrders.push(po);
     const saveResult = await persistRecords({ inventoryPurchaseOrders: [po] });
@@ -252,7 +252,7 @@ async function submitModal(event) {
       renderAll();
       toast(`${modalConfigs[modalType].title} saved.`);
       return;
-    } catch (error) { deductSaleStock(oldSale); return toast(error.message); }
+    } catch (/** @type {any} */ error) { deductSaleStock(oldSale); return toast(error.message); }
   }
   if (modalType === "paymentRequest") {
     if (!values.cvNo?.trim()) return toast("CV number is required.");
@@ -297,7 +297,7 @@ async function submitModal(event) {
     if (total <= 0) return toast("Payment request total must be greater than zero.");
 
     const invoiceIds = collectPaymentRequestInvoices();
-    const linkedSales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean);
+    const linkedSales = /** @type {any[]} */ (invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean));
     if (invoiceIds.length && linkedSales.length !== invoiceIds.length) return toast("One or more selected invoices could not be found.");
     if (linkedSales.length) {
       const combinedBalance = linkedSales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
@@ -461,11 +461,11 @@ document.body.addEventListener("click", (event) => {
   const openPaymentRequest = closestEl(event.target, "[data-open-payment-request]");
   if (openPaymentRequest) { closeReportPreview(); return renderPaymentRequestDetail(openPaymentRequest.dataset.openPaymentRequest); }
   const requestPreview = closestEl(event.target, "[data-request-preview]");
-  if (requestPreview) { const [type, id] = requestPreview.dataset.requestPreview.split(":"); return previewFinancialRequest(type, id); }
+  if (requestPreview) { const [type, id] = /** @type {string} */ (requestPreview.dataset.requestPreview).split(":"); return previewFinancialRequest(type, id); }
   const requestApprove = closestEl(event.target, "[data-request-approve]");
-  if (requestApprove) { const [type, id] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, id); }
+  if (requestApprove) { const [type, id] = /** @type {string} */ (requestApprove.dataset.requestApprove).split(":"); return approveFinancialRequest(type, id); }
   const requestCancel = closestEl(event.target, "[data-request-cancel]");
-  if (requestCancel) { const [type, id] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, id); }
+  if (requestCancel) { const [type, id] = /** @type {string} */ (requestCancel.dataset.requestCancel).split(":"); return cancelFinancialRequest(type, id); }
   const creditApprove = closestEl(event.target, "[data-credit-approve]");
   if (creditApprove) return approveCreditInvoice(creditApprove.dataset.creditApprove);
   const creditReject = closestEl(event.target, "[data-credit-reject]");
@@ -485,11 +485,11 @@ document.body.addEventListener("click", (event) => {
   const restoreBackupKey = closestEl(event.target, "[data-restore-backup-key]");
   if (restoreBackupKey) return restoreBackupFromRef({ key: restoreBackupKey.dataset.restoreBackupKey, created: restoreBackupKey.dataset.restoreBackupCreated, records: restoreBackupKey.dataset.restoreBackupRecords, size: restoreBackupKey.dataset.restoreBackupSize, source: restoreBackupKey.dataset.restoreBackupSource });
   const confirmPayment = closestEl(event.target, "[data-confirm-payment]");
-  if (confirmPayment) { const [type, id, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, id, method); }
+  if (confirmPayment) { const [type, id, method] = /** @type {string} */ (confirmPayment.dataset.confirmPayment).split(":"); return confirmFinancialPayment(type, id, method); }
   const makePaymentRequest = closestEl(event.target, "[data-make-payment-request]");
   if (makePaymentRequest) return openPaymentRequestForInvoice(makePaymentRequest.dataset.makePaymentRequest);
   const collectionStatus = closestEl(event.target, "[data-collection-status]");
-  if (collectionStatus) { const [receiptNo, status] = collectionStatus.dataset.collectionStatus.split(":"); return updateCollectionPaymentStatus(receiptNo, status); }
+  if (collectionStatus) { const [receiptNo, status] = /** @type {string} */ (collectionStatus.dataset.collectionStatus).split(":"); return updateCollectionPaymentStatus(receiptNo, status); }
   const addressButton = closestEl(event.target, "[data-edit-branch-address]");
   if (addressButton) return editPlatformBranchAddress(addressButton.dataset.editBranchAddress);
   const removeBranchButton = closestEl(event.target, "[data-remove-platform-branch]");
@@ -523,7 +523,7 @@ document.body.addEventListener("click", (event) => {
   const productIssueTimeline = closestEl(event.target, "[data-product-issue-timeline]");
   if (productIssueTimeline) return renderProductIssueDetail(productIssueTimeline.dataset.productIssueTimeline);
   const productIssueStatus = closestEl(event.target, "[data-product-issue-status]");
-  if (productIssueStatus) { const [issueId, issueStatus] = productIssueStatus.dataset.productIssueStatus.split(":"); return updateProductIssueStatus(issueId, issueStatus); }
+  if (productIssueStatus) { const [issueId, issueStatus] = /** @type {string} */ (productIssueStatus.dataset.productIssueStatus).split(":"); return updateProductIssueStatus(issueId, issueStatus); }
   const poEditButton = closestEl(event.target, "[data-po-edit]");
   if (poEditButton) return editPurchaseOrder(poEditButton.dataset.poEdit);
   const invoicePoButton = closestEl(event.target, "[data-create-invoice-po]");
@@ -672,7 +672,7 @@ qs("#password-form").addEventListener("submit", async (event) => {
   if (!activeSession?.access_token) return toast("Sign in again before changing your password.");
   if (!(await confirmFinalSave("Change your password?"))) return;
   try { await MedlaneAPI.changePassword(values.oldPassword, values.newPassword); }
-  catch (error) { return toast(error.message || "Password update failed."); }
+  catch (/** @type {any} */ error) { return toast(error.message || "Password update failed."); }
   /** @type {AnyEl} */ (event.currentTarget).reset();
   qs("#password-modal").close();
   if (currentUser) { currentUser.passwordKycDue = false; localStorage.setItem("medlane-session", JSON.stringify(currentUser)); }
@@ -725,7 +725,7 @@ qs("#memo-list").addEventListener("click", (event) => {
   const print = closestEl(event.target, "[data-print-memo]");
   if (print) return printMemo(print.dataset.printMemo);
 });
-qs("#platform-branch-list").addEventListener("click", (event) => {
+qs("#platform-branch-list").addEventListener("click", /** @returns {any} */ (event) => {
   const addressButton = closestEl(event.target, "[data-edit-branch-address]");
   if (addressButton) return editPlatformBranchAddress(addressButton.dataset.editBranchAddress);
   const button = closestEl(event.target, "[data-remove-platform-branch]");
@@ -896,7 +896,7 @@ document.addEventListener("click", (event) => {
   const removeSheetRow = closestEl(event.target, ".remove-sheet-row");
   if (removeSheetRow) removeInventorySheetRow(removeSheetRow);
   const uploadCopyButton = closestEl(event.target, "[data-upload-copy]");
-  if (uploadCopyButton) /** @type {HTMLElement | null} */ (uploadCopyButton.parentElement.querySelector(".physical-copy-input"))?.click();
+  if (uploadCopyButton) /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (uploadCopyButton.parentElement).querySelector(".physical-copy-input"))?.click();
   const viewFileButton = closestEl(event.target, "[data-view-file]");
   if (viewFileButton) MedlaneAPI.viewFile(viewFileButton.dataset.viewFile).catch((error) => toast(error.message || "Unable to open file."));
   const viewCollectionHistory = closestEl(event.target, "[data-view-collection-history]");
@@ -959,7 +959,7 @@ qs("#inventory").addEventListener("click", (event) => {
   const branch = closestEl(target, "[data-inventory-branch]");
   if (branch) return inventoryChangeView(() => { inventoryBranchView = branch.dataset.inventoryBranch; if (inventoryBranchView !== "all") inventoryBranchTab = inventoryBranchView; }, { closeDetail: true });
   const sort = closestEl(target, "[data-inventory-sort]");
-  if (sort) return inventoryChangeView(() => { const key = sort.dataset.inventorySort; inventorySort = { key, dir: inventorySort.key === key ? -inventorySort.dir : 1 }; });
+  if (sort) return inventoryChangeView(() => { const key = sort.dataset.inventorySort; inventorySort = { key: /** @type {any} */ (key), dir: inventorySort.key === key ? -inventorySort.dir : 1 }; });
   if (closestEl(target, "#inventory-compact-toggle")) return inventoryChangeView(() => { inventoryCompactView = !inventoryCompactView; }, { resetPage: false });
   if (closestEl(target, "#inventory-export")) return exportInventoryCsv();
   if (closestEl(target, "#inventory-prev")) return inventoryChangeView(() => { inventoryPage -= 1; }, { resetPage: false });
@@ -979,6 +979,7 @@ qs("#inventory-search").addEventListener("input", (event) => {
   const value = /** @type {AnyEl} */ (event.target).value;
   inventorySearchTimer = setTimeout(() => inventoryChangeView(() => { inventorySearch = value; }, { closeDetail: true }), 150);
 });
+/** @type {any} */
 let inventorySearchTimer = null;
 qs("#inventory-area").addEventListener("change", (event) => {
   const source = qs("#branch-filter");
@@ -1190,7 +1191,7 @@ guardDialogEscape(qs("#demo-request-modal"));
 qs("#stock-sheet-modal").addEventListener("change", (event) => { if (/** @type {AnyEl} */ (event.target).id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(/** @type {AnyEl} */ (event.target).value); });
 qs("#save-transfer-sheet").addEventListener("click", saveTransferSheet);
 qs("#demo-request-modal")?.addEventListener("input", (event) => { if (/** @type {AnyEl} */ (event.target).matches(".demo-line-code, .demo-line-item")) syncDemoRequestLine(event.target); });
-qs("#demo-request-table")?.addEventListener("click", (event) => {
+qs("#demo-request-table")?.addEventListener("click", /** @returns {any} */ (event) => {
   const salesApprove = closestEl(event.target, "[data-demo-sales-approve]");
   if (salesApprove) return updateDemoRequestStatus(salesApprove.dataset.demoSalesApprove, "For Management Approval");
   const logisticsApprove = closestEl(event.target, "[data-demo-logistics-approve]");
@@ -1216,7 +1217,7 @@ qs("#transfer-history-table").addEventListener("click", (event) => {
   const transferTimeline = closestEl(event.target, "[data-transfer-timeline]");
   if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
 });
-document.body.addEventListener("click", (event) => {
+document.body.addEventListener("click", /** @returns {any} */ (event) => {
   const closeReview = closestEl(event.target, "[data-close-transfer-review]");
   if (closeReview) return guardedDialogClose(() => qs("#transfer-review-modal")?.close());
   const confirmDispatch = closestEl(event.target, "#confirm-transfer-dispatch");
@@ -1383,7 +1384,7 @@ qs("#modal-fields").addEventListener("click", (event) => {
   }
   const paymentRequestRemove = closestEl(event.target, ".remove-payment-request-line");
   if (paymentRequestRemove && qsa(".payment-request-line-row").length > 1) {
-    paymentRequestRemove.closest(".payment-request-line-row").remove();
+    closestEl(paymentRequestRemove, ".payment-request-line-row").remove();
     syncPaymentRequestTotal();
     syncFinancialRequestTotal();
   }
@@ -1393,12 +1394,12 @@ qs("#modal-fields").addEventListener("click", (event) => {
   }
   const remove = closestEl(event.target, ".remove-invoice-line");
   if (remove && qsa(".invoice-line-row").length > 1) {
-    remove.closest(".invoice-line-row").remove();
+    closestEl(remove, ".invoice-line-row").remove();
     renderInvoiceComputePreview();
   }
   if (closestEl(event.target, "#add-parameter-row")) qs("#parameter-row-list").insertAdjacentHTML("beforeend", parameterRowTemplate());
   const parameterRemove = closestEl(event.target, ".remove-parameter-row");
-  if (parameterRemove && qsa(".parameter-row").length > 1) parameterRemove.closest(".parameter-row").remove();
+  if (parameterRemove && qsa(".parameter-row").length > 1) closestEl(parameterRemove, ".parameter-row").remove();
 });
 qs("#modal-fields").addEventListener("input", (event) => {
   if (/** @type {AnyEl} */ (event.target).hasAttribute("data-tin-input")) {
@@ -1494,6 +1495,7 @@ qs("#payment-request-preview-modal").addEventListener("click", (event) => { if (
 qs("#transfer-history-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "transfer-history-modal") qs("#transfer-history-modal").close(); });
 qs("#followup-history-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "followup-history-modal") qs("#followup-history-modal").close(); });
 qs("#branch-filter").addEventListener("change", (e) => { data.branch = /** @type {AnyEl} */ (e.target).value; saveData(); renderAll(); });
+/** @type {any} */
 let globalSearchRenderTimer = null;
 qs("#global-search").addEventListener("input", () => {
   clearTimeout(globalSearchRenderTimer);
@@ -1511,6 +1513,7 @@ qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
 qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
 qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
 qs("#inventory-status").addEventListener("change", renderInventory);
+/** @type {any} */
 let salesClientFilterTimer = null;
 qs("#sales-client").addEventListener("input", () => {
   clearTimeout(salesClientFilterTimer);
@@ -1629,7 +1632,7 @@ async function runManualBackup() {
     setBackupStatus("Backup completed", "Manual recovery point is stored in R2.", 100, "success");
     clearBackupStatus();
     toast("Manual backup created.");
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     setBackupStatus("Backup failed", error.message || "Backup failed.", 100, "error");
     toast(error.message || "Backup failed.");
   } finally {
@@ -1650,7 +1653,7 @@ async function runManualDigest(periodLabel) {
       toast(`${periodLabel} digest generated, but Discord did not post: ${result.discord?.reason || "Unknown reason"}`);
     }
     log(`Sent manual ${periodLabel.toLowerCase()} digest`, "Discord", result.discord?.sent ? "Posted to Discord" : `Not posted: ${result.discord?.reason || "Unknown reason"}`);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Digest failed.");
   } finally {
     if (button) { button.disabled = false; button.textContent = original; }
@@ -1670,7 +1673,7 @@ async function runManualBirthdayTest() {
       toast(`Discord did not post: ${result.reason || "Unknown reason"}`);
     }
     log("Sent test birthday greeting", "Discord", result.sent ? "Posted to Discord" : `Not posted: ${result.reason || "Unknown reason"}`);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Birthday greeting test failed.");
   } finally {
     if (button) { button.disabled = false; button.textContent = original; }
@@ -1685,7 +1688,7 @@ async function downloadBackupFile(id) {
     setBackupStatus("Download started", "Your browser is downloading the backup file.", 100, "success");
     clearBackupStatus();
     toast("Backup download started.");
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     setBackupStatus("Download failed", error.message || "Backup download failed.", 100, "error");
     toast(error.message || "Backup download failed.");
   }
@@ -1699,7 +1702,7 @@ async function downloadBackupObjectFile(key) {
     setBackupStatus("Download started", "Your browser is downloading the R2 backup file.", 100, "success");
     clearBackupStatus();
     toast("Backup download started.");
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     setBackupStatus("Download failed", error.message || "Backup download failed.", 100, "error");
     toast(error.message || "Backup download failed.");
   }
@@ -1724,7 +1727,7 @@ async function restoreBackupFromRef(ref) {
     setBackupStatus("Restore completed", `${result.restore?.restoredRecords || 0} records were restored safely by upsert. The prior data was saved as a Safety Snapshot backup in case you need to revert.`, 100, "success");
     clearBackupStatus(5000);
     toast(`Restore completed: ${result.restore?.restoredRecords || 0} records upserted. Prior data saved as a Safety Snapshot.`);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     setBackupStatus("Restore failed", error.message || "Restore failed.", 100, "error");
     toast(error.message || "Restore failed.");
   }
@@ -1747,7 +1750,7 @@ async function forceLogoutSession(sessionId) {
     log("Forced device logout", "Users", sessionId);
     await renderUserSessions();
     toast("Device session revoked.");
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Unable to revoke session.");
   }
 }
@@ -1815,6 +1818,7 @@ window.addEventListener("beforeprint", () => {
 });
 window.addEventListener("resize", updateTableScrollHints);
 document.addEventListener("scroll", (event) => { if (/** @type {AnyEl} */ (event.target)?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
+/** @type {any} */
 let loginAutofillSubmitTimer = null;
 let loginUserTyped = false;
 let loginBiometricTried = false;
@@ -1916,7 +1920,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
   let payload;
   try {
     payload = await MedlaneAPI.login(email, password);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     if (loginButton) {
       loginButton.disabled = false;
       loginButton.classList.remove("is-loading");
@@ -1948,7 +1952,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
     applyPendingSaveQueueToLocal();
     await syncBackendUsers();
     flushPendingSaveQueue();
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(`Logged in, but server data sync failed: ${error.message}`);
   }
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
@@ -1978,6 +1982,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
 qs("#login-forgot")?.addEventListener("click", async () => {
   const button = qs("#login-forgot");
   const emailInput = qs("#login-email");
+  /** @type {any} */
   let email = String(emailInput?.value || "").trim().toLowerCase();
   if (!email) {
     email = String(prompt("Enter your account email and we'll send you a password reset link:") || "").trim().toLowerCase();
@@ -1991,7 +1996,7 @@ qs("#login-forgot")?.addEventListener("click", async () => {
   try {
     await MedlaneAPI.forgotPassword(email);
     toast("If that email has a Medlane OS account, a password reset link is on its way. Check your inbox.");
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not start the password reset. Please try again.");
   } finally {
     if (button) { button.dataset.sending = ""; button.disabled = false; button.textContent = originalLabel; }
@@ -2011,7 +2016,7 @@ function maybeShowPasswordKycModal() {
 qs("#password-kyc-modal").addEventListener("cancel", (event) => event.preventDefault());
 qs("#password-kyc-keep").addEventListener("click", async () => {
   try { await MedlaneAPI.keepCurrentPasswordForKyc(); }
-  catch (error) { return toast(error.message || "Could not save your choice. Please try again."); }
+  catch (/** @type {any} */ error) { return toast(error.message || "Could not save your choice. Please try again."); }
   currentUser.passwordKycDue = false;
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   qs("#password-kyc-modal").close();
@@ -2103,7 +2108,7 @@ function jwtEmail(token) {
 function showSupabasePasswordSetup() {
   const params = authHashParams();
   const accessToken = params.get("access_token");
-  const type = params.get("type");
+  const type = /** @type {string} */ (params.get("type"));
   if (!accessToken || !["invite", "recovery"].includes(type)) return false;
   currentUser = null;
   localStorage.removeItem("medlane-session");
@@ -2133,7 +2138,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
     try {
       await MedlaneAPI.setPassword(values.token.replace(/^supabase:/, ""), values.newPassword);
       history.replaceState(null, "", "/login");
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       return toast(error.message || "Password setup failed.");
     } finally {
       if (submitButton) { submitButton.disabled = false; submitButton.classList.remove("is-loading"); submitButton.textContent = originalLabel; }
@@ -2174,6 +2179,7 @@ function logoutCurrentUser() {
 // so nobody has to type their password again just because a deploy happened.
 const APP_VERSION_POLL_MS = 5 * 60 * 1000;
 const APP_UPDATE_RETRY_MS = 30 * 1000;
+/** @type {any} */
 let appVersionTimer = null;
 let appVersionKnown = "";
 let appUpdatePending = false;
@@ -2228,14 +2234,19 @@ function startAppVersionWatch() {
 const LIVE_FALLBACK_POLL_CONNECTED_MS = 5 * 60 * 1000;
 const LIVE_FALLBACK_POLL_DISCONNECTED_MS = 30 * 1000;
 const LIVE_KEEPALIVE_MS = 45 * 1000;
+/** @type {any} */
 let liveSyncTimer = null;
 let liveSyncInFlight = false;
 let liveSyncQueued = false;
 let liveSyncRenderPending = false;
+/** @type {any} */
 let liveSyncDebounce = null;
+/** @type {any} */
 let liveSocket = null;
 let liveSocketRetry = 0;
+/** @type {any} */
 let liveSocketRetryTimer = null;
+/** @type {any} */
 let liveKeepaliveTimer = null;
 let liveSyncActive = false;
 function liveSyncCanRender() {

@@ -1,5 +1,6 @@
 // @ts-check
 let currentReportSaleId = null;
+/** @type {any} */
 let selectedUserSessionsTarget = null;
 
 function moduleWorkflowItems(section) {
@@ -122,16 +123,16 @@ function renderWorkflowAssist(sectionId) {
   const panel = ensureWorkflowPanel(sectionId);
   if (!panel) return;
   const items = moduleWorkflowItems(sectionId);
-  panel.querySelector("h2").textContent = workflowTitle(sectionId);
-  panel.querySelector("p:not(.eyebrow)").textContent = "Recommended next actions to reduce manual work, prevent errors, and finish recurring tasks faster.";
-  panel.querySelector(".badge").textContent = `${items.length} recommendation${items.length === 1 ? "" : "s"}`;
+  qsIn(panel, "h2").textContent = workflowTitle(sectionId);
+  qsIn(panel, "p:not(.eyebrow)").textContent = "Recommended next actions to reduce manual work, prevent errors, and finish recurring tasks faster.";
+  qsIn(panel, ".badge").textContent = `${items.length} recommendation${items.length === 1 ? "" : "s"}`;
   const slim = sectionId === "inventory" && !items.length;
   panel.classList.toggle("is-clear", slim);
   if (slim) {
-    panel.querySelector("h2").textContent = "Warehouse task queue is clear.";
-    panel.querySelector("p:not(.eyebrow)").textContent = "No urgent recommendations for Inventory right now.";
+    qsIn(panel, "h2").textContent = "Warehouse task queue is clear.";
+    qsIn(panel, "p:not(.eyebrow)").textContent = "No urgent recommendations for Inventory right now.";
   }
-  panel.querySelector(".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
+  qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
 function renderWorkflowAssistAll() {
@@ -309,6 +310,7 @@ function findItemByCodeOrName(value) {
     || data.items.find((entry) => entry.code.toLowerCase().startsWith(query) || entry.name.toLowerCase().startsWith(query))
     || data.items.find((entry) => entry.code.toLowerCase().includes(query) || entry.name.toLowerCase().includes(query));
 }
+/** @param {any} row @param {any} [changedInput] @param {boolean} [allowPartial] */
 function findItemForSheetRow(row, changedInput = null, allowPartial = false) {
   const code = qsIn(row, ".stock-code, .transfer-code, .demo-line-code")?.value.trim().toLowerCase() || "";
   const name = qsIn(row, ".stock-item, .transfer-item, .demo-line-item")?.value.trim().toLowerCase() || "";
@@ -391,7 +393,7 @@ async function approvePaymentRequest(cvNo) {
   const invoiceIds = request.invoices?.length ? request.invoices : (request.invoice ? request.invoice.split(",").map((id) => id.trim()).filter(Boolean) : []);
   if (!invoiceIds.length) return toast("This payment request is not linked to an invoice.");
   if (request.requestStatus !== "Pending") return toast("This payment request has already been processed.");
-  const sales = invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean);
+  const sales = /** @type {any[]} */ (invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean));
   if (!sales.length) return toast("Linked invoice(s) not found.");
   // Requests created with the per-invoice itemized editor carry an explicit net amount for
   // each invoice (item.netAmount). Older requests only have one lump total, so fall back to
@@ -667,11 +669,11 @@ function poLineStatus(po, line) {
 // the PO is locked — corrections then go through the invoice cancel/replace flow instead.
 /** @param {ClientPO | null | undefined} po */
 function poHasAnyServed(po) {
-  return (po?.lines || []).some((line) => poServedQty(po, line.code) > 0);
+  return (po?.lines || []).some((line) => poServedQty(/** @type {ClientPO} */ (po), line.code) > 0);
 }
 /** @param {ClientPO | null | undefined} po */
 function poCanEdit(po) {
-  return Boolean(po) && !PO_TERMINAL_STATUSES.includes(poStatus(po)) && !poHasAnyServed(po) && canEditModule("purchase-orders");
+  return Boolean(po) && !PO_TERMINAL_STATUSES.includes(poStatus(/** @type {ClientPO} */ (po))) && !poHasAnyServed(po) && canEditModule("purchase-orders");
 }
 
 const PO_COMPLETED_DOC_LABELS = { SI: "Sales Invoice", TS: "Transmittal Slip", DR: "Delivery Receipt" };
@@ -700,6 +702,7 @@ function competingPurchaseOrdersForItem(code, branch, excludePoId = null) {
     .filter((entry) => entry.pending > 0);
 }
 
+/** @param {string} code @param {string} branch @param {string | null} [excludePoId] */
 function pendingPoDemandForItem(code, branch, excludePoId = null) {
   return competingPurchaseOrdersForItem(code, branch, excludePoId).reduce((sum, entry) => sum + entry.pending, 0);
 }
@@ -877,14 +880,15 @@ function syncInvoiceFromPurchaseOrder() {
   renderInvoiceComputePreview();
 }
 
+/** @returns {{ item: string, qty: number, price: number }[]} */
 function collectInvoicePreviewLines() {
-  return qsa(".invoice-line-row").map((row) => {
+  return /** @type {any} */ (qsa(".invoice-line-row").map((row) => {
     const itemValue = qsIn(row, ".invoice-item-input")?.value.trim() || "";
     const qty = Number(qsIn(row, ".invoice-qty-input")?.value || 0);
     const price = Number(qsIn(row, ".invoice-price-input")?.value || 0);
     if (!itemValue || qty <= 0 || price < 0) return null;
     return { item: itemValue, qty, price };
-  }).filter(Boolean);
+  }).filter(Boolean));
 }
 
 function renderInvoiceComputePreview() {
@@ -1519,7 +1523,7 @@ function showStockReceiptDetail(id) {
   dialog.className = "modal audit-detail-modal transfer-detail-modal";
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Stock Receipt Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-stock-receipt-detail aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Order Number</small><strong>${escapeHtml(receipt.orderNumber || "-")}</strong></div><div class="report-preview-card"><small>Date Received</small><strong>${escapeHtml(receipt.dateReceived || "-")}</strong></div><div class="report-preview-card"><small>Source</small><strong>${escapeHtml(receipt.source || "-")}</strong></div><div class="report-preview-card"><small>Purchase Order</small><strong>${escapeHtml(receipt.poId || "Manual receive")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Branch</th><th>Lot</th><th>Expiry</th><th>Qty</th></tr></thead><tbody>${stockReceiptLineRowsHtml(receipt)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${(receipt.history || []).map((event) => `<div class="event-item ${/approved/i.test(event.status) ? "done" : /cancel/i.test(event.status) ? "blocked" : "pending"}"><span>${escapeHtml((event.status || "S")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("") || `<p>No history recorded yet.</p>`}</div></details>`;
   document.body.appendChild(dialog);
-  dialog.querySelector("[data-close-stock-receipt-detail]").addEventListener("click", () => dialog.close());
+  qsIn(dialog, "[data-close-stock-receipt-detail]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
 }
@@ -2107,7 +2111,7 @@ async function renderValueAnalytics() {
       visualCard("▤", "Actions Logged", actionsLabel, `<p>Every edit, approval, export, and status change is timestamped and attributed to a user — something a manual/spreadsheet process cannot guarantee.</p>`, "info", "Count of the most recently loaded audit log entries, capped at 200 per load; open Audit Logs for the full history."),
       visualCard("⛁", "Backup Reliability", uptimeNote, `<p>${lastWeeklyBackup ? `Last weekly backup: ${formatSessionDate(lastWeeklyBackup.created_at)} (${formatBytes(lastWeeklyBackup.size_bytes)}).` : "No weekly backup recorded yet."}</p>`, uptimeNote === "Current" ? "success" : "warning", "Sourced from the Backup module's recovery-point history and freshness check."),
     ].join("");
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     if (requestId !== valueAdoptionRequest) return;
     adoptionGrid.innerHTML = visualCard("◌", "Adoption & Reliability", "Unavailable", "<p>Audit log or backup access is required to show this panel.</p>", "info");
   }
@@ -2151,7 +2155,7 @@ function renderMasterlists() {
   qsa("#master-tabs .tab[data-master='employees']").forEach((tab) => { tab.hidden = !canManageEmployees(); });
   qsa("#master-tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.master === data.masterTab));
   qs("#platform-branch-panel").hidden = data.masterTab !== "branches";
-  qs("#master-table").parentElement.hidden = data.masterTab === "branches";
+  /** @type {HTMLElement} */ (qs("#master-table").parentElement).hidden = data.masterTab === "branches";
   qs("#master-add-button").hidden = !canEditModule("masterlists") || data.masterTab === "branches";
   qs("#master-table").classList.toggle("employee-table", data.masterTab === "employees");
   qs("#master-table").classList.toggle("client-table", data.masterTab === "clients");
@@ -2246,7 +2250,7 @@ function clientDocsModalRowsHtml(client) {
 function refreshClientDocsModal(clientName) {
   const client = data.clients.find((entry) => entry.name === clientName);
   const modal = qs("#client-docs-modal");
-  if (client && modal) modal.querySelector(".client-docs-list").innerHTML = clientDocsModalRowsHtml(client);
+  if (client && modal) qsIn(modal, ".client-docs-list").innerHTML = clientDocsModalRowsHtml(client);
   renderMasterlists();
 }
 
@@ -2291,12 +2295,12 @@ function openDemoToSalesDialog(request) {
   document.body.appendChild(dialog);
   const total = () => {
     const sum = qsaIn(dialog, "[data-demo-price]").reduce((acc, input) => acc + Number(input.value || 0) * Number(request.lines[Number(input.dataset.demoPrice)]?.qty || 0), 0);
-    dialog.querySelector("#demo-sales-total").textContent = peso.format(sum);
+    qsIn(dialog, "#demo-sales-total").textContent = peso.format(sum);
   };
   dialog.querySelectorAll("[data-demo-price]").forEach((input) => input.addEventListener("input", total));
   total();
   dialog.querySelectorAll("[data-close-demo-sales]").forEach((button) => button.addEventListener("click", () => dialog.close()));
-  dialog.querySelector("#demo-sales-form").addEventListener("submit", async (event) => {
+  qsIn(dialog, "#demo-sales-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const sale = { siNumber: qsIn(dialog, "#demo-sales-si").value.trim(), prices: qsaIn(dialog, "[data-demo-price]").map((input) => Number(input.value || 0)) };
     if (!sale.siNumber) return toast("SI number is required.");
@@ -2527,7 +2531,7 @@ function renderInventory() {
   // dashboard/workflow deep-links (which set it to "all") keep working.
   const statusSelect = qs("#inventory-status");
   if (statusSelect.dataset.synced !== "1") { // first render: seed the select from the URL
-    statusSelect.value = inventoryStatusKey === "all" ? "all" : INVENTORY_STATUS_META.find((meta) => meta.key === inventoryStatusKey).name;
+    statusSelect.value = inventoryStatusKey === "all" ? "all" : /** @type {any} */ (INVENTORY_STATUS_META.find((meta) => meta.key === inventoryStatusKey)).name;
     statusSelect.dataset.synced = "1";
   }
   inventoryStatusKey = INVENTORY_STATUS_BY_NAME[statusSelect.value]?.key || "all";
@@ -2634,7 +2638,7 @@ async function renderDashboardBackupStatus() {
       ...(storagePercent !== null ? [["Storage used", `${formatBytes(usage.usedBytes)} of ${formatBytes(usage.maxBytes)} (${storagePercent}%)`]] : []),
     ].map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join("");
     if (status.stale && !qs("#alerts-list")?.textContent.includes("No successful backup")) renderDashboard();
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     if (requestId !== dashboardBackupStatusRequest) return;
     badge.className = "badge danger";
     badge.textContent = "Unavailable";
@@ -2681,7 +2685,7 @@ function showTransferTimeline(id) {
   dialog.className = "modal audit-detail-modal transfer-detail-modal";
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Shipment Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-transfer-timeline aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Items</small><strong>${transfer.lines?.length || 0}</strong></div><div class="report-preview-card"><small>Route</small><strong>${escapeHtml(`${transfer.from} -> ${transfer.to}`)}</strong></div><div class="report-preview-card"><small>Requested By</small><strong>${escapeHtml(transfer.requestedBy || "-")}</strong></div><div class="report-preview-card"><small>Status</small><strong>${escapeHtml(transfer.status || "-")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Requested</th><th>Dispatched</th><th>Received</th></tr></thead><tbody>${transferLineComparisonRowsHtml(transfer)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${/receive|complete/i.test(event.action) ? "done" : /incomplete|cancel/i.test(event.action) ? "blocked" : "pending"}"><span>${escapeHtml((event.action || "T")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.action || "")}</strong><p>${escapeHtml(event.notes || "-")}</p><small>${escapeHtml(event.user || "-")}</small></div></div>`).join("") || `<p>No transfer history recorded yet.</p>`}</div></details>`;
   document.body.appendChild(dialog);
-  dialog.querySelector("[data-close-transfer-timeline]").addEventListener("click", () => dialog.close());
+  qsIn(dialog, "[data-close-transfer-timeline]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
 }
@@ -2739,7 +2743,7 @@ async function openStockEditDialog(ref) {
   };
   adjustInput.addEventListener("input", recompute);
   dialog.querySelectorAll("[data-close-stock-edit]").forEach((button) => button.addEventListener("click", () => dialog.close()));
-  dialog.querySelector("#stock-edit-form").addEventListener("submit", (event) => { event.preventDefault(); saveStockEdit(dialog); });
+  qsIn(dialog, "#stock-edit-form").addEventListener("submit", (event) => { event.preventDefault(); saveStockEdit(dialog); });
   dialog.addEventListener("close", () => dialog.remove());
   guardDialogEscape(dialog);
   dialog.showModal();
@@ -2835,8 +2839,8 @@ function fillStockSheetFromInventoryPo(poId) {
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
   if (!po) return renderStockSheet();
   if (qs("#stock-sheet-order-number") && !qs("#stock-sheet-order-number").value.trim()) qs("#stock-sheet-order-number").value = po.id;
-  const remainingLines = po.lines.filter((line) => Number(line.qty || 0) - Number(line.receivedQty || 0) > 0);
-  const bodyRows = (remainingLines.length ? remainingLines : po.lines).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(po.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
+  const remainingLines = /** @type {PoLine[]} */ (po.lines).filter((line) => Number(line.qty || 0) - Number(line.receivedQty || 0) > 0);
+  const bodyRows = (remainingLines.length ? remainingLines : /** @type {PoLine[]} */ (po.lines)).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(po.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
   qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
 }
@@ -2911,7 +2915,7 @@ function syncDemoRequestLine(input) {
 }
 
 async function saveDemoRequest() {
-  const lines = qsa("#demo-request-lines-table tbody tr").map((row) => {
+  const lines = /** @type {any[]} */ (qsa("#demo-request-lines-table tbody tr").map((row) => {
     const code = qsIn(row, ".demo-line-code")?.value.trim();
     const itemName = qsIn(row, ".demo-line-item")?.value.trim();
     const exactKey = String(code || itemName || "").toLowerCase();
@@ -2919,7 +2923,7 @@ async function saveDemoRequest() {
     const qty = Number(qsIn(row, ".demo-line-qty")?.value || 0);
     if (!code && !itemName && !qty) return null;
     return { type: qsIn(row, ".demo-line-type")?.value || "Machine", code: item?.code || code, item: item?.name || itemName, brand: qsIn(row, ".demo-line-brand")?.value.trim() || item?.brand || "", lot: qsIn(row, ".demo-line-lot")?.value.trim(), qty, notes: qsIn(row, ".demo-line-notes")?.value.trim() };
-  }).filter(Boolean);
+  }).filter(Boolean));
   const client = qs("#demo-client")?.value.trim();
   if (!client) return toast("Client is required for a demo request.");
   if (!qs("#demo-sales-agent")?.value.trim()) return toast("Sales agent is required.");
@@ -2942,6 +2946,7 @@ async function saveDemoRequest() {
   toast(`${request.id} submitted for ${initialStatus === "For Logistics Approval" ? "Logistics" : "Superadmin/CEO"} approval.`);
 }
 
+/** @param {string | undefined} id @param {string} status @param {any} [sale] */
 async function updateDemoRequestStatus(id, status, sale = null) {
   const request = (data.inventoryDemoRequests || []).find((entry) => entry.id === id);
   if (!request) return toast("Demo request not found.");
@@ -3057,6 +3062,7 @@ function clearStockSheetDraft() {
 function stockSheetRowIsBlank(row) {
   return !row.brand && !row.code && !row.item && !row.lot && !row.qty;
 }
+/** @type {any} */
 let stockSheetDraftSaveTimer = null;
 function saveStockSheetDraft() {
   clearTimeout(stockSheetDraftSaveTimer);
@@ -3130,7 +3136,7 @@ async function saveStockSheet() {
   if (!dateReceived) return toast("Date Received is required.");
   if (!source) return toast("Select Shipment or Local Purchase.");
   const meta = { orderNumber, dateReceived, source };
-  const rows = qsa("#stock-sheet-table tbody tr").map((row) => {
+  const rows = /** @type {any[]} */ (qsa("#stock-sheet-table tbody tr").map((row) => {
     const branch = qsIn(row, ".stock-branch")?.value;
     const code = qsIn(row, ".stock-code")?.value.trim();
     const itemName = qsIn(row, ".stock-item")?.value.trim();
@@ -3141,7 +3147,7 @@ async function saveStockSheet() {
     const qty = Number(qsIn(row, ".stock-qty")?.value || 0);
     if (!code && !itemName && !lot && !qty) return null;
     return { branch, item, brand, lot, expiry, qty };
-  }).filter(Boolean);
+  }).filter(Boolean));
   if (!rows.length) return toast("No stock rows to save.");
   if (rows.some((row) => !row.item || !row.branch || row.qty <= 0)) return toast("Complete all stock sheet fields before saving.");
   if (rows.some((row) => row.expiry && row.expiry !== "N/A" && daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
@@ -3184,6 +3190,7 @@ function clearTransferSheetDraft() {
 function transferSheetRowIsBlank(row) {
   return !row.code && !row.item && !row.lot && !row.qty;
 }
+/** @type {any} */
 let transferSheetDraftSaveTimer = null;
 function saveTransferSheetDraft() {
   clearTimeout(transferSheetDraftSaveTimer);
@@ -3236,7 +3243,7 @@ async function saveTransferSheet() {
   const to = qs("#transfer-sheet-to")?.value;
   if (!from || !to) return toast("Select a From and To branch.");
   if (from === to) return toast("Transfer source and destination must be different.");
-  const rows = qsa("#transfer-sheet-table tbody tr").map((row) => {
+  const rows = /** @type {any[]} */ (qsa("#transfer-sheet-table tbody tr").map((row) => {
     const code = qsIn(row, ".transfer-code")?.value.trim();
     const itemName = qsIn(row, ".transfer-item")?.value.trim();
     const lot = qsIn(row, ".transfer-lot")?.value.trim();
@@ -3245,7 +3252,7 @@ async function saveTransferSheet() {
     if (!code && !itemName && !lot && !qty) return null;
     const source = item && lot ? data.inventory.find((entry) => entry.code === item.code && entry.branch === from && entry.lot === lot && entry.qty >= qty) : null;
     return { item, lot, qty, source };
-  }).filter(Boolean);
+  }).filter(Boolean));
   if (!rows.length) return toast("No transfer rows to save.");
   if (rows.some((row) => !row.item || !row.lot || row.qty <= 0)) return toast("Complete all stock transfer fields before saving.");
   if (rows.some((row) => !row.source)) return toast("Not enough source stock for the selected item lot.");
@@ -3332,13 +3339,13 @@ async function confirmTransferDispatch() {
   if (updates.some((u) => u.qty <= 0 || !u.lot)) return toast("Enter a valid quantity and lot for every item.");
   for (const u of updates) {
     const line = transfer.lines[u.index];
-    const source = data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot);
+    const source = /** @type {StockRow} */ (data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot));
     if (!source || source.qty < u.qty) return toast(`Not enough stock for ${line.item} in lot ${u.lot}.`);
   }
   const touchedInventory = [];
   updates.forEach((u) => {
     const line = transfer.lines[u.index];
-    const source = data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot);
+    const source = /** @type {StockRow} */ (data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot));
     source.qty -= u.qty;
     touchedInventory.push(source);
     line.dispatchedQty = u.qty;
@@ -3609,7 +3616,7 @@ function compressImageFile(file, { maxDimension = 1600, quality = 0.72 } = {}) {
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(img.width * scale));
         canvas.height = Math.max(1, Math.round(img.height * scale));
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d")).drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob((blob) => {
           if (!blob) { reject(new Error("Could not compress the image.")); return; }
           resolve(new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" }));
@@ -3660,7 +3667,7 @@ async function uploadPhysicalCopy(file, recordType, recordId, label, onDone) {
     await refreshUploadedFiles();
     toast(`${label} uploaded.`);
     if (onDone) onDone();
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Upload failed.");
   }
 }
@@ -3779,7 +3786,7 @@ async function submitMemoCompose() {
     dialog.close();
     renderAll();
     toast(`${memo.id} posted.`);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Unable to post memo.");
   } finally {
     submitBtn.disabled = false;
@@ -3810,7 +3817,7 @@ async function acknowledgeMemo(id) {
     clearPendingSaveQueueKeys(["memos"]);
     log("Acknowledged memo", "Memos", id, { save: false });
     renderMemos();
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     const failIndex = data.memos.findIndex((entry) => entry.id === id);
     if (failIndex >= 0) data.memos[failIndex].acknowledgments = previousAcknowledgments;
     renderMemos();
@@ -4301,6 +4308,7 @@ function syncPaymentRequestRowDerived(row, { invoiceChanged = false } = {}) {
   const balanceInput = row.querySelector(".payment-request-balance");
   if (balanceInput) balanceInput.value = Math.max(amountDue - Number(amountInput?.value || 0) - deductions.withholdingTax - deductions.expandedWithholdingTax, 0).toFixed(2);
 }
+/** @param {any[]} [lines] @param {string | null} [preselectDoc] */
 function renderPaymentRequestEditor(lines = [{}], preselectDoc = null) {
   paymentRequestPreselectedInvoice = preselectDoc || null;
   if (paymentRequestPreselectedInvoice) {
@@ -4512,7 +4520,7 @@ function collectionContactsGeoJson() {
 
 function collectionRegionSummaries() {
   return Object.entries(data.collectionContacts.reduce((acc, contact) => { acc[contact.area] ||= []; acc[contact.area].push(contact); return acc; }, {})).map(([area, contacts]) => {
-    const coords = contacts.map((contact) => clientCoordinates[contact.client]).filter(Boolean);
+    const coords = /** @type {any[]} */ (contacts.map((contact) => clientCoordinates[contact.client]).filter(Boolean));
     const lat = coords.length ? coords.reduce((sum, item) => sum + item[0], 0) / coords.length : 12.8797;
     const lng = coords.length ? coords.reduce((sum, item) => sum + item[1], 0) / coords.length : 121.7740;
     const chequeReady = contacts.filter((contact) => contact.status === "Cheque Available").length;
@@ -4668,7 +4676,7 @@ async function renderCollectionMapVisual() {
   const labels = ["Region I", "CAR", "Region II", "Region III", "NCR", "Region IV-A", "Region V", "Visayas Dealer", "Mindanao Dealer"].map((area) => regionMapLabel(area, regionTrackingStatus(area), collectionRegionCount(area))).join("");
   let overlays = "";
   try {
-    const geoJson = await loadPhilippinesRegionsGeoJson();
+    const geoJson = /** @type {any} */ (await loadPhilippinesRegionsGeoJson());
     const bounds = geoJsonBounds(geoJson);
     overlays = geoJson.features.map((feature) => {
       const regionName = geoRegionName(feature);
@@ -4683,6 +4691,7 @@ async function renderCollectionMapVisual() {
   qs("#collection-map").innerHTML = `<div class="map-topbar"><div class="map-legend static"><span class="answered">Answered</span><span class="tracked">Tracked</span><span class="unreached">Unreached</span><span class="no-response">No Reply</span><span class="pending">Pending</span></div></div><div class="map-pan-viewport"><svg class="static-ph-map" width="${Math.round(1000 * collectionMapZoom)}" height="${Math.round(891 * collectionMapZoom)}" viewBox="0 0 2524 2248" role="img" aria-label="Philippines client follow-up map"><rect width="2524" height="2248" rx="72"></rect><image class="ph-reference-map" href="ph-07.png" x="0" y="0" width="2524" height="2248" preserveAspectRatio="xMidYMid meet"></image><g class="map-overlay-layer">${overlays}</g><g class="map-label-layer">${labels}</g></svg></div>`;
 }
 
+/** @type {any} */
 let leafletLoadPromise = null;
 function loadLeafletAssets() {
   if (window.L) return Promise.resolve();
@@ -5459,7 +5468,7 @@ function splitImportLine(row, delimiter) {
   return cells.map((cell) => cell.replace(/^"|"$/g, "").replace(/""/g, '"'));
 }
 function parseImportText() {
-  const lines = qs("#csv-input").value.trim().split(/\r?\n/).filter(Boolean);
+  const lines = /** @type {any[]} */ (qs("#csv-input").value.trim().split(/\r?\n/).filter(Boolean));
   if (!lines.length) return [];
   const delimiter = lines[0]?.includes("\t") ? "\t" : ",";
   return lines.map((line) => splitImportLine(line, delimiter));
@@ -5925,7 +5934,7 @@ function bir2307DrawTinLastGroup(draw, group, y, font) {
   digits.forEach((digit, index) => draw(digit, lastDigitX - (digits.length - 1 - index) * BIR_2307_TIN_DIGIT_PITCH, y, { font, size: BIR_2307_TIN_SIZE }));
 }
 function bir2307DrawTin(draw, tin, x, y, font) {
-  const groups = String(tin || "").split(/[^0-9]+/).filter(Boolean);
+  const groups = /** @type {any[]} */ (String(tin || "").split(/[^0-9]+/).filter(Boolean));
   groups.forEach((group, groupIndex) => {
     if (groupIndex === groups.length - 1) bir2307DrawTinLastGroup(draw, group, y, font);
     else bir2307DrawDigits(draw, group, x + groupIndex * BIR_2307_TIN_GROUP_PITCH, y, font, BIR_2307_TIN_SIZE, BIR_2307_TIN_DIGIT_PITCH);
@@ -5942,7 +5951,7 @@ function bir2307QuarterRange(dateValue) {
 }
 function bir2307Money(value) { return Number(value || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function bir2307WrapText(text, maxChars) {
-  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const words = /** @type {any[]} */ (String(text || "").split(/\s+/).filter(Boolean));
   const lines = [];
   let current = "";
   words.forEach((word) => {
@@ -6040,7 +6049,7 @@ async function downloadBir2307(payableId) {
     URL.revokeObjectURL(url);
     log("Generated BIR Form 2307", "Payables", payable.id, { save: false });
     toast("2307 generated.");
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Unable to generate 2307.");
   } finally {
     endSaveOperation();
@@ -6117,7 +6126,7 @@ function showExpenseDetail(id) {
   dialog.className = "modal audit-detail-modal";
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Itemized Expense</p><h2>${escapeHtml(expense.id)} · ${escapeHtml(expense.type || "Expense")}</h2></div><button class="icon-button" type="button" data-close-expense-detail aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Requester</small><strong>${escapeHtml(expense.requester || "-")}</strong></div><div class="report-preview-card"><small>Employee</small><strong>${escapeHtml(expense.employeeName || "-")}</strong></div><div class="report-preview-card"><small>Office</small><strong>${escapeHtml(expense.office || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(expense.amount || 0)}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Particulars</th><th>Qty</th><th>UOM</th><th>Amount</th></tr></thead><tbody>${rows || `<tr><td colspan="4">No itemized expenses recorded.</td></tr>`}</tbody></table></div><p class="page-description"><strong>Status:</strong> ${escapeHtml(expense.requestStatus || expense.status || "-")} · <strong>Payment:</strong> ${expense.paymentConfirmed ? escapeHtml(`${expense.method || "Paid"} ${expense.bank || expense.cheque || ""}`) : "Not yet confirmed"}</p>`;
   document.body.appendChild(dialog);
-  dialog.querySelector("[data-close-expense-detail]").addEventListener("click", () => dialog.close());
+  qsIn(dialog, "[data-close-expense-detail]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
 }
@@ -6158,6 +6167,7 @@ async function previewFinancialRequest(type, id) {
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
 }
 
+/** @param {{ eyebrow?: string, title?: string, fields?: any[], note?: string, confirmLabel?: string, danger?: boolean, collectReason?: boolean, reasonLabel?: string }} options */
 function confirmDetailsModal({ eyebrow = "Confirm Action", title, fields = [], note = "", confirmLabel = "Confirm", danger = false, collectReason = false, reasonLabel = "Reason" }) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
@@ -6243,7 +6253,7 @@ async function approveCreditInvoice(id) {
     // nothing from the original request is trusted blindly. canAuthorize is true for this role,
     // so the credit check passes and buildSale performs its real stock/PO side effects.
     sale = buildSale({ ...request.values }, request.replacementOf || null);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     return toast(`Cannot approve — ${error.message}`);
   }
   data.sales.push(sale);
@@ -6532,7 +6542,7 @@ function renderReagentExpiryReport() {
   qs("#report-detail-chart-primary").innerHTML = barRows(byBranchCount, (value) => `${value} record${value === 1 ? "" : "s"}`, ["red", "orange"]) + graphNote("Low/critical stock record count grouped by branch.");
   /** @type {[string, number][]} */
   const expiryBuckets = [["Expired", 0], ["≤30 Days", 0], ["31-60 Days", 0], ["61-90 Days", 0], ["91-180 Days", 0], ["Safe / No Expiry", 0]];
-  inventory.forEach((item) => {
+  inventory.forEach(/** @returns {any} */ (item) => {
     if (item.expiry === "N/A") return expiryBuckets[5][1]++;
     const days = daysUntil(item.expiry);
     const bucketIndex = days < 0 ? 0 : days <= 30 ? 1 : days <= 60 ? 2 : days <= 90 ? 3 : days <= 180 ? 4 : 5;
@@ -6627,7 +6637,7 @@ async function renderComplianceAuditReport() {
   try {
     const result = await MedlaneAPI.listLogs({ limit: 200 });
     complianceAuditEntries = result.entries || [];
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     complianceAuditEntries = [];
     toast(error.message || "Could not load audit logs.");
   }
@@ -6949,11 +6959,12 @@ async function renderBackup() {
       return { focus: object.key, cells: [formatSessionDate(object.uploaded), backupRunLabel(type), `<span class="pill ${type === "manual" ? "purple" : "green"}">${escapeHtml(type)}</span>`, "compressed-full", object.customMetadata?.records || "-", formatBytes(object.size), "R2 object", `<button class="mini-button" data-download-backup-key="${escapeHtml(object.key)}">Download</button><button class="mini-button danger-button" data-restore-backup-key="${escapeHtml(object.key)}" data-restore-backup-created="${escapeHtml(formatSessionDate(object.uploaded))}" data-restore-backup-records="${escapeHtml(object.customMetadata?.records || "-")}" data-restore-backup-size="${escapeHtml(formatBytes(object.size))}" data-restore-backup-source="R2 object">Restore</button>`] };
     });
     table("#backup-table", ["Created", "Run", "Type", "Mode", "Records", "Size", "Source", "Actions"], [...trackedRows, ...objectRows]);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     qs("#backup-summary-grid").innerHTML = `<article class="stat-card accent-red"><span>Setup Required</span><strong>Backups unavailable</strong><small>${escapeHtml(error.message)}</small></article>`;
     table("#backup-table", ["Created", "Run", "Type", "Mode", "Records", "Size", "Source", "Actions"], [["Backup tracking unavailable", "-", "Run updated Supabase schema", "-", "-", "-", "-", escapeHtml(error.message)]]);
   }
 }
+/** @param {any} [target] */
 async function renderUserSessions(target = selectedUserSessionsTarget) {
   const modal = qs("#user-devices-modal");
   if (!modal) return;
@@ -6985,7 +6996,7 @@ async function renderUserSessions(target = selectedUserSessionsTarget) {
       ] };
     });
     table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], rows.length ? rows : [["No tracked sessions yet", "User must log in again after this update", "-", "-", "-", "-", "None", "-"]]);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     table("#user-sessions-table", ["User", "Device", "IP Address", "Browser", "Logged In", "Last Seen", "Status", "Action"], [["Session tracking unavailable", "Run updated Supabase schema", "-", "-", "-", "-", "Setup required", escapeHtml(error.message)]]);
   }
 }
@@ -7126,6 +7137,7 @@ function renderLogFilters() {
   const userOptions = qs("#logs-user-options");
   if (userOptions) userOptions.innerHTML = dedupedUsers().map((u) => `<option value="${escapeHtml(u.name)}"></option>`).join("");
 }
+/** @type {{ user?: string, entries: any[], nextCursor: any, loading: boolean }} */
 let logsState = { entries: [], nextCursor: null, loading: false };
 function logFilterParams() {
   const from = qs("#logs-date-from")?.value || "";
@@ -7155,7 +7167,7 @@ function showAuditLogDetail(index) {
   const messageButton = entry.digestMessageId ? `<button class="ghost-button" type="button" data-view-digest-message style="margin-top:14px;">View message sent</button>` : "";
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Audit Detail</p><h2>${escapeHtml(entry.action || "Recorded action")}</h2></div><button class="icon-button" type="button" data-close-audit-detail aria-label="Close">x</button></div><div class="audit-detail-summary"><span class="pill ${statusClass(entry.action || "")}">${escapeHtml(entry.action || "Recorded action")}</span><strong>${escapeHtml(entry.record || "No record value captured")}</strong><small>${escapeHtml(entry.module || "System")}</small></div><div class="audit-detail-grid">${primaryRows}</div>${messageButton}<details class="audit-technical-detail"><summary><strong>Technical details</strong><span>Device, IP, browser, user agent</span></summary><div>${technicalRows}</div></details>`;
   document.body.appendChild(dialog);
-  dialog.querySelector("[data-close-audit-detail]").addEventListener("click", () => dialog.close());
+  qsIn(dialog, "[data-close-audit-detail]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelector("[data-view-digest-message]")?.addEventListener("click", () => showDigestMessagePreview(entry.digestMessageId));
   dialog.showModal();
@@ -7165,7 +7177,7 @@ async function showDigestMessagePreview(id) {
   let result;
   try {
     result = await MedlaneAPI.getDigestMessage(id);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     return toast(error.message || "Could not load the digest message.");
   }
   const dialog = document.createElement("dialog");
@@ -7179,7 +7191,7 @@ async function showDigestMessagePreview(id) {
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Digest Message</p><h2>${escapeHtml(heading)}</h2></div><button class="icon-button" type="button" data-close-digest-message aria-label="Close">x</button></div><p class="page-description">${escapeHtml(result.subject || "")}</p>`;
   dialog.appendChild(frame);
   document.body.appendChild(dialog);
-  dialog.querySelector("[data-close-digest-message]").addEventListener("click", () => dialog.close());
+  qsIn(dialog, "[data-close-digest-message]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
 }
@@ -7191,7 +7203,7 @@ async function renderLogs() {
   try {
     const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50 });
     logsState = { entries: visibleAuditLogEntries(result.entries || []), nextCursor: result.nextCursor || null, loading: false };
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     logsState = { entries: [], nextCursor: null, loading: false };
     toast(error.message || "Could not load audit logs.");
   }
@@ -7204,12 +7216,13 @@ async function loadMoreLogs() {
     const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50, before: logsState.nextCursor });
     logsState.entries = [...logsState.entries, ...visibleAuditLogEntries(result.entries || [])];
     logsState.nextCursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more audit logs.");
   }
   logsState.loading = false;
   renderLogTable();
 }
+/** @type {{ user?: string, entries: any[], nextCursor: any, loading: boolean }} */
 let notificationLogsState = { entries: [], nextCursor: null, loading: false };
 function notificationLogFilterParams() {
   const from = qs("#notification-logs-date-from")?.value || "";
@@ -7239,7 +7252,7 @@ async function renderNotificationLogs() {
   try {
     const result = await MedlaneAPI.listLogs({ ...notificationLogFilterParams(), limit: 50 });
     notificationLogsState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     notificationLogsState = { entries: [], nextCursor: null, loading: false };
     toast(error.message || "Could not load Discord/email logs.");
   }
@@ -7252,12 +7265,13 @@ async function loadMoreNotificationLogs() {
     const result = await MedlaneAPI.listLogs({ ...notificationLogFilterParams(), limit: 50, before: notificationLogsState.nextCursor });
     notificationLogsState.entries = [...notificationLogsState.entries, ...(result.entries || [])];
     notificationLogsState.nextCursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more Discord/email logs.");
   }
   notificationLogsState.loading = false;
   renderNotificationLogTable();
 }
+/** @type {{ user?: string, entries: any[], nextCursor: any, loading: boolean }} */
 let collectionsHistoryState = { entries: [], nextCursor: null, loading: false };
 function canSearchCollectionsClientHistory() { return currentUser?.role !== "Accounting"; }
 function renderCollectionsClientSearchUI() {
@@ -7320,7 +7334,7 @@ async function renderCollectionsHistory() {
   try {
     const result = await MedlaneAPI.listLogs({ module: "Collections", limit: 50 });
     collectionsHistoryState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     collectionsHistoryState = { entries: [], nextCursor: null, loading: false };
     toast(error.message || "Could not load collections history.");
   }
@@ -7333,7 +7347,7 @@ async function loadMoreCollectionsHistory() {
     const result = await MedlaneAPI.listLogs({ module: "Collections", limit: 50, before: collectionsHistoryState.nextCursor });
     collectionsHistoryState.entries = [...collectionsHistoryState.entries, ...(result.entries || [])];
     collectionsHistoryState.nextCursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more collections history.");
   }
   collectionsHistoryState.loading = false;
@@ -7354,7 +7368,7 @@ async function loadMoreSales() {
     mergeLiveChanges(result.rows || []);
     page.hasMore = Boolean(result.hasMore);
     page.cursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more sales history.");
   }
   page.loading = false;
@@ -7369,7 +7383,7 @@ async function loadMorePurchaseOrders() {
     mergeLiveChanges(result.rows || []);
     page.hasMore = Boolean(result.hasMore);
     page.cursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more purchase orders.");
   }
   page.loading = false;
@@ -7384,7 +7398,7 @@ async function loadMoreInventoryPurchaseOrders() {
     mergeLiveChanges(result.rows || []);
     page.hasMore = Boolean(result.hasMore);
     page.cursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more inventory purchase orders.");
   }
   page.loading = false;
@@ -7399,7 +7413,7 @@ async function loadMoreTransfers() {
     mergeLiveChanges(result.rows || []);
     page.hasMore = Boolean(result.hasMore);
     page.cursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more transfers.");
   }
   page.loading = false;
@@ -7414,7 +7428,7 @@ async function loadMorePayables() {
     mergeLiveChanges(result.rows || []);
     page.hasMore = Boolean(result.hasMore);
     page.cursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more payables.");
   }
   page.loading = false;
@@ -7429,7 +7443,7 @@ async function loadMoreCollections() {
     mergeLiveChanges(result.rows || []);
     page.hasMore = Boolean(result.hasMore);
     page.cursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more collections.");
   }
   page.loading = false;
@@ -7444,13 +7458,14 @@ async function loadMorePaymentRequests() {
     mergeLiveChanges(result.rows || []);
     page.hasMore = Boolean(result.hasMore);
     page.cursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more payment requests.");
   }
   page.loading = false;
   renderCollections();
 }
 
+/** @type {{ user?: string, entries: any[], nextCursor: any, loading: boolean }} */
 let userAuditLogState = { user: "", entries: [], nextCursor: null, loading: false };
 const userAuditLogWideDateFrom = "2020-01-01T00:00:00.000Z";
 function userAuditLogEventTone(action) {
@@ -7484,7 +7499,7 @@ async function openUserAuditLog(userName) {
   try {
     const result = await MedlaneAPI.listLogs({ user: name, dateFrom: userAuditLogWideDateFrom, limit: 50 });
     userAuditLogState = { user: name, entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false };
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     userAuditLogState.loading = false;
     toast(error.message || "Could not load this user's activity log.");
   }
@@ -7497,7 +7512,7 @@ async function loadMoreUserAuditLog() {
     const result = await MedlaneAPI.listLogs({ user: userAuditLogState.user, dateFrom: userAuditLogWideDateFrom, limit: 50, before: userAuditLogState.nextCursor });
     userAuditLogState.entries = [...userAuditLogState.entries, ...(result.entries || [])];
     userAuditLogState.nextCursor = result.nextCursor || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more activity.");
   }
   userAuditLogState.loading = false;
@@ -7659,6 +7674,7 @@ const modalConfigs = {
   instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
 };
 
+/** @param {any} type @param {any} [edit] */
 function openModal(type, edit = null) {
   modalType = type;
   modalReadOnly = Boolean(edit?.readOnly);
@@ -7795,7 +7811,7 @@ function openModal(type, edit = null) {
       if (key === "docs") {
         const docs = new Set(String(value || "").split(",").map((item) => item.trim()).filter(Boolean));
         qsa("input[name='docsSelected']").forEach((input) => {
-          const uploaded = docs.has(input.dataset.docName);
+          const uploaded = docs.has(/** @type {string} */ (input.dataset.docName));
           input.closest(".doc-upload-button")?.classList.toggle("uploaded", uploaded);
           input.closest(".doc-upload-button")?.classList.toggle("missing", !uploaded);
           const label = input.closest(".doc-upload-button")?.querySelector("strong");
@@ -7986,7 +8002,7 @@ function masterlistRecordOpenActivity(type, record) {
     // used on a PO, so existing POs would be stuck against an unusable client.
     const clientPos = (data.purchaseOrders || []).filter((po) => po.client === name);
     if (clientPos.length) {
-      const ids = clientPos.map((po) => po.id).filter(Boolean);
+      const ids = /** @type {any[]} */ (clientPos.map((po) => po.id).filter(Boolean));
       reasons.push(`an existing purchase order (${ids.slice(0, 5).join(", ")}${ids.length > 5 ? `, +${ids.length - 5} more` : ""})`);
     }
     if ((data.sales || []).some((s) => s.client === name && s.status !== "Cancelled" && Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0.01)) reasons.push("an unpaid invoice");
@@ -8216,7 +8232,7 @@ function inventoryTouchedBySale(sale) {
   // record a role without Inventory access (e.g. Accounting) isn't allowed to write.
   if (sale.noPo) return [];
   const warehouse = warehouseForArea(sale.area);
-  const touched = (sale.lines || []).map((line) => data.inventory.find((item) => item.code === line.code && item.branch === (line.sourceBranch || line.branch || warehouse) && item.lot === line.lot)).filter(Boolean);
+  const touched = /** @type {any[]} */ ((sale.lines || []).map((line) => data.inventory.find((item) => item.code === line.code && item.branch === (line.sourceBranch || line.branch || warehouse) && item.lot === line.lot)).filter(Boolean));
   return [...new Map(touched.map((item) => [`${item.code}|${item.branch}|${item.lot}`, item])).values()];
 }
 
@@ -8251,7 +8267,7 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
   // stock reservation or deduction, no credit-limit or discount-approval gate, and (see the
   // "Print" action gating) never printed since there's no real PO or stock movement behind them.
   const skipPo = Boolean(values.skipPo);
-  const po = skipPo ? null : data.purchaseOrders.find((entry) => entry.id === values.po);
+  const po = /** @type {ClientPO} */ (skipPo ? null : data.purchaseOrders.find((entry) => entry.id === values.po));
   if (!skipPo) {
     if (!po) throw new Error("Choose an incomplete or unserved Purchase Order for this account.");
     if (po.client !== client.name) throw new Error("Purchase Order does not belong to this client.");
@@ -8284,7 +8300,7 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
   if (!skipPo) {
     for (const line of lines) {
       if (line.expiry !== "N/A" && daysUntil(line.expiry) < 0) throw new Error(`Expired lot blocked for ${line.item}.`);
-      const stock = matchInvoiceLineStock(line);
+      const stock = /** @type {StockRow} */ (matchInvoiceLineStock(line));
       if (!stock) {
         // The generic "No sufficient stock" message reads the same whether the item just has a
         // low/zero balance at this branch or simply isn't stocked there at all — the second case
@@ -8315,7 +8331,7 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
   }
   if (!skipPo) {
     lines.forEach((line) => {
-      const stock = matchInvoiceLineStock(line);
+      const stock = /** @type {StockRow} */ (matchInvoiceLineStock(line));
       if (line.lot && !stock.lot) stock.lot = line.lot;
       stock.qty -= line.qty;
     });
