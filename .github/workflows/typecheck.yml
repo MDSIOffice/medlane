@@ -25,5 +25,9 @@ jobs:
         run: npm run check:any
       - name: Rule tests
         run: npm test
+      - name: Install browser for smoke tests
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke tests
+        run: npm run test:smoke
       - name: Syntax check
         run: for f in public/scripts/*.js src/*.js; do node --check "$f"; done

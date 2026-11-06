@@ -796,7 +796,7 @@ qs("#users-table").addEventListener("click", async (event) => {
   const reason = prompt(`Reason for archiving ${user.name || user.email}:`, "Archived by admin");
   if (!String(reason || "").trim()) return toast("Archive reason is required.");
   if (!(await confirmFinalSave(`Archive ${user.name || user.email}?`))) return;
-  const result = await MedlaneAPI.setUserDisabled(user.email || user.username, true, String(reason).trim()).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<UserStatusResponse>} */ (await MedlaneAPI.setUserDisabled(user.email || user.username, true, String(reason).trim()).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to archive user.");
   await syncBackendUsers();
   const archivedUser = data.users.find((entry) => String(entry.email || entry.username || "").trim().toLowerCase() === String(user.email || user.username || "").trim().toLowerCase()) || user;
@@ -821,7 +821,7 @@ async function toggleUserDisabled(index) {
   if (!confirm(`${disabled ? "Disable" : "Enable"} ${user.name || user.email}?`)) return;
   const reason = disabled ? prompt(`Reason for disabling ${user.name || user.email}:`) : "";
   if (disabled && !String(reason || "").trim()) return toast("Disable reason is required.");
-  const result = await MedlaneAPI.setUserDisabled(user.email, disabled, reason || "").catch((error) => ({ error }));
+  const result = /** @type {OrApiError<UserStatusResponse>} */ (await MedlaneAPI.setUserDisabled(user.email, disabled, reason || "").catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || `Unable to ${verb} user.`);
   user.inviteStatus = disabled ? "Disabled" : "Active";
   user.disabledReason = disabled ? String(reason).trim() : "";
@@ -838,7 +838,7 @@ async function resendUserInvite(index) {
   if (!canManageUsers()) return toast("Only Superadmin/CEO can resend invitations.");
   const user = data.users[index];
   if (!user?.email) return toast("User email is required.");
-  const result = await MedlaneAPI.resendInvite(user.email).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<ResendInviteResponse>} */ (await MedlaneAPI.resendInvite(user.email).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to resend invite.");
   toast(result.emailDelivery?.sent ? `Invitation resent to ${user.email}.` : result.emailDelivery?.reason || "Invite link generated, but email was not sent.");
 }
@@ -849,7 +849,7 @@ async function resetUserPermissions(index) {
   const user = data.users[index];
   if (!user?.email) return toast("User email is required.");
   if (!confirm(`Reset ${user.name || user.email}'s permissions to ${user.role}'s current default modules? Any custom view/edit access granted to them individually will be cleared.`)) return;
-  const result = await MedlaneAPI.resetUserPermissions(user.email).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<ResetPermissionsResponse>} */ (await MedlaneAPI.resetUserPermissions(user.email).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to reset permissions.");
   Object.assign(user, result.user);
   log("Reset user permissions to role defaults", "Users", `${user.email} · ${user.role}`);
@@ -870,7 +870,7 @@ qs("#users-table").addEventListener("change", async (event) => {
     return toast("You cannot change your own Superadmin permission.");
   }
   checkbox.disabled = true;
-  const result = await MedlaneAPI.setUserSuperadmin(user.email, granted).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<SuperadminResponse>} */ (await MedlaneAPI.setUserSuperadmin(user.email, granted).catch((error) => ({ error })));
   checkbox.disabled = false;
   if (result.error) {
     checkbox.checked = !granted;
@@ -2089,7 +2089,7 @@ async function setUserPasswordPrompt(index) {
   const policyError = passwordPolicyError(password);
   if (policyError) return toast(policyError);
   if (!(await confirmFinalSave(`Set a new password for ${user.name || email}?`))) return;
-  const result = await MedlaneAPI.setUserPassword(email, password).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<OkResponse>} */ (await MedlaneAPI.setUserPassword(email, password).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to set password.");
   log("Set user password", "Users", email);
   toast(`Password set for ${user.name || email}. Share it with them securely.`);
@@ -2102,7 +2102,7 @@ async function copyInviteLink(index) {
   const email = String(user?.email || "").trim().toLowerCase();
   if (!user || !email) return toast("User email is required to generate an invite link.");
   toast("Generating invite link...");
-  const result = await MedlaneAPI.getInviteLink(email).catch((error) => ({ error }));
+  const result = /** @type {OrApiError<InviteLinkResponse>} */ (await MedlaneAPI.getInviteLink(email).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to generate invite link.");
   try {
     await navigator.clipboard.writeText(result.actionLink);
