@@ -244,3 +244,51 @@ interface WorkerEnv {
   ENVIRONMENT?: string;
   [binding: string]: any;
 }
+
+// ---- Worker: authorization and money rules (src/worker.js) ----
+type AppRole = "Superadmin" | "CEO" | "Admin" | "Accounting" | "Sales" | "Logistics" | "HR" | "Engineering" | "Product Specialist";
+type AccessMode = "view" | "edit";
+
+/** The signed-in user as built by profileForUser(). Every permission decision reads from this. */
+interface Profile {
+  id: string;
+  /** Taken from profiles.full_name, which can be empty. */
+  name: string | null | undefined;
+  email: string;
+  role: AppRole;
+  branch: string;
+  phone: string;
+  modules: string[];
+  customPermissions: { enabled: boolean; view: string[]; edit: string[] };
+  passwordKycDue: boolean;
+  themePreference: "dark" | "light";
+}
+
+/** A row of the Supabase profiles table, before profileForUser() turns it into a Profile. */
+interface ProfileRow {
+  id: string; email: string; full_name?: string | null; role: AppRole; base_role?: AppRole | null; branch?: string | null; phone?: string | null;
+  is_superadmin?: boolean; password_confirmed_at?: string | null; created_at?: string | null; theme_preference?: string | null;
+}
+
+interface ModulePermissionRow { module_key: string; can_view: boolean; can_edit: boolean }
+
+/**
+ * One row of app_records. `data` comes from the client on writes, so it is `unknown` field by field:
+ * the rules must coerce or check a value before trusting it.
+ */
+interface AppRecordRow<T = Record<string, unknown>> { module_name: string; record_key: string; data: T; [column: string]: unknown }
+type StoredRow<T = Record<string, unknown>> = Pick<AppRecordRow<T>, "record_key" | "data">;
+
+/** A sales line as submitted by a client. Numbers may arrive as anything until Number() checks them. */
+interface IncomingSaleLine { item?: string; code?: string; qty?: unknown; price?: unknown; sourceBranch?: string; branch?: string; lot?: string; expiry?: string }
+interface IncomingSale extends IncomingSaleLine {
+  documentNo?: string; client?: string; type?: string;
+  amount?: unknown; net?: unknown; discount?: unknown;
+  migrated?: boolean; noPo?: boolean;
+  lines?: IncomingSaleLine[];
+}
+interface ClientRowData { name?: string; creditLimit?: unknown; archived?: boolean }
+interface InventoryRowData { code?: string; branch?: string; lot?: string; qty?: unknown }
+interface DemoRequestData { status?: string; lines?: { type?: string }[] }
+interface PoRowData { id?: string; client?: string; status?: string }
+interface ReceivingLineInput { code?: string; qty?: unknown; branch?: string; lot?: string; expiry?: string }
