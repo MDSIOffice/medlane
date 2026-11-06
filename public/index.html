@@ -321,6 +321,25 @@
         </div>
       </section>
 
+      <section class="lr-section lr-section--tint lr-partners" id="lr-partners">
+        <div class="lr-inner">
+          <div class="lr-head lr-head--center">
+            <p class="lr-kicker">Our Partners</p>
+            <h2>The diagnostics companies we work with.</h2>
+            <span class="lr-divider" aria-hidden="true"></span>
+          </div>
+          <ul class="lr-partner-grid">
+            <li style="--i: 0"><a class="lr-partner lr-partner--balio" href="https://baliodiagnostics.com/" target="_blank" rel="noopener noreferrer" aria-label="Balio Diagnostics website, opens in a new tab"><span class="lr-partner-logo"><img src="assets/landing/partners/balio.png" alt="Balio Diagnostics" loading="lazy" /></span><span class="lr-partner-caption">Balio Diagnostics <span aria-hidden="true">↗</span></span></a></li>
+            <li style="--i: 1"><a class="lr-partner lr-partner--cypress" href="https://diagnostics.be/" target="_blank" rel="noopener noreferrer" aria-label="Cypress Diagnostics website, opens in a new tab"><span class="lr-partner-logo"><img src="assets/landing/partners/cypress.png" alt="Cypress Diagnostics" loading="lazy" /></span><span class="lr-partner-caption">Cypress Diagnostics <span aria-hidden="true">↗</span></span></a></li>
+            <li style="--i: 2"><a class="lr-partner lr-partner--imedikers" href="http://i-medikers.com/" target="_blank" rel="noopener noreferrer" aria-label="iMedikers website, opens in a new tab"><span class="lr-partner-logo"><img src="assets/landing/partners/imedikers.png" alt="iMedikers" loading="lazy" /></span><span class="lr-partner-caption">iMedikers <span aria-hidden="true">↗</span></span></a></li>
+            <li style="--i: 3"><a class="lr-partner lr-partner--imedisync" href="https://www.imedisync.com/" target="_blank" rel="noopener noreferrer" aria-label="iMediSync website, opens in a new tab"><span class="lr-partner-logo"><img src="assets/landing/partners/imedisync.png" alt="iMediSync" loading="lazy" /></span><span class="lr-partner-caption">iMediSync <span aria-hidden="true">↗</span></span></a></li>
+            <li style="--i: 4"><a class="lr-partner lr-partner--lifotronic" href="https://en.lifotronic.com/" target="_blank" rel="noopener noreferrer" aria-label="Lifotronic website, opens in a new tab"><span class="lr-partner-logo"><img src="assets/landing/partners/lifotronic.png" alt="Lifotronic" loading="lazy" /></span><span class="lr-partner-caption">Lifotronic <span aria-hidden="true">↗</span></span></a></li>
+            <li style="--i: 5"><a class="lr-partner lr-partner--vedalab" href="https://www.vedalab.com/" target="_blank" rel="noopener noreferrer" aria-label="VedaLab website, opens in a new tab"><span class="lr-partner-logo"><img src="assets/landing/partners/vedalab.png" alt="VedaLab" loading="lazy" /></span><span class="lr-partner-caption">VedaLab <span aria-hidden="true">↗</span></span></a></li>
+            <li style="--i: 6"><a class="lr-partner lr-partner--zybio" href="https://www.zybio.com/" target="_blank" rel="noopener noreferrer" aria-label="Zybio website, opens in a new tab"><span class="lr-partner-logo"><img src="assets/landing/partners/zybio.png" alt="Zybio" loading="lazy" /></span><span class="lr-partner-caption">Zybio <span aria-hidden="true">↗</span></span></a></li>
+          </ul>
+        </div>
+      </section>
+
       <section class="lr-section lr-gallery" id="lr-gallery">
         <div class="lr-inner">
           <div class="lr-head">
@@ -1528,7 +1547,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["vendor/pdf-lib.min.js", "config-data.js", "api-client.js", "state.js", "ui-utils.js", "modules.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "modules.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           script.src = "scripts/" + file;
           script.async = false; // Run in this order: they share one global scope.
