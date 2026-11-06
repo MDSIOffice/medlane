@@ -194,6 +194,12 @@ interface PendingTransfer { id: string; status: string; code?: string; lot?: str
 interface ImportBatch { id: string; date: string; module: string; status: string; [extra: string]: any }
 interface Warranty { serial?: string; client?: string; warrantyEnd?: string; [extra: string]: any }
 
+interface StockReceipt { id: string; status: string; poId?: string; lines: any[]; [extra: string]: any }
+interface DemoRequest { id: string; status: string; client?: string; items?: any[]; [extra: string]: any }
+interface MemoRecord { id: string; [extra: string]: any }
+interface PrintTemplate { type: string; [extra: string]: any }
+interface CreditInvoiceRequest { id: string; status: string; [extra: string]: any }
+
 /** The slices of app state that have precise types; every other collection stays loosely typed. */
 interface AppData {
   purchaseOrders: ClientPO[];
@@ -216,6 +222,11 @@ interface AppData {
   employees: Employee[];
   notifications: AppNotification[];
   productIssues: ProductIssue[];
+  stockReceipts: StockReceipt[];
+  inventoryDemoRequests: DemoRequest[];
+  memos: MemoRecord[];
+  printTemplates: PrintTemplate[];
+  pendingCreditInvoices: CreditInvoiceRequest[];
   [collection: string]: any;
 }
 

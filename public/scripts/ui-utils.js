@@ -614,7 +614,7 @@ function sumBy(items, key, valueFn) {
   }, {});
 }
 
-/** @param {any[]} entries @param {any} [formatter] @param {any[]} [colors] */
+/** @param {any[]} entries @param {(value: any) => any} [formatter] @param {string[]} [colors] */
 function barRows(entries, formatter = (/** @type {any} */ value) => value, colors = []) {
   if (!entries.length) return `<p>No data available for this view.</p>`;
   const max = Math.max(...entries.map(([, value]) => value), 1);
