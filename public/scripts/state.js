@@ -1,9 +1,11 @@
+// @ts-check
 let data;
 // Per-module { hasMore, cursor, loading } for the transactional modules /api/modules/state trims
 // to "open + most recent 50" — populated from the state payload's `pagination` field, read/written
 // by the loadMore<Module>() handlers in modules.js to drive each list's "Load previous" button.
 let modulePagination = {};
 let modalType = null;
+let currentOperationalReportKey = null; // set by applyOperationalReport() in modules.js; was an undeclared implicit global
 let editContext = null;
 let modalReadOnly = false;
 let currentUser = JSON.parse(localStorage.getItem("medlane-session") || "null");
@@ -379,7 +381,7 @@ function normalizeData(next) {
   next.clients = next.clients.map((client, index) => {
     const { terms, ...clientWithoutTerms } = client;
     const accountType = client.dealer === "Dealer" || client.dealer?.includes("Dealer") ? "Dealer" : "Direct";
-    return { dealer: accountType, salesperson: client.salesperson || "Unassigned", terms: Number(client.terms || 30), creditLimit: [180000, 120000, 210000, 160000][index] || 150000, withholdingTax: Boolean(client.withholdingTax), expandedWithholdingTax: Boolean(client.expandedWithholdingTax), docs: client.docs || "Mayor's Permit, 2303, SEC or DTI, FDALTO, GAIA", ...clientWithoutTerms, dealer: accountType };
+    return { salesperson: client.salesperson || "Unassigned", terms: Number(client.terms || 30), creditLimit: [180000, 120000, 210000, 160000][index] || 150000, withholdingTax: Boolean(client.withholdingTax), expandedWithholdingTax: Boolean(client.expandedWithholdingTax), docs: client.docs || "Mayor's Permit, 2303, SEC or DTI, FDALTO, GAIA", ...clientWithoutTerms, dealer: accountType };
   });
   next.items = next.items.map((item) => ({ brand: item.brand || item.supplier || "Medlane", uom: item.uom || "unit", ...item }));
   next.suppliers = next.suppliers.map((supplier) => ({ brand: supplier.brand || "Multiple", ...supplier }));
@@ -914,8 +916,18 @@ function nextId(items, prefix) {
   const next = items.reduce((max, item) => Math.max(max, Number(String(item.id || "").replace(`${prefix}-`, "")) || 0), 0) + 1;
   return `${prefix}-${String(next).padStart(3, "0")}`;
 }
-function qs(selector) { return document.querySelector(selector); }
-function qsa(selector) { return [...document.querySelectorAll(selector)]; }
+/** Loosely typed DOM element: known HTMLElement members stay checked, form-control members (value, checked, files…) are allowed. */
+/** @typedef {HTMLElement & Record<string, any>} AnyEl */
+/** @param {string} selector @returns {AnyEl} */
+function qs(selector) { return /** @type {AnyEl} */ (document.querySelector(selector)); }
+/** @param {string} selector @returns {AnyEl[]} */
+function qsa(selector) { return /** @type {AnyEl[]} */ ([...document.querySelectorAll(selector)]); }
+/** querySelector scoped to a root element, loosely typed like qs(). @param {ParentNode} root @param {string} selector @returns {AnyEl} */
+function qsIn(root, selector) { return /** @type {AnyEl} */ (root.querySelector(selector)); }
+/** @param {ParentNode | null | undefined} root @param {string} selector @returns {AnyEl[]} */
+function qsaIn(root, selector) { return /** @type {AnyEl[]} */ ([...(root ? root.querySelectorAll(selector) : [])]); }
+/** Nearest ancestor (or self) of an event target matching selector, or null. @param {EventTarget | null} target @param {string} selector @returns {AnyEl} */
+function closestEl(target, selector) { return /** @type {AnyEl} */ (/** @type {Element} */ (target).closest(selector)); }
 function includesSearch(values) {
   const term = qs("#global-search").value.trim().toLowerCase();
   return !term || values.some((value) => String(value ?? "").toLowerCase().includes(term));
@@ -923,5 +935,5 @@ function includesSearch(values) {
 function byBranch(items, key = "branch") { return data.branch === "all" ? items : items.filter((item) => item[key] === data.branch || item[key] === "Both" || item.area === data.branch || item.office === data.branch || item.dealer === data.branch); }
 function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + Number(days)); return d; }
 function fmtDate(date) { return new Date(date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); }
-function daysUntil(date) { return Math.ceil((new Date(date) - today) / 86400000); }
+function daysUntil(date) { return Math.ceil((new Date(date).getTime() - Number(today)) / 86400000); }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]); }

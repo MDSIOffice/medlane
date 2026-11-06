@@ -1,3 +1,4 @@
+// @ts-check
 // Luksong Medlane — hidden mini-game easter egg (User Settings > Play Game).
 // Deliberately wrapped in a closure: score, obstacles, and the run loop are not
 // reachable from the devtools console, so tampering has to go through the
@@ -5,6 +6,11 @@
 // (see the game-session-token check in src/worker.js).
 (function () {
   "use strict";
+
+  /** @param {string} id */
+  const buttonById = (id) => /** @type {HTMLButtonElement | null} */ (document.getElementById(id));
+  /** @param {string} id */
+  const dialogById = (id) => /** @type {HTMLDialogElement | null} */ (document.getElementById(id));
 
   const GAME_BADGE_ICON = { Bronze: "🥉", Silver: "🥈", Gold: "🥇", Platinum: "💎" };
   const GAME_BADGE_TIER = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
@@ -949,7 +955,7 @@
     const iconEl = document.getElementById("game-overlay-icon");
     const titleEl = document.getElementById("game-overlay-title");
     const msgEl = document.getElementById("game-overlay-message");
-    const btn = document.getElementById("game-start-button");
+    const btn = buttonById("game-start-button");
     if (iconEl) iconEl.dataset.tone = tone;
     if (titleEl) titleEl.textContent = title;
     if (msgEl) msgEl.innerHTML = message;
@@ -990,7 +996,7 @@
   }
 
   async function startRun() {
-    const startButton = document.getElementById("game-start-button");
+    const startButton = buttonById("game-start-button");
     if (startButton) delete startButton.dataset.retryScore;
     // Best-effort: get any still-unsaved previous run in before this one starts.
     flushPendingScoreQuietly();
@@ -1070,12 +1076,12 @@
     await attemptScoreSubmit(finalScore, token, { announce: true });
   }
 
-  async function attemptScoreSubmit(finalScore, token, { announce } = {}) {
+  async function attemptScoreSubmit(finalScore, token, { announce = false } = {}) {
     // Background flushes yield to anything already submitting; the announce=true path (the
     // result card / Retry Save button) always runs so its overlay never gets stuck.
     if (scoreSubmitInFlight && !announce) return false;
     scoreSubmitInFlight = true;
-    const startBtn = document.getElementById("game-start-button");
+    const startBtn = buttonById("game-start-button");
     try {
       const result = await MedlaneAPI.submitGameScore(finalScore, token, effectiveSkin());
       writePendingScore(null);
@@ -1110,7 +1116,7 @@
     await attemptScoreSubmit(pending.score, pending.token, { announce: false });
   }
 
-  function applyScoreResult(finalScore, result, { announce } = {}) {
+  function applyScoreResult(finalScore, result, { announce = false } = {}) {
     const bestEl = document.getElementById("game-best");
     if (bestEl) bestEl.textContent = String(result.best);
     const levelEl = document.getElementById("game-level");
@@ -1248,13 +1254,13 @@
     }).join("");
     wrap.querySelectorAll(".game-skin-swatch:not([disabled])").forEach((btn) => {
       btn.addEventListener("click", () => {
-        setSelectedSkin(btn.dataset.skin);
+        setSelectedSkin(/** @type {HTMLElement} */ (btn).dataset.skin);
         sfxClick();
         renderSkinPicker();
         // Persist so it shows on the leaderboard — fire-and-forget; only unlocked
         // swatches are clickable, and the server re-checks the unlock anyway.
         if (typeof MedlaneAPI !== "undefined" && MedlaneAPI.session()) {
-          MedlaneAPI.setGameSkin(btn.dataset.skin).catch(() => {});
+          MedlaneAPI.setGameSkin(/** @type {HTMLElement} */ (btn).dataset.skin).catch(() => {});
         }
       });
     });
@@ -1311,7 +1317,7 @@
   async function openLeaderboard(tab) {
     if (tab) leaderboardTab = tab;
     sfxClick();
-    const modal = document.getElementById("game-leaderboard-modal");
+    const modal = dialogById("game-leaderboard-modal");
     const headers = LEADERBOARD_HEADERS[leaderboardTab];
     qsa("#game-leaderboard-tabs .tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.leaderboardTab === leaderboardTab));
     tableSkeleton("#game-leaderboard-table", headers, 6);
@@ -1352,7 +1358,7 @@
     // "played immediately" was catching it mid-download.
     musicAudio.preload = "auto";
     if (musicAudio.readyState === 0) musicAudio.load();
-    const modal = document.getElementById("game-modal");
+    const modal = dialogById("game-modal");
     resetGameState();
     showOverlay({ tone: "neutral", title: "Luksong Medlane", message: `<kbd>Space</kbd> or tap the top to jump ground stacks. Hold <kbd>&#8595;</kbd>/<kbd>S</kbd> or tap-hold the bottom to duck under audit banners. It gets faster the higher you score.`, buttonLabel: "Start Game" });
     modal?.showModal();
@@ -1369,18 +1375,18 @@
     shakeFrames = 0; shakeMag = 0;
     const countdownEl = document.getElementById("game-countdown");
     if (countdownEl) countdownEl.hidden = true;
-    document.getElementById("game-modal")?.close();
+    dialogById("game-modal")?.close();
   }
   document.getElementById("game-modal-close")?.addEventListener("click", closeGameModal);
   // Deliberately no backdrop-click-to-close and no Escape-to-close here — a
   // misclick or stray Escape used to kill an in-progress run. Only the X
   // button closes this modal. (Every other dialog in the app keeps its
   // normal backdrop/Escape close behavior; this restriction is game-only.)
-  document.getElementById("game-modal")?.addEventListener("cancel", (event) => event.preventDefault());
+  dialogById("game-modal")?.addEventListener("cancel", (event) => event.preventDefault());
 
-  document.getElementById("game-start-button")?.addEventListener("click", () => {
+  buttonById("game-start-button")?.addEventListener("click", () => {
     primeAllAudio();
-    const btn = document.getElementById("game-start-button");
+    const btn = buttonById("game-start-button");
     // "Retry Save" state — this click resubmits the kept run instead of starting a new one.
     if (btn?.dataset.retryScore && pendingScoreRetry) {
       delete btn.dataset.retryScore;
@@ -1393,7 +1399,7 @@
   document.getElementById("game-canvas")?.addEventListener("click", () => { if (gameRunning) doJump(); });
   const CROUCH_KEYS = new Set(["ArrowDown", "KeyS"]);
   document.addEventListener("keydown", (event) => {
-    if (!document.getElementById("game-modal")?.open) return;
+    if (!dialogById("game-modal")?.open) return;
     if (event.code === "Space") {
       event.preventDefault();
       if (gameRunning) doJump();
@@ -1421,13 +1427,13 @@
 
   document.getElementById("open-game-leaderboard")?.addEventListener("click", () => openLeaderboard("score"));
   qsa("#game-leaderboard-tabs .tab").forEach((btn) => btn.addEventListener("click", () => openLeaderboard(btn.dataset.leaderboardTab)));
-  document.getElementById("game-leaderboard-close")?.addEventListener("click", () => document.getElementById("game-leaderboard-modal")?.close());
-  document.getElementById("game-leaderboard-cancel")?.addEventListener("click", () => document.getElementById("game-leaderboard-modal")?.close());
-  document.getElementById("game-leaderboard-modal")?.addEventListener("click", (event) => { if (event.target.id === "game-leaderboard-modal") document.getElementById("game-leaderboard-modal").close(); });
+  document.getElementById("game-leaderboard-close")?.addEventListener("click", () => dialogById("game-leaderboard-modal")?.close());
+  document.getElementById("game-leaderboard-cancel")?.addEventListener("click", () => dialogById("game-leaderboard-modal")?.close());
+  dialogById("game-leaderboard-modal")?.addEventListener("click", (event) => { if (/** @type {HTMLElement} */ (event.target).id === "game-leaderboard-modal") dialogById("game-leaderboard-modal").close(); });
 
-  window.addEventListener("resize", () => { if (document.getElementById("game-modal")?.open) { setupCanvasDPR(); drawGame(); } });
+  window.addEventListener("resize", () => { if (dialogById("game-modal")?.open) { setupCanvasDPR(); drawGame(); } });
 
   // The only piece of this file anything outside needs to reach — hooked
   // from showSection() in modules.js when the User Settings tab is opened.
-  window.loadGameBestBadge = loadGameBestBadge;
+  /** @type {any} */ (window).loadGameBestBadge = loadGameBestBadge;
 })();

@@ -245,7 +245,7 @@ export class LiveHub extends DurableObject {
       // behind one office IP signing in successfully never block each other.
       const action = url.pathname.split("/")[2];
       const now = Date.now();
-      let fails = ((await this.ctx.storage.get("fails")) || []).filter((t) => now - t < LOGIN_THROTTLE_WINDOW_MS);
+      let fails = /** @type {number[]} */ ((await this.ctx.storage.get("fails")) || []).filter((t) => now - t < LOGIN_THROTTLE_WINDOW_MS);
       if (action === "fail") fails.push(now);
       if (action === "reset") fails = [];
       if (fails.length) await this.ctx.storage.put("fails", fails); else await this.ctx.storage.delete("fails");
@@ -402,6 +402,7 @@ function inviteEmailHtml({ fullName, email, role, actionLink, origin }) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to Medlane OS</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:12px 0 6px;font-size:34px;line-height:1.05;">Welcome to Medlane OS</h1><p style="margin:0;font-size:16px;line-height:1.6;opacity:.96;">Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.</p></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#fff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f4f9ff;border:1px solid #d8ebfb;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#005a9c;">Security reminder</strong><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Create a password with at least 8 characters, one letter, one number, and one special character. Never share your password or invitation link.</p></div><p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#4c6280;">If the button does not work, copy and paste this link into your browser:</p><p style="word-break:break-all;margin:0 0 18px;font-size:13px;line-height:1.6;color:#0077bd;">${escapeHtml(actionLink)}</p><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Account email: <strong>${escapeHtml(email)}</strong><br>Login site: <a href="${escapeHtml(origin)}" style="color:#0077bd;">${escapeHtml(origin)}</a></p></td></tr><tr><td style="padding:22px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. This message was sent for account access setup. If you did not expect this invitation, ignore this email or contact your administrator.</td></tr></table></td></tr></table></body></html>`;
 }
 
+/** @param {any} env @param {{ action: string, module: string, record: any, extra?: any }} entry */
 async function recordSystemLog(env, { action, module, record, extra }) {
   const stateKey = appStateKey(env);
   const entry = {
@@ -453,6 +454,7 @@ async function resendEmailRequest(env, body) {
   }
 }
 
+/** @returns {Promise<any>} */
 async function sendResendEmail(env, { to, subject, html, digestMessageId = null }) {
   // digestMessageId, when present, is the R2 key of the exact HTML this email carried — the
   // Audit Logs "View message" button in the app reads it back. Kept on both the sent and
@@ -493,6 +495,7 @@ async function readDigestMessageSnapshot(env, id) {
   return { html: await gunzipText(object), meta: object.customMetadata || {} };
 }
 
+/** @returns {Promise<any>} */
 async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMentions = null } = {}) {
   const label = embeds[0]?.title || content.slice(0, 80) || "Discord message";
   if (!env.DISCORD_WEBHOOK_URL) {
@@ -523,6 +526,7 @@ async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMenti
   }
 }
 
+/** @returns {Promise<any>} */
 async function sendDiscordWebhookUrl(env, webhookUrl, { content = "", embeds = [], allowedMentions = null, wait = false } = {}) {
   const label = embeds[0]?.title || content.slice(0, 80) || "Discord message";
   if (!webhookUrl) return { sent: false, provider: "discord", reason: "Webhook URL is not configured" };
@@ -541,6 +545,7 @@ async function sendDiscordWebhookUrl(env, webhookUrl, { content = "", embeds = [
   return { sent: true, provider: "discord", messageId: payload?.id || null };
 }
 
+/** @returns {Promise<any>} */
 async function editDiscordWebhookMessage(webhookUrl, messageId, { content = "", embeds = [], allowedMentions = null } = {}) {
   if (!webhookUrl || !messageId) return { edited: false, reason: "Webhook URL or message ID is missing" };
   const url = new URL(webhookUrl);
@@ -798,6 +803,7 @@ function extractLinkResult(payload) {
   return { authUser: user, actionLink };
 }
 
+/** @returns {Promise<any>} */
 async function generateSupabaseActionLink(env, { email, fullName, role, branch, origin }) {
   const redirectTo = `${origin}/?login=1`;
   const options = { redirect_to: redirectTo, data: { full_name: fullName, role, branch } };
@@ -2168,7 +2174,7 @@ const FIVE_MINUTE_MONITOR_CRON = "*/5 * * * *";
 
 function digestDaysUntil(dateStr) {
   if (!dateStr || dateStr === "N/A") return NaN;
-  return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+  return Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / 86400000);
 }
 
 function digestInventoryStatus(item) {
@@ -2505,6 +2511,7 @@ function financialDigestLines(state, sinceIso) {
   ];
 }
 
+/** @param {number | Date} [value] */
 function manilaMonthParts(value = Date.now()) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit" }).formatToParts(new Date(value));
   const map = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
@@ -2944,6 +2951,7 @@ async function runBirthdayGreetings(env, { force = false } = {}) {
 
 async function runFiveMinuteDiscordMonitors(env) {
   const scheduled = manilaScheduleParts(Date.now());
+  /** @type {Promise<any>[]} */
   const tasks = [runApiHealthMonitor(env)];
   if (["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env));
   await Promise.allSettled(tasks);
@@ -3062,6 +3070,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // minute/hour/weekday check, so use it instead of trusting scheduledTime's units.
   const scheduled = manilaScheduleParts(Date.now());
   const inDigestHour = scheduled.hour === "18";
+  /** @type {Promise<any>[]} */
   const tasks = [runApiHealthMonitor(env)];
   // Hourly Supabase metrics sample for the Sunday performance report (skipped in the 18:00 digest hour).
   if (!inDigestHour && scheduled.minute === "00") tasks.push(runPerfSampler(env));
@@ -3368,6 +3377,7 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   // from data already in hand, so putting it first means a slow or interrupted email loop
   // can no longer stop the digest from reaching the channel. Guarded so a retry within the
   // same period does not double-post.
+  /** @type {any} */
   let discordResult = { sent: false, reason: "Already posted for this period" };
   if (!progress.discordSent) {
     // Claim the Discord slot in the ledger BEFORE posting, and only post if that write

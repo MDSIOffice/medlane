@@ -1,3 +1,4 @@
+// @ts-check
 data = loadData();
 syncGeneratedNotifications();
 
@@ -348,7 +349,7 @@ async function submitModal(event) {
     data.payables.push(payable);
     const saveResult = await persistRecords({ payables: [payable] });
     if (!saveResult?.ok) return;
-    log("Created payable", "Payables", `${payable.id} · ${payable.supplier || "Supplier"}`, { save: false });
+    log("Created payable", "Payables", `${payable.id} · ${/** @type {any} */ (payable).supplier || "Supplier"}`, { save: false });
     qs("#demo-modal").close();
     form.reset();
     renderAll();
@@ -367,7 +368,7 @@ async function submitModal(event) {
     data.replenishments.push(replenishment);
     const saveResult = await persistRecords({ replenishments: [replenishment] });
     if (!saveResult?.ok) return;
-    log("Created replenishment", "Expenses", `${replenishment.id} · ${replenishment.requester || "Requester"}`, { save: false });
+    log("Created replenishment", "Expenses", `${replenishment.id} · ${/** @type {any} */ (replenishment).requester || "Requester"}`, { save: false });
     qs("#demo-modal").close();
     form.reset();
     renderAll();
@@ -436,98 +437,98 @@ qsa(".nav-item").forEach((button) => button.addEventListener("click", (event) =>
   if (location.protocol !== "file:") history.replaceState(null, "", `/dashboard?section=${button.dataset.section}`);
 }));
 document.body.addEventListener("click", (event) => {
-  const modalButton = event.target.closest("[data-action='open-modal']");
+  const modalButton = closestEl(event.target, "[data-action='open-modal']");
   if (modalButton) {
     if (qs("#report-preview-modal")?.open) qs("#report-preview-modal").close();
     return canEditActiveSection() ? openModal(modalButton.dataset.type) : toast("Editing is disabled for this module in User Settings.");
   }
-  const sortButton = event.target.closest("[data-sort-col]");
+  const sortButton = closestEl(event.target, "[data-sort-col]");
   if (sortButton) return sortTable(sortButton);
-  if (!event.target.closest(".notification-menu")) { qs("#notification-popover").hidden = true; qs("#notification-toggle").setAttribute("aria-expanded", "false"); }
-  if (!event.target.closest(".user-menu")) { qs("#user-popover").hidden = true; qs("#user-menu-toggle").setAttribute("aria-expanded", "false"); }
-  const workflowAction = event.target.closest("[data-workflow-action]");
+  if (!closestEl(event.target, ".notification-menu")) { qs("#notification-popover").hidden = true; qs("#notification-toggle").setAttribute("aria-expanded", "false"); }
+  if (!closestEl(event.target, ".user-menu")) { qs("#user-popover").hidden = true; qs("#user-menu-toggle").setAttribute("aria-expanded", "false"); }
+  const workflowAction = closestEl(event.target, "[data-workflow-action]");
   if (workflowAction) return handleWorkflowAction(workflowAction.dataset.workflowAction);
-  const paymentRequestPreview = event.target.closest("[data-payment-request-preview]");
+  const paymentRequestPreview = closestEl(event.target, "[data-payment-request-preview]");
   if (paymentRequestPreview) { qs("#payment-request-more-modal")?.close(); return previewPaymentRequest(paymentRequestPreview.dataset.paymentRequestPreview); }
-  const paymentRequestApprove = event.target.closest("[data-payment-request-approve]");
+  const paymentRequestApprove = closestEl(event.target, "[data-payment-request-approve]");
   if (paymentRequestApprove) return approvePaymentRequest(paymentRequestApprove.dataset.paymentRequestApprove);
-  const paymentRequestCancel = event.target.closest("[data-payment-request-cancel]");
+  const paymentRequestCancel = closestEl(event.target, "[data-payment-request-cancel]");
   if (paymentRequestCancel) return cancelPaymentRequest(paymentRequestCancel.dataset.paymentRequestCancel);
-  const paymentRequestTimeline = event.target.closest("[data-payment-request-timeline]");
+  const paymentRequestTimeline = closestEl(event.target, "[data-payment-request-timeline]");
   if (paymentRequestTimeline) { qs("#payment-request-more-modal")?.close(); return renderPaymentRequestDetail(paymentRequestTimeline.dataset.paymentRequestTimeline); }
-  const paymentRequestMore = event.target.closest("[data-payment-request-more]");
+  const paymentRequestMore = closestEl(event.target, "[data-payment-request-more]");
   if (paymentRequestMore) return openPaymentRequestMoreMenu(paymentRequestMore.dataset.paymentRequestMore);
-  const openPaymentRequest = event.target.closest("[data-open-payment-request]");
+  const openPaymentRequest = closestEl(event.target, "[data-open-payment-request]");
   if (openPaymentRequest) { closeReportPreview(); return renderPaymentRequestDetail(openPaymentRequest.dataset.openPaymentRequest); }
-  const requestPreview = event.target.closest("[data-request-preview]");
+  const requestPreview = closestEl(event.target, "[data-request-preview]");
   if (requestPreview) { const [type, id] = requestPreview.dataset.requestPreview.split(":"); return previewFinancialRequest(type, id); }
-  const requestApprove = event.target.closest("[data-request-approve]");
+  const requestApprove = closestEl(event.target, "[data-request-approve]");
   if (requestApprove) { const [type, id] = requestApprove.dataset.requestApprove.split(":"); return approveFinancialRequest(type, id); }
-  const requestCancel = event.target.closest("[data-request-cancel]");
+  const requestCancel = closestEl(event.target, "[data-request-cancel]");
   if (requestCancel) { const [type, id] = requestCancel.dataset.requestCancel.split(":"); return cancelFinancialRequest(type, id); }
-  const creditApprove = event.target.closest("[data-credit-approve]");
+  const creditApprove = closestEl(event.target, "[data-credit-approve]");
   if (creditApprove) return approveCreditInvoice(creditApprove.dataset.creditApprove);
-  const creditReject = event.target.closest("[data-credit-reject]");
+  const creditReject = closestEl(event.target, "[data-credit-reject]");
   if (creditReject) return rejectCreditInvoice(creditReject.dataset.creditReject);
-  const generate2307 = event.target.closest("[data-generate2307]");
+  const generate2307 = closestEl(event.target, "[data-generate2307]");
   if (generate2307) return downloadBir2307(generate2307.dataset.generate2307);
-  const viewUserSessions = event.target.closest("[data-view-user-sessions]");
+  const viewUserSessions = closestEl(event.target, "[data-view-user-sessions]");
   if (viewUserSessions) return openUserSessions(Number(viewUserSessions.dataset.viewUserSessions));
-  const revokeSession = event.target.closest("[data-revoke-session]");
+  const revokeSession = closestEl(event.target, "[data-revoke-session]");
   if (revokeSession) return forceLogoutSession(revokeSession.dataset.revokeSession);
-  const downloadBackup = event.target.closest("[data-download-backup]");
+  const downloadBackup = closestEl(event.target, "[data-download-backup]");
   if (downloadBackup) return downloadBackupFile(downloadBackup.dataset.downloadBackup);
-  const downloadBackupKey = event.target.closest("[data-download-backup-key]");
+  const downloadBackupKey = closestEl(event.target, "[data-download-backup-key]");
   if (downloadBackupKey) return downloadBackupObjectFile(downloadBackupKey.dataset.downloadBackupKey);
-  const restoreBackupId = event.target.closest("[data-restore-backup-id]");
+  const restoreBackupId = closestEl(event.target, "[data-restore-backup-id]");
   if (restoreBackupId) return restoreBackupFromRef({ id: restoreBackupId.dataset.restoreBackupId, created: restoreBackupId.dataset.restoreBackupCreated, records: restoreBackupId.dataset.restoreBackupRecords, size: restoreBackupId.dataset.restoreBackupSize, source: restoreBackupId.dataset.restoreBackupSource });
-  const restoreBackupKey = event.target.closest("[data-restore-backup-key]");
+  const restoreBackupKey = closestEl(event.target, "[data-restore-backup-key]");
   if (restoreBackupKey) return restoreBackupFromRef({ key: restoreBackupKey.dataset.restoreBackupKey, created: restoreBackupKey.dataset.restoreBackupCreated, records: restoreBackupKey.dataset.restoreBackupRecords, size: restoreBackupKey.dataset.restoreBackupSize, source: restoreBackupKey.dataset.restoreBackupSource });
-  const confirmPayment = event.target.closest("[data-confirm-payment]");
+  const confirmPayment = closestEl(event.target, "[data-confirm-payment]");
   if (confirmPayment) { const [type, id, method] = confirmPayment.dataset.confirmPayment.split(":"); return confirmFinancialPayment(type, id, method); }
-  const makePaymentRequest = event.target.closest("[data-make-payment-request]");
+  const makePaymentRequest = closestEl(event.target, "[data-make-payment-request]");
   if (makePaymentRequest) return openPaymentRequestForInvoice(makePaymentRequest.dataset.makePaymentRequest);
-  const collectionStatus = event.target.closest("[data-collection-status]");
+  const collectionStatus = closestEl(event.target, "[data-collection-status]");
   if (collectionStatus) { const [receiptNo, status] = collectionStatus.dataset.collectionStatus.split(":"); return updateCollectionPaymentStatus(receiptNo, status); }
-  const addressButton = event.target.closest("[data-edit-branch-address]");
+  const addressButton = closestEl(event.target, "[data-edit-branch-address]");
   if (addressButton) return editPlatformBranchAddress(addressButton.dataset.editBranchAddress);
-  const removeBranchButton = event.target.closest("[data-remove-platform-branch]");
+  const removeBranchButton = closestEl(event.target, "[data-remove-platform-branch]");
   if (removeBranchButton) return removePlatformBranch(removeBranchButton.dataset.removePlatformBranch);
-  const inventoryPoPrint = event.target.closest("[data-inventory-po-print]");
+  const inventoryPoPrint = closestEl(event.target, "[data-inventory-po-print]");
   if (inventoryPoPrint) return previewInventoryPurchaseOrder(inventoryPoPrint.dataset.inventoryPoPrint);
-  const inventoryPoTimeline = event.target.closest("[data-inventory-po-timeline]");
+  const inventoryPoTimeline = closestEl(event.target, "[data-inventory-po-timeline]");
   if (inventoryPoTimeline) return renderInventoryPoDetail(inventoryPoTimeline.dataset.inventoryPoTimeline);
-  const inventoryPoApprove = event.target.closest("[data-inventory-po-approve]");
+  const inventoryPoApprove = closestEl(event.target, "[data-inventory-po-approve]");
   if (inventoryPoApprove) return approvePurchaseOrder(Number(inventoryPoApprove.dataset.inventoryPoApprove));
-  const inventoryPoAdvance = event.target.closest("[data-inventory-po-advance]");
+  const inventoryPoAdvance = closestEl(event.target, "[data-inventory-po-advance]");
   if (inventoryPoAdvance) return advancePurchaseOrderStatus(Number(inventoryPoAdvance.dataset.inventoryPoAdvance));
-  const inventoryPoCancel = event.target.closest("[data-inventory-po-cancel]");
+  const inventoryPoCancel = closestEl(event.target, "[data-inventory-po-cancel]");
   if (inventoryPoCancel) return cancelPurchaseOrder(Number(inventoryPoCancel.dataset.inventoryPoCancel));
-  const inventoryPoReceive = event.target.closest("[data-inventory-po-receive]");
+  const inventoryPoReceive = closestEl(event.target, "[data-inventory-po-receive]");
   if (inventoryPoReceive) { const po = data.inventoryPurchaseOrders[Number(inventoryPoReceive.dataset.inventoryPoReceive)]; if (po) openStockSheetForPo(po.id); return; }
-  const stockReceiptApprove = event.target.closest("[data-stock-receipt-approve]");
+  const stockReceiptApprove = closestEl(event.target, "[data-stock-receipt-approve]");
   if (stockReceiptApprove) return approveStockReceipt(Number(stockReceiptApprove.dataset.stockReceiptApprove));
-  const stockReceiptEdit = event.target.closest("[data-stock-receipt-edit]");
+  const stockReceiptEdit = closestEl(event.target, "[data-stock-receipt-edit]");
   if (stockReceiptEdit) return openStockSheetForReceiptEdit(Number(stockReceiptEdit.dataset.stockReceiptEdit));
-  const stockReceiptCancel = event.target.closest("[data-stock-receipt-cancel]");
+  const stockReceiptCancel = closestEl(event.target, "[data-stock-receipt-cancel]");
   if (stockReceiptCancel) return cancelStockReceipt(Number(stockReceiptCancel.dataset.stockReceiptCancel));
-  const stockEditButton = event.target.closest("[data-stock-edit]");
+  const stockEditButton = closestEl(event.target, "[data-stock-edit]");
   if (stockEditButton) return openStockEditDialog(stockEditButton.dataset.stockEdit);
-  const stockHistoryButton = event.target.closest("[data-stock-history]");
+  const stockHistoryButton = closestEl(event.target, "[data-stock-history]");
   if (stockHistoryButton) return showStockHistory(stockHistoryButton.dataset.stockHistory);
-  const revertImport = event.target.closest("[data-revert-import]");
+  const revertImport = closestEl(event.target, "[data-revert-import]");
   if (revertImport) return revertImportBatch(Number(revertImport.dataset.revertImport));
-  const productIssuePrint = event.target.closest("[data-product-issue-print]");
+  const productIssuePrint = closestEl(event.target, "[data-product-issue-print]");
   if (productIssuePrint) return previewProductIssue(productIssuePrint.dataset.productIssuePrint);
-  const productIssueTimeline = event.target.closest("[data-product-issue-timeline]");
+  const productIssueTimeline = closestEl(event.target, "[data-product-issue-timeline]");
   if (productIssueTimeline) return renderProductIssueDetail(productIssueTimeline.dataset.productIssueTimeline);
-  const productIssueStatus = event.target.closest("[data-product-issue-status]");
+  const productIssueStatus = closestEl(event.target, "[data-product-issue-status]");
   if (productIssueStatus) { const [issueId, issueStatus] = productIssueStatus.dataset.productIssueStatus.split(":"); return updateProductIssueStatus(issueId, issueStatus); }
-  const poEditButton = event.target.closest("[data-po-edit]");
+  const poEditButton = closestEl(event.target, "[data-po-edit]");
   if (poEditButton) return editPurchaseOrder(poEditButton.dataset.poEdit);
-  const invoicePoButton = event.target.closest("[data-create-invoice-po]");
+  const invoicePoButton = closestEl(event.target, "[data-create-invoice-po]");
   if (invoicePoButton) return openInvoiceForPurchaseOrder(invoicePoButton.dataset.createInvoicePo);
-  const clientInvoices = event.target.closest("[data-client-invoices]");
+  const clientInvoices = closestEl(event.target, "[data-client-invoices]");
   if (clientInvoices) {
     const nextClient = clientInvoices.dataset.clientInvoices;
     if (nextClient !== currentClientView) {
@@ -542,35 +543,35 @@ document.body.addEventListener("click", (event) => {
     renderClientInvoices();
     return showSection("client-invoices");
   }
-  const clientInvoicesExportCsv = event.target.closest("#client-invoices-export-csv");
+  const clientInvoicesExportCsv = closestEl(event.target, "#client-invoices-export-csv");
   if (clientInvoicesExportCsv) return exportClientInvoicesCsv();
-  const clientInvoicesExportPdf = event.target.closest("#client-invoices-export-pdf");
+  const clientInvoicesExportPdf = closestEl(event.target, "#client-invoices-export-pdf");
   if (clientInvoicesExportPdf) return printClientInvoicesReport();
-  const clientInvoicesResetFilters = event.target.closest("#client-invoices-reset-filters");
+  const clientInvoicesResetFilters = closestEl(event.target, "#client-invoices-reset-filters");
   if (clientInvoicesResetFilters) return resetClientInvoicesFilters();
-  const logDetail = event.target.closest("[data-log-detail]");
+  const logDetail = closestEl(event.target, "[data-log-detail]");
   if (logDetail) return showAuditLogDetail(Number(logDetail.dataset.logDetail));
-  const createSoa = event.target.closest("[data-create-soa]");
+  const createSoa = closestEl(event.target, "[data-create-soa]");
   if (createSoa) return previewSoa(createSoa.dataset.createSoa);
-  const invoiceFlow = event.target.closest("[data-invoice-flow]");
+  const invoiceFlow = closestEl(event.target, "[data-invoice-flow]");
   if (invoiceFlow) return renderInvoiceFlowDetail(invoiceFlow.dataset.invoiceFlow);
-  const calendarNav = event.target.closest("[data-calendar-nav]");
+  const calendarNav = closestEl(event.target, "[data-calendar-nav]");
   if (calendarNav) {
-    const widget = calendarNav.closest(".calendar-widget");
+    const widget = closestEl(calendarNav, ".calendar-widget");
     const prefix = widget?.dataset.calendarPrefix;
     if (prefix) navigateCalendarWidget(prefix, Number(calendarNav.dataset.calendarNav));
     return;
   }
-  const calendarDay = event.target.closest("[data-calendar-day]");
+  const calendarDay = closestEl(event.target, "[data-calendar-day]");
   if (calendarDay) {
-    const widget = calendarDay.closest(".calendar-widget");
+    const widget = closestEl(calendarDay, ".calendar-widget");
     const prefix = widget?.dataset.calendarPrefix;
     if (prefix) showCalendarDayDetail(prefix, calendarDay.dataset.calendarDay);
     return;
   }
-  const target = event.target.closest("[data-go-section]");
+  const target = closestEl(event.target, "[data-go-section]");
   if (!target) return;
-  const notice = event.target.closest("[data-notice-index]");
+  const notice = closestEl(event.target, "[data-notice-index]");
   if (notice) {
     data.notifications[Number(notice.dataset.noticeIndex)].status = "Seen";
     saveData();
@@ -585,7 +586,7 @@ qs("#notification-toggle").addEventListener("click", (event) => {
   qs("#user-popover").hidden = true;
   qs("#user-menu-toggle").setAttribute("aria-expanded", "false");
   popover.hidden = !popover.hidden;
-  event.currentTarget.setAttribute("aria-expanded", String(!popover.hidden));
+  /** @type {AnyEl} */ (event.currentTarget).setAttribute("aria-expanded", String(!popover.hidden));
 });
 qs("#view-all-notifications").addEventListener("click", () => { qs("#notification-popover").hidden = true; qs("#notification-toggle").setAttribute("aria-expanded", "false"); showSection("notifications"); });
 qs("#user-menu-toggle").addEventListener("click", (event) => {
@@ -594,7 +595,7 @@ qs("#user-menu-toggle").addEventListener("click", (event) => {
   qs("#notification-popover").hidden = true;
   qs("#notification-toggle").setAttribute("aria-expanded", "false");
   popover.hidden = !popover.hidden;
-  event.currentTarget.setAttribute("aria-expanded", String(!popover.hidden));
+  /** @type {AnyEl} */ (event.currentTarget).setAttribute("aria-expanded", String(!popover.hidden));
 });
 qs("#open-settings").addEventListener("click", () => { qs("#user-popover").hidden = true; qs("#user-menu-toggle").setAttribute("aria-expanded", "false"); renderUserSettings(); showSection("user-settings"); });
 function syncThemeToggleLabel() {
@@ -659,7 +660,7 @@ qs("#open-password-modal").addEventListener("click", () => {
 });
 qs("#password-close").addEventListener("click", () => guardedDialogClose(() => qs("#password-modal").close()));
 qs("#password-cancel").addEventListener("click", () => qs("#password-modal").close());
-qs("#password-modal").addEventListener("click", (event) => { if (event.target.id === "password-modal") guardedDialogClose(() => qs("#password-modal").close()); });
+qs("#password-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "password-modal") guardedDialogClose(() => qs("#password-modal").close()); });
 guardDialogEscape(qs("#password-modal"));
 qs("#password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -672,7 +673,7 @@ qs("#password-form").addEventListener("submit", async (event) => {
   if (!(await confirmFinalSave("Change your password?"))) return;
   try { await MedlaneAPI.changePassword(values.oldPassword, values.newPassword); }
   catch (error) { return toast(error.message || "Password update failed."); }
-  event.currentTarget.reset();
+  /** @type {AnyEl} */ (event.currentTarget).reset();
   qs("#password-modal").close();
   if (currentUser) { currentUser.passwordKycDue = false; localStorage.setItem("medlane-session", JSON.stringify(currentUser)); }
   log("Changed password", "User Settings", currentUser?.role || "User");
@@ -692,7 +693,7 @@ qs("#platform-branch-form").addEventListener("submit", async (event) => {
   data.platformBranches.push(branch);
   data.branchAddresses ||= {};
   data.branchAddresses[branch] = values.address.trim();
-  event.currentTarget.reset();
+  /** @type {AnyEl} */ (event.currentTarget).reset();
   log("Added branch masterlist record", "Masterlists", branch);
   notify("Settings", `${branch} was added to platform branches.`, "settings", branch);
   saveData();
@@ -701,33 +702,33 @@ qs("#platform-branch-form").addEventListener("submit", async (event) => {
   toast(`${branch} added to platform branches.`);
 });
 document.body.addEventListener("click", (event) => {
-  const openDocs = event.target.closest("[data-open-client-docs]");
+  const openDocs = closestEl(event.target, "[data-open-client-docs]");
   if (openDocs) return openClientDocsModal(openDocs.dataset.openClientDocs);
-  const closeDocs = event.target.closest("[data-close-client-docs]");
+  const closeDocs = closestEl(event.target, "[data-close-client-docs]");
   if (closeDocs) return qs("#client-docs-modal")?.close();
-  const closeMemoCompose = event.target.closest("[data-close-memo-compose]");
+  const closeMemoCompose = closestEl(event.target, "[data-close-memo-compose]");
   if (closeMemoCompose) return guardedDialogClose(() => qs("#memo-compose-modal")?.close());
-  const submitMemo = event.target.closest("#submit-memo-compose");
+  const submitMemo = closestEl(event.target, "#submit-memo-compose");
   if (submitMemo) return submitMemoCompose();
 });
 document.addEventListener("click", (event) => {
-  if (event.target.id === "client-docs-modal") qs("#client-docs-modal")?.close();
-  if (event.target.id === "memo-compose-modal") guardedDialogClose(() => qs("#memo-compose-modal")?.close());
+  if (/** @type {AnyEl} */ (event.target).id === "client-docs-modal") qs("#client-docs-modal")?.close();
+  if (/** @type {AnyEl} */ (event.target).id === "memo-compose-modal") guardedDialogClose(() => qs("#memo-compose-modal")?.close());
 });
 document.addEventListener("change", (event) => {
-  if (event.target.id === "memo-audience-all") qs("#memo-audience-grid").hidden = event.target.checked;
+  if (/** @type {AnyEl} */ (event.target).id === "memo-audience-all") qs("#memo-audience-grid").hidden = /** @type {AnyEl} */ (event.target).checked;
 });
 qs("#post-memo-button").addEventListener("click", openMemoComposeModal);
 qs("#memo-list").addEventListener("click", (event) => {
-  const ack = event.target.closest("[data-acknowledge-memo]");
+  const ack = closestEl(event.target, "[data-acknowledge-memo]");
   if (ack) return acknowledgeMemo(ack.dataset.acknowledgeMemo);
-  const print = event.target.closest("[data-print-memo]");
+  const print = closestEl(event.target, "[data-print-memo]");
   if (print) return printMemo(print.dataset.printMemo);
 });
 qs("#platform-branch-list").addEventListener("click", (event) => {
-  const addressButton = event.target.closest("[data-edit-branch-address]");
+  const addressButton = closestEl(event.target, "[data-edit-branch-address]");
   if (addressButton) return editPlatformBranchAddress(addressButton.dataset.editBranchAddress);
-  const button = event.target.closest("[data-remove-platform-branch]");
+  const button = closestEl(event.target, "[data-remove-platform-branch]");
   if (button) return removePlatformBranch(button.dataset.removePlatformBranch);
 });
 
@@ -765,17 +766,17 @@ qs("#master-add-button").addEventListener("click", () => {
   openModal(modalByTab[data.masterTab]);
 });
 qs("#users-table").addEventListener("click", async (event) => {
-  const resendButton = event.target.closest("[data-resend-invite]");
+  const resendButton = closestEl(event.target, "[data-resend-invite]");
   if (resendButton) return resendUserInvite(Number(resendButton.dataset.resendInvite));
-  const statusButton = event.target.closest("[data-toggle-user-disabled]");
+  const statusButton = closestEl(event.target, "[data-toggle-user-disabled]");
   if (statusButton) return toggleUserDisabled(Number(statusButton.dataset.toggleUserDisabled));
-  const resetButton = event.target.closest("[data-reset-user-password]");
+  const resetButton = closestEl(event.target, "[data-reset-user-password]");
   if (resetButton) return setUserPasswordPrompt(Number(resetButton.dataset.resetUserPassword));
-  const copyLinkButton = event.target.closest("[data-copy-invite-link]");
+  const copyLinkButton = closestEl(event.target, "[data-copy-invite-link]");
   if (copyLinkButton) return copyInviteLink(Number(copyLinkButton.dataset.copyInviteLink));
-  const resetPermissionsButton = event.target.closest("[data-reset-user-permissions]");
+  const resetPermissionsButton = closestEl(event.target, "[data-reset-user-permissions]");
   if (resetPermissionsButton) return resetUserPermissions(Number(resetPermissionsButton.dataset.resetUserPermissions));
-  const button = event.target.closest("[data-archive-user]");
+  const button = closestEl(event.target, "[data-archive-user]");
   if (!button) return;
   if (!canManageUsers()) return toast("Only Superadmin/CEO can archive users.");
   const index = Number(button.dataset.archiveUser);
@@ -844,7 +845,7 @@ async function resetUserPermissions(index) {
   toast(`${user.name || user.email}'s permissions reset to ${user.role} defaults.`);
 }
 qs("#users-table").addEventListener("change", async (event) => {
-  const checkbox = event.target.closest("[data-user-superadmin]");
+  const checkbox = closestEl(event.target, "[data-user-superadmin]");
   if (!checkbox) return;
   if (!canManageUsers()) { checkbox.checked = !checkbox.checked; return toast("Only Superadmin/CEO can grant Superadmin permissions."); }
   const index = Number(checkbox.dataset.userSuperadmin);
@@ -870,39 +871,39 @@ qs("#users-table").addEventListener("change", async (event) => {
   toast(`${user.name} Superadmin permissions ${granted ? "granted" : "removed"}.`);
 });
 document.addEventListener("input", (event) => {
-  if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target);
-  if (event.target.matches(".transfer-lot")) updateTransferBalanceHint(event.target.closest("tr"));
+  if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target);
+  if (/** @type {AnyEl} */ (event.target).matches(".transfer-lot")) updateTransferBalanceHint(closestEl(event.target, "tr"));
   comboRefresh(event.target);
 });
 document.addEventListener("blur", (event) => {
-  if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
+  if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
 }, true);
 // Custom combobox wiring — see ui-utils.js for why <input list> + <datalist> is no longer
 // used directly to drive the suggestions popup.
 document.addEventListener("focusin", (event) => {
-  if (event.target.tagName === "INPUT" && (event.target.hasAttribute("list") || event.target.dataset.comboList)) comboOpen(event.target);
+  if (/** @type {AnyEl} */ (event.target).tagName === "INPUT" && (/** @type {AnyEl} */ (event.target).hasAttribute("list") || /** @type {AnyEl} */ (event.target).dataset.comboList)) comboOpen(event.target);
 }, true);
 document.addEventListener("focusout", (event) => {
   if (event.target === comboOpenInput) setTimeout(() => { if (!document.activeElement?.closest?.("#combo-dropdown")) comboClose(); }, 0);
 }, true);
 document.addEventListener("keydown", comboHandleKeydown);
 document.addEventListener("mousedown", (event) => {
-  const option = event.target.closest(".combo-option");
+  const option = closestEl(event.target, ".combo-option");
   if (option && comboOpenInput) { event.preventDefault(); comboSelect(comboOpenInput, option.dataset.comboValue); }
-  else if (comboOpenInput && event.target !== comboOpenInput && !event.target.closest("#combo-dropdown")) comboClose();
+  else if (comboOpenInput && event.target !== comboOpenInput && !closestEl(event.target, "#combo-dropdown")) comboClose();
 });
 document.addEventListener("click", (event) => {
-  const removeSheetRow = event.target.closest(".remove-sheet-row");
+  const removeSheetRow = closestEl(event.target, ".remove-sheet-row");
   if (removeSheetRow) removeInventorySheetRow(removeSheetRow);
-  const uploadCopyButton = event.target.closest("[data-upload-copy]");
-  if (uploadCopyButton) uploadCopyButton.parentElement.querySelector(".physical-copy-input")?.click();
-  const viewFileButton = event.target.closest("[data-view-file]");
+  const uploadCopyButton = closestEl(event.target, "[data-upload-copy]");
+  if (uploadCopyButton) /** @type {HTMLElement | null} */ (uploadCopyButton.parentElement.querySelector(".physical-copy-input"))?.click();
+  const viewFileButton = closestEl(event.target, "[data-view-file]");
   if (viewFileButton) MedlaneAPI.viewFile(viewFileButton.dataset.viewFile).catch((error) => toast(error.message || "Unable to open file."));
-  const viewCollectionHistory = event.target.closest("[data-view-collection-history]");
+  const viewCollectionHistory = closestEl(event.target, "[data-view-collection-history]");
   if (viewCollectionHistory) openCollectionHistoryModal(viewCollectionHistory.dataset.viewCollectionHistory);
-  const clientHistoryTabButton = event.target.closest("[data-client-history-tab]");
+  const clientHistoryTabButton = closestEl(event.target, "[data-client-history-tab]");
   if (clientHistoryTabButton) { clientHistoryTab = clientHistoryTabButton.dataset.clientHistoryTab; renderClientHistoryTabs(currentClientView || data.sales[0]?.client); }
-  const purchaseHistoryMoreButton = event.target.closest("[data-purchase-history-more]");
+  const purchaseHistoryMoreButton = closestEl(event.target, "[data-purchase-history-more]");
   if (purchaseHistoryMoreButton) {
     const agent = purchaseHistoryMoreButton.dataset.purchaseHistoryMore;
     purchaseHistoryVisibleCounts[agent] = (purchaseHistoryVisibleCounts[agent] || purchaseHistoryDefaultLimit(agent)) + purchaseHistoryDefaultLimit(agent);
@@ -910,16 +911,16 @@ document.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("change", (event) => {
-  if (event.target.matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
-  if (event.target.classList.contains("physical-copy-input") && event.target.files?.length) {
-    const file = event.target.files[0];
-    const { recordType, recordId, rerender, docName, clientName } = event.target.dataset;
+  if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
+  if (/** @type {AnyEl} */ (event.target).classList.contains("physical-copy-input") && /** @type {AnyEl} */ (event.target).files?.length) {
+    const file = /** @type {AnyEl} */ (event.target).files[0];
+    const { recordType, recordId, rerender, docName, clientName } = /** @type {AnyEl} */ (event.target).dataset;
     const onDone = rerender === "payment-request-detail" ? () => renderPaymentRequestDetail(recordId)
       : rerender === "client-docs-modal" ? () => refreshClientDocsModal(clientName)
       : rerender === "service-report-modal" ? () => renderServiceReportUploadSlot(recordType, recordId)
       : rerender && sectionRenderers[rerender] ? sectionRenderers[rerender] : null;
     uploadPhysicalCopy(file, recordType, recordId, docName || "Physical copy", onDone);
-    event.target.value = "";
+    /** @type {AnyEl} */ (event.target).value = "";
   }
 });
 qs("#total-collections-client")?.addEventListener("change", renderCollectionsTotalSummary);
@@ -943,8 +944,8 @@ function inventorySetStatus(key) {
   inventoryChangeView(() => {}, { closeDetail: true });
 }
 qs("#inventory").addEventListener("click", (event) => {
-  const target = event.target;
-  const tab = target.closest("[data-inventory-workflow]");
+  const target = /** @type {AnyEl} */ (event.target);
+  const tab = closestEl(target, "[data-inventory-workflow]");
   if (tab) {
     inventoryWorkflowTab = tab.dataset.inventoryWorkflow;
     inventorySelectedRef = null;
@@ -953,35 +954,35 @@ qs("#inventory").addEventListener("click", (event) => {
     if (inventoryWorkflowTab === "thist") qs("#open-transfer-history")?.click();
     return;
   }
-  const filter = target.closest("[data-inventory-filter]");
+  const filter = closestEl(target, "[data-inventory-filter]");
   if (filter) return inventorySetStatus(filter.dataset.inventoryFilter);
-  const branch = target.closest("[data-inventory-branch]");
+  const branch = closestEl(target, "[data-inventory-branch]");
   if (branch) return inventoryChangeView(() => { inventoryBranchView = branch.dataset.inventoryBranch; if (inventoryBranchView !== "all") inventoryBranchTab = inventoryBranchView; }, { closeDetail: true });
-  const sort = target.closest("[data-inventory-sort]");
+  const sort = closestEl(target, "[data-inventory-sort]");
   if (sort) return inventoryChangeView(() => { const key = sort.dataset.inventorySort; inventorySort = { key, dir: inventorySort.key === key ? -inventorySort.dir : 1 }; });
-  if (target.closest("#inventory-compact-toggle")) return inventoryChangeView(() => { inventoryCompactView = !inventoryCompactView; }, { resetPage: false });
-  if (target.closest("#inventory-export")) return exportInventoryCsv();
-  if (target.closest("#inventory-prev")) return inventoryChangeView(() => { inventoryPage -= 1; }, { resetPage: false });
-  if (target.closest("#inventory-next")) return inventoryChangeView(() => { inventoryPage += 1; }, { resetPage: false });
-  if (target.closest("#inventory-clear-filters")) {
+  if (closestEl(target, "#inventory-compact-toggle")) return inventoryChangeView(() => { inventoryCompactView = !inventoryCompactView; }, { resetPage: false });
+  if (closestEl(target, "#inventory-export")) return exportInventoryCsv();
+  if (closestEl(target, "#inventory-prev")) return inventoryChangeView(() => { inventoryPage -= 1; }, { resetPage: false });
+  if (closestEl(target, "#inventory-next")) return inventoryChangeView(() => { inventoryPage += 1; }, { resetPage: false });
+  if (closestEl(target, "#inventory-clear-filters")) {
     qs("#inventory-status").value = "all";
     return inventoryChangeView(() => { inventoryBranchView = "all"; inventorySearch = ""; }, { closeDetail: true });
   }
-  const select = target.closest("[data-inventory-select]");
+  const select = closestEl(target, "[data-inventory-select]");
   if (select) { inventorySelectedRef = select.dataset.inventorySelect; renderInventory(); return qs("#inventory-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
-  if (target.closest("[data-inventory-close]")) return inventoryChangeView(() => {}, { resetPage: false, closeDetail: true });
-  const transfer = target.closest("[data-inventory-transfer]");
+  if (closestEl(target, "[data-inventory-close]")) return inventoryChangeView(() => {}, { resetPage: false, closeDetail: true });
+  const transfer = closestEl(target, "[data-inventory-transfer]");
   if (transfer) return openTransferForStock(transfer.dataset.inventoryTransfer);
 });
 qs("#inventory-search").addEventListener("input", (event) => {
   clearTimeout(inventorySearchTimer);
-  const value = event.target.value;
+  const value = /** @type {AnyEl} */ (event.target).value;
   inventorySearchTimer = setTimeout(() => inventoryChangeView(() => { inventorySearch = value; }, { closeDetail: true }), 150);
 });
 let inventorySearchTimer = null;
 qs("#inventory-area").addEventListener("change", (event) => {
   const source = qs("#branch-filter");
-  source.value = event.target.value;
+  source.value = /** @type {AnyEl} */ (event.target).value;
   source.dispatchEvent(new Event("change", { bubbles: true }));
 });
 function openTransferForStock(ref) {
@@ -1006,110 +1007,110 @@ function exportInventoryCsv() {
   log("Exported inventory stock (CSV)", "Inventory", `${rows.length} records`, { save: false });
 }
 qs("#po-workflow-tabs")?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-po-workflow]");
+  const button = closestEl(event.target, "[data-po-workflow]");
   if (!button) return;
   poWorkflowTab = button.dataset.poWorkflow;
   renderPurchaseOrders();
 });
 qs("#credit-invoices-workflow-tabs")?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-credit-workflow]");
+  const button = closestEl(event.target, "[data-credit-workflow]");
   if (!button) return;
   creditInvoiceWorkflowTab = button.dataset.creditWorkflow;
   renderPendingCreditInvoices();
 });
 qs("#print-template-tabs")?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-pt-tab]");
+  const button = closestEl(event.target, "[data-pt-tab]");
   if (!button) return;
   ptActiveType = button.dataset.ptTab;
   renderPrintTemplates();
 });
 qs("#print-template-canvas")?.addEventListener("pointerdown", startPtDrag);
 qs("#print-template-canvas")?.addEventListener("click", (event) => {
-  const el = event.target.closest(".pt-editable");
+  const el = closestEl(event.target, ".pt-editable");
   if (el) selectPtFieldFromEl(el);
 });
 qs("#print-template-canvas")?.addEventListener("keydown", handlePtCanvasKeydown);
 qs("#print-template-reset-all")?.addEventListener("click", resetPtAll);
 qs("#print-template-save")?.addEventListener("click", () => savePrintTemplate());
 qs("#print-template-panel")?.addEventListener("click", (event) => {
-  const nudge = event.target.closest("[data-pt-nudge]");
+  const nudge = closestEl(event.target, "[data-pt-nudge]");
   if (nudge) {
     const step = ptStepIn;
     const map = { up: [0, -step], down: [0, step], left: [-step, 0], right: [step, 0] };
     nudgePtSelected(...map[nudge.dataset.ptNudge]);
     return;
   }
-  const resetField = event.target.closest("[data-pt-reset-field]");
+  const resetField = closestEl(event.target, "[data-pt-reset-field]");
   if (resetField) { resetPtField(resetField.dataset.ptResetField); return; }
-  const resetRow = event.target.closest("[data-pt-reset-row]");
+  const resetRow = closestEl(event.target, "[data-pt-reset-row]");
   if (resetRow) resetPtRow();
 });
 qs("#print-template-panel")?.addEventListener("input", (event) => {
   if (!ptSelectedField) return;
-  const id = event.target.id;
+  const id = /** @type {AnyEl} */ (event.target).id;
   const num = (v) => Number(v || 0);
-  if (ptSelectedKind === "row-spacing") { if (id === "pt-input-spacing") applyPtRowOverride({ spacing: num(event.target.value) }); return; }
+  if (ptSelectedKind === "row-spacing") { if (id === "pt-input-spacing") applyPtRowOverride({ spacing: num(/** @type {AnyEl} */ (event.target).value) }); return; }
   if (ptSelectedKind === "row") {
-    if (id === "pt-input-left") applyPtRowOverride({ left: num(event.target.value) });
-    if (id === "pt-input-right") applyPtRowOverride({ right: num(event.target.value) });
-    if (id === "pt-input-top") applyPtRowOverride({ top: num(event.target.value) });
-    if (id === "pt-input-height") applyPtRowOverride({ height: num(event.target.value) });
+    if (id === "pt-input-left") applyPtRowOverride({ left: num(/** @type {AnyEl} */ (event.target).value) });
+    if (id === "pt-input-right") applyPtRowOverride({ right: num(/** @type {AnyEl} */ (event.target).value) });
+    if (id === "pt-input-top") applyPtRowOverride({ top: num(/** @type {AnyEl} */ (event.target).value) });
+    if (id === "pt-input-height") applyPtRowOverride({ height: num(/** @type {AnyEl} */ (event.target).value) });
     return;
   }
-  if (id === "pt-input-left") applyPtFieldOverride(ptSelectedField, { left: num(event.target.value) });
-  if (id === "pt-input-top") applyPtFieldOverride(ptSelectedField, { top: num(event.target.value) });
-  if (id === "pt-input-width") applyPtFieldOverride(ptSelectedField, { width: num(event.target.value) });
-  if (id === "pt-input-fontsize") applyPtFieldOverride(ptSelectedField, { fontSize: event.target.value === "" ? undefined : num(event.target.value) });
+  if (id === "pt-input-left") applyPtFieldOverride(ptSelectedField, { left: num(/** @type {AnyEl} */ (event.target).value) });
+  if (id === "pt-input-top") applyPtFieldOverride(ptSelectedField, { top: num(/** @type {AnyEl} */ (event.target).value) });
+  if (id === "pt-input-width") applyPtFieldOverride(ptSelectedField, { width: num(/** @type {AnyEl} */ (event.target).value) });
+  if (id === "pt-input-fontsize") applyPtFieldOverride(ptSelectedField, { fontSize: /** @type {AnyEl} */ (event.target).value === "" ? undefined : num(/** @type {AnyEl} */ (event.target).value) });
 });
 qs("#print-template-panel")?.addEventListener("change", (event) => {
-  const id = event.target.id;
-  if (id === "pt-input-align" && ptSelectedField && ptSelectedKind !== "row" && ptSelectedKind !== "row-spacing") applyPtFieldOverride(ptSelectedField, { align: event.target.value });
-  if (id === "pt-step-select") ptStepIn = Number(event.target.value);
+  const id = /** @type {AnyEl} */ (event.target).id;
+  if (id === "pt-input-align" && ptSelectedField && ptSelectedKind !== "row" && ptSelectedKind !== "row-spacing") applyPtFieldOverride(ptSelectedField, { align: /** @type {AnyEl} */ (event.target).value });
+  if (id === "pt-step-select") ptStepIn = Number(/** @type {AnyEl} */ (event.target).value);
 });
 qs("#collections-workflow-tabs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-collections-workflow]");
+  const button = closestEl(event.target, "[data-collections-workflow]");
   if (!button) return;
   collectionsWorkflowTab = button.dataset.collectionsWorkflow;
   renderCollections();
 });
 qs("#load-more-collections-history").addEventListener("click", loadMoreCollectionsHistory);
 qs("#payables-workflow-tabs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-payables-workflow]");
+  const button = closestEl(event.target, "[data-payables-workflow]");
   if (!button) return;
   payablesWorkflowTab = button.dataset.payablesWorkflow;
   renderPayables();
 });
 qs("#replenishments-workflow-tabs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-replenishments-workflow]");
+  const button = closestEl(event.target, "[data-replenishments-workflow]");
   if (!button) return;
   replenishmentsWorkflowTab = button.dataset.replenishmentsWorkflow;
   renderReplenishments();
 });
 qs("#replenishments-table")?.addEventListener("click", (event) => {
-  const row = event.target.closest("[data-expense-detail]");
+  const row = closestEl(event.target, "[data-expense-detail]");
   if (row) showExpenseDetail(row.dataset.expenseDetail);
 });
 qs("#po-view-toggle").addEventListener("click", (event) => {
-  const btn = event.target.closest("[data-po-view]");
+  const btn = closestEl(event.target, "[data-po-view]");
   if (!btn) return;
   poViewMode = btn.dataset.poView;
   renderPurchaseOrders();
 });
 qs("#invoice-view-toggle")?.addEventListener("click", (event) => {
-  const btn = event.target.closest("[data-invoice-view]");
+  const btn = closestEl(event.target, "[data-invoice-view]");
   if (!btn) return;
   invoiceViewMode = btn.dataset.invoiceView;
   renderInvoicing();
 });
 qs("#invoicing-type-filter")?.addEventListener("change", renderInvoicing);
 qs("#item-forecast-preset-toggle")?.addEventListener("click", (event) => {
-  const btn = event.target.closest("[data-forecast-months]");
+  const btn = closestEl(event.target, "[data-forecast-months]");
   if (!btn) return;
   itemForecastMonths = Number(btn.dataset.forecastMonths);
   renderItemForecast();
 });
 qs("#item-forecast-custom-months")?.addEventListener("change", (event) => {
-  const value = Math.max(1, Math.min(24, Number(event.target.value) || 1));
+  const value = Math.max(1, Math.min(24, Number(/** @type {AnyEl} */ (event.target).value) || 1));
   itemForecastMonths = value;
   renderItemForecast();
 });
@@ -1149,10 +1150,10 @@ qs("#open-stock-receipt-history")?.addEventListener("click", () => { renderStock
 qs("#stock-receipt-history-close")?.addEventListener("click", () => qs("#stock-receipt-history-modal").close());
 qs("#stock-receipt-history-cancel")?.addEventListener("click", () => qs("#stock-receipt-history-modal").close());
 qs("#stock-receipt-history-table")?.addEventListener("click", (event) => {
-  const detail = event.target.closest("[data-stock-receipt-detail]");
+  const detail = closestEl(event.target, "[data-stock-receipt-detail]");
   if (detail) return showStockReceiptDetail(detail.dataset.stockReceiptDetail);
 });
-qs("#stock-receipt-history-modal")?.addEventListener("click", (event) => { if (event.target.id === "stock-receipt-history-modal") qs("#stock-receipt-history-modal").close(); });
+qs("#stock-receipt-history-modal")?.addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "stock-receipt-history-modal") qs("#stock-receipt-history-modal").close(); });
 qs("#stock-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#stock-sheet-modal").close(), { keepsDraft: true }));
 // Cancel is a deliberate "throw this away" action, so it also drops the autosaved draft — unlike
 // the X/Escape guard above, which keeps the draft for next time.
@@ -1162,7 +1163,7 @@ qs("#add-stock-sheet-row").addEventListener("click", addStockSheetRow);
 qs("#stock-sheet-modal").addEventListener("input", saveStockSheetDraft);
 qs("#stock-sheet-modal").addEventListener("change", saveStockSheetDraft);
 qs("#stock-sheet-modal").addEventListener("click", (event) => {
-  if (event.target.closest(".remove-sheet-row, #add-stock-sheet-row")) setTimeout(saveStockSheetDraft, 0);
+  if (closestEl(event.target, ".remove-sheet-row, #add-stock-sheet-row")) setTimeout(saveStockSheetDraft, 0);
 });
 qs("#transfer-sheet-close").addEventListener("click", () => guardedDialogClose(() => qs("#transfer-sheet-modal").close(), { keepsDraft: true }));
 qs("#transfer-sheet-cancel").addEventListener("click", () => { clearTransferSheetDraft(); qs("#transfer-sheet-modal").close(); });
@@ -1170,7 +1171,7 @@ guardDialogEscape(qs("#transfer-sheet-modal"), { keepsDraft: true });
 qs("#transfer-sheet-modal").addEventListener("input", saveTransferSheetDraft);
 qs("#transfer-sheet-modal").addEventListener("change", saveTransferSheetDraft);
 qs("#transfer-sheet-modal").addEventListener("click", (event) => {
-  if (event.target.closest(".remove-sheet-row, #add-transfer-sheet-row")) setTimeout(saveTransferSheetDraft, 0);
+  if (closestEl(event.target, ".remove-sheet-row, #add-transfer-sheet-row")) setTimeout(saveTransferSheetDraft, 0);
 });
 qs("#transfer-history-close").addEventListener("click", () => qs("#transfer-history-modal").close());
 qs("#transfer-history-cancel").addEventListener("click", () => qs("#transfer-history-modal").close());
@@ -1186,70 +1187,70 @@ qs("#save-demo-request")?.addEventListener("click", saveDemoRequest);
 qs("#demo-request-close")?.addEventListener("click", () => guardedDialogClose(() => qs("#demo-request-modal")?.close()));
 qs("#demo-request-cancel")?.addEventListener("click", () => qs("#demo-request-modal")?.close());
 guardDialogEscape(qs("#demo-request-modal"));
-qs("#stock-sheet-modal").addEventListener("change", (event) => { if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value); });
+qs("#stock-sheet-modal").addEventListener("change", (event) => { if (/** @type {AnyEl} */ (event.target).id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(/** @type {AnyEl} */ (event.target).value); });
 qs("#save-transfer-sheet").addEventListener("click", saveTransferSheet);
-qs("#demo-request-modal")?.addEventListener("input", (event) => { if (event.target.matches(".demo-line-code, .demo-line-item")) syncDemoRequestLine(event.target); });
+qs("#demo-request-modal")?.addEventListener("input", (event) => { if (/** @type {AnyEl} */ (event.target).matches(".demo-line-code, .demo-line-item")) syncDemoRequestLine(event.target); });
 qs("#demo-request-table")?.addEventListener("click", (event) => {
-  const salesApprove = event.target.closest("[data-demo-sales-approve]");
+  const salesApprove = closestEl(event.target, "[data-demo-sales-approve]");
   if (salesApprove) return updateDemoRequestStatus(salesApprove.dataset.demoSalesApprove, "For Management Approval");
-  const logisticsApprove = event.target.closest("[data-demo-logistics-approve]");
+  const logisticsApprove = closestEl(event.target, "[data-demo-logistics-approve]");
   if (logisticsApprove) return updateDemoRequestStatus(logisticsApprove.dataset.demoLogisticsApprove, "For Management Approval");
-  const managementApprove = event.target.closest("[data-demo-management-approve]");
+  const managementApprove = closestEl(event.target, "[data-demo-management-approve]");
   if (managementApprove) return updateDemoRequestStatus(managementApprove.dataset.demoManagementApprove, "Approved");
-  const returned = event.target.closest("[data-demo-returned]");
+  const returned = closestEl(event.target, "[data-demo-returned]");
   if (returned) return updateDemoRequestStatus(returned.dataset.demoReturned, "Returned");
-  const toSales = event.target.closest("[data-demo-to-sales]");
+  const toSales = closestEl(event.target, "[data-demo-to-sales]");
   if (toSales) return updateDemoRequestStatus(toSales.dataset.demoToSales, "To Sales");
 });
 qs("#transfer-table").addEventListener("click", (event) => {
-  const dispatch = event.target.closest("[data-dispatch-transfer]");
+  const dispatch = closestEl(event.target, "[data-dispatch-transfer]");
   if (dispatch) return openTransferDispatchModal(Number(dispatch.dataset.dispatchTransfer));
-  const receive = event.target.closest("[data-receive-transfer]");
+  const receive = closestEl(event.target, "[data-receive-transfer]");
   if (receive) return openTransferReceiveModal(Number(receive.dataset.receiveTransfer));
-  const transferTimeline = event.target.closest("[data-transfer-timeline]");
+  const transferTimeline = closestEl(event.target, "[data-transfer-timeline]");
   if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
-  const transferPrint = event.target.closest("[data-transfer-print]");
+  const transferPrint = closestEl(event.target, "[data-transfer-print]");
   if (transferPrint) return printTransferRequest(transferPrint.dataset.transferPrint);
 });
 qs("#transfer-history-table").addEventListener("click", (event) => {
-  const transferTimeline = event.target.closest("[data-transfer-timeline]");
+  const transferTimeline = closestEl(event.target, "[data-transfer-timeline]");
   if (transferTimeline) return showTransferTimeline(transferTimeline.dataset.transferTimeline);
 });
 document.body.addEventListener("click", (event) => {
-  const closeReview = event.target.closest("[data-close-transfer-review]");
+  const closeReview = closestEl(event.target, "[data-close-transfer-review]");
   if (closeReview) return guardedDialogClose(() => qs("#transfer-review-modal")?.close());
-  const confirmDispatch = event.target.closest("#confirm-transfer-dispatch");
+  const confirmDispatch = closestEl(event.target, "#confirm-transfer-dispatch");
   if (confirmDispatch) return confirmTransferDispatch();
-  const confirmReceive = event.target.closest("#confirm-transfer-receive");
+  const confirmReceive = closestEl(event.target, "#confirm-transfer-receive");
   if (confirmReceive) return confirmTransferReceive();
 });
 document.body.addEventListener("input", (event) => {
-  if (event.target.matches(".transfer-review-lot, .transfer-review-qty")) {
+  if (/** @type {AnyEl} */ (event.target).matches(".transfer-review-lot, .transfer-review-qty")) {
     const dialog = qs("#transfer-review-modal");
-    const row = event.target.closest(".transfer-review-row");
-    if (dialog && row && event.target.classList.contains("transfer-review-lot")) refreshTransferDispatchModalRow(dialog, row);
+    const row = closestEl(event.target, ".transfer-review-row");
+    if (dialog && row && /** @type {AnyEl} */ (event.target).classList.contains("transfer-review-lot")) refreshTransferDispatchModalRow(dialog, row);
   }
 });
 qs("#collections").addEventListener("click", (event) => {
-  const statusButton = event.target.closest("[data-contact-status]");
+  const statusButton = closestEl(event.target, "[data-contact-status]");
   if (statusButton) return updateCollectionContact(statusButton.dataset.contactClient, statusButton.dataset.contactStatus);
-  const channelButton = event.target.closest("[data-contact-channel]");
+  const channelButton = closestEl(event.target, "[data-contact-channel]");
   if (channelButton) return toggleContactChannel(channelButton.dataset.contactClient, channelButton.dataset.contactChannel);
-  const mapTarget = event.target.closest("[data-map-region]");
+  const mapTarget = closestEl(event.target, "[data-map-region]");
   if (mapTarget) return openContactRegion(mapTarget.dataset.mapRegion, mapTarget.dataset.mapClient || "", false);
 });
 qs("#ar-tracker-tabs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-ar-tab]");
+  const button = closestEl(event.target, "[data-ar-tab]");
   if (!button) return;
   arTrackerTab = button.dataset.arTab;
   renderReceivablesTracker();
 });
 qs("#ar-tracker-status-filter")?.addEventListener("change", (event) => {
-  arTrackerStatusFilter = event.target.value;
+  arTrackerStatusFilter = /** @type {AnyEl} */ (event.target).value;
   renderReceivablesTracker();
 });
 qs("#collections-client-search")?.addEventListener("input", (event) => {
-  collectionsClientSearch = event.target.value;
+  collectionsClientSearch = /** @type {AnyEl} */ (event.target).value;
   renderCollectionsClientHistoryPanel();
 });
 qs("#collections-client-search-clear")?.addEventListener("click", () => {
@@ -1259,23 +1260,23 @@ qs("#collections-client-search-clear")?.addEventListener("click", () => {
   renderCollectionsClientHistoryPanel();
 });
 qs("#invoice-grid").addEventListener("click", (event) => {
-  const printButton = event.target.closest("[data-print-invoice]");
-  const detailButton = event.target.closest("[data-sale-detail]");
-  const cancelButton = event.target.closest("[data-cancel-replace]");
+  const printButton = closestEl(event.target, "[data-print-invoice]");
+  const detailButton = closestEl(event.target, "[data-sale-detail]");
+  const cancelButton = closestEl(event.target, "[data-cancel-replace]");
   if (printButton) printInvoice(printButton.dataset.printInvoice);
   if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
   if (cancelButton) openCancelReplaceModal(cancelButton.dataset.cancelReplace);
 });
 qs("#invoice-table")?.addEventListener("click", (event) => {
-  const printButton = event.target.closest("[data-print-invoice]");
-  const detailButton = event.target.closest("[data-sale-detail]");
-  const cancelButton = event.target.closest("[data-cancel-replace]");
+  const printButton = closestEl(event.target, "[data-print-invoice]");
+  const detailButton = closestEl(event.target, "[data-sale-detail]");
+  const cancelButton = closestEl(event.target, "[data-cancel-replace]");
   if (printButton) printInvoice(printButton.dataset.printInvoice);
   if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
   if (cancelButton) openCancelReplaceModal(cancelButton.dataset.cancelReplace);
 });
 qs("#invoice-grid").addEventListener("change", (event) => {
-  const select = event.target.closest(".delivery-status-select");
+  const select = closestEl(event.target, ".delivery-status-select");
   if (!select) return;
   if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
   const sale = data.sales.find((entry) => entry.id === select.dataset.saleId);
@@ -1286,7 +1287,7 @@ qs("#invoice-grid").addEventListener("change", (event) => {
   toast(`${sale.documentNo || sale.id} marked ${select.value}.`);
 });
 qs("#invoice-table")?.addEventListener("change", (event) => {
-  const select = event.target.closest(".delivery-status-select");
+  const select = closestEl(event.target, ".delivery-status-select");
   if (!select) return;
   if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
   const sale = data.sales.find((entry) => entry.id === select.dataset.saleId);
@@ -1297,26 +1298,26 @@ qs("#invoice-table")?.addEventListener("change", (event) => {
   toast(`${sale.documentNo || sale.id} marked ${select.value}.`);
 });
 qs("#sales-table").addEventListener("click", (event) => {
-  const timelineButton = event.target.closest("[data-sale-timeline]");
+  const timelineButton = closestEl(event.target, "[data-sale-timeline]");
   if (timelineButton) return renderSaleDetail(timelineButton.dataset.saleTimeline);
-  const detailButton = event.target.closest("[data-sale-detail]");
+  const detailButton = closestEl(event.target, "[data-sale-detail]");
   if (detailButton) showSaleDetail(detailButton.dataset.saleDetail);
-  const row = event.target.closest("tr[data-sale-row]");
-  if (row && !event.target.closest("button")) showSaleDetail(row.dataset.saleRow);
+  const row = closestEl(event.target, "tr[data-sale-row]");
+  if (row && !closestEl(event.target, "button")) showSaleDetail(row.dataset.saleRow);
 });
 qs("#replenishments-table").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-approve-expense]");
+  const button = closestEl(event.target, "[data-approve-expense]");
   if (button) approveExpense(Number(button.dataset.approveExpense), button.dataset.nextStatus);
 });
 qs("#master-table").addEventListener("click", (event) => {
-  const editButton = event.target.closest("[data-master-edit]");
+  const editButton = closestEl(event.target, "[data-master-edit]");
   if (editButton) {
     if (!canEditActiveSection()) return toast("Masterlist edits need approval from Admin or Superadmin.");
     return openMasterEditModal(editButton.dataset.masterEdit, Number(editButton.dataset.index));
   }
-  const archiveButton = event.target.closest("[data-master-archive]");
+  const archiveButton = closestEl(event.target, "[data-master-archive]");
   if (archiveButton) return archiveMasterlistRecord(archiveButton.dataset.masterArchive, Number(archiveButton.dataset.index));
-  const restoreButton = event.target.closest("[data-master-restore]");
+  const restoreButton = closestEl(event.target, "[data-master-restore]");
   if (restoreButton) return restoreMasterlistRecord(restoreButton.dataset.masterRestore, Number(restoreButton.dataset.index));
 });
 qs("#master-archived-toggle")?.addEventListener("click", () => {
@@ -1324,9 +1325,9 @@ qs("#master-archived-toggle")?.addEventListener("click", () => {
   renderMasterlists();
 });
 qs("#report-grid").addEventListener("click", (event) => {
-  const reportButton = event.target.closest("[data-operational-report]");
+  const reportButton = closestEl(event.target, "[data-operational-report]");
   if (reportButton) return renderOperationalReport(reportButton.dataset.operationalReport);
-  const breakdownButton = event.target.closest("[data-sales-breakdown]");
+  const breakdownButton = closestEl(event.target, "[data-sales-breakdown]");
   if (breakdownButton) renderSalesBreakdownReport(breakdownButton.dataset.salesBreakdown);
 });
 qs("#report-detail-print")?.addEventListener("click", () => window.print());
@@ -1348,11 +1349,11 @@ qs("#sales-breakdown-clear-dates")?.addEventListener("click", () => {
   renderSalesBreakdownReport(currentSalesBreakdownDimension);
 });
 qs("#reconciliation-history-table").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-recon-history]");
+  const button = closestEl(event.target, "[data-recon-history]");
   if (button) applyReconciliationHistory(Number(button.dataset.reconHistory));
 });
 qs("#reconciliation-tabs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-recon-tab]");
+  const button = closestEl(event.target, "[data-recon-tab]");
   if (!button) return;
   reconciliationTab = button.dataset.reconTab;
   renderReconciliationTabs();
@@ -1374,96 +1375,96 @@ qsa("#analytics-tabs .tab").forEach((button) => button.addEventListener("click",
 }));
 qs("#modal-form").addEventListener("submit", submitModal);
 qs("#modal-fields").addEventListener("click", (event) => {
-  if (event.target.closest("#add-payment-request-line")) {
+  if (closestEl(event.target, "#add-payment-request-line")) {
     const lineHtml = ["payable", "replenishment"].includes(modalType) ? financialLineTemplate({}, { vendor: modalType !== "payable", classification: modalType === "replenishment" }) : paymentRequestLineTemplate();
     qs("#payment-request-line-list").insertAdjacentHTML("beforeend", lineHtml);
     syncPaymentRequestTotal();
     syncFinancialRequestTotal();
   }
-  const paymentRequestRemove = event.target.closest(".remove-payment-request-line");
+  const paymentRequestRemove = closestEl(event.target, ".remove-payment-request-line");
   if (paymentRequestRemove && qsa(".payment-request-line-row").length > 1) {
     paymentRequestRemove.closest(".payment-request-line-row").remove();
     syncPaymentRequestTotal();
     syncFinancialRequestTotal();
   }
-  if (event.target.closest("#add-invoice-line")) {
+  if (closestEl(event.target, "#add-invoice-line")) {
     qs("#invoice-line-list").insertAdjacentHTML("beforeend", invoiceLineTemplate({}, { requireLot: !["purchaseOrder", "inventoryPurchaseOrder"].includes(modalType), allowDiscount: modalType === "inventoryPurchaseOrder", showCode: modalType === "inventoryPurchaseOrder" }));
     renderInvoiceComputePreview();
   }
-  const remove = event.target.closest(".remove-invoice-line");
+  const remove = closestEl(event.target, ".remove-invoice-line");
   if (remove && qsa(".invoice-line-row").length > 1) {
     remove.closest(".invoice-line-row").remove();
     renderInvoiceComputePreview();
   }
-  if (event.target.closest("#add-parameter-row")) qs("#parameter-row-list").insertAdjacentHTML("beforeend", parameterRowTemplate());
-  const parameterRemove = event.target.closest(".remove-parameter-row");
+  if (closestEl(event.target, "#add-parameter-row")) qs("#parameter-row-list").insertAdjacentHTML("beforeend", parameterRowTemplate());
+  const parameterRemove = closestEl(event.target, ".remove-parameter-row");
   if (parameterRemove && qsa(".parameter-row").length > 1) parameterRemove.closest(".parameter-row").remove();
 });
 qs("#modal-fields").addEventListener("input", (event) => {
-  if (event.target.hasAttribute("data-tin-input")) {
-    const digits = event.target.value.replace(/\D/g, "").slice(0, 12);
-    event.target.value = digits.replace(/(\d{3})(?=\d)/g, "$1-");
+  if (/** @type {AnyEl} */ (event.target).hasAttribute("data-tin-input")) {
+    const digits = /** @type {AnyEl} */ (event.target).value.replace(/\D/g, "").slice(0, 12);
+    /** @type {AnyEl} */ (event.target).value = digits.replace(/(\d{3})(?=\d)/g, "$1-");
   }
-  if (modalType === "paymentRequest" && event.target.classList.contains("payment-request-invoice-input")) syncPaymentRequestRowDerived(event.target.closest(".payment-request-invoice-row"), { invoiceChanged: true });
-  if (modalType === "paymentRequest" && event.target.classList.contains("payment-request-amount") && event.target.closest(".payment-request-invoice-row")) syncPaymentRequestRowDerived(event.target.closest(".payment-request-invoice-row"));
-  if (modalType === "paymentRequest" && (event.target.closest(".payment-request-line-row") || ["netAmount", "single-amount"].includes(event.target.id))) syncPaymentRequestTotal();
-  if (["payable", "replenishment"].includes(modalType) && event.target.closest(".payment-request-line-row")) syncFinancialRequestTotal();
-  if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
-  if (modalType === "paymentRequest" && event.target.id === "employee") { refreshPaymentRequestInvoiceRowOptions(); syncPaymentRequestDeductionDefaults(); syncPaymentRequestTotal(); }
-  if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders();
-  if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
-  if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
-  if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
-  if (event.target.id === "companyName" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) syncProductIssueClientAddress();
-  if (event.target.id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
-  if (event.target.id === "role" && modalType === "user") syncInviteUserPermissions();
-  if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
-  if (event.target.classList.contains("invoice-lot-input")) syncInvoiceRowLot(event.target);
+  if (modalType === "paymentRequest" && /** @type {AnyEl} */ (event.target).classList.contains("payment-request-invoice-input")) syncPaymentRequestRowDerived(closestEl(event.target, ".payment-request-invoice-row"), { invoiceChanged: true });
+  if (modalType === "paymentRequest" && /** @type {AnyEl} */ (event.target).classList.contains("payment-request-amount") && closestEl(event.target, ".payment-request-invoice-row")) syncPaymentRequestRowDerived(closestEl(event.target, ".payment-request-invoice-row"));
+  if (modalType === "paymentRequest" && (closestEl(event.target, ".payment-request-line-row") || ["netAmount", "single-amount"].includes(/** @type {AnyEl} */ (event.target).id))) syncPaymentRequestTotal();
+  if (["payable", "replenishment"].includes(modalType) && closestEl(event.target, ".payment-request-line-row")) syncFinancialRequestTotal();
+  if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(/** @type {AnyEl} */ (event.target).id)) syncFinancialRequestTotal();
+  if (modalType === "paymentRequest" && /** @type {AnyEl} */ (event.target).id === "employee") { refreshPaymentRequestInvoiceRowOptions(); syncPaymentRequestDeductionDefaults(); syncPaymentRequestTotal(); }
+  if (/** @type {AnyEl} */ (event.target).id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders();
+  if (/** @type {AnyEl} */ (event.target).id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
+  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
+  if (/** @type {AnyEl} */ (event.target).id === "supplier" && modalType === "item") syncItemSupplierBrand();
+  if (/** @type {AnyEl} */ (event.target).id === "companyName" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) syncProductIssueClientAddress();
+  if (/** @type {AnyEl} */ (event.target).id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
+  if (/** @type {AnyEl} */ (event.target).id === "role" && modalType === "user") syncInviteUserPermissions();
+  if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
+  if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-lot-input")) syncInvoiceRowLot(event.target);
   // A date typed by hand belongs to whatever lot is on the row now, so a later lot edit that
   // matches nothing in stock won't wipe it unless the lot actually changes again.
-  if (event.target.classList.contains("invoice-expiry-input")) event.target.dataset.expiryLot = event.target.closest(".invoice-line-row")?.querySelector(".invoice-lot-input")?.value.trim() || "";
+  if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-expiry-input")) /** @type {AnyEl} */ (event.target).dataset.expiryLot = /** @type {AnyEl} */ (closestEl(event.target, ".invoice-line-row")?.querySelector(".invoice-lot-input"))?.value.trim() || "";
   if (["invoice", "cancelReplace"].includes(modalType)) renderInvoiceComputePreview();
 });
 qs("#modal-fields").addEventListener("change", (event) => {
-  if (event.target.name === "docsSelected") {
-    const label = event.target.closest(".doc-upload-button");
-    if (label && event.target.files?.length) {
+  if (/** @type {AnyEl} */ (event.target).name === "docsSelected") {
+    const label = closestEl(event.target, ".doc-upload-button");
+    if (label && /** @type {AnyEl} */ (event.target).files?.length) {
       label.classList.add("uploaded");
       label.classList.remove("missing");
       const status = label.querySelector("strong");
-      if (status) status.textContent = event.target.files[0].name;
+      if (status) status.textContent = /** @type {AnyEl} */ (event.target).files[0].name;
     }
     syncClientDocsHidden();
   }
-  if (event.target.name === "benefitsSelected") syncEmployeeBenefitsHidden();
-  if (event.target.classList.contains("dept-contact-input")) syncClientDepartmentContactsHidden();
-  if (event.target.name?.endsWith("Selected") && !["docsSelected", "benefitsSelected"].includes(event.target.name)) syncCheckboxGroupHidden(event.target.name.replace(/Selected$/, ""));
-  if (event.target.id === "status" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) toggleProductIssueResolvedByField();
-  if (event.target.id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
-  if (event.target.id === "type") updateDocumentLabel();
-  if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
-  if (event.target.id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
-  if (event.target.id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
-  if (event.target.id === "supplier" && modalType === "item") syncItemSupplierBrand();
-  if (event.target.id === "skipPo" && modalType === "invoice") toggleInvoiceSkipPoField();
-  if (event.target.id === "method" && modalType === "payable") togglePayableFields();
-  if (event.target.id === "paymentType" && modalType === "paymentRequest") togglePaymentRequestChequeFields();
-  if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(event.target.id)) syncFinancialRequestTotal();
-  if (event.target.id === "bank" && modalType === "paymentRequest") syncPaymentRequestBankAccount();
-  if (["withholdingTax", "expandedWithholdingTax"].includes(event.target.id) && modalType === "paymentRequest") syncPaymentRequestTotal();
-  if (modalType === "paymentRequest" && (event.target.classList.contains("payment-request-invoice-input") || event.target.classList.contains("payment-request-row-wtax") || event.target.classList.contains("payment-request-row-ewt"))) {
-    if (event.target.classList.contains("payment-request-row-wtax") || event.target.classList.contains("payment-request-row-ewt")) syncPaymentRequestRowDerived(event.target.closest(".payment-request-invoice-row"));
+  if (/** @type {AnyEl} */ (event.target).name === "benefitsSelected") syncEmployeeBenefitsHidden();
+  if (/** @type {AnyEl} */ (event.target).classList.contains("dept-contact-input")) syncClientDepartmentContactsHidden();
+  if (/** @type {AnyEl} */ (event.target).name?.endsWith("Selected") && !["docsSelected", "benefitsSelected"].includes(/** @type {AnyEl} */ (event.target).name)) syncCheckboxGroupHidden(/** @type {AnyEl} */ (event.target).name.replace(/Selected$/, ""));
+  if (/** @type {AnyEl} */ (event.target).id === "status" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) toggleProductIssueResolvedByField();
+  if (/** @type {AnyEl} */ (event.target).id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
+  if (/** @type {AnyEl} */ (event.target).id === "type") updateDocumentLabel();
+  if (/** @type {AnyEl} */ (event.target).id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
+  if (/** @type {AnyEl} */ (event.target).id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
+  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
+  if (/** @type {AnyEl} */ (event.target).id === "supplier" && modalType === "item") syncItemSupplierBrand();
+  if (/** @type {AnyEl} */ (event.target).id === "skipPo" && modalType === "invoice") toggleInvoiceSkipPoField();
+  if (/** @type {AnyEl} */ (event.target).id === "method" && modalType === "payable") togglePayableFields();
+  if (/** @type {AnyEl} */ (event.target).id === "paymentType" && modalType === "paymentRequest") togglePaymentRequestChequeFields();
+  if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(/** @type {AnyEl} */ (event.target).id)) syncFinancialRequestTotal();
+  if (/** @type {AnyEl} */ (event.target).id === "bank" && modalType === "paymentRequest") syncPaymentRequestBankAccount();
+  if (["withholdingTax", "expandedWithholdingTax"].includes(/** @type {AnyEl} */ (event.target).id) && modalType === "paymentRequest") syncPaymentRequestTotal();
+  if (modalType === "paymentRequest" && (/** @type {AnyEl} */ (event.target).classList.contains("payment-request-invoice-input") || /** @type {AnyEl} */ (event.target).classList.contains("payment-request-row-wtax") || /** @type {AnyEl} */ (event.target).classList.contains("payment-request-row-ewt"))) {
+    if (/** @type {AnyEl} */ (event.target).classList.contains("payment-request-row-wtax") || /** @type {AnyEl} */ (event.target).classList.contains("payment-request-row-ewt")) syncPaymentRequestRowDerived(closestEl(event.target, ".payment-request-invoice-row"));
     syncPaymentRequestTotal();
   }
-  if (event.target.id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(event.target.value);
-  if (event.target.id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(event.target.value));
-  if (event.target.classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
-  if (event.target.classList.contains("invoice-code-input")) syncInvoiceRowFromCode(event.target);
+  if (/** @type {AnyEl} */ (event.target).id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(/** @type {AnyEl} */ (event.target).value);
+  if (/** @type {AnyEl} */ (event.target).id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(/** @type {AnyEl} */ (event.target).value));
+  if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
+  if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-code-input")) syncInvoiceRowFromCode(event.target);
   if (["invoice", "cancelReplace"].includes(modalType)) renderInvoiceComputePreview();
 });
 qs("#modal-fields").addEventListener("blur", (event) => {
-  if (event.target.id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
-  if (event.target.classList.contains("payment-request-classification")) enforceExpenseClassification(event.target);
+  if (/** @type {AnyEl} */ (event.target).id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
+  if (/** @type {AnyEl} */ (event.target).classList.contains("payment-request-classification")) enforceExpenseClassification(event.target);
 }, true);
 qs("#modal-close").addEventListener("click", () => {
   if (modalReadOnly) { editContext = null; qs("#demo-modal").close(); return; }
@@ -1479,20 +1480,20 @@ qs("#report-preview-close").addEventListener("click", closeReportPreview);
 qs("#report-preview-cancel").addEventListener("click", closeReportPreview);
 qs("#report-preview-print").addEventListener("click", printReportPreview);
 qs("#report-preview-print-no-date").addEventListener("click", printReportPreviewNoDate);
-qs("#report-preview-template")?.addEventListener("change", (e) => changeReportPreviewTemplate(e.target.value));
+qs("#report-preview-template")?.addEventListener("change", (e) => changeReportPreviewTemplate(/** @type {AnyEl} */ (e.target).value));
 qs("#payment-request-preview-close").addEventListener("click", () => qs("#payment-request-preview-modal").close());
 qs("#payment-request-preview-cancel").addEventListener("click", () => qs("#payment-request-preview-modal").close());
 qs("#payment-request-preview-print").addEventListener("click", () => window.print());
 qs("#demo-modal").addEventListener("click", (event) => {
-  if (event.target.id !== "demo-modal") return;
+  if (/** @type {AnyEl} */ (event.target).id !== "demo-modal") return;
   if (modalReadOnly) { editContext = null; qs("#demo-modal").close(); return; }
   guardedDialogClose(() => { editContext = null; editingPoId = null; qs("#demo-modal").close(); });
 });
-qs("#report-preview-modal").addEventListener("click", (event) => { if (event.target.id === "report-preview-modal") closeReportPreview(); });
-qs("#payment-request-preview-modal").addEventListener("click", (event) => { if (event.target.id === "payment-request-preview-modal") qs("#payment-request-preview-modal").close(); });
-qs("#transfer-history-modal").addEventListener("click", (event) => { if (event.target.id === "transfer-history-modal") qs("#transfer-history-modal").close(); });
-qs("#followup-history-modal").addEventListener("click", (event) => { if (event.target.id === "followup-history-modal") qs("#followup-history-modal").close(); });
-qs("#branch-filter").addEventListener("change", (e) => { data.branch = e.target.value; saveData(); renderAll(); });
+qs("#report-preview-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "report-preview-modal") closeReportPreview(); });
+qs("#payment-request-preview-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "payment-request-preview-modal") qs("#payment-request-preview-modal").close(); });
+qs("#transfer-history-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "transfer-history-modal") qs("#transfer-history-modal").close(); });
+qs("#followup-history-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "followup-history-modal") qs("#followup-history-modal").close(); });
+qs("#branch-filter").addEventListener("change", (e) => { data.branch = /** @type {AnyEl} */ (e.target).value; saveData(); renderAll(); });
 let globalSearchRenderTimer = null;
 qs("#global-search").addEventListener("input", () => {
   clearTimeout(globalSearchRenderTimer);
@@ -1533,7 +1534,7 @@ qs("#run-reconciliation").addEventListener("click", runReconciliationWorkflow);
 qs("#recon-date-from").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
 qs("#recon-date-to").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
 qs("#recon-period").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
-qs("#recon-area-filter").addEventListener("change", (event) => { reconciliationAreaFilter = event.target.value; renderReconciliation(); });
+qs("#recon-area-filter").addEventListener("change", (event) => { reconciliationAreaFilter = /** @type {AnyEl} */ (event.target).value; renderReconciliation(); });
 qs("#clear-recon-dates").addEventListener("click", () => { selectedReconHistoryIndex = null; qs("#recon-date-from").value = ""; qs("#recon-date-to").value = ""; renderReconciliation(); toast("Reconciliation date scope reset."); });
 qs("#clear-logs").addEventListener("click", () => { log("Attempted to clear universal audit logs", "Audit Logs", currentUser?.email || currentUser?.name || "User"); notify("Audit Logs", "Universal audit logs cannot be cleared from the app.", "logs", currentUser?.email || currentUser?.name || "User"); saveData(); renderLogs(); toast("Universal audit logs cannot be cleared from the app."); });
 qs("#logs-date-from").addEventListener("change", renderLogs);
@@ -1581,7 +1582,7 @@ qs("#mark-all-read-notifications").addEventListener("click", () => {
   toast(`${unreadCount} notification${unreadCount === 1 ? "" : "s"} marked as read.`);
 });
 qs("#user-devices-close")?.addEventListener("click", () => qs("#user-devices-modal")?.close());
-qs("#user-devices-modal")?.addEventListener("click", (event) => { if (event.target.id === "user-devices-modal") qs("#user-devices-modal")?.close(); });
+qs("#user-devices-modal")?.addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "user-devices-modal") qs("#user-devices-modal")?.close(); });
 qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
 qs("#refresh-backups")?.addEventListener("click", () => { renderBackup(); toast("Backups refreshed."); });
 qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
@@ -1590,7 +1591,7 @@ qs("#run-manual-digest-weekly")?.addEventListener("click", () => runManualDigest
 qs("#run-birthday-test")?.addEventListener("click", runManualBirthdayTest);
 qs("#print-value-report")?.addEventListener("click", printSystemValueReport);
 qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
-qs("#user-status-filter")?.addEventListener("change", (event) => { userStatusFilter = event.target.value; renderUsers(); });
+qs("#user-status-filter")?.addEventListener("change", (event) => { userStatusFilter = /** @type {AnyEl} */ (event.target).value; renderUsers(); });
 
 function setBackupStatus(title, detail = "", progress = 0, tone = "active") {
   const panel = qs("#backup-status-panel");
@@ -1757,7 +1758,7 @@ qs("#import-sample").addEventListener("click", () => {
   renderImportCheck();
 });
 qs("#csv-file-input").addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
+  const file = /** @type {AnyEl} */ (event.target).files?.[0];
   if (!file) return;
   const text = await file.text().catch(() => "");
   if (!text.trim()) return toast("Could not read that file, or it was empty.");
@@ -1813,7 +1814,7 @@ window.addEventListener("beforeprint", () => {
   if (document.body.classList.contains("print-template-overlay")) fitPrintTemplateRows();
 });
 window.addEventListener("resize", updateTableScrollHints);
-document.addEventListener("scroll", (event) => { if (event.target?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
+document.addEventListener("scroll", (event) => { if (/** @type {AnyEl} */ (event.target)?.classList?.contains("table-card")) updateTableScrollHints(); }, true);
 let loginAutofillSubmitTimer = null;
 let loginUserTyped = false;
 let loginBiometricTried = false;
@@ -1858,10 +1859,10 @@ function scheduleAutofillLoginSubmit() {
 async function tryBiometricLogin() {
   if (loginBiometricTried || isAuthenticatedRoute()) return;
   loginBiometricTried = true;
-  if (!("credentials" in navigator) || typeof window.PasswordCredential !== "function") return;
+  if (!("credentials" in navigator) || typeof /** @type {any} */ (window).PasswordCredential !== "function") return;
   let cred;
   try {
-    cred = await navigator.credentials.get({ password: true, mediation: "optional" });
+    cred = await navigator.credentials.get(/** @type {any} */ ({ password: true, mediation: "optional" }));
   } catch { return; }
   if (!cred || cred.type !== "password") return;
   const email = qs("#login-email");
@@ -1903,7 +1904,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
   const loginForm = qs("#login-form");
   if (loginForm?.dataset.submitting === "true") return;
   if (loginForm) loginForm.dataset.submitting = "true";
-  const loginButton = loginForm?.querySelector("button[type='submit']");
+  const loginButton = /** @type {HTMLButtonElement | null} */ (loginForm?.querySelector("button[type='submit']"));
   const originalLabel = loginButton?.textContent || "Login";
   if (loginButton) {
     loginButton.disabled = true;
@@ -1928,9 +1929,9 @@ qs("#login-form").addEventListener("submit", async (event) => {
   // Hand the credential to the browser's password manager so the next visit can offer the
   // Touch ID / Keychain prompt (and our auto-sign-in above can act on it).
   try {
-    if (typeof window.PasswordCredential === "function" && navigator.credentials?.store) {
+    if (typeof /** @type {any} */ (window).PasswordCredential === "function" && navigator.credentials?.store) {
       navigator.credentials
-        .store(new window.PasswordCredential({ id: email, password, name: payload.user?.name || email }))
+        .store(new /** @type {any} */ (window).PasswordCredential({ id: email, password, name: payload.user?.name || email }))
         .catch(() => {});
     }
   } catch { /* PasswordCredential unsupported */ }
@@ -2126,7 +2127,7 @@ qs("#reset-password-form").addEventListener("submit", async (event) => {
   if (policyError) return toast(policyError);
   if (values.newPassword !== values.confirmPassword) return toast("Confirm password does not match.");
   if (String(values.token || "").startsWith("supabase:")) {
-    const submitButton = resetForm?.querySelector("button[type='submit']");
+    const submitButton = /** @type {HTMLButtonElement | null} */ (resetForm?.querySelector("button[type='submit']"));
     const originalLabel = submitButton?.textContent || "Update Password";
     if (submitButton) { submitButton.disabled = true; submitButton.classList.add("is-loading"); submitButton.textContent = "Setting password..."; }
     try {

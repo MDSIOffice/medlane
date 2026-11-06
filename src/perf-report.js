@@ -175,10 +175,11 @@ const max = (values) => { const list = values.filter((v) => v !== null && v !== 
 
 // Turns raw hourly samples into per-hour points (gauges + counter deltas).
 export function derivePoints(samples) {
-  const sorted = [...samples].sort((a, b) => new Date(a.t) - new Date(b.t));
+  const sorted = [...samples].sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
   const points = [];
   sorted.forEach((sample, index) => {
     const ms = new Date(sample.t).getTime();
+    /** @type {Record<string, any>} */
     const point = { ms, ...manilaParts(ms), conns: sample.db?.conns ?? null, active: sample.db?.active ?? null, idleTx: sample.db?.idle_tx ?? null, maxConns: sample.db?.max_conns ?? null, dbBytes: sample.db?.bytes ?? null, edge: sample.edge || null, auth: sample.auth || null, storage: sample.storage || null, realtime: sample.realtime || null };
     const prev = sorted[index - 1];
     const gap = prev ? ms - new Date(prev.t).getTime() : 0;
@@ -374,6 +375,7 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&
 const C = { navy: "#0b2f52", border: "#d8e3ec", soft: "#f4f8fb", warn: "#b4561a", warnBg: "#fff4e8", good: "#157a3c", goodBg: "#e8f7ee", info: "#1d6fa5", infoBg: "#eaf4fb", fri: "#fde8e8", sat: "#fff3dc" };
 const f = (n, d = 0) => (n === null || n === undefined || !Number.isFinite(n) ? "–" : Number(n).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: d }));
 
+/** @param {any} headers @param {any} rows @param {(i: number) => string} [rowStyle] */
 function table(headers, rows, rowStyle = () => "") {
   const th = headers.map((h) => `<th style="text-align:${h.align || "left"};padding:6px 8px;background:${C.soft};border-bottom:1px solid ${C.border};font-size:12px;color:${C.navy};">${esc(h.label)}</th>`).join("");
   const tr = rows.map((row, i) => `<tr style="${rowStyle(i)}">${row.map((cell, j) => `<td style="text-align:${headers[j].align || "left"};padding:6px 8px;border-bottom:1px solid ${C.border};font-size:12px;">${cell}</td>`).join("")}</tr>`).join("");

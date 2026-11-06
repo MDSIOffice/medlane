@@ -1,3 +1,4 @@
+// @ts-check
 const peso = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Full peso.format() amounts (₱73,500.00) wrap onto two lines inside narrow chart labels (e.g.
 // vertical bar columns), crowding whatever sits above them. Used wherever a value label has to

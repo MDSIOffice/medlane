@@ -3,9 +3,14 @@
   "private": true,
   "scripts": {
     "build:css": "cleancss -o public/styles.css src/styles.css",
-    "build": "npm run build:css"
+    "build": "npm run build:css",
+    "typecheck": "tsc -p tsconfig.json",
+    "typecheck:worker": "tsc -p tsconfig.worker.json",
+    "check:semantic": "bash tools/semantic-diff.sh"
   },
   "devDependencies": {
-    "clean-css-cli": "^5.6.3"
+    "@cloudflare/workers-types": "^5.20261106.1",
+    "clean-css-cli": "^5.6.3",
+    "typescript": "^7.0.2"
   }
 }
