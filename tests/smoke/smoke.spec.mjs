@@ -34,11 +34,50 @@ async function logIn(page, email = "superadmin@medlane.test") {
   await expect(page.locator("body")).toHaveClass(/app-route/);
 }
 
-test("landing page makes no API calls and has no errors", async ({ page }) => {
-  const { problems, api } = await watch(page);
+const APP_SCRIPTS = /scripts\/(modules|state|api-client|ui-utils|events-bootstrap|game|config-data|vendor\/pdf-lib)/;
+function trackScripts(page) {
+  const loaded = [];
+  page.on("request", (request) => { if (APP_SCRIPTS.test(request.url())) loaded.push(new URL(request.url()).pathname); });
+  return loaded;
+}
+
+for (const url of ["/", "/?utm_source=facebook&fbclid=abc", "/#lr-journey"]) {
+  test(`public visitor on ${url} downloads no app code and sees a working landing page`, async ({ page }) => {
+    const { problems, api } = await watch(page);
+    const appScripts = trackScripts(page);
+    await page.goto(url);
+    await expect(page.locator("#landing-page")).toBeVisible();
+    await expect(page.locator("body")).toHaveClass(/public-landing/);
+    await expect(page.locator("#login-screen")).toBeHidden();
+    await expect(page.locator("#loading-overlay")).toHaveClass(/hide/);
+    await page.waitForTimeout(1000);
+    expect(appScripts).toEqual([]);
+    expect(api).toEqual([]);
+    expect(problems).toEqual([]);
+  });
+}
+
+test("the app still loads for logins, invites and unrecognised links", async ({ page }) => {
+  await watch(page);
+  for (const url of ["/login", "/?login=1", "/?dashboard=1", "/?something=1"]) {
+    const appScripts = trackScripts(page);
+    await page.goto(url);
+    await page.waitForTimeout(800);
+    expect(appScripts.length, url).toBeGreaterThanOrEqual(8);
+  }
+  const appScripts = trackScripts(page);
+  await page.goto(`/#access_token=${token("Superadmin", 3600)}&type=invite`);
+  await page.waitForTimeout(800);
+  expect(appScripts.length).toBeGreaterThanOrEqual(8);
+  await expect(page.locator("#reset-new-password")).toBeVisible();
+});
+
+test("a logged-in user opening the home page still lands in the app", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page);
   await page.goto("/");
-  await page.waitForTimeout(1500);
-  expect(api).toEqual([]);
+  await expect(page.locator("body")).toHaveClass(/app-route/);
+  await expect(page.locator("#page-title")).toHaveText("Dashboard");
   expect(problems).toEqual([]);
 });
 
@@ -52,13 +91,12 @@ test("logged-out login page makes no API calls and shows no toast", async ({ pag
   await expect(page.getByText("session has expired")).toHaveCount(0);
 });
 
-test("logging in draws the whole app", async ({ page }) => {
+test("logging in draws the dashboard and the parts shared by every page", async ({ page }) => {
   const { problems } = await watch(page);
   await logIn(page);
   await expect(page.locator("#logout-top-button").locator("..")).toContainText("Fake Superadmin");
   await expect(page.locator("#page-title")).toHaveText("Dashboard");
-  // Not on screen yet, so only a full first render would have filled these in.
-  await expect(page.locator("#inventory-table")).toContainText("Glucose Reagent", { useInnerText: false });
+  await expect(page.locator("#alerts-list .alert-item").first()).toBeVisible();
   expect(problems).toEqual([]);
 });
 
@@ -148,3 +186,79 @@ for (const [role, reachable, blocked] of [
     expect(problems).toEqual([]);
   });
 }
+
+test("logging in only draws what's on screen, and skips the calls other sections make", async ({ page }) => {
+  const { problems, api } = await watch(page);
+  await logIn(page);
+  await page.waitForTimeout(1000);
+  expect(await page.locator("#inventory-table").innerHTML()).not.toContain("Glucose Reagent");
+  expect(api.filter((call) => /\/api\/(logs|files|backups) /.test(call) && !call.startsWith("POST"))).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
+// Each section is drawn on first open, so check it actually fills in with its own records.
+for (const [section, selector, text] of [
+  ["masterlists", "#masterlists", "Naga City Lab"],
+  ["inventory", "#inventory", "Glucose Reagent"],
+  ["sales", "#sales", "SI-1"],
+  ["purchase-orders", "#purchase-orders", "Invoiced 1"],
+  ["invoicing", "#invoicing", "SI-1"],
+  ["collections", "#collections", "Naga City Lab"],
+  ["payables", "#payables", "PAY-1"],
+  ["replenishments", "#replenishments", "EXP-1"],
+  ["reconciliation", "#reconciliation", "Client Docs"],
+]) {
+  test(`${section} shows its records the first time it's opened`, async ({ page }) => {
+    const { problems } = await watch(page);
+    await logIn(page);
+    await page.locator(`.nav-item[data-section="${section}"]`).evaluate((element) => element.click());
+    await expect(page.locator(selector)).toContainText(text);
+    expect(problems).toEqual([]);
+  });
+  test(`${section} shows its records when it's the page you load`, async ({ page }) => {
+    const { problems } = await watch(page);
+    await logIn(page);
+    await page.goto(`/dashboard?section=${section}`);
+    await expect(page.locator(`section.section#${section}`)).toHaveClass(/active/);
+    await expect(page.locator(selector)).toContainText(text);
+    expect(problems).toEqual([]);
+  });
+}
+
+test("a section's recommendations panel appears the first time it's opened", async ({ page }) => {
+  await watch(page);
+  await logIn(page);
+  await expect(page.locator("#sales")).not.toContainText("Recommended next actions");
+  await page.locator('.nav-item[data-section="sales"]').evaluate((element) => element.click());
+  await expect(page.locator("#sales")).toContainText("Recommended next actions");
+});
+
+test("the notification count shows on the dashboard without opening notifications", async ({ page }) => {
+  await watch(page);
+  await logIn(page);
+  await expect(page.locator("#notification-count")).not.toBeEmpty();
+});
+
+test("the next person to log in on a tab gets their own page, not the last person's", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.locator("#logout-top-button").evaluate((element) => element.click());
+  await expect(page.locator("#login-email")).toBeVisible();
+  await logIn(page, "accounting@medlane.test");
+  await expect(page.locator("#logout-top-button").locator("..")).toContainText("Fake Accounting");
+  await expect(page.locator('.nav-item[data-section="users"]')).toBeHidden();
+  expect(problems).toEqual([]);
+});
+
+test("reconciliation doesn't flag documents that were uploaded, even when opened first", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page);
+  const files = await page.evaluate(() => data.clients.flatMap((client) => requiredClientDocs.map((doc, index) => ({
+    id: `${client.name}-${index}`, file_name: "doc.pdf", mime_type: "application/pdf", size_bytes: 1, record_type: "client-doc", record_id: clientDocRecordId(client.name, doc), uploaded_at: "2026-01-01",
+  }))));
+  await page.route("**/api/files", (route) => route.fulfill({ json: { files } }));
+  await page.goto("/dashboard?section=reconciliation");
+  await expect(page.locator("section.section#reconciliation")).toHaveClass(/active/);
+  await expect(page.locator("#reconciliation")).not.toContainText("Client Docs");
+  expect(problems).toEqual([]);
+});

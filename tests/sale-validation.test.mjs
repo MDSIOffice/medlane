@@ -40,7 +40,7 @@ describe("discounts", () => {
       await assert.rejects(run(as(role), sale({ noPo: true, discount: 10, net: 190 })), /discounts require/);
     });
     test(`${role} cannot give one by flagging the invoice migrated`, async () => {
-      await assert.rejects(run(as(role), sale({ migrated: true, discount: 10, net: 190 })), /discounts require/);
+      await assert.rejects(run(as(role, ["imports"]), sale({ migrated: true, discount: 10, net: 190 })), /discounts require/);
     });
   }
   for (const role of ["Superadmin", "CEO", "Admin"]) {
@@ -69,7 +69,7 @@ describe("credit limit", () => {
   for (const flag of ["noPo", "migrated"]) {
     test(`flagging an invoice ${flag} doesn't skip the check`, async () => {
       limited(900);
-      await assert.rejects(run(as("Accounting"), sale({ [flag]: true })), /credit limit exceeded/);
+      await assert.rejects(run(as("Accounting", ["imports"]), sale({ [flag]: true })), /credit limit exceeded/);
     });
   }
   for (const role of ["Superadmin", "CEO", "Admin"]) {
@@ -111,7 +111,7 @@ describe("archived clients", () => {
   });
   test("a migrated historical invoice is still allowed", async () => {
     archived();
-    await run(as("Admin"), sale({ client: "Old", migrated: true }));
+    await run(as("Admin", ["imports"]), sale({ client: "Old", migrated: true }));
   });
 });
 
@@ -165,7 +165,7 @@ describe("tampered invoices", () => {
   });
   test("a negative migrated net is accepted but can't lower the balance", async () => {
     limited();
-    await assert.rejects(run(as("Accounting"), sale({ documentNo: "M1", migrated: true, amount: 0, net: -99999 }), sale({ documentNo: "SI-2" })), /Invoice SI-2: credit limit exceeded/);
+    await assert.rejects(run(as("Accounting", ["imports"]), sale({ documentNo: "M1", migrated: true, amount: 0, net: -99999 }), sale({ documentNo: "SI-2" })), /Invoice SI-2: credit limit exceeded/);
   });
   for (const name of ["LAB", " lab ", "Lab."]) {
     test(`client spelled "${name}" can't dodge the limit`, async () => {
@@ -191,6 +191,51 @@ describe("tampered invoices", () => {
   }
 });
 
+describe("the migrated flag", () => {
+  const stock = () => mockSupabase({ inventory: STOCK, clients: [client("Lab", { creditLimit: 100000 })] });
+  // Skips stock and amounts, so these would otherwise fabricate an invoice worth anything.
+  const fabricated = (over = {}) => sale({ code: "NOT-REAL", qty: 99999, price: 1, amount: 5, net: 5, migrated: true, ...over });
+  for (const role of ["Admin", "Accounting", "Sales", "Logistics", "HR", "Engineering", "Product Specialist"]) {
+    test(`${role} without Imports can't use it`, async () => {
+      stock();
+      await assert.rejects(run(as(role), fabricated()), /requires Imports edit permission/);
+    });
+    test(`${role} with only other edit rights can't use it`, async () => {
+      stock();
+      await assert.rejects(run(as(role, ["sales", "invoicing"]), fabricated()), /requires Imports edit permission/);
+    });
+  }
+  test("view access to Imports isn't enough", async () => {
+    stock();
+    const viewer = { ...as("Accounting"), customPermissions: { enabled: true, view: ["imports"], edit: [] } };
+    await assert.rejects(run(viewer, fabricated()), /requires Imports edit permission/);
+  });
+  for (const value of [1, "yes", "false", {}]) {
+    test(`a truthy ${JSON.stringify(value)} counts as the flag`, async () => {
+      stock();
+      await assert.rejects(run(as("Accounting"), fabricated({ migrated: value })), /requires Imports edit permission/);
+    });
+  }
+  test("the refusal comes before anything else about the invoice", async () => {
+    stock();
+    await assert.rejects(run(as("Accounting"), fabricated({ discount: 10 })), /requires Imports edit permission/);
+  });
+  for (const importer of [as("Superadmin"), as("CEO"), as("Admin", ["imports"]), as("Accounting", ["imports"])]) {
+    test(`${importer.role}${importer.customPermissions.edit.length ? " with Imports" : ""} can still import`, async () => {
+      stock();
+      await run(importer, fabricated());
+    });
+  }
+  test("one bad row refuses the whole save", async () => {
+    stock();
+    await assert.rejects(run(as("Accounting"), sale({ documentNo: "SI-2" }), fabricated()), /requires Imports edit permission/);
+  });
+  test("a normal invoice isn't affected", async () => {
+    stock();
+    await run(as("Accounting"), sale());
+  });
+});
+
 // Shaped like what buildSale() and buildMigratedSale() really send, so the rules above can't start
 // rejecting genuine invoices.
 describe("genuine invoices still pass", () => {
@@ -204,6 +249,6 @@ describe("genuine invoices still pass", () => {
   test("skip-PO DR", async () => { roomy(); await run(as("Accounting"), built({ noPo: true, type: "DR", amount: 0, net: 0 })); });
   test("skip-PO invoice with an authorized discount", async () => { roomy(); await run(as("Admin"), built({ noPo: true, discount: 20, net: 180 })); });
   test("amounts sent as numeric strings", async () => { roomy(); await run(as("Accounting"), built({ amount: "200", net: "200.00" })); });
-  test("migrated row with its own net formula", async () => { roomy(); await run(as("Admin"), built({ migrated: true, amount: 200, net: 224 })); });
-  test("migrated row for a client new in this same import", async () => { roomy(); await run(as("Admin"), built({ migrated: true, client: "Brand New Lab" })); });
+  test("migrated row with its own net formula", async () => { roomy(); await run(as("Admin", ["imports"]), built({ migrated: true, amount: 200, net: 224 })); });
+  test("migrated row for a client new in this same import", async () => { roomy(); await run(as("Admin", ["imports"]), built({ migrated: true, client: "Brand New Lab" })); });
 });

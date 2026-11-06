@@ -1220,9 +1220,13 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
 
   };
 
+  const canImport = ["Superadmin", "CEO"].includes(profile.role) || Boolean(profile.customPermissions?.edit?.includes("imports"));
   for (const row of newSaleRows) {
     const sale = row.data || {};
     assertSaleBasics(sale, sale.documentNo || row.record_key);
+    // `migrated` skips the stock and amount checks below, and the client sets it, so it's limited to
+    // the people who can actually run an import.
+    if (sale.migrated && !canImport) throw new Error(`Invoice ${sale.documentNo || row.record_key}: saving a migrated invoice requires Imports edit permission.`);
     // A skip-PO invoice (buildSale's skipPo path) has no PO behind it, so it's the one invoice
     // shape where the client field is a brand-new, unanchored relationship — check it before the
     // `continue` below skips the rest of this row's validation along with it.

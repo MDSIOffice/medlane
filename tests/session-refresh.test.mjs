@@ -248,14 +248,3 @@ describe("existing session handling still works", () => {
     assert.equal(t.api.session(), null);
   });
 });
-
-// Reproduced in a browser: this render sent eight tokenless API calls from the login page.
-describe("the logged-out login page", () => {
-  test("doesn't render the app", () => {
-    const boot = readFileSync(new URL("../public/scripts/events-bootstrap.js", import.meta.url), "utf8");
-    const route = boot.slice(boot.indexOf("async function initializeRoute()"), boot.indexOf("\ninitializeRoute();"));
-    const loggedOut = route.slice(route.lastIndexOf('document.body.classList.add("login-route")'));
-    assert.ok(loggedOut.includes("applyRole()"), "found the logged-out branch");
-    assert.ok(!/^\s*renderAll\(\)/m.test(loggedOut));
-  });
-});

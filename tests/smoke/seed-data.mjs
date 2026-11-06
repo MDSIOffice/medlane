@@ -1,5 +1,26 @@
 // A small but realistic company, so each screen has real rows to draw and not just empty states.
-export function seedData() {
+// Row counts from production (6 Nov 2026), so performance runs draw what staff really see.
+const PRODUCTION_ROWS = { clients: 410, items: 572, suppliers: 130, inventory: 223, sales: 63, payments: 23, payables: 9, replenishments: 9, purchaseOrders: 82, inventoryPurchaseOrders: 5, paymentRequests: 32, collectionContacts: 61, notifications: 81 };
+const UNIQUE_FIELDS = { clients: ["name"], items: ["code", "name"], suppliers: ["name"], inventory: ["lot"], sales: ["id", "documentNo"], payments: ["receiptNo"], payables: ["id"], replenishments: ["id"], purchaseOrders: ["id"], inventoryPurchaseOrders: ["id"], paymentRequests: ["id", "cvNo"], collectionContacts: [], notifications: [] };
+
+// `scale` 0 is the small company the smoke tests use; 1 matches production's row counts.
+export function seedData(scale = 0) {
+  const base = baseData();
+  if (!scale) return base;
+  base.notifications = [{ key: "n", status: "Unread", type: "Info", message: "Fake notification", section: "dashboard", date: base.sales[0].date }];
+  const grown = { ...base };
+  for (const [key, target] of Object.entries(PRODUCTION_ROWS)) {
+    const count = Math.round(target * scale);
+    grown[key] = Array.from({ length: count }, (_, index) => {
+      const copy = { ...base[key][index % base[key].length] };
+      if (index >= base[key].length) for (const field of UNIQUE_FIELDS[key]) copy[field] = `${copy[field]} ${index}`;
+      return copy;
+    });
+  }
+  return grown;
+}
+
+function baseData() {
   const today = new Date();
   const day = (offset) => new Date(today.getTime() + offset * 86400000).toISOString().slice(0, 10);
   const line = { item: "Glucose Reagent", code: "GLU-1", brand: "Medlane", qty: 2, uom: "box", price: 1500, sourceBranch: "Las Pinas", branch: "Las Pinas", lot: "L100", expiry: day(300) };

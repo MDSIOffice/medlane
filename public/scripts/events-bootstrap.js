@@ -2192,6 +2192,7 @@ function logoutCurrentUser() {
   stopAppVersionWatch();
   stopLiveSync();
   currentUser = null;
+  appInitialRenderComplete = false; // The next login draws its own notification count, branch, etc.
   localStorage.removeItem("medlane-session");
   sessionStorage.removeItem("medlane-dashboard-sound-played");
   MedlaneAPI?.setSession(null);
@@ -2406,8 +2407,8 @@ function showAuthenticatedApp() {
   document.body.classList.remove("login-route", "public-landing");
   qs("#login-screen")?.classList.add("hidden");
   applyRole();
-  renderAll();
   if (restoreSection) showSection(restoreSection);
+  renderAll();
   playDashboardLoginSound();
   startAppVersionWatch();
 }
