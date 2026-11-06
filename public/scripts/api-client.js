@@ -32,7 +32,11 @@ const MedlaneAPI = (() => {
           body: JSON.stringify({ refreshToken: active.refresh_token }),
         });
         const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.session?.access_token) throw new Error(payload?.error || "Session refresh failed");
+        if (!response.ok || !payload?.session?.access_token) {
+          /** @type {ApiError} */ const refreshError = new Error(payload?.error || "Session refresh failed");
+          refreshError.status = response.status;
+          throw refreshError;
+        }
         // The user may have logged out, or logged in as someone else, while this was running.
         // Saving now would bring the old session back after they thought it was gone.
         const current = session();
@@ -155,11 +159,16 @@ const MedlaneAPI = (() => {
     if (response.status === 401 && sessionExpired && !retried && active?.refresh_token) {
       try {
         await refreshSession();
-        return request(path, options, true);
-      } catch {
+      } catch (refreshError) {
+        // Only the server refusing the refresh token ends the login. A dropped connection or an
+        // outage says nothing about it, so keep the session (and any unsaved work) and let the
+        // caller's normal failure handling retry.
+        const refusedWith = /** @type {ApiError} */ (refreshError)?.status;
+        if (refusedWith !== 400 && refusedWith !== 401) throw refreshError;
         forceSessionLogout("Your session has expired. Please log in again.");
         throw new Error("Your session has expired. Please log in again.");
       }
+      return request(path, options, true);
     }
     if (response.status === 401 && sessionRevoked) {
       forceSessionLogout("Your session was ended. Please log in again.");
