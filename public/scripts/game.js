@@ -12,7 +12,9 @@
   /** @param {string} id */
   const dialogById = (id) => /** @type {HTMLDialogElement | null} */ (document.getElementById(id));
 
+  /** @type {Record<string, string>} */
   const GAME_BADGE_ICON = { Bronze: "🥉", Silver: "🥈", Gold: "🥇", Platinum: "💎" };
+  /** @type {Record<string, number>} */
   const GAME_BADGE_TIER = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
 
   // Score points at which a run fires a one-time celebratory callout (chime + burst +
@@ -23,10 +25,11 @@
   // drawGame()/the loop hit these ~60×/s.
   const reducedMotionMQ = window.matchMedia("(prefers-reduced-motion: reduce)");
   let reducedMotionOn = reducedMotionMQ.matches;
-  const onReducedMotionChange = (e) => { reducedMotionOn = e.matches; };
+  const onReducedMotionChange = (/** @type {MediaQueryListEvent} */ e) => { reducedMotionOn = e.matches; };
   if (reducedMotionMQ.addEventListener) reducedMotionMQ.addEventListener("change", onReducedMotionChange);
   else if (reducedMotionMQ.addListener) reducedMotionMQ.addListener(onReducedMotionChange);
   function reducedMotion() { return reducedMotionOn; }
+  /** @param {number} v */
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
   // "Lite mode" kill-switch for the added visual layer (day/night, overdrive wash +
@@ -40,11 +43,11 @@
   // neither ever decreases), so the unlocked set only grows and is safe to cache.
   const SKINS = [
     { id: "classic", label: "Classic", req: null, test: () => true },
-    { id: "hardhat", label: "Hard Hat", req: "Level 3", test: (lv) => lv >= 3 },
-    { id: "shades", label: "Cool Shades", req: "Level 6", test: (lv) => lv >= 6 },
-    { id: "cape", label: "Caped Auditor", req: "Silver badge", test: (lv, tier) => tier >= 2 },
-    { id: "gold", label: "Gold Standard", req: "Gold badge", test: (lv, tier) => tier >= 3 },
-    { id: "platinum", label: "Platinum Aura", req: "Platinum badge", test: (lv, tier) => tier >= 4 },
+    { id: "hardhat", label: "Hard Hat", req: "Level 3", test: (/** @type {number} */ lv) => lv >= 3 },
+    { id: "shades", label: "Cool Shades", req: "Level 6", test: (/** @type {number} */ lv) => lv >= 6 },
+    { id: "cape", label: "Caped Auditor", req: "Silver badge", test: (/** @type {number} */ lv, /** @type {number} */ tier) => tier >= 2 },
+    { id: "gold", label: "Gold Standard", req: "Gold badge", test: (/** @type {number} */ lv, /** @type {number} */ tier) => tier >= 3 },
+    { id: "platinum", label: "Platinum Aura", req: "Platinum badge", test: (/** @type {number} */ lv, /** @type {number} */ tier) => tier >= 4 },
   ];
   const SKIN_UNLOCK_KEY = "medlane-game-unlocked-skins";
   const SKIN_CHOICE_KEY = "medlane-game-skin";
@@ -68,6 +71,7 @@
   // preload stays "none" so none of this ~220KB downloads on every page load
   // for every visitor — it's fetched only once someone actually opens the
   // game (see primeAllAudio(), called from the "Play Game" click).
+  /** @param {string} file @param {number} [volume] */
   function sound(file, volume = 1) {
     const audio = new Audio(`sounds/${file}`);
     audio.volume = volume;
@@ -75,6 +79,7 @@
     return audio;
   }
 
+  /** @type {Record<string, any>} */
   const sfxAudio = {
     jump: sound("jump.wav", 0.8),
     dodge: sound("dodge.wav", 0.55),
@@ -96,12 +101,15 @@
   // ~40 of them on the Play click was contending badly enough to hitch the first jumps —
   // this keeps the total near a dozen. Pools are built eagerly so primeAllAudio() can
   // unlock every node from the same gesture (Safari ties playback permission to the element).
+  /** @type {Record<string, number>} */
   const SFX_POOL_SIZES = { jump: 3, dodge: 3 };
+  /** @type {Record<string, any>} */
   const sfxPools = {};
   for (const [key, audio] of Object.entries(sfxAudio)) {
     const size = SFX_POOL_SIZES[key] || 1;
     sfxPools[key] = { nodes: size === 1 ? [audio] : Array.from({ length: size }, () => audio.cloneNode()), next: 0 };
   }
+  /** @param {string} key */
   function playSfx(key) {
     if (!soundEnabled) return;
     try {
@@ -176,6 +184,7 @@
     musicAudio.pause();
   }
 
+  /** @param {boolean} next */
   function setSoundEnabled(next) {
     soundEnabled = next;
     try { localStorage.setItem("medlane-game-sound", JSON.stringify(soundEnabled)); } catch { /* ignore */ }
@@ -227,6 +236,7 @@
   let playerVY = 0;
   let onGround = true;
   let crouching = false;
+  /** @type {Record<string, any>[]} */
   let obstacles = [];
   let distance = 0;
   let dodged = 0;
@@ -235,11 +245,13 @@
   let speed = 6.2;
   let spawnTimer = 0;
   let bgOffset = 0;
+  /** @type {Record<string, any>[]} */
   let particles = [];
 
   // Juice + shield state — all reset per run in resetGameState().
   let hasShield = false;
   let invulnFrames = 0;   // hit checks skipped while > 0 (after a shield break)
+  /** @type {Record<string, any>[]} */
   let pickups = [];        // 0 or 1 "approved stamp" at a time (see spawn guard)
   let stampTimer = 0;
   let lastStampScore = 0;
@@ -264,7 +276,7 @@
   const fxStyle = { nightBucket: -1, nightWash: "", stars: "", moonShade: "", odBucket: -1, speedLine: "", flashBucket: -1, flash: "" };
   function computeThemeColors() {
     const styles = getComputedStyle(document.documentElement);
-    const get = (name, fallback) => (styles.getPropertyValue(name) || "").trim() || fallback;
+    const get = (/** @type {string} */ name, /** @type {string} */ fallback) => (styles.getPropertyValue(name) || "").trim() || fallback;
     return {
       skyTop: get("--bg", "#edf5fb"),
       panel: get("--panel-solid", "#ffffff"),
@@ -332,6 +344,7 @@
     sfxJump();
   }
 
+  /** @param {boolean} next */
   function setCrouching(next) {
     crouching = next;
   }
@@ -359,6 +372,7 @@
     pickups.push({ type: "stamp", x: GAME_W + 30, y: GROUND_Y - PLAYER_H - 52, w: 32, h: 24, bob: Math.random() * Math.PI * 2, taken: false });
   }
 
+  /** @param {number} value */
   function fireMilestone(value) {
     playSfx("milestone");
     spawnCelebrationParticles({ count: 16, y: 70, power: 0.85 });
@@ -368,6 +382,7 @@
   // Impulse-style shake: a stronger hit overrides a weaker one still in progress. The
   // offset is applied inside drawGame() via ctx.translate (the canvas is already fully
   // repainted every frame, so this is free — no CSS transform / compositor layer).
+  /** @param {number} mag @param {number} frames */
   function addShake(mag, frames) {
     if (reducedMotion() || liteMode) return;
     if (shakeFrames > 0 && mag <= shakeMag) return;
@@ -389,6 +404,7 @@
     requestAnimationFrame(tick);
   }
 
+  /** @param {number} dt */
   function updateGame(dt) {
     distance += speed * dt;
     // Difficulty is tied to score (not just survival time), so a run that racks
@@ -525,6 +541,7 @@
     if (scoreEl) scoreEl.textContent = String(Math.floor(displayedScore));
   }
 
+  /** @param {CanvasRenderingContext2D} g @param {number} x @param {number} y @param {number} w @param {number} h @param {number} r */
   function roundRectPath(g, x, y, w, h, r) {
     g.beginPath();
     g.moveTo(x + r, y);
@@ -534,6 +551,7 @@
     g.arcTo(x, y, x + w, y, r);
     g.closePath();
   }
+  /** @param {number} x @param {number} y @param {number} w @param {number} h @param {number} r */
   function drawRoundedRect(x, y, w, h, r) { roundRectPath(ctx2d, x, y, w, h, r); }
 
   function drawGame() {
@@ -828,6 +846,7 @@
   // effect. Sized off the badge box (bw/bh) so the same routine renders both the live
   // runner (ctx2d, phase = distance) and the leaderboard thumbnails (offscreen ctx,
   // phase = 0). `phase` drives the cape/platinum animation.
+  /** @param {CanvasRenderingContext2D} g @param {string} id @param {number} bx @param {number} by @param {number} bw @param {number} bh @param {boolean} crouch @param {number} phase */
   function drawSkinOn(g, id, bx, by, bw, bh, crouch, phase) {
     if (!id || id === "classic") return;
     const cx = bx + bw / 2;
@@ -890,7 +909,9 @@
 
   // A small badge+skin avatar for the leaderboard ("show off your custom design").
   // Computed once per skin id and cached — at most six ever exist.
+  /** @type {Record<string, string>} */
   const skinThumbCache = {};
+  /** @param {string} id */
   function skinThumbDataUrl(id) {
     const key = SKINS.some((s) => s.id === id) ? id : "classic";
     if (skinThumbCache[key]) return skinThumbCache[key];
@@ -919,12 +940,14 @@
   playerLogoImg.addEventListener("load", () => { for (const k of Object.keys(skinThumbCache)) delete skinThumbCache[k]; }, { once: true });
 
   const RARE_SKINS = new Set(["cape", "gold", "platinum"]);
+  /** @param {string} skin @param {number} size */
   function leaderboardAvatar(skin, size) {
     const id = SKINS.some((s) => s.id === skin) ? skin : "classic";
     const rare = RARE_SKINS.has(id) ? ` data-rare="${id}"` : "";
     return `<img class="game-lb-avatar" src="${skinThumbDataUrl(id)}" alt="" width="${size}" height="${size}"${rare}>`;
   }
 
+  /** @param {Record<string, any>} [opts] */
   function spawnCelebrationParticles(opts) {
     const { count = 26, x = GAME_W / 2, y = 90, power = 1 } = opts || {};
     const c = themeColors();
@@ -942,6 +965,7 @@
     }
   }
 
+  /** @param {number} timestamp */
   function gameLoop(timestamp) {
     if (!gameRunning) return;
     const dt = Math.min((timestamp - gameLastTime) / 16.6667, 2.5);
@@ -957,6 +981,7 @@
   // while a score submit is actually in flight, so a click can't fire off a new run (or a
   // second retry) on top of one still saving. Every other showOverlay call omits it, which
   // re-enables the button as soon as the save resolves either way.
+  /** @param {{ tone?: string, title: string, message: string, buttonLabel: any, busy?: boolean }} options */
   function showOverlay({ tone = "neutral", title, message, buttonLabel, busy = false }) {
     const overlay = document.getElementById("game-overlay");
     const iconEl = document.getElementById("game-overlay-icon");
@@ -976,6 +1001,7 @@
     if (overlay) overlay.hidden = true;
   }
 
+  /** @param {number} ms */
   function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -983,6 +1009,7 @@
   // "Talon" is Filipino for "jump" — matches the Luksong Medlane name. Returns
   // false if the modal was closed mid-countdown (checked via the generation
   // counter) so the caller knows not to actually start the run.
+  /** @param {number} myGeneration */
   async function runCountdown(myGeneration) {
     const el = document.getElementById("game-countdown");
     if (!el) return true;
@@ -1067,6 +1094,7 @@
   function readPendingScore() {
     try { return JSON.parse(localStorage.getItem(PENDING_SCORE_KEY) || "null"); } catch { return null; }
   }
+  /** @param {any} value */
   function writePendingScore(value) {
     try {
       if (value) localStorage.setItem(PENDING_SCORE_KEY, JSON.stringify(value));
@@ -1084,6 +1112,7 @@
     await attemptScoreSubmit(finalScore, token, { announce: true });
   }
 
+  /** @param {number} finalScore @param {string} token @param {{ announce?: boolean }} options */
   async function attemptScoreSubmit(finalScore, token, { announce = false } = {}) {
     // Background flushes yield to anything already submitting; the announce=true path (the
     // result card / Retry Save button) always runs so its overlay never gets stuck.
@@ -1124,6 +1153,7 @@
     await attemptScoreSubmit(pending.score, pending.token, { announce: false });
   }
 
+  /** @param {number} finalScore @param {Record<string, any>} result @param {{ announce?: boolean }} options */
   function applyScoreResult(finalScore, result, { announce = false } = {}) {
     const bestEl = document.getElementById("game-best");
     if (bestEl) bestEl.textContent = String(result.best);
@@ -1187,7 +1217,7 @@
       const { entries } = await MedlaneAPI.listGameLeaderboard("score");
       if (!entries.length) { list.innerHTML = `<li>No runs yet — be the first!</li>`; return; }
       const myName = typeof currentUser !== "undefined" ? currentUser?.name : null;
-      list.innerHTML = entries.slice(0, 5).map((entry, index) => {
+      list.innerHTML = entries.slice(0, 5).map((/** @type {Record<string, any>} */ entry, /** @type {number} */ index) => {
         const isMe = myName && entry.name === myName;
         return `<li class="${isMe ? "is-me" : ""}">${leaderboardAvatar(entry.skin || "classic", 22)}<span>${leaderboardRankLabel(index)} ${escapeHtml(entry.name || "Player")}</span><strong>${Number(entry.score || 0)}</strong></li>`;
       }).join("");
@@ -1199,6 +1229,7 @@
   // ---------------------------------------------------------------------
   // Settings badges + leaderboard modal
   // ---------------------------------------------------------------------
+  /** @param {number} best @param {any} badge */
   function updateSettingsBadgeChip(best, badge) {
     const chip = document.getElementById("game-best-badge-chip");
     const icon = document.getElementById("game-best-badge-icon");
@@ -1211,6 +1242,7 @@
     if (text) text.textContent = `${badge} · Best ${best}`;
   }
 
+  /** @param {number} level */
   function updateLevelChip(level) {
     const chip = document.getElementById("game-level-chip");
     const text = document.getElementById("game-level-chip-text");
@@ -1229,6 +1261,7 @@
   let selectedSkin = "classic";
   try { selectedSkin = localStorage.getItem(SKIN_CHOICE_KEY) || "classic"; } catch { /* ignore */ }
   function getSelectedSkin() { return selectedSkin; }
+  /** @param {string} id */
   function setSelectedSkin(id) {
     selectedSkin = id;
     recomputeResolvedSkin();
@@ -1241,6 +1274,7 @@
   function recomputeResolvedSkin() { resolvedSkin = unlockedSkinIds.has(selectedSkin) ? selectedSkin : "classic"; }
   function effectiveSkin() { return resolvedSkin; }
   recomputeResolvedSkin();
+  /** @param {number} level @param {any} badge @param {string | null | undefined} serverSkin */
   function refreshUnlockedSkins(level, badge, serverSkin) {
     const tier = GAME_BADGE_TIER[badge] || 0;
     for (const skin of SKINS) if (skin.test(level || 1, tier)) unlockedSkinIds.add(skin.id);
@@ -1262,7 +1296,7 @@
     }).join("");
     wrap.querySelectorAll(".game-skin-swatch:not([disabled])").forEach((btn) => {
       btn.addEventListener("click", () => {
-        setSelectedSkin(/** @type {HTMLElement} */ (btn).dataset.skin);
+        setSelectedSkin(/** @type {string} */ (/** @type {HTMLElement} */ (btn).dataset.skin));
         sfxClick();
         renderSkinPicker();
         // Persist so it shows on the leaderboard — fire-and-forget; only unlocked
@@ -1289,6 +1323,7 @@
     } catch { /* quiet — this is a background nicety, not core functionality */ }
   }
 
+  /** @param {number} index */
   function leaderboardRankLabel(index) {
     if (index === 0) return "🥇";
     if (index === 1) return "🥈";
@@ -1296,9 +1331,11 @@
     return `#${index + 1}`;
   }
 
+  /** @type {Record<string, string[]>} */
   const LEADERBOARD_HEADERS = { score: ["Rank", "Name", "Highscore", "Badge", "Date"], level: ["Rank", "Name", "Level", "Total XP", "Badge"] };
   let leaderboardTab = "score";
 
+  /** @param {Record<string, any>} entry @param {number} index */
   function leaderboardRow(entry, index) {
     const nameCell = `<span class="game-lb-name">${leaderboardAvatar(entry.skin || "classic", 28)}<span>${escapeHtml(entry.name || "Player")}</span></span>`;
     const badgeCell = entry.badge
@@ -1322,6 +1359,7 @@
     return { cells, attrs: index < 3 ? { class: "game-leaderboard-top" } : {} };
   }
 
+  /** @param {string} tab */
   async function openLeaderboard(tab) {
     if (tab) leaderboardTab = tab;
     sfxClick();
@@ -1333,7 +1371,7 @@
     try {
       const { entries } = await MedlaneAPI.listGameLeaderboard(leaderboardTab);
       const rows = entries.length
-        ? entries.map((entry, index) => leaderboardRow(entry, index))
+        ? entries.map((/** @type {Record<string, any>} */ entry, /** @type {number} */ index) => leaderboardRow(entry, index))
         : [["—", "No runs yet — be the first on the board.", "-", "-", "-"]];
       table("#game-leaderboard-table", headers, rows);
     } catch (/** @type {any} */ error) {
@@ -1434,7 +1472,7 @@
   gameCanvas?.addEventListener("touchcancel", () => setCrouching(false));
 
   document.getElementById("open-game-leaderboard")?.addEventListener("click", () => openLeaderboard("score"));
-  qsa("#game-leaderboard-tabs .tab").forEach((btn) => btn.addEventListener("click", () => openLeaderboard(btn.dataset.leaderboardTab)));
+  qsa("#game-leaderboard-tabs .tab").forEach((btn) => btn.addEventListener("click", () => openLeaderboard(/** @type {string} */ (btn.dataset.leaderboardTab))));
   document.getElementById("game-leaderboard-close")?.addEventListener("click", () => dialogById("game-leaderboard-modal")?.close());
   document.getElementById("game-leaderboard-cancel")?.addEventListener("click", () => dialogById("game-leaderboard-modal")?.close());
   dialogById("game-leaderboard-modal")?.addEventListener("click", (event) => { if (/** @type {HTMLElement} */ (event.target).id === "game-leaderboard-modal") /** @type {HTMLDialogElement} */ (dialogById("game-leaderboard-modal")).close(); });

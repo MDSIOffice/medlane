@@ -1,8 +1,10 @@
 // @ts-check
+/** @type {any} */
 let currentReportSaleId = null;
 /** @type {any} */
 let selectedUserSessionsTarget = null;
 
+/** @param {string} section */
 function moduleWorkflowItems(section) {
   const facts = workflowFacts();
   const topOverdue = facts.overdue[0];
@@ -102,15 +104,17 @@ function moduleWorkflowItems(section) {
   return (queues[section] || []).filter(Boolean).slice(0, 4);
 }
 
+/** @param {string} section */
 function workflowTitle(section) {
   return ({ dashboard: "Smart Action Queue", analytics: "Decision Shortcuts", masterlists: "Data Quality Queue", inventory: "Warehouse Task Queue", sales: "Sales Safety Queue", invoicing: "Invoice Error Prevention", collections: "Collector Work Queue", "receivables-tracker": "AR Recovery Queue", payables: "Payables Work Queue", replenishments: "Approval Work Queue", reports: "Report Automation", reconciliation: "Fix Queue", security: "Risk Controls", imports: "Import Safety", warranty: "Service Queue", "purchase-history": "Repeat Order Assist", notifications: "Alert Workflow", users: "Access Workflow", "product-issues": "Support Resolution Queue" }[section] || "Workflow Assistant");
 }
 
+/** @param {string} sectionId */
 function ensureWorkflowPanel(sectionId) {
   if (sectionId === "notifications") return null;
   const section = document.getElementById(sectionId);
-  if (!section || section.querySelector(".workflow-assist")) return section?.querySelector(".workflow-assist");
-  const anchor = section.querySelector(".section-header, .toolbar, .feature-strip") || section.firstElementChild;
+  if (!section || qsIn(section, ".workflow-assist")) return section?.querySelector(".workflow-assist");
+  const anchor = qsIn(section, ".section-header, .toolbar, .feature-strip") || section.firstElementChild;
   const panel = document.createElement("article");
   panel.className = "panel workflow-assist";
   panel.dataset.workflowSection = sectionId;
@@ -119,6 +123,7 @@ function ensureWorkflowPanel(sectionId) {
   return panel;
 }
 
+/** @param {string} sectionId */
 function renderWorkflowAssist(sectionId) {
   const panel = ensureWorkflowPanel(sectionId);
   if (!panel) return;
@@ -139,10 +144,12 @@ function renderWorkflowAssistAll() {
   ["dashboard", "analytics", "masterlists", "inventory", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"].forEach(renderWorkflowAssist);
 }
 
+/** @param {any} value */
 function monthLabel(value) {
   return new Date(`${value}-01T00:00:00`).toLocaleDateString("en-PH", { month: "short", year: "numeric" });
 }
 
+/** @param {any} entries */
 function lineChart(entries) {
   if (!entries.length) return `<p>No sales trend available for this view.</p>`;
   const width = 720;
@@ -170,6 +177,7 @@ function lineChart(entries) {
   </svg>`;
 }
 
+/** @param {any} labels @param {any} series @param {Record<string, any>} [options] */
 function multiSeriesChart(labels, series, options = {}) {
   if (!labels.length) return `<p>No trend data available for this view.</p>`;
   // Drawn at the container's real pixel width (not a stretched fixed viewBox) so text stays
@@ -233,12 +241,14 @@ function multiSeriesChart(labels, series, options = {}) {
   </svg><div class="chart-legend-row">${legend}</div>`;
 }
 
+/** @param {any} entries @param {any} [subTextFn] */
 function verticalBars(entries, subTextFn) {
   if (!entries.length) return `<p>No salesperson data available for this view.</p>`;
   const max = Math.max(...entries.map(([, value]) => value), 1);
   return entries.map(([label, value]) => `<div class="vertical-bar"><span class="vertical-value" title="${escapeHtml(peso.format(value))}">${escapeHtml(pesoCompact(value))}</span><div class="vertical-track"><span class="vertical-fill" style="height:${Math.max(6, Math.round((value / max) * 100))}%"></span></div><span class="vertical-label">${escapeHtml(label)}</span>${subTextFn ? `<span class="vertical-subvalue">${escapeHtml(subTextFn(label, value))}</span>` : ""}</div>`).join("");
 }
 
+/** @param {string} text @param {Record<string, any>} [options] */
 function parseInvoiceLines(text, options = {}) {
   const requireLot = options.requireLot !== false;
   return text.split(/\r?\n/).map((row) => row.trim()).filter(Boolean).map((row) => {
@@ -273,27 +283,36 @@ function parseInvoiceLines(text, options = {}) {
 // with expiry "" or "N/A" interchangeably, not always the literal "N/A" string.
 // Treating only "N/A" as "no expiry" made daysUntil("") — NaN — read as already
 // expired, silently excluding real, in-stock units from availability checks.
+/** @param {string} expiry */
 function hasNoExpiry(expiry) {
   return !expiry || expiry === "N/A";
 }
 
+/** @param {any} item */
 function isEquipmentItem(item) {
   const category = String(item?.category || item?.classification || "").trim().toLowerCase();
   return category === "equipment";
 }
 
+/** @param {any} line */
 function lineSubtotal(line) { return Math.max(0, line.qty * line.price); }
+/** @param {any} sale */
 function saleSummary(sale) { return (sale.lines || []).map((line) => `${line.item} (${line.qty} ${line.uom})`).join(", ") || `${sale.item} (${sale.qty || 0} ${sale.uom || "unit"})`; }
+/** @param {any} sale */
 function saleBrandSummary(sale) { return [...new Set((sale.lines || []).map((line) => line.brand).filter(Boolean))].join(", ") || sale.brand || "-"; }
+/** @param {any[]} lines */
 function saleAmount(lines) { return lines.reduce((sum, line) => sum + lineSubtotal(line), 0); }
+/** @param {string} documentNo @param {any} [exceptId] */
 function documentExists(documentNo, exceptId = null) {
   const normalized = String(documentNo || "").trim().toLowerCase();
   return data.sales.some((sale) => String(sale.documentNo || sale.id || "").trim().toLowerCase() === normalized && sale.id !== exceptId);
 }
+/** @param {string} receiptNo */
 function receiptExists(receiptNo) {
   const normalized = String(receiptNo || "").trim().toLowerCase();
   return data.payments.some((payment) => String(payment.receiptNo || "").trim().toLowerCase() === normalized);
 }
+/** @param {string} branch */
 function branchUsageReasons(branch) {
   return [
     data.inventory.some((item) => item.branch === branch) && "inventory stock",
@@ -302,7 +321,9 @@ function branchUsageReasons(branch) {
     (data.inventoryPurchaseOrders || []).some((po) => po.branch === branch || po.receivingBranch === branch) && "inventory purchase orders",
   ].filter(Boolean);
 }
+/** @param {any} discount */
 function discountNeedsApproval(discount) { return Number(discount || 0) > 0; }
+/** @param {any} value */
 function findItemByCodeOrName(value) {
   const query = String(value || "").trim().toLowerCase();
   if (!query) return null;
@@ -321,11 +342,14 @@ function findItemForSheetRow(row, changedInput = null, allowPartial = false) {
   if (exact || !allowPartial) return exact || null;
   return findItemByCodeOrName(changedInput?.value) || findItemByCodeOrName(code) || findItemByCodeOrName(name);
 }
+/** @param {any} type */
 function collectionTagForType(type) { return type === "TS" ? "TS-PR" : ["DR", "DRS"].includes(type) ? "DR-CR" : "SI-CR"; }
+/** @param {any} request */
 function paymentRequestHistory(request) {
   return request.history?.length ? request.history : [{ date: request.date, status: request.requestStatus || request.status || "Prepared", note: "Payment request created.", by: request.preparedBy }];
 }
 
+/** @param {any} request */
 function paymentRequestActionsCell(request) {
   const approveBtn = request.invoice && request.requestStatus === "Pending"
     ? (canApprovePaymentRequests() ? `<button class="mini-button" data-payment-request-approve="${escapeHtml(request.cvNo)}">Approve</button>` : `<small>Awaiting Superadmin/CEO</small>`)
@@ -345,6 +369,7 @@ function paymentRequestActionsCell(request) {
   return `<div class="inline-actions">${approveBtn}${cancelBtn}${statusActions}${secondaryActions}</div>`;
 }
 
+/** @param {string} cvNo */
 function openPaymentRequestMoreMenu(cvNo) {
   qs("#payment-request-more-modal")?.remove();
   const dialog = document.createElement("dialog");
@@ -356,10 +381,12 @@ function openPaymentRequestMoreMenu(cvNo) {
   dialog.showModal();
 }
 
+/** @param {any} payment */
 function saleForPayment(payment) {
   return data.sales.find((sale) => (sale.documentNo || sale.id) === payment.invoice || sale.id === payment.invoice || sale.documentNo === payment.invoice);
 }
 
+/** @param {any} payment */
 function applyCollectionPayment(payment) {
   const sale = saleForPayment(payment);
   if (!sale) return;
@@ -373,6 +400,7 @@ function applyCollectionPayment(payment) {
   payment.appliedToInvoice = true;
 }
 
+/** @param {any} payment */
 function reverseCollectionPayment(payment) {
   const sale = saleForPayment(payment);
   if (!sale) return;
@@ -381,11 +409,13 @@ function reverseCollectionPayment(payment) {
   payment.appliedToInvoice = false;
 }
 
+/** @param {any} requestOrCvNo */
 function paymentRequestPayments(requestOrCvNo) {
   const cvNo = typeof requestOrCvNo === "string" ? requestOrCvNo : requestOrCvNo?.cvNo;
   return data.payments.filter((entry) => entry.paymentRequestCvNo === cvNo || entry.receiptNo === cvNo);
 }
 
+/** @param {string} cvNo */
 async function approvePaymentRequest(cvNo) {
   if (!canApprovePaymentRequests()) return toast("Only Superadmin or CEO can approve payment requests.");
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
@@ -463,6 +493,7 @@ async function approvePaymentRequest(cvNo) {
   toast(`${request.cvNo} approved and queued for deposition.`);
 }
 
+/** @param {string} cvNo */
 async function cancelPaymentRequest(cvNo) {
   if (!canApprovePaymentRequests()) return toast("Only Superadmin or CEO can cancel payment requests.");
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
@@ -509,6 +540,7 @@ async function cancelPaymentRequest(cvNo) {
   toast(`${request.cvNo} cancelled.`);
 }
 
+/** @param {any} cvNo */
 function renderPaymentRequestDetail(cvNo) {
   ensureUploadedFilesLoaded(() => renderPaymentRequestDetail(cvNo));
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
@@ -527,6 +559,7 @@ function renderPaymentRequestDetail(cvNo) {
   showSection("payment-request-detail");
 }
 
+/** @param {string} [clientName] */
 function openInvoicesForPaymentRequest(clientName = "") {
   return data.sales.filter((sale) => sale.status !== "Cancelled" && Number(sale.net || 0) - Number(sale.paid || 0) > 0 && (!clientName || sale.client === clientName))
     .sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
@@ -535,7 +568,7 @@ function openInvoicesForPaymentRequest(clientName = "") {
 function refreshPaymentRequestInvoiceRowOptions() {
   const clientName = qs("#employee")?.value.trim() || "";
   qsa(".payment-request-invoice-row").forEach((row) => {
-    const datalist = row.querySelector("datalist");
+    const datalist = qsIn(row, "datalist");
     if (datalist) datalist.innerHTML = paymentRequestInvoiceDatalistOptions(clientName);
     syncPaymentRequestRowDerived(row);
   });
@@ -547,6 +580,7 @@ function collectPaymentRequestInvoices() {
   return collectPaymentRequestLines().map((line) => line.invoice).filter(Boolean);
 }
 
+/** @param {any} value */
 function findSaleByDocumentInput(value) {
   const query = String(value || "").trim().toLowerCase();
   if (!query) return null;
@@ -554,6 +588,7 @@ function findSaleByDocumentInput(value) {
     || data.sales.find((item) => (item.id || "").toLowerCase().startsWith(query) || (item.documentNo || "").toLowerCase().startsWith(query));
 }
 
+/** @param {any} item @param {string} branch */
 function invoiceRowLotOptionsHtml(item, branch) {
   if (!item) return "";
   return data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0).map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.branch)} · Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
@@ -562,17 +597,20 @@ function invoiceRowLotOptionsHtml(item, branch) {
 // Exact code+branch+lot+qty match first. If that misses and there's an untracked (no lot
 // on file) row with enough qty, fall back to it — this is what lets a lot typed during
 // invoicing "claim" stock that was received without one (see itemStockLotTracked).
+/** @param {any} line */
 function matchInvoiceLineStock(line) {
   return data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && i.lot === line.lot && i.qty >= line.qty)
     || data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && !i.lot && i.qty >= line.qty);
 }
 
+/** @param {any} item @param {string} branch */
 function itemStockLotTracked(item, branch) {
   if (!item) return true;
   const entries = data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0);
   return entries.length ? entries.some((entry) => entry.lot) : true;
 }
 
+/** @param {any} item @param {string} branch */
 function invoiceItemStockQty(item, branch) {
   if (!item) return 0;
   return data.inventory
@@ -585,6 +623,7 @@ function invoiceItemStockQty(item, branch) {
 // invoiceItemStockQty() above is a lot-blind total — it can say "1 available" while the one
 // unit on hand sits under a different lot than the one typed, which only surfaces as a save-time
 // "No sufficient stock" error. This keeps the hint honest once a lot is entered.
+/** @param {any} item @param {string} branch @param {string} lot */
 function invoiceItemStockQtyForLot(item, branch, lot) {
   if (!item) return 0;
   const trimmedLot = String(lot || "").trim();
@@ -593,6 +632,7 @@ function invoiceItemStockQtyForLot(item, branch, lot) {
   return candidates.reduce((max, entry) => Math.max(max, Number(entry.qty || 0)), 0);
 }
 
+/** @param {any} item @param {string} branch @param {string} lot */
 function invoiceRowStockHintHtml(item, branch, lot) {
   if (!item) return "";
   const trimmedLot = String(lot || "").trim();
@@ -614,6 +654,7 @@ function invoiceRowStockHintHtml(item, branch, lot) {
   return `<small class="invoice-stock-hint${qty <= 0 ? " invoice-stock-hint-empty" : ""}${reserved > 0 ? " invoice-stock-hint-reserved" : ""}" data-role="stock-hint">${availability}${pendingNote}</small>`;
 }
 
+/** @param {Record<string, any>} [line] @param {Record<string, any>} [options] */
 function invoiceLineTemplate(line = {}, options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
@@ -642,6 +683,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
   </div>`;
 }
 
+/** @param {any} value */
 function findClientByName(value) {
   const query = String(value || "").trim().toLowerCase();
   if (!query) return null;
@@ -649,7 +691,7 @@ function findClientByName(value) {
     || data.clients.find((client) => client.name.toLowerCase().includes(query));
 }
 
-/** @param {ClientPO} po @param {string} code */
+/** @param {any} po @param {string} code */
 function poServedQty(po, code) {
   return data.sales
     .filter((sale) => sale.po === po.id && sale.status !== "Cancelled")
@@ -658,7 +700,7 @@ function poServedQty(po, code) {
     .reduce((sum, line) => sum + Number(line.qty || 0), 0);
 }
 
-/** @param {ClientPO} po @param {PoLine} line */
+/** @param {any} po @param {any} line */
 function poLineStatus(po, line) {
   const served = poServedQty(po, line.code);
   return { served, pending: Math.max(Number(line.qty || 0) - served, 0) };
@@ -667,11 +709,11 @@ function poLineStatus(po, line) {
 // A submitted client PO can still be edited only while nothing has been invoiced/served
 // against it and it is not in a terminal (fully served) status. Once any quantity is served,
 // the PO is locked — corrections then go through the invoice cancel/replace flow instead.
-/** @param {ClientPO | null | undefined} po */
+/** @param {any} po */
 function poHasAnyServed(po) {
   return (po?.lines || []).some((line) => poServedQty(/** @type {ClientPO} */ (po), line.code) > 0);
 }
-/** @param {ClientPO | null | undefined} po */
+/** @param {any} po */
 function poCanEdit(po) {
   return Boolean(po) && !PO_TERMINAL_STATUSES.includes(poStatus(/** @type {ClientPO} */ (po))) && !poHasAnyServed(po) && canEditModule("purchase-orders");
 }
@@ -679,7 +721,7 @@ function poCanEdit(po) {
 const PO_COMPLETED_DOC_LABELS = { SI: "Sales Invoice", TS: "Transmittal Slip", DR: "Delivery Receipt" };
 const PO_TERMINAL_STATUSES = Object.values(PO_COMPLETED_DOC_LABELS);
 
-/** @param {ClientPO} po */
+/** @param {any} po */
 function poStatus(po) {
   const pending = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0);
   const served = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).served, 0);
@@ -707,6 +749,7 @@ function pendingPoDemandForItem(code, branch, excludePoId = null) {
   return competingPurchaseOrdersForItem(code, branch, excludePoId).reduce((sum, entry) => sum + entry.pending, 0);
 }
 
+/** @param {any} item */
 function inventoryReservedCellHtml(item) {
   const competitors = competingPurchaseOrdersForItem(item.code, item.branch);
   const reserved = competitors.reduce((sum, entry) => sum + entry.pending, 0);
@@ -724,20 +767,23 @@ function inventoryReservedCellHtml(item) {
   return `<button type="button" class="pill ${reserved > totalStock ? "red" : "orange"} pill-button" title="${title}" data-go-section="purchase-orders" data-focus-record="${firstPoId}">${reserved} pending (all lots)</button>`;
 }
 
+/** @param {any} po */
 function poFullyPaid(po) {
   const linkedSales = data.sales.filter((sale) => sale.po === po.id && sale.status !== "Cancelled");
   return linkedSales.length > 0 && linkedSales.every((sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
 }
 
-/** @param {ClientPO} po */
+/** @param {any} po */
 function poInvoiceable(po) {
   return !PO_TERMINAL_STATUSES.includes(poStatus(po)) && !poFullyPaid(po);
 }
 
+/** @param {string} clientName */
 function openPurchaseOrdersForClient(clientName) {
   return data.purchaseOrders.filter((po) => po.client === clientName && poInvoiceable(po));
 }
 
+/** @param {any[]} [lines] @param {Record<string, any>} [options] */
 function renderInvoiceEditor(lines = [{}], options = {}) {
   const requireLot = options.requireLot !== false;
   const allowDiscount = Boolean(options.allowDiscount);
@@ -765,29 +811,31 @@ function collectInvoiceEditorLines() {
 
 // Inventory PO lines carry an Item Code field: picking a code fills the item (and, through
 // syncInvoiceRowItem, its brand/unit) the same as picking the item name would.
+/** @param {any} input */
 function syncInvoiceRowFromCode(input) {
   const row = input?.closest(".invoice-line-row");
   const item = data.items.find((entry) => String(entry.code || "").toLowerCase() === input.value.trim().toLowerCase());
   if (!row || !item) return;
-  const itemInput = row.querySelector(".invoice-item-input");
+  const itemInput = qsIn(row, ".invoice-item-input");
   itemInput.value = item.name;
   syncInvoiceRowItem(itemInput);
 }
 
+/** @param {any} input */
 function syncInvoiceRowLot(input) {
   if (!input) return;
-  const row = input.closest(".invoice-line-row");
-  const item = findItemByCodeOrName(row?.querySelector(".invoice-item-input")?.value);
+  const row = closestEl(input, ".invoice-line-row");
+  const item = findItemByCodeOrName(/** @type {AnyEl | null} */ (row?.querySelector(".invoice-item-input"))?.value);
   const lot = input.value.trim();
   if (!row || !item) return;
   const branch = qsIn(row, ".invoice-source-branch-input")?.value || qs("#sourceBranch")?.value;
   // Refresh the hint for every lot edit (including clearing it back to the aggregate view) —
   // this is what the "1 available" / "No sufficient stock" mismatch needed: the hint has to
   // react to the exact lot typed, not just to the item changing.
-  const stockHint = row.querySelector("[data-role='stock-hint']");
+  const stockHint = qsIn(row, "[data-role='stock-hint']");
   if (stockHint) stockHint.outerHTML = invoiceRowStockHintHtml(item, branch, lot) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
   if (!lot) return;
-  const expiryInput = row.querySelector(".invoice-expiry-input");
+  const expiryInput = qsIn(row, ".invoice-expiry-input");
   if (!expiryInput || expiryInput.type === "hidden" || isEquipmentItem(item)) return;
   // Match the lot the way people actually type it (case/space-insensitive), preferring the
   // selected branch but falling back to any branch — a lot's expiry is the same wherever it sits.
@@ -804,35 +852,36 @@ function syncInvoiceRowLot(input) {
   }
 }
 
+/** @param {any} input @param {Record<string, any>} [options] */
 function syncInvoiceRowItem(input, options = {}) {
   if (!input) return;
-  const row = input.closest(".invoice-line-row");
+  const row = closestEl(input, ".invoice-line-row");
   const item = findItemByCodeOrName(input.value);
   const warehouse = qs("#sourceBranch")?.value || qsIn(row, ".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
-  const lotDatalist = row.querySelector("datalist[id^='invoice-lot-options-']");
+  const lotDatalist = qsIn(row, "datalist[id^='invoice-lot-options-']");
   if (lotDatalist) lotDatalist.innerHTML = invoiceRowLotOptionsHtml(item, warehouse);
   // outerHTML replaces the element, so any reference captured before that point is detached —
   // re-query fresh each call instead of reusing one `stockHint` variable across both calls below.
   const refreshStockHint = (lot) => {
-    const hint = row.querySelector("[data-role='stock-hint']");
+    const hint = qsIn(row, "[data-role='stock-hint']");
     if (hint) hint.outerHTML = invoiceRowStockHintHtml(item, warehouse, lot) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
   };
   if (!item) { refreshStockHint(""); return; }
-  const lotInput = row.querySelector(".invoice-lot-input");
+  const lotInput = qsIn(row, ".invoice-lot-input");
   if (lotInput && lotInput.type !== "hidden") {
     const lotTracked = itemStockLotTracked(item, warehouse);
     lotInput.required = lotTracked;
     lotInput.placeholder = lotTracked ? (isEquipmentItem(item) ? "Serial or lot number" : "Lot number") : "No lot on file — enter it here to record it";
   }
   qsIn(row, ".invoice-brand-input").value = item.brand || "";
-  const codeInput = row.querySelector(".invoice-code-input");
+  const codeInput = qsIn(row, ".invoice-code-input");
   if (codeInput) codeInput.value = item.code || "";
   // Skip when re-syncing a line whose unit was already set on purpose (e.g. carried over
   // from the source purchase order line, which can legitimately differ from the item's
   // default uom — a "box" PO line shouldn't get silently reset back to "piece").
   if (!options.preserveUom) qsIn(row, ".invoice-uom-input").value = item.uom || "unit";
-  const expiryField = row.querySelector(".expiry-field");
-  const expiryInput = row.querySelector(".invoice-expiry-input");
+  const expiryField = qsIn(row, ".expiry-field");
+  const expiryInput = qsIn(row, ".invoice-expiry-input");
   const equipment = isEquipmentItem(item);
   expiryField?.classList.toggle("equipment-expiry-field", equipment);
   if (expiryInput) { expiryInput.required = !equipment; if (equipment) expiryInput.value = ""; }
@@ -843,7 +892,7 @@ function syncInvoiceRowItem(input, options = {}) {
   if (stock) {
     qsIn(row, ".invoice-lot-input").value = stock.lot || "";
     if (!equipment) qsIn(row, ".invoice-expiry-input").value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
-    const expiryEl = row.querySelector(".invoice-expiry-input"); if (expiryEl) expiryEl.dataset.expiryLot = stock.lot || "";
+    const expiryEl = qsIn(row, ".invoice-expiry-input"); if (expiryEl) expiryEl.dataset.expiryLot = stock.lot || "";
   }
   refreshStockHint(qsIn(row, ".invoice-lot-input")?.value.trim() || "");
 }
@@ -853,6 +902,7 @@ function syncInvoiceLinesForClient() {
   renderInvoiceComputePreview();
 }
 
+/** @param {boolean} [allowPartial] */
 function syncInvoicePurchaseOrders(allowPartial = false) {
   if (!["invoice", "cancelReplace"].includes(modalType)) return;
   const clientInput = qs("#client");
@@ -907,10 +957,12 @@ function renderInvoiceComputePreview() {
 
 // Sections a reload may land back on: the user's own modules plus the always-available pages.
 // Record-detail pages aren't restorable (they need the record chosen in memory).
+/** @param {string} sectionId */
 function canRestoreSection(sectionId) {
   return Boolean(qs(`section.section#${CSS.escape(sectionId)}`)) && (effectiveModules().includes(sectionId) || ["notifications", "user-settings", "memos"].includes(sectionId));
 }
 
+/** @param {string} sectionId @param {Record<string, any>} [options] */
 function showSection(sectionId, options = {}) {
   document.body.dataset.activeSection = sectionId;
   // Keep the URL on the current page so a browser refresh stays here instead of bouncing to the
@@ -945,7 +997,7 @@ function applyRole() {
   qs("#login-screen").classList.add("hidden");
   renderUserMenu();
   qsa(".nav-item").forEach((button) => {
-    button.hidden = button.dataset.section === "security" || !effectiveModules().includes(button.dataset.section);
+    button.hidden = button.dataset.section === "security" || !effectiveModules().includes(/** @type {string} */ (button.dataset.section));
   });
   renderBranchFilter();
   if (currentUser.branch !== "all") data.branch = currentUser.branch;
@@ -1073,14 +1125,17 @@ function renderSettingsTutorial() {
 }
 
 // ---- Print Template Editor (SI/TS/DR custom layout) ----
+/** @param {any} type */
 function printTemplateRecord(type) {
   return (data.printTemplates || []).find((t) => t.type === type) || null;
 }
 
+/** @param {any} value */
 function round3(value) {
   return Math.round(Number(value || 0) * 1000) / 1000;
 }
 
+/** @param {any} key */
 function ptFieldLabel(key) {
   for (const def of Object.values(PRINT_TEMPLATE_FIELDS)) {
     const found = [...def.point, ...def.rowCols].find(([k]) => k === key);
@@ -1089,6 +1144,7 @@ function ptFieldLabel(key) {
   return key;
 }
 
+/** @param {any} o */
 function ptFieldStyleAttr(o) {
   if (!o) return "";
   const parts = [];
@@ -1109,6 +1165,7 @@ function ptCanvasScale() {
 // referenceEl defaults to the page canvas. Row-column fields (si-item, si-qty, ...) are positioned
 // absolute inside the row container in both this editor and the real print HTML, so their left/width
 // must always be measured and written relative to the row container, never the page.
+/** @param {AnyEl} el @param {any} [referenceEl] */
 function ptElementBoxIn(el, referenceEl) {
   const ref = referenceEl || qs("#print-template-canvas .pt-canvas-inner");
   if (!ref || !el) return { left: 0, top: 0, width: 0, right: 0, height: 0 };
@@ -1123,10 +1180,12 @@ function ptRowContainerEl() {
   return qs('#print-template-canvas [data-pt-row-container="1"]');
 }
 
+/** @param {any} kind */
 function ptFieldReferenceEl(kind) {
   return kind === "row-col" ? ptRowContainerEl() : null;
 }
 
+/** @param {any} type */
 function measurePtDefaultRow(type) {
   const row0 = qs('#print-template-canvas [data-pt-row-container="1"]');
   const row1 = qs('#print-template-canvas [data-pt-row-spacing="1"]');
@@ -1144,7 +1203,7 @@ function ensurePtRowOverride() {
 function renderPrintTemplates() {
   qsa("#print-template-tabs .tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.ptTab === ptActiveType));
   const saved = printTemplateRecord(ptActiveType);
-  ptOverrides = { fields: structuredClone(saved?.fields || {}), row: saved?.row ? structuredClone(saved.row) : null };
+  ptOverrides = { fields: structuredClone(saved?.fields || /** @type {Record<string, any>} */ ({})), row: saved?.row ? structuredClone(saved.row) : null };
   ptSelectedField = null;
   ptSelectedKind = null;
   buildPrintTemplateCanvas();
@@ -1174,6 +1233,7 @@ function buildPrintTemplateCanvas() {
   qs("#print-template-canvas").innerHTML = `<section class="template-overlay template-${lower} pt-canvas-inner">${pointFieldsHtml}${row0Html}${row1Html}</section>`;
 }
 
+/** @param {any} vertical */
 function ptNudgeControlsHtml(vertical) {
   return `<div class="pt-nudge-group"><div class="field"><label>Nudge Step</label><select id="pt-step-select"><option value="0.01"${ptStepIn === 0.01 ? " selected" : ""}>Fine (0.01in)</option><option value="0.05"${ptStepIn === 0.05 ? " selected" : ""}>Normal (0.05in)</option><option value="0.1"${ptStepIn === 0.1 ? " selected" : ""}>Coarse (0.1in)</option></select></div><div class="pt-arrow-pad">${vertical ? `<button class="mini-button pt-arrow-up" type="button" data-pt-nudge="up" aria-label="Move up">↑</button>` : ""}<div class="pt-arrow-row"><button class="mini-button" type="button" data-pt-nudge="left" aria-label="Move left">←</button><button class="mini-button" type="button" data-pt-nudge="right" aria-label="Move right">→</button></div>${vertical ? `<button class="mini-button pt-arrow-down" type="button" data-pt-nudge="down" aria-label="Move down">↓</button>` : ""}</div></div>`;
 }
@@ -1196,7 +1256,7 @@ function renderPrintTemplateSidePanel() {
   const key = ptSelectedField;
   const el = qs(`#print-template-canvas [data-pt-field="${key}"]`);
   const box = ptElementBoxIn(el, ptFieldReferenceEl(kind));
-  const override = ptOverrides.fields[key] || {};
+  const override = ptOverrides.fields[key] || /** @type {Record<string, any>} */ ({});
   const fontSize = override.fontSize != null ? override.fontSize : "";
   const align = override.align || (el ? getComputedStyle(el).textAlign : "left") || "left";
   const isRowCol = kind === "row-col";
@@ -1210,6 +1270,7 @@ function renderPrintTemplateSidePanel() {
     <button class="ghost-button" type="button" data-pt-reset-field="${escapeHtml(key)}">Reset Field To Default</button>`;
 }
 
+/** @param {AnyEl} el */
 function selectPtFieldFromEl(el) {
   if (!el) return;
   qsa("#print-template-canvas .pt-selected").forEach((n) => n.classList.remove("pt-selected"));
@@ -1220,8 +1281,9 @@ function selectPtFieldFromEl(el) {
   renderPrintTemplateSidePanel();
 }
 
+/** @param {any} key @param {any} patch */
 function applyPtFieldOverride(key, patch) {
-  ptOverrides.fields[key] = ptOverrides.fields[key] || {};
+  ptOverrides.fields[key] = ptOverrides.fields[key] || /** @type {Record<string, any>} */ ({});
   const target = ptOverrides.fields[key];
   Object.entries(patch).forEach(([prop, value]) => {
     if (value === undefined) delete target[prop]; else target[prop] = value;
@@ -1235,6 +1297,7 @@ function applyPtFieldOverride(key, patch) {
   });
 }
 
+/** @param {any} patch */
 function applyPtRowOverride(patch) {
   const row = ensurePtRowOverride();
   Object.assign(row, patch);
@@ -1254,6 +1317,7 @@ function applyPtRowOverride(patch) {
   }
 }
 
+/** @param {any} dxIn @param {any} dyIn */
 function nudgePtSelected(dxIn, dyIn) {
   if (!ptSelectedField) return;
   const kind = ptSelectedKind;
@@ -1273,6 +1337,7 @@ function nudgePtSelected(dxIn, dyIn) {
   renderPrintTemplateSidePanel();
 }
 
+/** @param {any} e */
 function startPtDrag(e) {
   const el = e.target.closest(".pt-editable");
   if (!el) return;
@@ -1295,6 +1360,7 @@ function startPtDrag(e) {
   }
   let moved = false;
   try { el.setPointerCapture(e.pointerId); } catch { /* ignore unsupported pointer capture */ }
+  /** @param {any} ev */
   function onMove(ev) {
     moved = true;
     const dxIn = (ev.clientX - startX) / (96 * scale);
@@ -1314,15 +1380,17 @@ function startPtDrag(e) {
   document.addEventListener("pointerup", onUp);
 }
 
+/** @param {any} e */
 function handlePtCanvasKeydown(e) {
   if (!ptSelectedField) return;
   const step = ptStepIn;
   const map = { ArrowUp: [0, -step], ArrowDown: [0, step], ArrowLeft: [-step, 0], ArrowRight: [step, 0] };
   if (!map[e.key]) return;
   e.preventDefault();
-  nudgePtSelected(...map[e.key]);
+  nudgePtSelected(...(/** @type {[number, number]} */ (map[e.key])));
 }
 
+/** @param {any} key */
 function resetPtField(key) {
   delete ptOverrides.fields[key];
   qsa(`#print-template-canvas [data-pt-field="${key}"]`).forEach((el) => el.removeAttribute("style"));
@@ -1348,6 +1416,7 @@ async function resetPtAll() {
   await savePrintTemplate(true);
 }
 
+/** @param {boolean} [silent] */
 async function savePrintTemplate(silent = false) {
   if (!silent && !(await confirmFinalSave(`Save ${ptActiveType} print template?`))) return;
   const record = { id: ptActiveType, type: ptActiveType, fields: ptOverrides.fields, row: ptOverrides.row || undefined, updatedBy: currentUser?.name || "System User", updatedAt: fmtDate(today) };
@@ -1360,6 +1429,7 @@ async function savePrintTemplate(silent = false) {
   if (!silent) toast(`${ptActiveType} print template saved.`);
 }
 
+/** @param {string} [selected] */
 function branchOptions(selected = "") {
   return platformBranches().map((branch) => `<option ${branch === selected ? "selected" : ""}>${escapeHtml(branch)}</option>`).join("");
 }
@@ -1372,6 +1442,7 @@ function renderInventoryBranchTabs() {
   host.innerHTML = options.map(([value, label]) => `<button type="button" aria-pressed="${inventoryBranchView === value}" data-inventory-branch="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join("");
 }
 
+/** @param {any} transfer @param {any} index */
 function transferAuthorizationCell(transfer, index) {
   if (transfer.status === "For Receiving") return canApproveInventoryChanges() ? `<div class="inline-actions"><button class="mini-button" data-dispatch-transfer="${index}">Review &amp; Dispatch</button></div>` : `<div class="inline-actions"><small>Awaiting Admin approval</small></div>`;
   if (transfer.status === "In Transit") return `<div class="inline-actions"><button class="mini-button" data-receive-transfer="${index}">Confirm Received</button></div>`;
@@ -1393,11 +1464,13 @@ const inventoryPoTerminalStatuses = ["Fully Received", "Cancelled"];
 const inventoryPoCancellableStatuses = ["Approved", "Sent to Supplier", "In Transit", "For Receiving", "Partially Received"];
 const inventoryPoStatusEmoji = { "Sent to Supplier": "📤", "In Transit": "🚚", "For Receiving": "📦", "Partially Received": "☑️", "Fully Received": "✔️", Cancelled: "❌" };
 const inventoryPoNextStatus = { Approved: "Sent to Supplier", "Sent to Supplier": "In Transit", "In Transit": "For Receiving" };
+/** @param {string} status */
 function poStatusLabel(status) { return `${inventoryPoStatusEmoji[status] ? `${inventoryPoStatusEmoji[status]} ` : ""}${status}`; }
 
 // A PO whose stock receipt is waiting on Superadmin/CEO approval leaves "Receiving POs" right away
 // (it's listed under "Pending Receipts" instead) and comes back only if that receipt is cancelled
 // or the approval leaves quantity still to receive.
+/** @param {any} po */
 function poHasPendingReceipt(po) {
   return (data.stockReceipts || []).some((receipt) => receipt.poId === po.id && receipt.status === "Pending Approval");
 }
@@ -1405,6 +1478,7 @@ function receivingPurchaseOrders() {
   return (data.inventoryPurchaseOrders || []).filter((po) => !inventoryPoTerminalStatuses.includes(po.status) && !poHasPendingReceipt(po));
 }
 
+/** @param {any} po @param {any} index */
 function inventoryPoActionsCell(po, index) {
   const printBtn = `<button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`;
   const timelineBtn = `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button>`;
@@ -1428,6 +1502,7 @@ function inventoryPoActionsCell(po, index) {
   return `<div class="inline-actions">${primaryButton}${waitingNote ? `<small>${waitingNote}</small>` : ""}<details class="row-action-menu"><summary>More</summary><div>${timelineBtn}${printBtn}${cancelable}</div></details></div>`;
 }
 
+/** @param {any} po */
 function replacePoRecord(po) {
   const index = data.inventoryPurchaseOrders.findIndex((entry) => entry.id === po.id);
   if (index >= 0) data.inventoryPurchaseOrders[index] = po;
@@ -1439,6 +1514,7 @@ function replacePoRecord(po) {
   clearPendingSaveQueueKeys(["inventoryPurchaseOrders"]);
 }
 
+/** @param {any} index */
 async function approvePurchaseOrder(index) {
   if (!canApprovePurchaseOrders()) return toast("Only Superadmin can approve purchase orders.");
   const po = (data.inventoryPurchaseOrders || [])[index];
@@ -1455,6 +1531,7 @@ async function approvePurchaseOrder(index) {
   toast(`${po.id} approved.`);
 }
 
+/** @param {any} index */
 async function advancePurchaseOrderStatus(index) {
   if (!canManagePoReceiving()) return toast("Only Logistics/Superadmin can update purchase order status.");
   const po = (data.inventoryPurchaseOrders || [])[index];
@@ -1470,6 +1547,7 @@ async function advancePurchaseOrderStatus(index) {
   toast(`${po.id} marked ${poStatusLabel(next)}.`);
 }
 
+/** @param {any} index */
 async function cancelPurchaseOrder(index) {
   if (!canManagePoReceiving()) return toast("Only Logistics/Superadmin can cancel purchase orders.");
   const po = (data.inventoryPurchaseOrders || [])[index];
@@ -1487,6 +1565,7 @@ async function cancelPurchaseOrder(index) {
   toast(`${po.id} cancelled.`);
 }
 
+/** @param {any} receipt @param {any} index */
 function stockReceiptActionsCell(receipt, index) {
   if (receipt.status !== "Pending Approval") return `<small>${escapeHtml(receipt.status)}</small>`;
   if (!canApproveStockReceipts()) return `<small>Awaiting Superadmin/CEO approval</small>`;
@@ -1503,6 +1582,7 @@ function renderStockReceipts() {
   }));
 }
 
+/** @param {any} receipt */
 function stockReceiptLineRowsHtml(receipt) {
   return (receipt.lines || []).map((line) => `<tr><td>${escapeHtml(line.item || line.code)}<small>${escapeHtml(line.code)}</small></td><td>${escapeHtml(line.branch || "-")}</td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${Number(line.qty || 0)}</td></tr>`).join("") || `<tr><td colspan="5">No lines recorded.</td></tr>`;
 }
@@ -1516,6 +1596,7 @@ function renderStockReceiptHistory() {
   }));
 }
 
+/** @param {string} id */
 function showStockReceiptDetail(id) {
   const receipt = (data.stockReceipts || []).find((entry) => entry.id === id);
   if (!receipt) return toast("Stock receipt not found.");
@@ -1528,6 +1609,7 @@ function showStockReceiptDetail(id) {
   dialog.showModal();
 }
 
+/** @param {any} receipt */
 function replaceStockReceiptRecord(receipt) {
   const index = (data.stockReceipts || []).findIndex((entry) => entry.id === receipt.id);
   if (index >= 0) data.stockReceipts[index] = receipt;
@@ -1535,6 +1617,7 @@ function replaceStockReceiptRecord(receipt) {
   clearPendingSaveQueueKeys(["stockReceipts"]);
 }
 
+/** @param {any} index */
 async function approveStockReceipt(index) {
   if (!canApproveStockReceipts()) return toast("Only Superadmin or CEO can approve stock receipts.");
   const receipt = (data.stockReceipts || [])[index];
@@ -1558,6 +1641,7 @@ async function approveStockReceipt(index) {
   toast(`${receipt.id} approved.`);
 }
 
+/** @param {any} index */
 async function cancelStockReceipt(index) {
   if (!canApproveStockReceipts()) return toast("Only Superadmin or CEO can cancel stock receipts.");
   const receipt = (data.stockReceipts || [])[index];
@@ -1585,6 +1669,7 @@ async function cancelStockReceipt(index) {
   toast(`${receipt.id} cancelled.`);
 }
 
+/** @param {any} receipt */
 function fillStockSheetFromReceipt(receipt) {
   const bodyRows = (receipt.lines || []).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(line.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
@@ -1594,6 +1679,7 @@ function fillStockSheetFromReceipt(receipt) {
   if (qs("#stock-sheet-source")) qs("#stock-sheet-source").value = receipt.source || "";
 }
 
+/** @param {any} index */
 function openStockSheetForReceiptEdit(index) {
   const receipt = (data.stockReceipts || [])[index];
   if (!receipt) return toast("Stock receipt not found.");
@@ -1608,12 +1694,14 @@ function openStockSheetForReceiptEdit(index) {
   qs("#stock-sheet-modal").showModal();
 }
 
+/** @param {string} status */
 function inventoryPoHistoryClass(status) {
   if (status === "Fully Received") return "done";
   if (status === "Cancelled") return "blocked";
   return "pending";
 }
 
+/** @param {string} id */
 function renderInventoryPoDetail(id) {
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === id);
   if (!po) return toast("Purchase order not found.");
@@ -1624,6 +1712,7 @@ function renderInventoryPoDetail(id) {
   showSection("inventory-po-detail");
 }
 
+/** @param {string} poId */
 function openStockSheetForPo(poId) {
   renderStockSheet();
   const picker = qs("#inventory-po-receive-picker");
@@ -1633,23 +1722,28 @@ function openStockSheetForPo(poId) {
   qs("#stock-sheet-modal").showModal();
 }
 
+/** @param {any} line */
 function transferLineQty(line) {
   return Number(line.dispatchedQty ?? line.requestedQty ?? 0);
 }
 
+/** @param {any} line */
 function transferLineLot(line) {
   return line.dispatchedLot || line.requestedLot || "-";
 }
 
+/** @param {any} line */
 function transferLineExpiry(line) {
   return line.dispatchedExpiry || line.requestedExpiry || "N/A";
 }
 
+/** @param {any} transfer */
 function transferItemizedDetail(transfer) {
   const lines = transfer.lines || [];
   return `<div class="mini-transfer-lines">${lines.map((line) => `<span><strong>${escapeHtml(line.item)}</strong> ${transferLineQty(line)} ${escapeHtml(line.uom || "")}<small>Lot ${escapeHtml(transferLineLot(line))} · Exp ${escapeHtml(transferLineExpiry(line))}</small></span>`).join("")}</div>`;
 }
 
+/** @param {any} [dashboardRange] */
 function dashboardVisibleSales(dashboardRange = getDashboardRange()) {
   return byBranch(data.sales, "area").filter((sale) => currentUser?.role !== "Sales" || sale.salesperson === currentUser?.name).filter((sale) => dateInRange(sale.date, dashboardRange.from, dashboardRange.to));
 }
@@ -1711,7 +1805,7 @@ function renderDashboard() {
   qs("#sales-total").textContent = peso.format(totalSales);
   qs("#collection-total").textContent = peso.format(totalPaid);
   qs("#outstanding-total").textContent = peso.format(outstanding);
-  qs("#alert-total").textContent = invAlerts.length;
+  qs("#alert-total").textContent = String(invAlerts.length);
   const creditAlerts = data.clients.filter((client) => client.creditLimit > 0 && clientBalance(client.name) >= client.creditLimit * 0.85).map((client) => ({ color: clientBalance(client.name) > client.creditLimit ? "red" : "orange", title: "Credit limit watch", text: `${client.name}: ${peso.format(clientBalance(client.name))} / ${peso.format(client.creditLimit)} used.`, section: "masterlists", record: client.name }));
   const transferAlerts = data.pendingTransfers.filter((transfer) => transfer.status === "For Receiving").map((transfer) => ({ color: "orange", title: "Stock transfer for receiving", text: `${transfer.id}: ${transfer.qty} ${transfer.item} from ${transfer.from} to ${transfer.to}.`, section: "inventory", record: transfer.id }));
   const chequeAvailableAlerts = data.collectionContacts.filter((contact) => contact.status === "Cheque Available").map((contact) => ({ color: "green", title: "Cheque available", text: `${contact.client} has a cheque ready${contact.chequeInvoice ? ` for ${contact.chequeInvoice}` : ""}.`, section: "collections", record: contact.client }));
@@ -1771,6 +1865,7 @@ function renderDashboard() {
   }
 }
 
+/** @param {any} visibleSales */
 function dashboardReportRows(visibleSales) {
   const header = ["Document No.", "Type", "Client", "Area", "Salesperson", "Date", "Amount", "Paid", "Balance", "Status"];
   const rows = visibleSales.map((sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.client, sale.area, sale.salesperson || "-", sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), statusForSale(sale)]);
@@ -1786,6 +1881,7 @@ function exportDashboardCsv() {
   log("Exported dashboard report (CSV)", "Dashboard", period, { save: false });
 }
 
+/** @param {any} visibleSales @param {any} dashboardRange */
 function dashboardReportHtml(visibleSales, dashboardRange) {
   const totalSales = visibleSales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
   const totalPaid = visibleSales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
@@ -1808,8 +1904,11 @@ function printDashboardReport() {
 
 const calendarWidgetRegistry = {};
 const calendarViewState = {};
+/** @param {string} prefix @param {any} containerId @param {any} compact */
 function registerCalendarWidget(prefix, containerId, compact) { calendarWidgetRegistry[prefix] = { containerId, compact }; }
+/** @param {string} prefix */
 function calendarState(prefix) { return calendarViewState[prefix] || (calendarViewState[prefix] = { year: today.getFullYear(), month: today.getMonth() + 1 }); }
+/** @param {string} prefix */
 function renderCalendarWidget(prefix) {
   const config = calendarWidgetRegistry[prefix];
   const container = config && qs(config.containerId);
@@ -1818,6 +1917,7 @@ function renderCalendarWidget(prefix) {
   const events = calendarEventsForMonth(state.year, state.month);
   container.innerHTML = calendarWidgetHtml(state.year, state.month, events, { idPrefix: prefix, compact: config.compact });
 }
+/** @param {string} prefix @param {number} delta */
 function navigateCalendarWidget(prefix, delta) {
   const state = calendarState(prefix);
   state.month += delta;
@@ -1825,6 +1925,7 @@ function navigateCalendarWidget(prefix, delta) {
   if (state.month < 1) { state.month = 12; state.year -= 1; }
   renderCalendarWidget(prefix);
 }
+/** @param {string} prefix @param {string} dateKey */
 function showCalendarDayDetail(prefix, dateKey) {
   const state = calendarState(prefix);
   const events = calendarEventsForMonth(state.year, state.month);
@@ -1865,7 +1966,7 @@ function renderAnalytics() {
   const salespersonCollections = {};
   depositedPayments.forEach((payment) => {
     const agent = data.clients.find((client) => client.name === payment.client)?.salesperson;
-    if (!salesAgentNames.has(agent)) return;
+    if (!salesAgentNames.has(/** @type {string} */ (agent))) return;
     salespersonCollections[agent] = (salespersonCollections[agent] || 0) + Number(payment.amount || 0);
   });
   // Total sales credited the same way as the collections above — by the client's assigned
@@ -1874,7 +1975,7 @@ function renderAnalytics() {
   const salespersonTotalSales = {};
   visibleSales.forEach((sale) => {
     const agent = data.clients.find((client) => client.name === sale.client)?.salesperson;
-    if (!salesAgentNames.has(agent)) return;
+    if (!salesAgentNames.has(/** @type {string} */ (agent))) return;
     salespersonTotalSales[agent] = (salespersonTotalSales[agent] || 0) + Number(sale.net || 0);
   });
   const salespersonSales = Object.entries(salespersonTotalSales).sort((a, b) => b[1] - a[1]);
@@ -1949,6 +2050,7 @@ function renderAnalytics() {
   renderValueAnalytics();
 }
 
+/** @param {any} visibleSales @param {any} visibleInventory @param {any} totalSales @param {any} totalPaid */
 function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, totalPaid) {
   const monthlySales = Object.entries(visibleSales.reduce((acc, sale) => { acc[sale.date.slice(0, 7)] = (acc[sale.date.slice(0, 7)] || 0) + sale.net; return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
   const lastMonth = monthlySales.at(-1)?.[0] || fmtDate(today).slice(0, 7);
@@ -1979,6 +2081,7 @@ function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, total
 // replaced: how fast work moves (cycle time), what it has already caught before it became a
 // loss (money saved), and how much it is actually used and how reliable it has been (adoption).
 
+/** @param {any} startValue @param {any} endValue */
 function daysBetween(startValue, endValue) {
   const start = new Date(startValue || 0).getTime();
   const end = new Date(endValue || 0).getTime();
@@ -1986,22 +2089,26 @@ function daysBetween(startValue, endValue) {
   return Math.max(0, Math.round((end - start) / 86400000));
 }
 
+/** @param {any} po */
 function poApprovalDays(po) {
   const approvedEntry = (po.history || []).find((entry) => entry.status === "Approved");
   if (!approvedEntry) return null;
   return daysBetween(po.date, approvedEntry.date);
 }
 
+/** @param {any} record */
 function financialApprovalDays(record) {
   if (!record.approvedAt) return null;
   return daysBetween(record.date, record.approvedAt);
 }
 
+/** @param {any} request */
 function demoTurnaroundDays(request) {
   if (!/[Rr]eturned|To Sales/.test(request.status || "")) return null;
   return daysBetween(request.date || request.demoDate, request.history?.at(-1)?.date || request.returnDate);
 }
 
+/** @param {any} sale */
 function saleFullyPaidDate(sale) {
   const invoiceKey = sale.documentNo || sale.id;
   const linked = data.payments.filter((payment) => payment.invoice === invoiceKey).slice().sort((a, b) => new Date(a.dateRecorded || a.dateCollected || 0).getTime() - new Date(b.dateRecorded || b.dateCollected || 0).getTime());
@@ -2013,14 +2120,17 @@ function saleFullyPaidDate(sale) {
   return null;
 }
 
+/** @param {any} sale */
 function saleCollectionDays(sale) {
   return daysBetween(sale.date, saleFullyPaidDate(sale));
 }
 
+/** @param {any} inventoryRow */
 function catalogItemFor(inventoryRow) {
-  return data.items.find((entry) => entry.code === inventoryRow.code || entry.name === inventoryRow.item) || {};
+  return data.items.find((entry) => entry.code === inventoryRow.code || entry.name === inventoryRow.item) || /** @type {Record<string, any>} */ ({});
 }
 
+/** @param {Record<string, any>} values */
 function averageOf(values) {
   const clean = values.filter((value) => value !== null && Number.isFinite(value));
   return clean.length ? Math.round(clean.reduce((sum, value) => sum + value, 0) / clean.length) : null;
@@ -2065,6 +2175,7 @@ function computeValueMetrics() {
   };
 }
 
+/** @param {any} icon @param {string} title @param {any} avgDays @param {any} sampleSize @param {any} unit @param {any} note */
 function cycleTimeCard(icon, title, avgDays, sampleSize, unit, note) {
   const value = avgDays === null ? "No data yet" : `${avgDays} ${unit}${avgDays === 1 ? "" : "s"}`;
   const body = `<p>${sampleSize} record${sampleSize === 1 ? "" : "s"} with a recorded completion date.</p>`;
@@ -2117,6 +2228,7 @@ async function renderValueAnalytics() {
   }
 }
 
+/** @param {any} metrics */
 function systemValueReportHtml(metrics) {
   const rows = [
     ["Avg. Days to Full Collection (DSO)", metrics.avgDSO === null ? "No data yet" : `${metrics.avgDSO} day(s)`],
@@ -2141,9 +2253,11 @@ function printSystemValueReport() {
 
 // Where a masterlist record came from. Excel/migration imports stamp `migrated: true`; clients
 // auto-created by the sales migration predate that flag, so recognise their placeholder text too.
+/** @param {any} record */
 function masterlistSourceLabel(record) {
   return record?.migrated || record?.contact === "Migrated record" || record?.docs === "Migrated" ? "Migrated" : "Manual";
 }
+/** @param {any} record */
 function masterlistSourcePill(record) {
   const label = masterlistSourceLabel(record);
   return `<span class="pill ${label === "Migrated" ? "purple" : "gray"}">${label}</span>`;
@@ -2229,16 +2343,19 @@ function renderMasterlists() {
   if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Actions"], data.banks.filter(masterFilter).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, rowActions("bank", data.banks.indexOf(b))] })));
 }
 
+/** @param {string} clientName @param {any} doc */
 function clientDocRecordId(clientName, doc) {
   return `${clientName}::${doc}`;
 }
 
+/** @param {any} client */
 function docUploadButtons(client) {
   const uploadedCount = requiredClientDocs.filter((doc) => attachedFilesFor("client-doc", clientDocRecordId(client.name, doc)).length).length;
   const complete = uploadedCount === requiredClientDocs.length;
   return `<button class="ghost-button${complete ? " docs-complete" : ""}" data-open-client-docs="${escapeHtml(client.name)}" type="button">Docs (${uploadedCount}/${requiredClientDocs.length})</button>`;
 }
 
+/** @param {any} client */
 function clientDocsModalRowsHtml(client) {
   return requiredClientDocs.map((doc) => {
     const files = attachedFilesFor("client-doc", clientDocRecordId(client.name, doc));
@@ -2247,6 +2364,7 @@ function clientDocsModalRowsHtml(client) {
   }).join("");
 }
 
+/** @param {any} clientName */
 function refreshClientDocsModal(clientName) {
   const client = data.clients.find((entry) => entry.name === clientName);
   const modal = qs("#client-docs-modal");
@@ -2254,6 +2372,7 @@ function refreshClientDocsModal(clientName) {
   renderMasterlists();
 }
 
+/** @param {string} clientName */
 function openClientDocsModal(clientName) {
   const client = data.clients.find((entry) => entry.name === clientName);
   if (!client) return toast("Client not found.");
@@ -2267,18 +2386,22 @@ function openClientDocsModal(clientName) {
   dialog.showModal();
 }
 
+/** @param {any} item */
 function inventoryItemLabel(item) {
   return `${item.item} · Lot ${item.lot || "-"} · Exp ${item.expiry || "N/A"}`;
 }
 
+/** @param {any} request */
 function demoRequestLineSummary(request) {
   return (request.lines || []).map((line) => `${escapeHtml(line.type)}: ${escapeHtml(line.item || line.code || "Item")} (${Number(line.qty || 0)})${line.lot ? ` Lot ${escapeHtml(line.lot)}` : ""}${line.notes ? ` · ${escapeHtml(line.notes)}` : ""}${request.status === "To Sales" && Number(line.price) > 0 ? `<small>${peso.format(line.price)} each</small>` : ""}`).join("<br>") || "-";
 }
 
+/** @param {any} request */
 function demoSaleTotal(request) {
   return (request.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0), 0);
 }
 
+/** @param {any} request */
 function openDemoToSalesDialog(request) {
   qs("#demo-sales-modal")?.remove();
   const dialog = document.createElement("dialog");
@@ -2294,12 +2417,12 @@ function openDemoToSalesDialog(request) {
   </form>`;
   document.body.appendChild(dialog);
   const total = () => {
-    const sum = qsaIn(dialog, "[data-demo-price]").reduce((acc, input) => acc + Number(input.value || 0) * Number(request.lines[Number(input.dataset.demoPrice)]?.qty || 0), 0);
+    const sum = qsaIn(dialog, "[data-demo-price]").reduce((acc, input) => acc + Number(input.value || 0) * Number(request.lines[Number(/** @type {string} */ (input.dataset.demoPrice))]?.qty || 0), 0);
     qsIn(dialog, "#demo-sales-total").textContent = peso.format(sum);
   };
-  dialog.querySelectorAll("[data-demo-price]").forEach((input) => input.addEventListener("input", total));
+  qsaIn(dialog, "[data-demo-price]").forEach((input) => input.addEventListener("input", total));
   total();
-  dialog.querySelectorAll("[data-close-demo-sales]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  qsaIn(dialog, "[data-close-demo-sales]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   qsIn(dialog, "#demo-sales-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const sale = { siNumber: qsIn(dialog, "#demo-sales-si").value.trim(), prices: qsaIn(dialog, "[data-demo-price]").map((input) => Number(input.value || 0)) };
@@ -2319,26 +2442,32 @@ function openDemoToSalesDialog(request) {
 const demoRequesterRoles = ["Engineering", "Product Specialist", "Superadmin", "CEO"];
 function canRequestDemo() { return demoRequesterRoles.includes(currentUser?.role); }
 function isDemoOnlyRole() { return ["Engineering", "Product Specialist"].includes(currentUser?.role); }
+/** @param {any[]} lines */
 function demoRequestInitialStatus(lines) {
   return (lines || []).some((line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
 }
 
+/** @param {any} request */
 function canApproveDemoSales(request) {
   return request.status === "For Sales Approval" && ["Sales", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
 }
 
+/** @param {any} request */
 function canApproveDemoLogistics(request) {
   return request.status === "For Logistics Approval" && ["Logistics", "Superadmin", "CEO"].includes(currentUser?.role);
 }
 
+/** @param {any} request */
 function canApproveDemoManagement(request) {
   return request.status === "For Management Approval" && ["Superadmin", "CEO"].includes(currentUser?.role);
 }
 
+/** @param {any} request */
 function canCloseDemoRequest(request) {
   return request.status === "Approved" && ["Sales", "Admin", "Superadmin", "CEO", "Logistics"].includes(currentUser?.role);
 }
 
+/** @param {any} request */
 function demoRequestActions(request) {
   const actions = [];
   if (canApproveDemoSales(request)) actions.push(`<button class="mini-button" data-demo-sales-approve="${escapeHtml(request.id)}">Sales Approve</button>`);
@@ -2348,6 +2477,7 @@ function demoRequestActions(request) {
   return actions.join("") || "Waiting";
 }
 
+/** @param {any} request */
 function demoRequestHistoryCard(request) {
   const closedLabel = request.status === "To Sales" ? "Routed to Sales" : request.status;
   return `<article class="panel" data-focus-record="${escapeHtml(request.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.demoDate || request.date || "-")}</p><h2>${escapeHtml(request.id)} · ${escapeHtml(closedLabel || "Demo")}</h2></div><span class="pill ${statusClass(request.status)}">${escapeHtml(request.status || "-")}</span></div><p><strong>Sales Agent:</strong> ${escapeHtml(request.salesAgent || request.requestedBy || "-")}</p><p><strong>Expected Return:</strong> ${escapeHtml(request.returnDate || "-")}</p>${request.status === "To Sales" ? `<p><strong>SI No.:</strong> ${escapeHtml(request.siNumber || "-")} · <strong>Amount:</strong> ${peso.format(request.saleAmount || 0)}</p>` : ""}<p><strong>Purpose:</strong> ${escapeHtml(request.purpose || "-")}</p><div class="table-card compact-table"><table><thead><tr><th>Type</th><th>Item</th><th>Qty</th><th>Lot / Notes</th></tr></thead><tbody>${(request.lines || []).map((line) => `<tr><td>${escapeHtml(line.type || "Item")}</td><td>${escapeHtml(line.item || line.code || "-")}<small>${escapeHtml(line.brand || "")}</small></td><td>${Number(line.qty || 0)}</td><td>${escapeHtml([line.lot, line.notes].filter(Boolean).join(" · ") || "-")}</td></tr>`).join("") || `<tr><td colspan="4">No itemized demo lines.</td></tr>`}</tbody></table></div></article>`;
@@ -2374,11 +2504,14 @@ const INVENTORY_ICONS = {
   history: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2",
   close: "M6 6l12 12M18 6L6 18",
 };
+/** @param {string} name @param {number} [size] */
 function inventoryIcon(name, size = 17) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${INVENTORY_ICONS[name]}"/></svg>`;
 }
 
+/** @param {any} item */
 function inventoryHasExpiry(item) { return Boolean(item.expiry) && item.expiry !== "N/A"; }
+/** @param {any} item */
 function inventoryExpiryInfo(item) {
   if (!inventoryHasExpiry(item)) return { days: null, label: "No expiry", rel: item.serial ? "Serial-tracked" : "Not applicable" };
   const days = daysUntil(item.expiry);
@@ -2387,7 +2520,9 @@ function inventoryExpiryInfo(item) {
   const rel = days < 0 ? `${-days} day${days === -1 ? "" : "s"} ago` : days === 0 ? "today" : days < 60 ? `in ${days} day${days === 1 ? "" : "s"}` : `in ${Math.round(days / 30)} months`;
   return { days, label, rel };
 }
+/** @param {any} item */
 function inventoryRef(item) { return `${item.code}|${item.branch}|${item.lot || item.serial}`; }
+/** @param {any} item */
 function inventoryRowModel(item) {
   const meta = INVENTORY_STATUS_BY_NAME[inventoryStatus(item)] || INVENTORY_STATUS_META[0];
   const expiry = inventoryExpiryInfo(item);
@@ -2396,6 +2531,7 @@ function inventoryRowModel(item) {
   const statusText = meta.key === "low" && short > 0 ? `${meta.label} · ${short} short` : meta.label;
   return { item, meta, expiry, ref: inventoryRef(item), lotText: String(item.serial || item.lot || "—"), statusText, short };
 }
+/** @param {any} model */
 function inventoryStatusPill(model) {
   return `<span class="inv-pill s-${model.meta.key}"><span class="dot"></span>${escapeHtml(model.statusText)}</span>`;
 }
@@ -2416,6 +2552,7 @@ function syncInventoryUrl() {
   try { history.replaceState(null, "", `/dashboard?${inventoryQueryString()}`); } catch { /* URL sync is best-effort */ }
 }
 
+/** @param {string} status @param {string} [text] */
 function syncInventorySavedPill(status, text) {
   const pill = qs("#inventory-saved-pill");
   const label = qs("#inventory-saved-text");
@@ -2424,6 +2561,7 @@ function syncInventorySavedPill(status, text) {
   label.textContent = status === "saved" ? "All changes saved" : (text || (status === "saving" ? "Saving…" : "Save failed"));
 }
 
+/** @returns {any[]} */
 function inventoryFilteredRows() {
   const needle = inventorySearch.trim().toLowerCase();
   const matchesBranch = (item) => inventoryBranchView === "all" || item.branch === inventoryBranchView;
@@ -2434,6 +2572,7 @@ function inventoryFilteredRows() {
     .filter(matchesSearch)
     .map(inventoryRowModel);
 }
+/** @param {any} rows @returns {any[]} */
 function inventorySortRows(rows) {
   const { key, dir } = inventorySort;
   const text = (value) => String(value || "").toLowerCase();
@@ -2486,6 +2625,7 @@ function renderInventoryAreaSelect() {
   select.disabled = source.disabled;
 }
 
+/** @param {any} models */
 function renderInventoryDetail(models) {
   const panel = qs("#inventory-detail");
   if (!panel) return;
@@ -2538,7 +2678,7 @@ function renderInventory() {
   renderInventoryWorkflowTabs();
   renderInventoryBranchTabs();
   renderInventoryAreaSelect();
-  syncInventorySavedPill(...(() => { const el = qs("#save-status-indicator"); const s = el?.classList.contains("saving") ? "saving" : el?.classList.contains("error") ? "error" : "saved"; return [s, qs("#save-status-text")?.textContent]; })());
+  syncInventorySavedPill(...(() => { const el = qs("#save-status-indicator"); const s = el?.classList.contains("saving") ? "saving" : el?.classList.contains("error") ? "error" : "saved"; return /** @type {[string, string]} */ ([s, qs("#save-status-text")?.textContent]); })());
   ensureInventoryDatalists();
 
   // ----- Stocks tab: cards, chips, table, detail -----
@@ -2665,6 +2805,7 @@ function renderInventoryWorkflowTabs() {
   qsa(".inventory-workflow-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.inventoryPanel === inventoryWorkflowTab));
 }
 
+/** @param {any} transfer @param {string} action @param {any} notes */
 function recordTransferHistory(transfer, action, notes) {
   const itemSummary = (transfer.lines || []).map((line) => `${line.item} (${line.dispatchedQty ?? line.requestedQty ?? 0})`).join(", ");
   const entry = { id: `TH-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), transferId: transfer.id, action, item: itemSummary, itemCount: (transfer.lines || []).length, from: transfer.from, to: transfer.to, user: currentUser?.name || "System User", notes };
@@ -2673,10 +2814,12 @@ function recordTransferHistory(transfer, action, notes) {
   return entry;
 }
 
+/** @param {any} transfer */
 function transferLineComparisonRowsHtml(transfer) {
   return (transfer.lines || []).map((line) => `<tr><td>${escapeHtml(line.item)}<small>${escapeHtml(line.code)}</small></td><td>${Number(line.requestedQty || 0)}<small>Lot ${escapeHtml(line.requestedLot || "-")} · Exp ${escapeHtml(line.requestedExpiry || "N/A")}</small></td><td>${line.dispatchedQty != null ? Number(line.dispatchedQty) : "—"}<small>${line.dispatchedLot ? `Lot ${escapeHtml(line.dispatchedLot)} · Exp ${escapeHtml(line.dispatchedExpiry || "N/A")}` : "Not yet dispatched"}</small></td><td>${line.receivedQty != null ? Number(line.receivedQty) : "—"}<small>${line.receivedLot ? `Lot ${escapeHtml(line.receivedLot)} · Exp ${escapeHtml(line.receivedExpiry || "N/A")}` : "Not yet received"}</small></td></tr>`).join("");
 }
 
+/** @param {string} id */
 function showTransferTimeline(id) {
   const transfer = data.pendingTransfers.find((item) => item.id === id);
   const events = data.transferHistory.filter((entry) => entry.transferId === id);
@@ -2697,14 +2840,17 @@ function showTransferTimeline(id) {
 
 const STOCK_EDIT_FIELD_LABELS = { qty: "Quantity", expiry: "Expiry", note: "Note" };
 
+/** @param {any} ref */
 function stockRowByRef(ref) {
   return (data.inventory || []).find((entry) => `${entry.code}|${entry.branch}|${entry.lot || entry.serial}` === ref) || null;
 }
 
+/** @param {any} row */
 function stockRecordIsEquipment(row) {
-  return isEquipmentItem(data.items.find((entry) => entry.code === row.code) || {});
+  return isEquipmentItem(data.items.find((entry) => entry.code === row.code) || /** @type {Record<string, any>} */ ({}));
 }
 
+/** @param {any} ref */
 async function openStockEditDialog(ref) {
   if (!canEditStockRecord()) return toast("Only Admin, CEO, or Superadmin can edit stock records.");
   const refreshed = await refreshInventoryFromServer();
@@ -2742,15 +2888,16 @@ async function openStockEditDialog(ref) {
     reasonHint.textContent = delta !== 0 ? "(required)" : "";
   };
   adjustInput.addEventListener("input", recompute);
-  dialog.querySelectorAll("[data-close-stock-edit]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  qsaIn(dialog, "[data-close-stock-edit]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   qsIn(dialog, "#stock-edit-form").addEventListener("submit", (event) => { event.preventDefault(); saveStockEdit(dialog); });
   dialog.addEventListener("close", () => dialog.remove());
   guardDialogEscape(dialog);
   dialog.showModal();
 }
 
+/** @param {any} dialog */
 async function saveStockEdit(dialog) {
-  const row = stockRowByRef(dialog.dataset.ref);
+  const row = stockRowByRef(/** @type {string} */ (dialog.dataset.ref));
   if (!row) { dialog.close(); return toast("Stock record no longer exists."); }
   const equipment = stockRecordIsEquipment(row);
   const original = { qty: Number(row.qty || 0), expiry: row.expiry || "N/A", note: row.note || "" };
@@ -2759,7 +2906,7 @@ async function saveStockEdit(dialog) {
   if (equipment && !Number.isInteger(delta)) return toast("This item is equipment — the adjustment must be a whole number.");
   const newQty = original.qty + delta;
   if (newQty < -1e-9) return toast("That adjustment would make the quantity negative.");
-  const expiryInput = dialog.querySelector("#stock-edit-expiry");
+  const expiryInput = qsIn(dialog, "#stock-edit-expiry");
   const nextExpiry = expiryInput ? (expiryInput.value || "N/A") : original.expiry;
   const nextNote = qsIn(dialog, "#stock-edit-note").value.trim();
   const reason = qsIn(dialog, "#stock-edit-reason").value.trim();
@@ -2784,6 +2931,7 @@ async function saveStockEdit(dialog) {
   toast("Stock record updated.");
 }
 
+/** @param {any} ref */
 function showStockHistory(ref) {
   const row = stockRowByRef(ref);
   if (!row) return toast("Stock record no longer exists.");
@@ -2797,7 +2945,7 @@ function showStockHistory(ref) {
     : `<p>No changes recorded for this stock record yet.</p>`;
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Stock Change History</p><h2>${escapeHtml(row.item)}</h2><small>${escapeHtml(row.branch)} · ${escapeHtml(row.lot || row.serial || "-")}</small></div><button class="icon-button" type="button" data-close-stock-history aria-label="Close">x</button></div>${body}<div class="modal-actions"><button class="ghost-button" type="button" data-close-stock-history>Close</button></div>`;
   document.body.appendChild(dialog);
-  dialog.querySelectorAll("[data-close-stock-history]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  qsaIn(dialog, "[data-close-stock-history]").forEach((button) => button.addEventListener("click", () => dialog.close()));
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
 }
@@ -2811,6 +2959,7 @@ function ensureInventoryDatalists() {
 
 let editingStockReceiptId = null;
 
+/** @param {any} index */
 function stockSheetRow(index) {
   const uid = ++stockSheetRowUid;
   return `<tr><td><select class="stock-branch">${branchOptions(inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" /></td><td><input class="stock-lot" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" /></td><td><input class="stock-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
@@ -2835,6 +2984,7 @@ function renderStockSheet() {
   tableEl.innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${stockSheetRow(0)}</tbody>`;
 }
 
+/** @param {string} poId */
 function fillStockSheetFromInventoryPo(poId) {
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
   if (!po) return renderStockSheet();
@@ -2858,11 +3008,13 @@ function transferSheetRow() {
 
 // Per-branch on-hand quantity for one item. With a lot, only that lot counts — the balance a
 // transfer can actually draw on — instead of every lot of the item added together.
+/** @param {string} code @param {string} [lot] */
 function itemBranchBalances(code, lot = "") {
   const wantedLot = String(lot || "").trim();
   return platformBranches().map((branch) => `${branch}: ${data.inventory.filter((entry) => entry.code === code && entry.branch === branch && (!wantedLot || entry.lot === wantedLot)).reduce((sum, entry) => sum + Number(entry.qty || 0), 0)}`).join(" · ");
 }
 
+/** @param {any} row */
 function updateTransferBalanceHint(row) {
   const hint = row?.querySelector(".transfer-balance-hint");
   const code = row?.querySelector(".transfer-code")?.value.trim();
@@ -2899,11 +3051,12 @@ function addDemoRequestLine() {
   qs("#demo-request-lines-table tbody")?.insertAdjacentHTML("beforeend", demoRequestLineRow());
 }
 
+/** @param {any} input */
 function syncDemoRequestLine(input) {
   // Suggest-only: never rewrite what the user is typing. Fill the OTHER fields only when the typed
   // value is an exact item code/name (e.g. after picking a suggestion), so every field stays
   // editable and clearable. Emptying a field leaves the rest untouched.
-  const row = input.closest("tr");
+  const row = closestEl(input, "tr");
   const typed = input.value.trim().toLowerCase();
   if (!row || !typed) return;
   const match = data.items.find((entry) => (input.classList.contains("demo-line-code") ? entry.code : entry.name).toLowerCase() === typed);
@@ -2998,6 +3151,7 @@ function renderTransferSheet() {
   tableEl.innerHTML = `<thead><tr><th>Item Code</th><th>Item Name</th><th>Lot Number</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${transferSheetRow()}</tbody>`;
 }
 
+/** @param {any} changed */
 function preventSameTransferBranch(changed) {
   const fromSelect = qs("#transfer-sheet-from");
   const toSelect = qs("#transfer-sheet-to");
@@ -3007,37 +3161,39 @@ function preventSameTransferBranch(changed) {
   if (alt) other.value = alt;
 }
 
+/** @param {AnyEl} button */
 function removeInventorySheetRow(button) {
-  const row = button.closest("tr");
+  const row = closestEl(button, "tr");
   const body = row?.parentElement;
   if (!row || !body) return;
   if (body.children.length <= 1) {
-    row.querySelectorAll("input").forEach((input) => { input.value = ""; });
+    qsaIn(row, "input").forEach((input) => { input.value = ""; });
     return toast("At least one row is required. Row cleared instead.");
   }
   row.remove();
 }
 
+/** @param {any} input @param {boolean} [allowPartial] */
 function syncStockSheetRow(input, allowPartial = false) {
-  const row = input.closest("tr");
+  const row = closestEl(input, "tr");
   if (!row) return;
-  const codeInput = row.querySelector(".stock-code, .transfer-code");
-  const itemInput = row.querySelector(".stock-item, .transfer-item");
-  const brandInput = row.querySelector(".stock-brand");
+  const codeInput = qsIn(row, ".stock-code, .transfer-code");
+  const itemInput = qsIn(row, ".stock-item, .transfer-item");
+  const brandInput = qsIn(row, ".stock-brand");
   const match = findItemForSheetRow(row, input, allowPartial);
   if (!match) return;
   if (codeInput) codeInput.value = match.code;
   if (itemInput) itemInput.value = match.name;
   if (brandInput) brandInput.value = match.brand;
-  const stockExpiryInput = row.querySelector(".stock-expiry");
+  const stockExpiryInput = qsIn(row, ".stock-expiry");
   if (stockExpiryInput) {
     stockExpiryInput.required = !isEquipmentItem(match);
     stockExpiryInput.disabled = isEquipmentItem(match);
     stockExpiryInput.placeholder = isEquipmentItem(match) ? "N/A for equipment" : "";
     if (isEquipmentItem(match)) stockExpiryInput.value = "";
   }
-  const lotInput = row.querySelector(".transfer-lot");
-  const lotDatalist = row.querySelector("datalist[id^='transfer-lot-options-']");
+  const lotInput = qsIn(row, ".transfer-lot");
+  const lotDatalist = qsIn(row, "datalist[id^='transfer-lot-options-']");
   const from = qsIn(row, ".transfer-from")?.value || qs("#transfer-sheet-from")?.value;
   const matchingStock = data.inventory.filter((entry) => entry.code === match.code && (!from || entry.branch === from) && entry.qty > 0);
   if (lotDatalist) lotDatalist.innerHTML = matchingStock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
@@ -3059,6 +3215,7 @@ function clearStockSheetDraft() {
   const key = stockSheetDraftKey();
   if (key) localStorage.removeItem(key);
 }
+/** @param {any} row */
 function stockSheetRowIsBlank(row) {
   return !row.brand && !row.code && !row.item && !row.lot && !row.qty;
 }
@@ -3092,6 +3249,7 @@ function saveStockSheetDraft() {
 // Restores the draft only if it was written for this exact context (same PO / same receipt being
 // edited) — called after the normal fresh prefill (blank row, PO lines, or receipt lines) so it
 // only overlays genuinely resumed work, never mismatched leftovers from a different PO.
+/** @param {string} poId @param {any} editingReceiptId */
 function restoreStockSheetDraftIfMatching(poId, editingReceiptId) {
   const key = stockSheetDraftKey();
   if (!key) return;
@@ -3110,13 +3268,13 @@ function restoreStockSheetDraftIfMatching(poId, editingReceiptId) {
     qsa("#stock-sheet-table tbody tr").forEach((tr, index) => {
       const row = draft.rows[index];
       if (!row) return;
-      if (row.branch && tr.querySelector(".stock-branch")) qsIn(tr, ".stock-branch").value = row.branch;
-      if (tr.querySelector(".stock-brand")) qsIn(tr, ".stock-brand").value = row.brand || "";
-      if (tr.querySelector(".stock-code")) qsIn(tr, ".stock-code").value = row.code || "";
-      if (tr.querySelector(".stock-item")) qsIn(tr, ".stock-item").value = row.item || "";
-      if (tr.querySelector(".stock-lot")) qsIn(tr, ".stock-lot").value = row.lot || "";
-      if (tr.querySelector(".stock-expiry")) qsIn(tr, ".stock-expiry").value = row.expiry || "";
-      if (tr.querySelector(".stock-qty")) qsIn(tr, ".stock-qty").value = row.qty || "";
+      if (row.branch && qsIn(tr, ".stock-branch")) qsIn(tr, ".stock-branch").value = row.branch;
+      if (qsIn(tr, ".stock-brand")) qsIn(tr, ".stock-brand").value = row.brand || "";
+      if (qsIn(tr, ".stock-code")) qsIn(tr, ".stock-code").value = row.code || "";
+      if (qsIn(tr, ".stock-item")) qsIn(tr, ".stock-item").value = row.item || "";
+      if (qsIn(tr, ".stock-lot")) qsIn(tr, ".stock-lot").value = row.lot || "";
+      if (qsIn(tr, ".stock-expiry")) qsIn(tr, ".stock-expiry").value = row.expiry || "";
+      if (qsIn(tr, ".stock-qty")) qsIn(tr, ".stock-qty").value = row.qty || "";
     });
   }
   toast("Resumed your unsaved stock sheet draft.");
@@ -3187,6 +3345,7 @@ function clearTransferSheetDraft() {
   const key = transferSheetDraftKey();
   if (key) localStorage.removeItem(key);
 }
+/** @param {any} row */
 function transferSheetRowIsBlank(row) {
   return !row.code && !row.item && !row.lot && !row.qty;
 }
@@ -3228,10 +3387,10 @@ function restoreTransferSheetDraft() {
     qsa("#transfer-sheet-table tbody tr").forEach((tr, index) => {
       const row = draft.rows[index];
       if (!row) return;
-      if (tr.querySelector(".transfer-code")) qsIn(tr, ".transfer-code").value = row.code || "";
-      if (tr.querySelector(".transfer-item")) qsIn(tr, ".transfer-item").value = row.item || "";
-      if (tr.querySelector(".transfer-lot")) qsIn(tr, ".transfer-lot").value = row.lot || "";
-      if (tr.querySelector(".transfer-qty")) qsIn(tr, ".transfer-qty").value = row.qty || "";
+      if (qsIn(tr, ".transfer-code")) qsIn(tr, ".transfer-code").value = row.code || "";
+      if (qsIn(tr, ".transfer-item")) qsIn(tr, ".transfer-item").value = row.item || "";
+      if (qsIn(tr, ".transfer-lot")) qsIn(tr, ".transfer-lot").value = row.lot || "";
+      if (qsIn(tr, ".transfer-qty")) qsIn(tr, ".transfer-qty").value = row.qty || "";
     });
     qsa("#transfer-sheet-table .transfer-item").forEach((input) => syncStockSheetRow(input, true));
   }
@@ -3280,10 +3439,12 @@ async function saveTransferSheet() {
   toast(`${transfer.id} created with ${rows.length} item(s).`);
 }
 
+/** @param {any} line @param {any} branch */
 function transferLineAvailableStock(line, branch) {
   return data.inventory.filter((entry) => entry.code === line.code && entry.branch === branch && entry.qty > 0);
 }
 
+/** @param {any} transfer */
 function transferDispatchModalRowsHtml(transfer) {
   return (transfer.lines || []).map((line, i) => {
     const stock = transferLineAvailableStock(line, transfer.from);
@@ -3294,6 +3455,7 @@ function transferDispatchModalRowsHtml(transfer) {
   }).join("");
 }
 
+/** @param {any} index */
 function openTransferDispatchModal(index) {
   if (!canApproveInventoryChanges()) return toast("Stock transfer dispatch needs Admin approval.");
   const transfer = data.pendingTransfers[index];
@@ -3311,28 +3473,29 @@ function openTransferDispatchModal(index) {
   dialog.showModal();
 }
 
+/** @param {any} dialog @param {any} rowEl */
 function refreshTransferDispatchModalRow(dialog, rowEl) {
-  const transfer = data.pendingTransfers[Number(dialog.dataset.transferIndex)];
+  const transfer = data.pendingTransfers[Number(/** @type {string} */ (dialog.dataset.transferIndex))];
   const rows = [...dialog.querySelectorAll(".transfer-review-row")];
   const i = rows.indexOf(rowEl);
   const line = transfer?.lines?.[i];
   if (!line) return;
-  const lotInput = rowEl.querySelector(".transfer-review-lot");
-  const qtyInput = rowEl.querySelector(".transfer-review-qty");
-  const expiryInput = rowEl.querySelector(".transfer-review-expiry");
+  const lotInput = qsIn(rowEl, ".transfer-review-lot");
+  const qtyInput = qsIn(rowEl, ".transfer-review-qty");
+  const expiryInput = qsIn(rowEl, ".transfer-review-expiry");
   const stock = transferLineAvailableStock(line, transfer.from);
-  const lotDatalist = rowEl.querySelector("datalist");
+  const lotDatalist = qsIn(rowEl, "datalist");
   if (lotDatalist) lotDatalist.innerHTML = stock.map((entry) => `<option value="${escapeHtml(entry.lot)}">Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
   const match = stock.find((entry) => entry.lot === lotInput.value.trim());
   expiryInput.value = match?.expiry || "N/A";
   qtyInput.max = match ? match.qty : 0;
-  const availableNote = rowEl.querySelector(".transfer-review-available");
+  const availableNote = qsIn(rowEl, ".transfer-review-available");
   if (availableNote) availableNote.textContent = `${match ? match.qty : 0} available in lot ${lotInput.value.trim() || "-"} at ${transfer.from}`;
 }
 
 async function confirmTransferDispatch() {
   const dialog = qs("#transfer-review-modal");
-  const transfer = data.pendingTransfers[Number(dialog.dataset.transferIndex)];
+  const transfer = data.pendingTransfers[Number(/** @type {string} */ (dialog.dataset.transferIndex))];
   if (!transfer) return;
   const rows = [...dialog.querySelectorAll(".transfer-review-row")];
   const updates = rows.map((row, i) => ({ index: i, qty: Number(qsIn(row, ".transfer-review-qty").value || 0), lot: qsIn(row, ".transfer-review-lot").value.trim(), expiry: qsIn(row, ".transfer-review-expiry").value.trim() }));
@@ -3365,6 +3528,7 @@ async function confirmTransferDispatch() {
   printTransferRequest(transfer.id);
 }
 
+/** @param {any} transfer */
 function transferReceiveModalRowsHtml(transfer) {
   return (transfer.lines || []).map((line, i) => {
     const alreadyReceived = Number(line.receivedQty || 0);
@@ -3374,6 +3538,7 @@ function transferReceiveModalRowsHtml(transfer) {
   }).join("");
 }
 
+/** @param {any} index */
 function openTransferReceiveModal(index) {
   const transfer = data.pendingTransfers[index];
   if (!transfer || !["In Transit", "Incomplete"].includes(transfer.status)) return toast("Transfer must be in transit (or incomplete) before receiving.");
@@ -3392,7 +3557,7 @@ function openTransferReceiveModal(index) {
 
 async function confirmTransferReceive() {
   const dialog = qs("#transfer-review-modal");
-  const transfer = data.pendingTransfers[Number(dialog.dataset.transferIndex)];
+  const transfer = data.pendingTransfers[Number(/** @type {string} */ (dialog.dataset.transferIndex))];
   if (!transfer) return;
   const rows = [...dialog.querySelectorAll(".transfer-review-row")];
   const updates = rows.map((row, i) => ({ index: i, qty: Number(qsIn(row, ".transfer-receive-qty").value || 0), lot: qsIn(row, ".transfer-receive-lot").value.trim(), expiry: qsIn(row, ".transfer-receive-expiry").value.trim() }));
@@ -3404,7 +3569,7 @@ async function confirmTransferReceive() {
     const existing = data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.to && entry.lot === u.lot);
     let target = existing;
     if (existing) existing.qty += u.qty;
-    else { target = { code: line.code, item: line.item, brand: line.brand, branch: transfer.to, lot: u.lot, serial: "N/A", expiry: u.expiry || "N/A", qty: u.qty, min: 10 }; data.inventory.push(target); }
+    else { target = /** @type {StockRow} */ ({ code: line.code, item: line.item, brand: line.brand, branch: transfer.to, lot: u.lot, serial: "N/A", expiry: u.expiry || "N/A", qty: u.qty, min: 10 }); data.inventory.push(target); }
     touchedInventory.push(target);
     line.receivedQty = Number(line.receivedQty || 0) + u.qty;
     line.receivedLot = u.lot;
@@ -3426,11 +3591,13 @@ async function confirmTransferReceive() {
   toast(allComplete ? "Transfer received and inventory adjusted." : "Partial receipt recorded — reopen later for the remainder.");
 }
 
+/** @param {string} clientName */
 function isClientAssignedToCurrentUser(clientName) {
   const client = data.clients.find((c) => c.name === clientName);
   return client?.salesperson === currentUser?.name;
 }
 
+/** @param {string} clientName @param {string} agentName */
 function isClientAssignedToAgent(clientName, agentName) {
   const client = data.clients.find((c) => c.name === clientName);
   return client?.salesperson === agentName;
@@ -3443,10 +3610,12 @@ function isClientAssignedToAgent(clientName, agentName) {
 function salesAgentNameSet() {
   return new Set(data.users.filter((user) => user.role === "Sales").map((user) => user.name));
 }
+/** @param {any} sale @returns {string} */
 function assignedSalesAgent(sale) {
-  return data.clients.find((client) => client.name === sale.client)?.salesperson;
+  return /** @type {string} */ (data.clients.find((client) => client.name === sale.client)?.salesperson);
 }
 
+/** @param {string} agentName */
 function salesTargetProgress(agentName) {
   const employee = data.employees.find((e) => e.name === agentName && Number(e.targetSales || 0) > 0);
   if (!employee) return null;
@@ -3467,10 +3636,11 @@ function renderSalesTargetPanel() {
     return;
   }
   if (!["CEO", "Superadmin"].includes(currentUser?.role)) { target.innerHTML = ""; return; }
-  const agents = data.employees.filter((e) => Number(e.targetSales || 0) > 0).map((e) => salesTargetProgress(e.name)).filter(Boolean).sort((a, b) => a.pct - b.pct);
+  const agents = /** @type {any[]} */ (data.employees.filter((e) => Number(e.targetSales || 0) > 0).map((e) => salesTargetProgress(e.name)).filter(Boolean)).sort((a, b) => a.pct - b.pct);
   target.innerHTML = agents.length ? `<article class="panel"><div class="panel-header"><div><p class="eyebrow">${new Date().getFullYear()} Sales Targets</p><h2>${agents.length} agent${agents.length === 1 ? "" : "s"} with a target set</h2></div></div><div class="table-card compact-table"><table><thead><tr><th>Agent</th><th>Target</th><th>Current Year Sales</th><th>% Complete</th></tr></thead><tbody>${agents.map((a) => `<tr><td data-label="Agent">${escapeHtml(a.agent)}</td><td data-label="Target">${peso.format(a.target)}</td><td data-label="Current Year Sales">${peso.format(a.currentSales)}</td><td data-label="% Complete"><span class="pill ${a.pct >= 100 ? "green" : a.pct >= 60 ? "orange" : "red"}">${a.pct}%</span></td></tr>`).join("")}</tbody></table></div></article>` : "";
 }
 
+/** @param {any} sales */
 function populateSalesClientFilter(sales) {
   const list = qs("#sales-client-options");
   if (!list) return;
@@ -3519,6 +3689,7 @@ function renderSales() {
   if (loadMoreSalesButton) loadMoreSalesButton.hidden = !modulePagination.sales?.hasMore || !tableFullyRevealed("#sales-table");
 }
 
+/** @param {any} target @param {any} heroCards @param {any} groups */
 function renderFinancialSummary(target, heroCards, groups) {
   qs(target).innerHTML = `
     <div class="sales-summary-hero">
@@ -3573,6 +3744,7 @@ function renderPurchaseOrders() {
   if (loadMorePurchaseOrdersButton) loadMorePurchaseOrdersButton.hidden = !modulePagination.purchaseOrders?.hasMore || !tableFullyRevealed("#purchase-order-table");
 }
 
+/** @param {string} poId */
 function openInvoiceForPurchaseOrder(poId) {
   const po = data.purchaseOrders.find((entry) => entry.id === poId);
   if (!po) return toast("Purchase Order not found.");
@@ -3584,6 +3756,7 @@ function openInvoiceForPurchaseOrder(poId) {
   syncInvoiceFromPurchaseOrder();
 }
 
+/** @param {string} poId */
 function editPurchaseOrder(poId) {
   const po = data.purchaseOrders.find((entry) => entry.id === poId);
   if (!po) return toast("Purchase Order not found.");
@@ -3592,6 +3765,7 @@ function editPurchaseOrder(poId) {
   openModal("purchaseOrder", { poEdit: po });
 }
 
+/** @param {any} sale */
 function invoiceTaxMetaHtml(sale) {
   const breakdown = saleTaxBreakdown(sale);
   const salesLabel = sale.type === "SI" ? "Total Sales (VAT Inclusive)" : "Total Sales (VAT Exclusive)";
@@ -3603,6 +3777,8 @@ function invoiceTaxMetaHtml(sale) {
 // ---- Physical-copy uploads (invoice scans, signed CV vouchers) ----
 // Re-encodes to JPEG at a capped max dimension before upload so scanned photos (often several
 // MB straight off a phone camera) don't eat into the shared R2 storage quota.
+/** @param {string} file @param {{ maxDimension?: number, quality?: any }} options */
+/** @param {File} file @param {{ maxDimension?: number, quality?: number }} [options] */
 function compressImageFile(file, { maxDimension = 1600, quality = 0.72 } = {}) {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) { reject(new Error("Only image files (photo or scan) can be uploaded here.")); return; }
@@ -3633,15 +3809,18 @@ async function refreshUploadedFiles() {
   uploadedFilesLoaded = true;
 }
 
+/** @param {any} onLoaded */
 function ensureUploadedFilesLoaded(onLoaded) {
   if (uploadedFilesLoaded) return;
   refreshUploadedFiles().then(onLoaded);
 }
 
+/** @param {string} recordType @param {string} recordId */
 function attachedFilesFor(recordType, recordId) {
   return uploadedFilesCache.filter((file) => file.record_type === recordType && file.record_id === recordId);
 }
 
+/** @param {any} recordType @param {any} recordId */
 function renderServiceReportUploadSlot(recordType, recordId) {
   const slot = qs("#attachment-slot");
   if (!slot) return;
@@ -3649,12 +3828,14 @@ function renderServiceReportUploadSlot(recordType, recordId) {
   slot.innerHTML = `${attachedFilesHtml(recordType, recordId)}<label class="doc-upload-button ${uploaded ? "uploaded" : "missing"}"><span>Attachment</span><strong>${uploaded ? "Uploaded" : "Choose File"}</strong><em>${uploaded ? "Replace" : "Choose document"}</em><input class="doc-file-input physical-copy-input" type="file" accept="image/*,.pdf,application/pdf" data-record-type="${escapeHtml(recordType)}" data-record-id="${escapeHtml(recordId)}" data-rerender="service-report-modal" /></label>`;
 }
 
+/** @param {string} recordType @param {string} recordId */
 function attachedFilesHtml(recordType, recordId) {
   const files = attachedFilesFor(recordType, recordId);
   if (!files.length) return "";
   return `<div class="attached-files-list">${files.map((file) => `<button class="attached-file-chip" type="button" data-view-file="${escapeHtml(file.id)}">📎 ${escapeHtml(file.file_name)}</button>`).join("")}</div>`;
 }
 
+/** @param {File} file @param {any} recordType @param {any} recordId @param {string} label @param {any} onDone */
 async function uploadPhysicalCopy(file, recordType, recordId, label, onDone) {
   if (!file) return;
   const maxOriginalBytes = 26214400;
@@ -3675,28 +3856,33 @@ async function uploadPhysicalCopy(file, recordType, recordId, label, onDone) {
 function canPostMemo() { return ["Superadmin", "CEO", "HR"].includes(currentUser?.role); }
 const memoAudienceRoleOptions = ["Superadmin", "Admin", "CEO", "Accounting", "Sales", "Logistics", "Product Specialist", "Engineering", "HR"];
 
+/** @param {any} memo */
 function memoVisibleToCurrentUser(memo) {
   if (canPostMemo()) return true;
   return memo.audience === "all" || (Array.isArray(memo.audience) && memo.audience.includes(currentUser?.role));
 }
 
+/** @param {any} memo */
 function memoAcknowledgedByCurrentUser(memo) {
   const email = String(currentUser?.email || "").trim().toLowerCase();
   return (memo.acknowledgments || []).some((entry) => String(entry.email || "").trim().toLowerCase() === email);
 }
 
+/** @param {any} memo */
 function memoAudienceLabel(memo) {
   if (memo.audience === "all") return "ALL DEPARTMENTS";
   const roles = memo.audience || [];
   return `${roles.map((role) => role.toUpperCase()).join(" AND ")} DEPARTMENT`;
 }
 
+/** @param {any} memo */
 function memoRecipientCount(memo) {
   const roster = dedupedUsers();
   if (memo.audience === "all") return roster.length;
   return roster.filter((user) => (memo.audience || []).includes(user.role)).length;
 }
 
+/** @param {any} memo */
 function memoCardHtml(memo) {
   const acked = memoAcknowledgedByCurrentUser(memo);
   const acknowledgments = memo.acknowledgments || [];
@@ -3733,6 +3919,7 @@ function memoAudienceCheckboxesHtml() {
   return memoAudienceRoleOptions.map((role) => `<label class="ios-check-row compact-doc-check"><input type="checkbox" class="memo-audience-role" value="${escapeHtml(role)}" /><span></span><strong>${escapeHtml(role)}</strong></label>`).join("");
 }
 
+/** @param {any} [year] */
 function nextMemoNumber(year = new Date().getFullYear()) {
   const next = (data.memos || []).filter((memo) => String(memo.id || "").startsWith(`MEMO-${year}-`)).reduce((max, memo) => Math.max(max, Number(String(memo.id || "").split("-").pop()) || 0), 0) + 1;
   return `MEMO-${year}-${String(next).padStart(3, "0")}`;
@@ -3794,6 +3981,7 @@ async function submitMemoCompose() {
   }
 }
 
+/** @param {string} id */
 async function acknowledgeMemo(id) {
   const index = data.memos.findIndex((entry) => entry.id === id);
   if (index < 0) return;
@@ -3825,12 +4013,14 @@ async function acknowledgeMemo(id) {
   }
 }
 
+/** @param {any} value */
 function memoPrintDateLabel(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).toUpperCase();
 }
 
+/** @param {any} memo */
 function memoPrintableHtml(memo) {
   const dateLabel = memoPrintDateLabel(memo.createdAt || today);
   const bodyParagraphs = String(memo.body || "").split(/\n{2,}/).map((para) => `<p>${escapeHtml(para).replace(/\n/g, "<br>")}</p>`).join("");
@@ -3838,6 +4028,7 @@ function memoPrintableHtml(memo) {
   return `<section class="memo-print"><header class="memo-print-header"><img src="medlane.jpg" alt="Medlane Diagnostic Solutions" /></header><div class="memo-print-no">MEMO NO. ${escapeHtml(memo.id)}</div><div class="memo-print-meta"><div><span>DATE</span><span>:</span><strong>${dateLabel}</strong></div><div><span>TO</span><span>:</span><strong>${escapeHtml(memoAudienceLabel(memo))}</strong></div><div><span>FROM</span><span>:</span><strong>MANAGEMENT</strong></div><div><span>SUBJECT</span><span>:</span><strong>${escapeHtml(String(memo.title || "").toUpperCase())}</strong></div></div><div class="memo-print-body">${bodyParagraphs}</div>${eventBlock}<div class="memo-print-signature"><p>Sincerely,</p><strong>${escapeHtml(memo.createdBy)}</strong><span>${escapeHtml(memo.createdByRole)}</span></div>${printableFooterHtml()}</section>`;
 }
 
+/** @param {string} id */
 function printMemo(id) {
   const memo = data.memos.find((entry) => entry.id === id);
   if (!memo) return toast("Memo not found.");
@@ -3904,6 +4095,7 @@ function closeReportPreview() {
   qs("#report-preview-modal").close();
 }
 
+/** @param {string} invoiceId @param {boolean} [noDate] @param {any} [templateId] */
 async function printInvoice(invoiceId, noDate = false, templateId = null) {
   const sale = data.sales.find((entry) => entry.id === invoiceId || entry.documentNo === invoiceId);
   if (sale?.noPo) return toast("This invoice skipped its PO and is record-keeping only — it isn't meant to be printed.");
@@ -3934,12 +4126,13 @@ async function printInvoice(invoiceId, noDate = false, templateId = null) {
 // CSS already uses a smaller item font and clamps the name to two lines; this is the safety net
 // for the rare name that, even clamped, would still overrun. Step its font down until the name
 // clears both the lot/expiry line below it and the start of the next row (floor 7px).
+/** @param {ParentNode} [root] */
 function fitPrintTemplateRows(root) {
   const scope = root || qs("#report-preview-content");
   if (!scope) return;
-  const rows = [...scope.querySelectorAll(".si-row, .ts-row, .dr-row")];
+  const rows = /** @type {AnyEl[]} */ ([...scope.querySelectorAll(".si-row, .ts-row, .dr-row")]);
   rows.forEach((row, i) => {
-    const item = row.querySelector(".si-item, .ts-item, .dr-item");
+    const item = qsIn(row, ".si-item, .ts-item, .dr-item");
     if (!item) return;
     const original = item.style.fontSize;
     item.style.fontSize = "";
@@ -3947,7 +4140,7 @@ function fitPrintTemplateRows(root) {
     const rowGap = (next ? next.offsetTop - row.offsetTop : parseFloat(getComputedStyle(row).height) || 30) - 2;
     // Keep the name above the lot line when the lot sits below it (the default layout); if the
     // user has moved the lot elsewhere, fall back to the whole row gap.
-    const lot = row.querySelector(".si-lot, .ts-lot, .dr-lot");
+    const lot = qsIn(row, ".si-lot, .ts-lot, .dr-lot");
     const lotTop = lot ? lot.offsetTop - item.offsetTop : Infinity;
     const limit = Math.max(Math.min(lotTop, rowGap), rowGap * 0.5);
     if (item.scrollHeight <= limit) { item.style.fontSize = original; return; }
@@ -3967,6 +4160,7 @@ function printReportPreview() {
 }
 
 const printableCompanyFooterHtml = "MEDLANE DIAGNOSTIC SOLUTIONS, INC.<br>13 Gumamela St. Pilar Village, Las Piñas<br>Las Piñas City 1740<br>Tel. No. (02) 8836-2853 Email: receivables.mdsi@gmail.com";
+/** @param {string} [title] */
 function printableBrandHeaderHtml(title = "") {
   return `<header class="print-brand-header"><img src="medlane.jpg" alt="Medlane Diagnostic Solutions" /><div><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong>${title ? `<span>${escapeHtml(title)}</span>` : ""}</div></header>`;
 }
@@ -3981,19 +4175,23 @@ async function printReportPreviewNoDate() {
   window.print();
 }
 
+/** @param {string} templateId */
 function changeReportPreviewTemplate(templateId) {
   if (!currentReportSaleId) return;
   printInvoice(currentReportSaleId, currentPrintNoDate, templateId);
 }
 
+/** @param {any} sale */
 function formDocumentNo(sale) {
   const raw = String(sale.documentNo || sale.id || "");
   return raw.match(/\d{3,}$/)?.[0] || raw;
 }
 
+/** @param {any} sale */
 function saleLinkedPaymentRequests(sale) {
   return data.paymentRequests.filter((request) => request.invoice === sale.documentNo || request.invoice === sale.id);
 }
+/** @param {string} invoiceId */
 function showSaleDetail(invoiceId) {
   const sale = data.sales.find((item) => item.id === invoiceId);
   if (!sale) return toast("Sale not found.");
@@ -4026,6 +4224,7 @@ function showSaleDetail(invoiceId) {
   qs("#report-preview-modal").showModal();
 }
 
+/** @param {any} sale */
 function saleCollectionTimeline(sale) {
   const events = [];
   events.push({ date: sale.date, status: "Created", note: `${sale.type} ${sale.documentNo || sale.id} created for ${sale.client}, ${peso.format(sale.net || 0)}.${sale.migrated ? " (migrated record)" : ""}`, by: sale.migrated ? "Migrated" : (sale.salesperson || "System User") });
@@ -4040,12 +4239,14 @@ function saleCollectionTimeline(sale) {
   return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
+/** @param {string} status */
 function saleEventClass(status) {
   if (["Deposited", "Created"].includes(status)) return "done";
   if (["Bounced", "Cancelled"].includes(status)) return "blocked";
   return "pending";
 }
 
+/** @param {string} invoiceId */
 function renderSaleDetail(invoiceId) {
   const sale = data.sales.find((item) => item.id === invoiceId);
   if (!sale) return toast("Invoice not found.");
@@ -4120,7 +4321,7 @@ function renderCollections() {
   renderCollectionContactMap();
   const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map((s) => {
     const payments = data.payments.filter((payment) => payment.invoice === s.id || payment.invoice === s.documentNo);
-    const latest = payments.at(-1) || {};
+    const latest = payments.at(-1) || /** @type {Record<string, any>} */ ({});
     const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
     const status = latest.collectionStatus || "For Deposition";
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(latest, s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
@@ -4148,12 +4349,14 @@ function renderCollectionsWorkflowTabs() {
   qsa("[data-collections-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.collectionsPanel === collectionsWorkflowTab));
 }
 
+/** @param {any} payment @param {any} sale */
 function collectionStatusActions(payment, sale) {
   const doc = sale?.documentNo || sale?.id;
   if (!doc) return "-";
   return `<button class="mini-button" data-make-payment-request="${escapeHtml(doc)}">Collection Status</button>`;
 }
 
+/** @param {string} saleId */
 function openCollectionHistoryModal(saleId) {
   const sale = data.sales.find((entry) => entry.id === saleId);
   if (!sale) return toast("Invoice not found.");
@@ -4162,6 +4365,7 @@ function openCollectionHistoryModal(saleId) {
   openModal("paymentRequest", { record: request, readOnly: true });
 }
 
+/** @param {string} documentNo */
 function openPaymentRequestForInvoice(documentNo) {
   const sale = data.sales.find((entry) => (entry.documentNo || entry.id) === documentNo);
   openModal("paymentRequest", sale ? { preselectInvoice: documentNo } : null);
@@ -4171,6 +4375,7 @@ function openPaymentRequestForInvoice(documentNo) {
   syncPaymentRequestTotal();
 }
 
+/** @param {string} receiptNo @param {string} status */
 async function updateCollectionPaymentStatus(receiptNo, status) {
   const payments = data.payments.filter((entry) => entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo);
   if (!payments.length) return toast("Collection not found.");
@@ -4204,7 +4409,7 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
       request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, note: status === "Bounced" ? `Bounced recorded by ${by}. Invoice paid amount reversed.` : `${status} recorded by ${by}.`, by });
     }
   }
-  const affectedSales = [...new Map(payments.map((payment) => saleForPayment(payment)).filter(Boolean).map((sale) => [sale.documentNo || sale.id, sale])).values()];
+  const affectedSales = [...new Map(/** @type {Sale[]} */ (payments.map((payment) => saleForPayment(payment)).filter(Boolean)).map((sale) => [sale.documentNo || sale.id, sale])).values()];
   const saveResult = await persistRecords({ payments, paymentRequests: request ? [request] : [], sales: affectedSales });
   if (!saveResult?.ok) return;
   log("Changed collection status", "Collections", `${receiptNo}: ${status}`, { save: false });
@@ -4217,11 +4422,12 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
 function syncCollectionContactsForBalances() {
   const clientsWithBalance = new Set(data.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
   data.collectionContacts = data.clients.filter((client) => clientsWithBalance.has(client.name)).map((client) => {
-    const existing = data.collectionContacts.find((contact) => contact.client === client.name) || {};
+    const existing = data.collectionContacts.find((contact) => contact.client === client.name) || /** @type {Record<string, any>} */ ({});
     return { client: client.name, area: client.area, status: existing.status || "Pending", lastContact: existing.lastContact || "", employee: existing.employee || "", channels: existing.channels || [], notes: existing.notes || "Open balance pending follow-up.", chequeInvoice: existing.chequeInvoice || "", weekKey: existing.weekKey || followupWeekKey() };
   });
 }
 
+/** @param {string} status */
 function collectionStatusHistory(status) {
   return [{ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, user: currentUser?.name || "System User" }];
 }
@@ -4239,11 +4445,13 @@ function syncPostedCollectionReminders() {
   });
 }
 
+/** @param {Record<string, any>} [row] */
 function parameterRowTemplate(row = {}) {
   const level = (prefix) => `<td><input class="param-${prefix}-range" placeholder="Ref. Range" value="${escapeHtml(row[`${prefix}Range`] || "")}" /></td><td><input class="param-${prefix}-result" placeholder="Result" value="${escapeHtml(row[`${prefix}Result`] || "")}" /></td><td class="param-p-cell"><input class="param-${prefix}-p" type="checkbox" ${row[`${prefix}P`] ? "checked" : ""} /></td><td class="param-f-cell"><input class="param-${prefix}-f" type="checkbox" ${row[`${prefix}F`] ? "checked" : ""} /></td>`;
   return `<tr class="parameter-row"><td><input class="param-name" placeholder="Parameter" value="${escapeHtml(row.parameter || "")}" /></td><td><input class="param-factor" placeholder="Factor" value="${escapeHtml(row.factor || "")}" /></td>${level("l1")}${level("l2")}${level("l3")}<td class="sheet-action-cell"><button class="icon-button danger-button remove-parameter-row" type="button" aria-label="Remove parameter" title="Remove parameter">×</button></td></tr>`;
 }
 
+/** @param {any[]} [rows] @param {Record<string, any>} [lots] */
 function renderProductIssueParameterTable(rows = [{}], lots = {}) {
   return `<div class="field full parameter-table-editor" id="parameter-table-editor"><label>Calibration / Control Parameter Table</label><div class="parameter-table-lots"><div class="field"><label for="qcLevel1Lot">Level 1 Lot</label><input id="qcLevel1Lot" name="qcLevel1Lot" value="${escapeHtml(lots.qcLevel1Lot || "")}" /></div><div class="field"><label for="qcLevel2Lot">Level 2 Lot</label><input id="qcLevel2Lot" name="qcLevel2Lot" value="${escapeHtml(lots.qcLevel2Lot || "")}" /></div><div class="field"><label for="qcLevel3Lot">Level 3 Lot</label><input id="qcLevel3Lot" name="qcLevel3Lot" value="${escapeHtml(lots.qcLevel3Lot || "")}" /></div></div><div class="table-card compact-table"><table id="parameter-qc-table"><thead><tr><th rowspan="2">Parameters</th><th rowspan="2">Calibrator Factor</th><th colspan="4">Level 1</th><th colspan="4">Level 2</th><th colspan="4">Level 3</th><th rowspan="2"></th></tr><tr><th>Ref. Range</th><th>Result</th><th>P</th><th>F</th><th>Ref. Range</th><th>Result</th><th>P</th><th>F</th><th>Ref. Range</th><th>Result</th><th>P</th><th>F</th></tr></thead><tbody id="parameter-row-list">${rows.map((row) => parameterRowTemplate(row)).join("")}</tbody></table></div><button class="ghost-button" id="add-parameter-row" type="button">Add Parameter</button></div>`;
 }
@@ -4267,21 +4475,26 @@ function collectProductIssueParameters() {
   })).filter((row) => row.parameter || row.factor || row.l1Result || row.l2Result || row.l3Result);
 }
 
+/** @param {any} [value] */
 function cvYear(value = today) { return new Date(value || today).getFullYear(); }
+/** @param {any} [year] */
 function nextCvNumber(year = cvYear()) {
   const next = (data.paymentRequests || []).filter((request) => cvYear(request.date || request.createdAt) === Number(year)).reduce((max, request) => Math.max(max, Number(String(request.cvNo || "").replace(/\D/g, "")) || 0), 0) + 1;
   return `CV${String(next).padStart(6, "0")}`;
 }
 const paymentRequestInstructions = "INSTRUCTIONS : This form must be accomplished in duplicate. All supporting documents must be attached with receipts issued to Medlane Diagnostics Solutions Inc. Incomplete information will delay processing of this payment request or no attached receipts will not receive any payment.";
+/** @param {string} clientName */
 function paymentRequestInvoiceDatalistOptions(clientName) {
   return openInvoicesForPaymentRequest(clientName).map((sale) => `<option value="${escapeHtml(sale.documentNo || sale.id)}"></option>`).join("");
 }
 
+/** @param {string} clientName @param {string} invoice */
 function paymentRequestRowBalance(clientName, invoice) {
   const sale = invoice ? openInvoicesForPaymentRequest(clientName).find((entry) => (entry.documentNo || entry.id) === invoice) : null;
   return sale ? Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) : 0;
 }
 
+/** @param {Record<string, any>} [line] */
 function paymentRequestLineTemplate(line = {}) {
   const clientName = qs("#employee")?.value.trim() || "";
   const payee = findClientByName(clientName);
@@ -4294,18 +4507,19 @@ function paymentRequestLineTemplate(line = {}) {
   return `<div class="payment-request-line-row payment-request-invoice-row"><div class="field"><label>Invoice</label><input class="payment-request-invoice-input" name="${rowId}" list="${rowId}-options" autocomplete="off" value="${escapeHtml(line.invoice || "")}" placeholder="Type or pick invoice" /><datalist id="${rowId}-options">${paymentRequestInvoiceDatalistOptions(clientName)}</datalist></div><div class="field"><label>Amount Due</label><input class="payment-request-amount-due" readonly value="${amountDue ? amountDue.toFixed(2) : "0.00"}" /></div><div class="field"><label>Amount Paid</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${amountPaid || ""}" /></div><div class="field"><label>Balance</label><input class="payment-request-balance" readonly value="${balance.toFixed(2)}" /></div><div class="payment-request-row-withholding"><label class="ios-check-row compact-doc-check"><input class="payment-request-row-wtax" type="checkbox" ${wtaxDefault ? "checked" : ""} /><span></span><strong>WTax 5%</strong></label><label class="ios-check-row compact-doc-check"><input class="payment-request-row-ewt" type="checkbox" ${ewtDefault ? "checked" : ""} /><span></span><strong>EWT 1%</strong></label></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
 }
 
+/** @param {any} row @param {{ invoiceChanged?: any }} options */
 function syncPaymentRequestRowDerived(row, { invoiceChanged = false } = {}) {
   const clientName = qs("#employee")?.value.trim() || "";
   const invoice = qsIn(row, ".payment-request-invoice-input")?.value.trim() || "";
   const amountDue = paymentRequestRowBalance(clientName, invoice);
-  const amountDueInput = row.querySelector(".payment-request-amount-due");
+  const amountDueInput = qsIn(row, ".payment-request-amount-due");
   if (amountDueInput) amountDueInput.value = amountDue.toFixed(2);
-  const amountInput = row.querySelector(".payment-request-amount");
+  const amountInput = qsIn(row, ".payment-request-amount");
   if (invoiceChanged && amountInput) amountInput.value = amountDue || "";
   const withholdingTax = Boolean(qsIn(row, ".payment-request-row-wtax")?.checked);
   const expandedWithholdingTax = Boolean(qsIn(row, ".payment-request-row-ewt")?.checked);
   const deductions = paymentRequestRowDeductions({ amountDue, amount: 0, withholdingTax, expandedWithholdingTax });
-  const balanceInput = row.querySelector(".payment-request-balance");
+  const balanceInput = qsIn(row, ".payment-request-balance");
   if (balanceInput) balanceInput.value = Math.max(amountDue - Number(amountInput?.value || 0) - deductions.withholdingTax - deductions.expandedWithholdingTax, 0).toFixed(2);
 }
 /** @param {any[]} [lines] @param {string | null} [preselectDoc] */
@@ -4334,12 +4548,14 @@ function collectPaymentRequestLines() {
     };
   }).filter((line) => line.invoice || line.amount);
 }
+/** @param {any} rows @param {any} netAmount */
 function paymentRequestNetAmountExceeded(rows, netAmount) {
   return netAmount > 0 && rows.reduce((sum, row) => sum + Number(row.amount || 0), 0) > netAmount;
 }
 
 const EXPENSE_CLASSIFICATION_OPTIONS = ["Accommodation", "Advertising & Marketing", "Bidding Expenses", "Delivery Fee", "Fixed Assets", "Freight/Importation", "Per Diem"];
 
+/** @param {Record<string, any>} [line] @param {Record<string, any>} [options] */
 function financialLineTemplate(line = {}, options = {}) {
   const uid = ++paymentRequestRowUid;
   const vendorField = options.vendor === false ? "" : `<div class="field"><label>Vendor</label><input class="payment-request-vendor" name="financial-vendor-${uid}" list="financial-vendor-options" autocomplete="off" value="${escapeHtml(line.vendor || "")}" /></div>`;
@@ -4348,6 +4564,7 @@ function financialLineTemplate(line = {}, options = {}) {
   return `<div class="${rowClass}">${vendorField}<div class="field"><label>Particulars</label><input class="payment-request-particulars" value="${escapeHtml(line.particulars || "")}" required /></div>${classificationField}<div class="field"><label>Amount</label><input class="payment-request-amount" type="number" min="0" step="0.01" value="${line.amount || ""}" required /></div><button class="icon-button danger-button remove-payment-request-line" type="button" aria-label="Remove item">Remove</button></div>`;
 }
 
+/** @param {any[]} [lines] */
 function renderFinancialRequestEditor(lines = [{}]) {
   const vendorOptions = [...new Set(activeSuppliers().map((s) => s.name))].map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
   const lineOptions = { vendor: modalType !== "payable", classification: modalType === "replenishment" };
@@ -4355,6 +4572,7 @@ function renderFinancialRequestEditor(lines = [{}]) {
   return `<div class="field full payment-request-editor"><label>Itemized Particulars</label><datalist id="financial-vendor-options">${vendorOptions}</datalist>${classificationDatalist}<div id="payment-request-line-list">${lines.map((line) => financialLineTemplate(line, lineOptions)).join("")}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-payment-request-line" type="button">Add Item</button><div class="field payment-request-total-field"><label for="amount">Net Total</label><input id="amount" name="amount" readonly value="0.00" /></div></div><div id="financial-request-tax-preview" class="invoice-compute-preview payment-deduction-preview"></div></div>`;
 }
 
+/** @param {any} input */
 function enforceExpenseClassification(input) {
   const value = input.value.trim();
   if (value && !EXPENSE_CLASSIFICATION_OPTIONS.includes(value)) {
@@ -4363,6 +4581,7 @@ function enforceExpenseClassification(input) {
   }
 }
 
+/** @returns {any[]} */
 function collectFinancialLines() {
   return qsa(".financial-line-row").map((row) => {
     const line = {
@@ -4391,16 +4610,21 @@ function syncFinancialRequestTotal() {
   if (preview) preview.innerHTML = modalType === "payable" ? `<div class="preview-tax-label">Optional withholding deductions computed from VAT-exclusive base</div><div class="invoice-tax-summary live-preview"><div class="invoice-meta"><span>Gross Payable</span><strong>${peso.format(gross)}</strong></div><div class="invoice-meta"><span>VAT-exclusive Base</span><strong>${withholdingMoney(taxBase)}</strong></div><div class="invoice-meta"><span>Withholding 1%</span><strong>${withholdingMoney(withholdingTax1)}</strong></div><div class="invoice-meta"><span>Withholding 2%</span><strong>${withholdingMoney(withholdingTax2)}</strong></div><div class="invoice-meta total-line"><span>Net Payable</span><strong>${peso.format(total)}</strong></div></div>` : "";
 }
 
+/** @param {any} value */
 function roundMoney(value) { return Math.round(Number(value || 0) * 100) / 100; }
+/** @param {any} value */
 function withholdingMoney(value) { return Number(value || 0).toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+/** @param {number} gross */
 function withholdingTaxBase(gross) { return roundMoney(Number(gross || 0) / 1.12); }
 
+/** @param {number} gross */
 function financialRequestDeductions(gross) {
   const taxBase = withholdingTaxBase(gross);
   const withholdingTax1 = modalType === "payable" && qs("#withholdingTax1")?.checked ? roundMoney(taxBase * 0.01) : 0;
   const withholdingTax2 = modalType === "payable" && qs("#withholdingTax2")?.checked ? roundMoney(taxBase * 0.02) : 0;
   return { grossAmount: gross, withholdingTax1, withholdingTax2, total: Math.max(gross - withholdingTax1 - withholdingTax2, 0) };
 }
+/** @param {number} gross */
 function paymentRequestDeductions(gross) {
   const taxBase = withholdingTaxBase(gross);
   const withholdingTax = qs("#withholdingTax")?.checked ? roundMoney(taxBase * 0.05) : 0;
@@ -4431,6 +4655,7 @@ function syncPaymentRequestDeductionDefaults() {
   if (qs("#withholdingTax")) qs("#withholdingTax").checked = Boolean(payee?.withholdingTax);
   if (qs("#expandedWithholdingTax")) qs("#expandedWithholdingTax").checked = Boolean(payee?.expandedWithholdingTax);
 }
+/** @param {any} row */
 function paymentRequestRowDeductions(row) {
   // Withholding tax is computed off the invoice's gross amount due, not the cash amount being
   // collected — the client withholds tax and remits it to BIR on the invoice's full value, so
@@ -4469,11 +4694,13 @@ function syncPaymentRequestTotal() {
   const preview = qs("#payment-request-tax-preview");
   if (preview) preview.innerHTML = `${blocks}${overLimit ? `<p class="field-error-message">Itemized amount total (${peso.format(sumAmounts)}) exceeds Net Amount (${peso.format(netAmount)}). Reduce the amounts or increase Net Amount.</p>` : ""}`;
 }
+/** @param {any} request */
 function paymentRequestHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
   const paymentDate = request.paymentType === "Bank Transfer" ? request.transferDate : request.chequeDate;
   return `<section class="payment-request-print">${printableBrandHeaderHtml(request.cvNo)}<div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Collector: <strong>${escapeHtml(request.preparedBy)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Bank Transfer" ? "[x]" : "[ ]"} Bank Transfer</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${peso.format(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${withholdingMoney(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${withholdingMoney(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${peso.format(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>${escapeHtml(paymentRequestInstructions)}</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div><div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Account No.: ${escapeHtml(request.bankAccount || "-")}<br>Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml(paymentDate || "-")}<br>Name and Signature of approver:</div></footer>${printableFooterHtml()}</section>`;
 }
+/** @param {any} identifier */
 async function previewPaymentRequest(identifier) {
   const request = typeof identifier === "number" ? data.paymentRequests[identifier] : data.paymentRequests.find((item) => item.cvNo === identifier || item.id === identifier);
   const id = request?.cvNo || request?.id || identifier;
@@ -4485,6 +4712,7 @@ async function previewPaymentRequest(identifier) {
   qs("#payment-request-preview-content").innerHTML = sanitizeHtml(printable.html);
 }
 
+/** @param {string} id */
 async function printTransferRequest(id) {
   showPaymentRequestPreviewLoading();
   const printable = await MedlaneAPI.printableTransfer(id).catch((error) => { toast(error.message || "Unable to load transfer request."); qs("#payment-request-preview-modal").close(); return null; });
@@ -4501,6 +4729,7 @@ function renderCollectionContactMap() {
   table("#collection-contact-history", ["Date", "Client", "Area", "Invoice", "Channel", "Status", "Employee", "Notes"], data.collectionContactHistory.map((item) => [item.date, item.client || item.area, item.area, item.invoice || "-", item.channels || "-", `<span class="pill ${statusClass(["Answered", "Cheque Available"].includes(item.status) ? "Paid" : item.status === "No Response" ? "Overdue" : "Near Due")}">${contactStatusLabel(item.status)}</span>`, item.employee, item.notes]));
 }
 
+/** @param {any} contact */
 function contactActionCard(contact) {
   const channels = contact.channels || [];
   const pendingInvoices = data.sales.filter((sale) => sale.client === contact.client && Number(sale.net || 0) - Number(sale.paid || 0) > 0);
@@ -4563,6 +4792,7 @@ const collectionMapLabelPositions = {
   "Mindanao Dealer": { dot: [1745, 1780], card: [1770, 1740] },
 };
 
+/** @param {string} area @param {string} status @param {any} clientCount */
 function regionMapLabel(area, status, clientCount) {
   const regionClass = contactStatusClass(status);
   const shape = collectionMapLabelPositions[area] || collectionMapLabelPositions["Region I"];
@@ -4576,14 +4806,17 @@ function regionMapLabel(area, status, clientCount) {
   return `<g class="map-region-label ${regionClass}" data-map-region="${escapeHtml(area)}"><line x1="${dotX}" y1="${dotY}" x2="${cardX + cardWidth / 2}" y2="${cardY + cardHeight / 2}"></line><circle cx="${dotX}" cy="${dotY}" r="${Math.round(17 * scale)}"></circle><foreignObject x="${cardX}" y="${cardY}" width="${cardWidth}" height="${cardHeight}"><button xmlns="http://www.w3.org/1999/xhtml" class="svg-region-summary ${regionClass}" style="--map-label-font:${cardFont}px;--map-label-meta:${metaFont}px;" data-map-region="${escapeHtml(area)}"><strong>${escapeHtml(area)}</strong><span>${clientCount} client${clientCount === 1 ? "" : "s"}</span></button></foreignObject></g>`;
 }
 
+/** @param {string} area */
 function collectionRegionSource(area) {
   return collectionRegionSources.find(([name]) => name === area)?.[1] || area;
 }
 
+/** @param {string} area */
 function collectionRegionCount(area) {
   return data.collectionContacts.filter((contact) => contact.area === area).length;
 }
 
+/** @param {any} feature */
 function geoRegionName(feature) {
   const raw = featureRegionName(feature);
   const value = String(raw || "").toLowerCase();
@@ -4607,6 +4840,7 @@ function geoRegionName(feature) {
   return raw;
 }
 
+/** @param {any} point @param {any} bounds */
 function projectedPoint(point, bounds) {
   const [lon, lat] = point;
   const mapBox = { x0: 918, y0: 112, x1: 2080, y1: 2138 };
@@ -4615,12 +4849,14 @@ function projectedPoint(point, bounds) {
   return [Math.round(x), Math.round(y)];
 }
 
+/** @param {any} points */
 function pathArea(points) {
   let sum = 0;
   for (let index = 0, previous = points.length - 1; index < points.length; previous = index++) sum += (points[previous][0] + points[index][0]) * (points[previous][1] - points[index][1]);
   return Math.abs(sum / 2);
 }
 
+/** @param {any} points @param {number} [tolerance] */
 function simplifyProjectedPoints(points, tolerance = 12) {
   const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   return points.reduce((acc, point) => {
@@ -4629,17 +4865,20 @@ function simplifyProjectedPoints(points, tolerance = 12) {
   }, []);
 }
 
+/** @param {any} ring @param {any} bounds */
 function projectedRingPath(ring, bounds) {
   const points = simplifyProjectedPoints(ring.map((point) => projectedPoint(point, bounds)));
   if (new Set(points.map((point) => point.join(","))).size < 4 || pathArea(points) < 450) return "";
   return `M${points.map((point) => point.join(" ")).join("L")}Z`;
 }
 
+/** @param {any} feature @param {any} bounds */
 function projectedRegionPath(feature, bounds) {
   const polygons = feature.geometry.type === "Polygon" ? [feature.geometry.coordinates] : feature.geometry.coordinates;
   return polygons.flatMap((polygon) => polygon.map((ring) => projectedRingPath(ring, bounds))).filter(Boolean).join(" ");
 }
 
+/** @param {any} geoJson */
 function geoJsonBounds(geoJson) {
   const bounds = { minLon: Infinity, maxLon: -Infinity, minLat: Infinity, maxLat: -Infinity };
   const scan = (coordinates) => {
@@ -4656,6 +4895,7 @@ function geoJsonBounds(geoJson) {
   return bounds;
 }
 
+/** @param {string} area @param {any} index */
 function clientMapPosition(area, index) {
   const slots = {
     "Region I": { x: 210, y: 96, cols: 1 },
@@ -4710,6 +4950,7 @@ function loadLeafletAssets() {
   return leafletLoadPromise;
 }
 
+/** @param {string} area */
 function regionTrackingStatus(area) {
   const contacts = data.collectionContacts.filter((contact) => contact.area === area);
   if (!contacts.length) return "Pending";
@@ -4723,6 +4964,7 @@ function regionTrackingStatus(area) {
   return "Pending";
 }
 
+/** @param {string} status */
 function regionStatusColor(status) {
   if (status === "Answered") return "#0f9f7a";
   if (status === "Tracked") return "#4755c7";
@@ -4731,11 +4973,13 @@ function regionStatusColor(status) {
   return "#f59e0b";
 }
 
+/** @param {any} feature */
 function featureRegionName(feature) {
-  const p = feature?.properties || {};
+  const p = feature?.properties || /** @type {Record<string, any>} */ ({});
   return p.shapeName || p.ADM1_EN || p.REGION || p.Reg_Name || p.name || p.NAME_1 || p.region || "";
 }
 
+/** @param {string} name */
 function normalizeRegionName(name) {
   const value = String(name || "").toLowerCase();
   if (value.includes("ilocos") || value.includes("region i")) return "Region I";
@@ -4829,6 +5073,7 @@ async function renderLeafletCollectionMap() {
   setTimeout(() => { collectionLeafletMap.invalidateSize(); collectionLeafletMap.fitBounds(bounds, { padding: [34, 34] }); }, 160);
 }
 
+/** @param {string} status */
 function statusColor(status) {
   if (status === "Answered") return "#0f9f7a";
   if (status === "Unreached") return "#006eb6";
@@ -4836,6 +5081,7 @@ function statusColor(status) {
   return "#f59e0b";
 }
 
+/** @param {string} area @param {string} [client] @param {boolean} [shouldScroll] */
 function openContactRegion(area, client = "", shouldScroll = true) {
   const group = qsa(".region-contact-group").find((item) => (item.dataset.focusText || "") === area);
   if (group) group.open = true;
@@ -4846,6 +5092,7 @@ function openContactRegion(area, client = "", shouldScroll = true) {
   if (shouldScroll) focusRecord(client || area);
 }
 
+/** @param {any} client @param {string} channel */
 function toggleContactChannel(client, channel) {
   const contact = data.collectionContacts.find((item) => item.client === client);
   if (!contact) return;
@@ -4858,6 +5105,7 @@ function toggleContactChannel(client, channel) {
   openContactRegion(contact.area, client, false);
 }
 
+/** @param {any} client @param {string} status */
 function updateCollectionContact(client, status) {
   status = contactStatusFromLabel(status);
   const contact = data.collectionContacts.find((item) => item.client === client);
@@ -4917,10 +5165,11 @@ function renderReceivablesTracker() {
   }).join("") || `<article class="panel"><p>No open regional receivables — everything is collected.</p></article>`;
 }
 
+/** @param {any} sale @param {boolean} [detailed] */
 function trackerCard(sale, detailed = false) {
     const status = statusForSale(sale);
     const balance = Math.max(sale.net - sale.paid, 0);
-    const client = data.clients.find((item) => item.name === sale.client) || {};
+    const client = data.clients.find((item) => item.name === sale.client) || /** @type {Record<string, any>} */ ({});
     const payment = data.payments.find((entry) => entry.invoice === sale.id || entry.invoice === sale.documentNo);
     const due = fmtDate(addDays(sale.date, sale.terms));
     const steps = [
@@ -4938,6 +5187,7 @@ function trackerCard(sale, detailed = false) {
     return `<article class="tracker-card" data-focus-record="${escapeHtml(sale.documentNo || sale.id)}"><div class="panel-header tracker-card-header"><div><p class="eyebrow">${escapeHtml(sale.documentNo || sale.id)}</p><h2><span class="invoice-type-badge type-${escapeHtml(sale.type)}"><span>${invoiceTypeIcon(sale.type)}</span>${invoiceTypeLabel(sale.type)}</span> ${peso.format(sale.net)}</h2><p class="tracker-item-summary">${escapeHtml(saleSummary(sale))}</p></div><span class="pill ${statusClass(status)}">${status}</span></div><div class="order-detail-layout"><aside class="delivery-address"><h3>Delivery Address</h3><strong>${escapeHtml(sale.client)}</strong><span>${escapeHtml(client.contact || "No contact recorded")}</span><small>${escapeHtml(client.address || sale.area)}</small><small>Salesperson: ${escapeHtml(sale.salesperson)}</small></aside><div><div class="report-preview-grid invoice-mini-grid">${summaryCards.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>${sale.cancelReason ? `<p><strong>Cancel reason:</strong> ${escapeHtml(sale.cancelReason)}</p>` : ""}${collectionHistoryButton ? `<div class="modal-actions">${collectionHistoryButton}</div>` : ""}<div class="tracker-flow order-flow">${steps.map(([icon, title, note, detail, date, state, section, focus]) => `<button class="tracker-step ${state}" data-go-section="${section}" data-focus-record="${escapeHtml(focus || note)}"><i>${escapeHtml(icon)}</i><strong>${escapeHtml(title)}</strong><span>${escapeHtml(note)}</span><small>${escapeHtml(date)}</small><em>${escapeHtml(detail)}</em></button>`).join("")}</div><details class="full-event-details" open><summary>Full order timeline</summary><div class="event-timeline">${steps.map(([icon, title, note, detail, date, state]) => `<div class="event-item ${state}"><span>${escapeHtml(icon)}</span><time>${escapeHtml(date)}</time><div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p><small>${escapeHtml(note)}</small></div></div>`).join("")}</div></details></div></div></article>`;
 }
 
+/** @param {string} invoiceId */
 function renderInvoiceFlowDetail(invoiceId) {
   const sale = data.sales.find((item) => item.id === invoiceId || item.documentNo === invoiceId);
   if (!sale) return toast("Invoice not found.");
@@ -4947,6 +5197,7 @@ function renderInvoiceFlowDetail(invoiceId) {
   showSection("invoice-flow-detail");
 }
 
+/** @param {any} invoices */
 function clientInvoicesFilteredSales(invoices) {
   const status = qs("#client-invoices-status-filter")?.value || "all";
   const from = qs("#client-invoices-from")?.value || "";
@@ -4969,11 +5220,13 @@ function resetClientInvoicesFilters() {
   renderClientInvoices();
 }
 
+/** @param {any} report */
 function clientSupportHistoryCard(report) {
   const typeLabel = report.reportType === "instrumental" ? "Instrumental Service Report" : "Technical Service Report";
   return `<article class="panel" data-focus-record="${escapeHtml(report.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(typeLabel)} · ${escapeHtml(report.startDate || "-")}</p><h2>${escapeHtml(report.id)}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Remarks:</strong> ${escapeHtml(report.remarks || report.concerns || "-")}</p><div class="modal-actions"><button class="ghost-button" data-product-issue-timeline="${escapeHtml(report.id)}">View Full Report</button></div></article>`;
 }
 
+/** @param {any} client */
 function renderClientHistoryTabs(client) {
   qsa("#client-history-tabs .order-status-tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.clientHistoryTab === clientHistoryTab));
   qs("#client-history-invoices-panel").hidden = clientHistoryTab !== "invoices";
@@ -4998,7 +5251,7 @@ function renderClientInvoices() {
   }
   const client = currentClientView || data.sales[0]?.client;
   const invoices = data.sales.filter((sale) => sale.client === client);
-  const clientRecord = data.clients.find((item) => item.name === client) || {};
+  const clientRecord = data.clients.find((item) => item.name === client) || /** @type {Record<string, any>} */ ({});
   const total = invoices.reduce((sum, sale) => sum + sale.net, 0);
   const paid = invoices.reduce((sum, sale) => sum + sale.paid, 0);
   const balance = Math.max(total - paid, 0);
@@ -5053,6 +5306,7 @@ function exportReplenishmentsCsv() {
   log("Exported expenses (CSV)", "Replenishments", `${rows.length} expenses`, { save: false });
 }
 
+/** @param {any} filtered */
 function clientInvoicesExportRows(filtered) {
   const header = ["Document No.", "Type", "Date", "Amount", "Paid", "Balance", "Status", "Salesperson"];
   const rows = filtered.map((sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), paymentStatusForSale(sale), sale.salesperson || "-"]);
@@ -5069,6 +5323,7 @@ function exportClientInvoicesCsv() {
   log("Exported client invoice report (CSV)", "Client History", client, { save: false });
 }
 
+/** @param {any} client @param {any} filtered */
 function clientInvoiceReportHtml(client, filtered) {
   const status = qs("#client-invoices-status-filter")?.value || "all";
   const from = qs("#client-invoices-from")?.value || "";
@@ -5092,8 +5347,9 @@ function printClientInvoicesReport() {
   log("Exported client invoice report (PDF)", "Client History", client, { save: false });
 }
 
+/** @param {any} client */
 function soaHtml(client) {
-  const clientRecord = data.clients.find((item) => item.name === client) || {};
+  const clientRecord = data.clients.find((item) => item.name === client) || /** @type {Record<string, any>} */ ({});
   // An invoice whose collection is marked "Posted Date" is already settled by a dated cheque in
   // hand — it's awaiting the claim date, not the client, so it must not be billed again on the SOA.
   const postedDateInvoices = new Set(data.payments.filter((payment) => payment.collectionStatus === "Posted Date").map((payment) => saleForPayment(payment)).filter(Boolean));
@@ -5115,6 +5371,7 @@ function soaHtml(client) {
   return `<section class="soa-print"><header><img src="medlane.jpg" alt="Medlane Diagnostic Solutions" /><h1>Statement of Account</h1></header><div class="soa-meta"><div><span>Account Name:</span><strong>${escapeHtml(client)}</strong></div><div><span>Terms:</span><strong>${escapeHtml(`${Number(clientRecord.terms || 30)} Days`)}</strong></div><div><span>Address:</span><strong>${escapeHtml(clientRecord.address || "No address recorded")}</strong></div><div><span>TIN No.:</span><strong>${escapeHtml(clientRecord.tin || "")}</strong></div><div><span>SOA Date:</span><strong>${escapeHtml(shortDate(today))}</strong></div></div><table><thead><tr><th>Date</th><th>Reference Number</th><th>Amount</th><th>Days Due</th></tr></thead><tbody>${rows.join("") || `<tr><td colspan="4">No open invoices.</td></tr>`}${blankRows}<tr class="soa-total-row"><td></td><td>Total</td><td>${peso.format(totalBalance).replace("₱", "")}</td><td></td></tr></tbody></table><div class="soa-notes"><p>Should there be any discrepancies, you may reach us through our company's contact number.</p><p>We respectfully request that all <strong>overdue accounts</strong>, if any, be settled immediately to <strong>avoid delays in your future orders and transactions.</strong> Kindly make all checks payable to <strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong></p><p>Please note that any payments and/or orders made <strong>after this billing date</strong> may not yet be reflected in this SOA. If payment has already been made, kindly disregard this notice.</p><p>Thank you very much.</p></div><div class="soa-signature"><p>Very truly yours,</p><strong>${escapeHtml(currentUser?.name || "Jessica Berry")}</strong><span>Accounting Staff</span><span>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</span></div><footer>MEDLANE DIAGNOSTIC SOLUTIONS, INC.<br />13 Gumamela St. Pilar Village, Las Piñas<br />Las Piñas City 1740<br />Tel. No. (02) 8836-2853 Email: receivables.mdsi@gmail.com</footer></section>`;
 }
 
+/** @param {any} client */
 function previewSoa(client) {
   const dialog = qs("#payment-request-preview-modal");
   qs("#payment-request-preview-title").textContent = `Statement of Account — ${client}`;
@@ -5134,6 +5391,7 @@ function renderWarranty() {
   table("#warranty-table", ["Client", "Equipment", "Serial No.", "Install Date", "Warranty End", "Status", "Service Notes"], data.warranties.filter((w) => includesSearch(Object.values(w))).map((w) => ({ focus: w.serial, cells: [w.client, w.equipment, w.serial, w.installDate, w.warrantyEnd, `<span class="pill ${statusClass(w.status)}">${w.status}</span>`, w.service] })));
 }
 
+/** @param {string} status */
 function productIssueStatusClass(status) {
   if (status === "Resolved") return "green";
   if (status === "Pass to Engineering" || status === "Pass to Product Specialist") return "orange";
@@ -5141,6 +5399,7 @@ function productIssueStatusClass(status) {
   return "gray";
 }
 
+/** @param {any} report */
 function productIssueTurnaroundDays(report) {
   if (!report.startDate) return null;
   const start = new Date(report.startDate).getTime();
@@ -5149,23 +5408,28 @@ function productIssueTurnaroundDays(report) {
   return Math.max(0, Math.round((end - start) / 86400000));
 }
 
+/** @param {any} report */
 function productIssueTurnaroundLabel(report) {
   const days = productIssueTurnaroundDays(report);
   if (days === null) return "N/A";
   return `${days} day${days === 1 ? "" : "s"}${report.status === "Resolved" ? "" : " (ongoing)"}`;
 }
 
+/** @param {any} report */
 function productIssueHistory(report) {
   return report.history?.length ? report.history : [{ date: report.startDate, status: "Open", note: "Report started", by: report.performedBy }];
 }
 
 const productIssueWorkflowRoles = ["Sales", "Product Specialist", "Engineering"];
+/** @param {any} role */
 function productIssueOriginRole(role) { return productIssueWorkflowRoles.includes(role) ? role : "Sales"; }
+/** @param {any} report */
 function canActOnProductIssue(report) {
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
   return currentUser?.role === (report.currentActor || report.originRole || "Sales");
 }
 
+/** @param {any} report */
 function productIssueActionsMenu(report) {
   const actor = report.currentActor || report.originRole || "Sales";
   const locked = report.status !== "Resolved" && !canActOnProductIssue(report);
@@ -5199,6 +5463,7 @@ function renderProductIssues() {
   table("#product-issues-table", ["Document No.", "Report Type", "Start Date", "Company", "Equipment", "Support Type", "Status", "Performed By", "Timeline", "Actions"], reports.filter((report) => includesSearch(Object.values(report))).map((report) => ({ focus: report.id, cells: [report.id, report.reportType === "instrumental" ? "Instrumental" : "Technical", report.startDate, report.companyName, `${report.equipment || "-"}${report.serialNo ? `<small>${report.serialNo}</small>` : ""}`, report.typeOfSupport || "-", `<span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span>`, report.performedBy, `<button class="mini-button" data-product-issue-timeline="${escapeHtml(report.id)}">View Timeline</button>`, productIssueActionsMenu(report)] })));
 }
 
+/** @param {any} report */
 function productIssueParameterSummaryHtml(report) {
   const rows = report.qcParameters?.length ? report.qcParameters : [];
   if (!rows.length) return "";
@@ -5206,6 +5471,7 @@ function productIssueParameterSummaryHtml(report) {
   return `<details class="full-event-details"><summary>Calibration / control parameter table</summary><div class="table-card compact-table"><table><thead><tr><th>Parameters</th><th>Calibrator Factor</th><th colspan="4">Level 1 · Lot ${escapeHtml(report.qcLevel1Lot || "-")}</th><th colspan="4">Level 2 · Lot ${escapeHtml(report.qcLevel2Lot || "-")}</th><th colspan="4">Level 3 · Lot ${escapeHtml(report.qcLevel3Lot || "-")}</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.parameter || "-")}</td><td>${escapeHtml(row.factor || "-")}</td>${cell(row, "l1")}${cell(row, "l2")}${cell(row, "l3")}</tr>`).join("")}</tbody></table></div></details>`;
 }
 
+/** @param {string} id */
 function renderProductIssueDetail(id) {
   const report = data.productIssues.find((item) => item.id === id);
   if (!report) return toast("Support report not found.");
@@ -5215,6 +5481,7 @@ function renderProductIssueDetail(id) {
   showSection("product-issue-detail");
 }
 
+/** @param {string} id */
 async function previewProductIssue(id) {
   clearPrintTarget();
   showReportPreviewLoading();
@@ -5228,6 +5495,7 @@ async function previewProductIssue(id) {
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
 }
 
+/** @param {string} id @param {any} currentResolvedBy */
 function confirmResolveProductIssue(id, currentResolvedBy) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
@@ -5248,6 +5516,7 @@ function confirmResolveProductIssue(id, currentResolvedBy) {
   });
 }
 
+/** @param {string} id @param {string} status */
 async function updateProductIssueStatus(id, status) {
   if (!canEditModule("product-issues")) return toast("Editing is disabled for this module in User Settings.");
   const report = data.productIssues.find((item) => item.id === id);
@@ -5294,6 +5563,7 @@ function purchaseHistoryVisibleClients() {
   return clients;
 }
 
+/** @param {any} date @param {any} months */
 function addMonthsToDate(date, months) {
   const d = new Date(date);
   d.setMonth(d.getMonth() + Number(months));
@@ -5303,13 +5573,14 @@ function addMonthsToDate(date, months) {
 function itemForecastMonthKeys() { return [2, 1, 0].map((offset) => fmtDate(addMonthsToDate(today, -offset)).slice(0, 7)); }
 function itemForecastMonthLabels() { return [2, 1, 0].map((offset) => addMonthsToDate(today, -offset).toLocaleString("en-US", { month: "short", timeZone: "Asia/Manila" })); }
 
+/** @param {any} allocationMonths */
 function itemForecastRows(allocationMonths) {
   const fromDate = fmtDate(addMonthsToDate(today, -3));
   const toDate = fmtDate(today);
   const monthKeys = itemForecastMonthKeys();
   const qtyByCode = {};
   const monthlyQtyByCode = {};
-  const forecastFilters = /** @type {Record<string, any>} */ (itemForecastFilters || {});
+  const forecastFilters = /** @type {Record<string, any>} */ (itemForecastFilters || /** @type {Record<string, any>} */ ({}));
   data.sales.filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, fromDate, toDate)).forEach((sale) => {
     const monthKey = String(sale.date || "").slice(0, 7);
     /** @type {any[]} */ (sale.lines?.length ? sale.lines : [{ code: sale.code, qty: sale.qty }]).forEach((line) => {
@@ -5348,12 +5619,13 @@ function itemForecastRows(allocationMonths) {
     const monthlyQty = monthKeys.map((key) => Math.round(monthlyQtyByCode[item.code]?.[key] || 0));
     const projectedDemand = avgMonthlyQty * allocationMonths;
     const currentStock = stockByCode[item.code] || 0;
-    const currentStockByBranch = stockByCodeBranch[item.code] || {};
+    const currentStockByBranch = stockByCodeBranch[item.code] || /** @type {Record<string, any>} */ ({});
     const suggestedRestock = Math.max(0, Math.round(projectedDemand - currentStock));
     return { item, totalQty, avgMonthlyQty, monthlyQty, projectedDemand, currentStock, currentStockByBranch, suggestedRestock };
   }).sort((a, b) => b.suggestedRestock - a.suggestedRestock);
 }
 
+/** @param {string} selector @param {Record<string, any>} values @param {any} allLabel */
 function setForecastSelectOptions(selector, values, allLabel) {
   const select = qs(selector);
   if (!select) return;
@@ -5363,6 +5635,7 @@ function setForecastSelectOptions(selector, values, allLabel) {
   select.value = unique.includes(current) ? current : "";
 }
 
+/** @param {string} selector @param {Record<string, any>} values */
 function setForecastDatalistOptions(selector, values) {
   const datalist = qs(selector);
   if (!datalist) return;
@@ -5377,14 +5650,14 @@ function renderItemForecastFilters() {
   setForecastSelectOptions("#item-forecast-division", [...data.clients.map((client) => client.division), ...data.sales.map((sale) => sale.division)].filter(Boolean), "All Divisions");
   setForecastSelectOptions("#item-forecast-region", [...data.clients.map((client) => client.area), ...data.sales.map((sale) => sale.area)], "All Regions");
   setForecastSelectOptions("#item-forecast-classification", data.items.map((item) => item.classification || item.category), "All Classifications");
-  const activeCount = Object.values(itemForecastFilters || {}).filter(Boolean).length;
+  const activeCount = Object.values(itemForecastFilters || /** @type {Record<string, any>} */ ({})).filter(Boolean).length;
   if (qs("#item-forecast-filter-summary")) qs("#item-forecast-filter-summary").textContent = activeCount ? `${activeCount} active filter${activeCount === 1 ? "" : "s"}` : "All items";
 }
 
 function renderItemForecast() {
   renderItemForecastFilters();
   const rows = itemForecastRows(itemForecastMonths);
-  qsa("#item-forecast-preset-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", Number(btn.dataset.forecastMonths) === itemForecastMonths));
+  qsa("#item-forecast-preset-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", Number(/** @type {string} */ (btn.dataset.forecastMonths)) === itemForecastMonths));
   if (qs("#item-forecast-custom-months") && document.activeElement !== qs("#item-forecast-custom-months")) qs("#item-forecast-custom-months").value = itemForecastMonths;
   const needsRestock = rows.filter((row) => row.suggestedRestock > 0);
   const totalProjectedValue = rows.reduce((sum, row) => sum + row.projectedDemand * Number(row.item.price || 0), 0);
@@ -5397,6 +5670,7 @@ function renderItemForecast() {
   table("#item-forecast-table", ["Item Code", "Item Name", "Brand", `${monthLabels[0]} Sales`, `${monthLabels[1]} Sales`, `${monthLabels[2]} Sales`, "Avg Monthly Sales (3mo)", "Projected Demand", "Current Stock", "Stock (Las Piñas)", "Stock (Naga)", "Suggested Restock"], rows.map((row) => ({ focus: row.item.code, cells: [row.item.code, row.item.name, row.item.brand || "-", row.monthlyQty[0], row.monthlyQty[1], row.monthlyQty[2], row.avgMonthlyQty.toFixed(1), Math.round(row.projectedDemand), row.currentStock, row.currentStockByBranch["Las Pinas"] || 0, row.currentStockByBranch["Naga"] || 0, row.suggestedRestock > 0 ? `<span class="pill red">${row.suggestedRestock}</span>` : `<span class="pill green">0</span>`] })));
 }
 
+/** @param {any} rows @param {any} monthLabels @param {any} allocationMonths */
 function itemForecastReportHtml(rows, monthLabels, allocationMonths) {
   const generatedAt = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
   return `<section class="payment-request-print">${printableBrandHeaderHtml("Item Forecast")}<div class="pr-meta"><span>Allocation Window: <strong>+${allocationMonths} month${allocationMonths === 1 ? "" : "s"}</strong></span><span>Generated: <strong>${escapeHtml(generatedAt)}</strong></span><span>Items: <strong>${rows.length}</strong></span></div><table><thead><tr><th>Item Code</th><th>Item Name</th><th>Brand</th><th>${escapeHtml(monthLabels[0])} Sales</th><th>${escapeHtml(monthLabels[1])} Sales</th><th>${escapeHtml(monthLabels[2])} Sales</th><th>Avg Monthly (3mo)</th><th>Projected Demand</th><th>Current Stock</th><th>Stock (Las Piñas)</th><th>Stock (Naga)</th><th>Suggested Restock</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.item.code)}</td><td>${escapeHtml(row.item.name)}</td><td>${escapeHtml(row.item.brand || "-")}</td><td>${row.monthlyQty[0]}</td><td>${row.monthlyQty[1]}</td><td>${row.monthlyQty[2]}</td><td>${row.avgMonthlyQty.toFixed(1)}</td><td>${Math.round(row.projectedDemand)}</td><td>${row.currentStock}</td><td>${row.currentStockByBranch["Las Pinas"] || 0}</td><td>${row.currentStockByBranch["Naga"] || 0}</td><td>${row.suggestedRestock}</td></tr>`).join("") || `<tr><td colspan="12">No items to report for the current filters.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
@@ -5415,6 +5689,7 @@ function printItemForecast() {
   qs("#report-preview-modal").showModal();
 }
 
+/** @param {any} agent */
 function purchaseHistoryDefaultLimit(agent) { return agent === "Unassigned" ? 20 : 5; }
 
 function renderPurchaseHistory() {
@@ -5455,6 +5730,7 @@ function renderImports() {
   }));
 }
 
+/** @param {any} row @param {any} delimiter */
 function splitImportLine(row, delimiter) {
   const cells = [];
   let current = "";
@@ -5473,7 +5749,9 @@ function parseImportText() {
   const delimiter = lines[0]?.includes("\t") ? "\t" : ",";
   return lines.map((line) => splitImportLine(line, delimiter));
 }
+/** @param {any} value */
 function normalizedImportHeader(value) { return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+/** @param {any} headers @param {any} row @param {any} labels */
 function rowValue(headers, row, labels) {
   for (const label of labels) {
     const index = headers.indexOf(normalizedImportHeader(label));
@@ -5481,12 +5759,15 @@ function rowValue(headers, row, labels) {
   }
   return "";
 }
+/** @param {any} value */
 function importNumber(value) { return Number(String(value || "0").replace(/[^0-9.-]/g, "")) || 0; }
+/** @param {any} value @param {any} [year] @param {any} [month] */
 function importDate(value, year, month) {
   if (!value && year && month) value = `${month} 1 ${year}`;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? fmtDate(today) : fmtDate(parsed);
 }
+/** @param {any} rows */
 function detectImportKind(rows) {
   const header = rows[0]?.map(normalizedImportHeader) || [];
   if (header.includes("itemcode") && header.includes("itemdescription")) return "productsMasterlist";
@@ -5497,8 +5778,11 @@ function detectImportKind(rows) {
   return "clients";
 }
 
+/** @param {any} parts */
 function importAddress(parts) { return parts.map((part) => String(part || "").trim()).filter(Boolean).join(", "); }
+/** @param {any} parts */
 function importContact(parts) { return parts.map(([label, value]) => String(value || "").trim() ? `${label}: ${String(value).trim()}` : "").filter(Boolean).join(" / "); }
+/** @param {any} row @param {any} headers */
 function inferClientArea(row, headers) {
   const code = rowValue(headers, row, ["Code"]).trim().toUpperCase();
   const province = rowValue(headers, row, ["Province"]);
@@ -5516,6 +5800,7 @@ function inferClientArea(row, headers) {
   if (text.includes("davao") || text.includes("mindanao")) return "Mindanao Dealer";
   return "Unassigned Area";
 }
+/** @param {any} value */
 function importedCategory(value) {
   const text = String(value || "").toLowerCase();
   if (text.includes("service")) return "Service";
@@ -5525,6 +5810,7 @@ function importedCategory(value) {
   return value || "Other";
 }
 
+/** @param {any} rows */
 function validateClientsMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
@@ -5552,6 +5838,7 @@ function validateClientsMasterlistRows(rows) {
   });
 }
 
+/** @param {any} row @param {any} headers */
 function buildImportedClient(row, headers) {
   const area = inferClientArea(row, headers);
   const contact = importContact([["Mobile", rowValue(headers, row, ["Mobile"])], ["Landline", rowValue(headers, row, ["Landline"])], ["Fax", rowValue(headers, row, ["Fax"])], ["Email", rowValue(headers, row, ["Email"])], ["Website", rowValue(headers, row, ["Website"])], ["Contact", [rowValue(headers, row, ["Contact Person"]), rowValue(headers, row, ["Contact Role"])].filter(Boolean).join(" - ")]]);
@@ -5559,6 +5846,7 @@ function buildImportedClient(row, headers) {
   return { code: rowValue(headers, row, ["Code"]).trim(), name: rowValue(headers, row, ["Name"]).trim(), area, dealer: rowValue(headers, row, ["Customer Type"]) || "Direct", bankName: rowValue(headers, row, ["Bank Name"]), bankAccountNumber: rowValue(headers, row, ["Bank Account Number"]), salesAccount: rowValue(headers, row, ["Sales Account"]), terms: term.trim() === "" ? 30 : importNumber(term), address: importAddress([rowValue(headers, row, ["Street"]), rowValue(headers, row, ["City"]), rowValue(headers, row, ["Province"]), rowValue(headers, row, ["Country"]), rowValue(headers, row, ["Zip Code"])]), contact, tin: rowValue(headers, row, ["Tin", "TIN"]), creditLimit: 150000, docs: "", status: rowValue(headers, row, ["Status"]) || "Active", migrated: true };
 }
 
+/** @param {any} rows */
 function validateSuppliersMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
@@ -5584,12 +5872,14 @@ function validateSuppliersMasterlistRows(rows) {
   });
 }
 
+/** @param {any} row @param {any} headers */
 function buildImportedSupplier(row, headers) {
   const classification = rowValue(headers, row, ["Classification"]);
   const contact = importContact([["Mobile", rowValue(headers, row, ["Mobile"])], ["Landline", rowValue(headers, row, ["Landline"])], ["Fax", rowValue(headers, row, ["Fax"])], ["Email", rowValue(headers, row, ["Email"])], ["Website", rowValue(headers, row, ["Website"])], ["Contact", [rowValue(headers, row, ["Contact Person"]), rowValue(headers, row, ["Contact Role"])].filter(Boolean).join(" - ")]]);
   return { code: rowValue(headers, row, ["Code"]).trim(), name: rowValue(headers, row, ["Name"]).trim(), brand: classification || "Multiple", classification, tin: rowValue(headers, row, ["Tin", "TIN"]), address: rowValue(headers, row, ["Address"]), country: rowValue(headers, row, ["Country"]), contact, status: rowValue(headers, row, ["Status"]) || "Active", migrated: true };
 }
 
+/** @param {any} rows */
 function validateProductsMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
@@ -5612,10 +5902,12 @@ function validateProductsMasterlistRows(rows) {
   });
 }
 
+/** @param {any} row @param {any} headers */
 function buildImportedProduct(row, headers) {
   const classification = rowValue(headers, row, ["ITEM CLASSIFICATION", "Item Classification"]);
   return { code: rowValue(headers, row, ["ITEM CODE", "Item Code"]).trim(), name: rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]).trim(), brand: "Medlane", source: "Supplier", supplier: "", category: importedCategory(classification), classification, uom: rowValue(headers, row, ["UOM"]) || "unit", terms: 30, cost: 0, price: 0, lot: "", expiry: "", migrated: true };
 }
+/** @param {any} rows */
 function validateSalesMigrationRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seenDocuments = new Set();
@@ -5638,6 +5930,7 @@ function validateSalesMigrationRows(rows) {
     return { row: index + 2, kind: "salesMigration", documentNo, type, client, area: rowValue(headers, row, ["Area"]), product, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
+/** @param {any} row @param {any} headers */
 function buildMigratedSale(row, headers) {
   const siNo = rowValue(headers, row, ["SI No."]);
   const tsDr = rowValue(headers, row, ["TS/DR"]);
@@ -5660,6 +5953,7 @@ function buildMigratedSale(row, headers) {
   if (area && !platformAreas().some((entry) => entry.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
   return { id: documentNo, documentNo, po: `MIG-${documentNo}`, client: client?.name || clientName, area, dealer: rowValue(headers, row, ["Classification"]) || client?.dealer || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]) || "Migrated", type, date: importDate(rowValue(headers, row, ["Date"]), rowValue(headers, row, ["Year"]), rowValue(headers, row, ["Month"])), item: product, brand, qty, uom, amount, discount, discountReason: discount ? "Migrated discount" : "", tax, net, terms: Number(client?.terms || 30), paid: 0, status: "Active", migrated: true, migrationSource: "Sales/Collections import", migrationRemarks: rowValue(headers, row, ["Remarks"]), lines: [{ item: product, code: item?.code || `MIG-${documentNo}`.slice(0, 24), brand, qty, uom, price, lot: "Migrated", expiry: "N/A", terms: Number(client?.terms || 30) }] };
 }
+/** @param {any} rows */
 function validateCollectionsMigrationRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seenReceipts = new Set();
@@ -5704,6 +5998,7 @@ function validateImportRows() {
   });
 }
 
+/** @returns {any[]} */
 function renderImportCheck() {
   const checked = validateImportRows();
   const ready = checked.filter((row) => row.status === "Ready");
@@ -5716,6 +6011,7 @@ function renderImportCheck() {
   return checked;
 }
 
+/** @param {any} checked */
 function importCheckedRows(checked) {
   const ready = checked.filter((row) => row.status === "Ready");
   const kind = ready[0]?.kind || checked[0]?.kind || "clients";
@@ -5728,7 +6024,7 @@ function importCheckedRows(checked) {
       ready.forEach((item) => {
         const client = buildImportedClient(parsed[item.row - 1], headers);
         if (client.area && !platformAreas().some((area) => area.toLowerCase() === client.area.toLowerCase())) data.platformAreas.push(client.area);
-        data.clients.push(client);
+        data.clients.push(/** @type {Client} */ (client));
         clients.push(client);
         recordKeys.push(client.name);
       });
@@ -5779,13 +6075,14 @@ function importCheckedRows(checked) {
   ready.forEach(({ name, area, address, contact, tin }) => {
     if (area && !platformAreas().some((item) => item.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
     const client = { name, area, dealer: area.includes("Dealer") ? area : "Direct", address, contact, tin, creditLimit: 150000, docs: "Mayor's Permit, 2303, SEC or DTI, FDALTO, GAIA", migrated: true };
-    data.clients.push(client);
+    data.clients.push(/** @type {Client} */ (client));
     clients.push(client);
     recordKeys.push(name);
   });
   return { module: "Clients", records: ready.length, skipped: checked.length - ready.length, recordType: "clients", recordKeys, createdRecords: { clients } };
 }
 
+/** @param {string} recordType @param {any} key */
 function importRevertBlockers(recordType, key) {
   const needle = String(key || "").trim().toLowerCase();
   if (!needle) return [];
@@ -5804,6 +6101,7 @@ function importRevertBlockers(recordType, key) {
   return blockers;
 }
 
+/** @param {any} index */
 async function revertImportBatch(index) {
   if (!canApproveMigrations()) return toast("Only Superadmin or CEO can revert a migration import.");
   const entry = data.imports[index];
@@ -5830,11 +6128,13 @@ async function revertImportBatch(index) {
   toast(`${entry.module} import reverted.`);
 }
 
+/** @param {Record<string, any>} payable */
 function payableAttachmentCell(payable) {
   if ((payable.requestStatus || payable.status) !== "Approved") return "-";
   return `${attachedFilesHtml("payable", payable.id)}<button class="ghost-button" data-upload-copy="${escapeHtml(payable.id)}" type="button">${attachedFilesFor("payable", payable.id).length ? "Replace Upload" : "Upload File"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="payable" data-record-id="${escapeHtml(payable.id)}" data-rerender="payables" hidden />`;
 }
 
+/** @param {Record<string, any>} payable */
 function payable2307Cell(payable) {
   if ((payable.requestStatus || payable.status) !== "Approved") return "-";
   const hasWithholding = Number(payable.withholdingTax1 || 0) > 0 || Number(payable.withholdingTax2 || 0) > 0;
@@ -5878,6 +6178,7 @@ function renderPayables() {
   if (loadMorePayablesButton) loadMorePayablesButton.hidden = !modulePagination.payables?.hasMore || !tableFullyRevealed("#payables-table");
 }
 
+/** @param {Record<string, any>} payable */
 function payableWithholdingSummary(payable) {
   const items = [];
   if (Number(payable.withholdingTax1 || 0)) items.push(`1% ${withholdingMoney(payable.withholdingTax1)}`);
@@ -5914,15 +6215,18 @@ const BIR_2307_PERIOD_SIZE = 10;
 const BIR_2307_PERIOD_Y = 819;
 const BIR_2307_GLYPH_WIDTH = 6; // Courier digit advance at size 10
 
+/** @param {any} draw @param {any} value @param {number} x @param {number} y @param {any} font @param {any} size @param {any} pitch */
 function bir2307DrawDigits(draw, value, x, y, font, size, pitch) {
   String(value || "").split("").forEach((digit, index) => draw(digit, x + index * pitch, y, { font, size }));
 }
+/** @param {any} draw @param {any} value @param {any} boxLeft @param {any} boxRight @param {number} y @param {any} font @param {any} size */
 function bir2307DrawBoxedDigits(draw, value, boxLeft, boxRight, y, font, size) {
   const digits = String(value || "").split("");
   if (!digits.length) return;
   const cellWidth = (boxRight - boxLeft) / digits.length;
   digits.forEach((digit, index) => draw(digit, boxLeft + index * cellWidth + (cellWidth - BIR_2307_GLYPH_WIDTH) / 2, y, { font, size }));
 }
+/** @param {any} draw @param {any} group @param {number} y @param {any} font */
 function bir2307DrawTinLastGroup(draw, group, y, font) {
   // Support both 3- and 5-digit branch codes: right-align the group against the
   // template's measured box edge, but keep the SAME digit pitch as groups 1-3
@@ -5933,6 +6237,7 @@ function bir2307DrawTinLastGroup(draw, group, y, font) {
   const lastDigitX = BIR_2307_TIN_LAST_GROUP_RIGHT - margin - BIR_2307_GLYPH_WIDTH;
   digits.forEach((digit, index) => draw(digit, lastDigitX - (digits.length - 1 - index) * BIR_2307_TIN_DIGIT_PITCH, y, { font, size: BIR_2307_TIN_SIZE }));
 }
+/** @param {any} draw @param {any} tin @param {number} x @param {number} y @param {any} font */
 function bir2307DrawTin(draw, tin, x, y, font) {
   const groups = /** @type {any[]} */ (String(tin || "").split(/[^0-9]+/).filter(Boolean));
   groups.forEach((group, groupIndex) => {
@@ -5940,8 +6245,11 @@ function bir2307DrawTin(draw, tin, x, y, font) {
     else bir2307DrawDigits(draw, group, x + groupIndex * BIR_2307_TIN_GROUP_PITCH, y, font, BIR_2307_TIN_SIZE, BIR_2307_TIN_DIGIT_PITCH);
   });
 }
+/** @param {any} gridRowIndex */
 function bir2307RowBaseline(gridRowIndex) { return BIR_2307_GRID_TOP - gridRowIndex * BIR_2307_ROW_PITCH - BIR_2307_ROW_BASELINE_DROP; }
+/** @param {any} date */
 function bir2307MMDDYYYY(date) { return `${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}${date.getFullYear()}`; }
+/** @param {any} dateValue */
 function bir2307QuarterRange(dateValue) {
   const date = dateValue ? new Date(dateValue) : new Date();
   const month = date.getMonth();
@@ -5949,7 +6257,9 @@ function bir2307QuarterRange(dateValue) {
   const quarterStartMonth = Math.floor(month / 3) * 3;
   return { from: new Date(year, quarterStartMonth, 1), to: new Date(year, quarterStartMonth + 3, 0), monthIndex: month - quarterStartMonth + 1 };
 }
+/** @param {any} value */
 function bir2307Money(value) { return Number(value || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+/** @param {string} text @param {any} maxChars */
 function bir2307WrapText(text, maxChars) {
   const words = /** @type {any[]} */ (String(text || "").split(/\s+/).filter(Boolean));
   const lines = [];
@@ -5961,6 +6271,7 @@ function bir2307WrapText(text, maxChars) {
   if (current) lines.push(current);
   return lines;
 }
+/** @param {Record<string, any>} payable @param {any} supplier */
 function bir2307Rows(payable, supplier) {
   const taxBase = withholdingTaxBase(Number(payable.grossAmount || payable.amount || 0));
   const isIndividual = supplier?.entityType === "Individual";
@@ -5970,6 +6281,7 @@ function bir2307Rows(payable, supplier) {
   return rows;
 }
 
+/** @param {Record<string, any>} payable */
 async function generateBir2307Pdf(payable) {
   const supplier = data.suppliers.find((entry) => entry.name === payable.supplier);
   const rows = bir2307Rows(payable, supplier);
@@ -6029,6 +6341,7 @@ async function generateBir2307Pdf(payable) {
   return pdfDoc.save();
 }
 
+/** @param {any} payableId */
 async function downloadBir2307(payableId) {
   const payable = data.payables.find((entry) => entry.id === payableId);
   if (!payable) return toast("Payable not found.");
@@ -6116,8 +6429,10 @@ function renderReplenishmentsWorkflowTabs() {
   qsa("[data-replenishments-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.replenishmentsPanel === replenishmentsWorkflowTab));
 }
 
+/** @param {any[]} [items] */
 function itemizedSummary(items = []) { return items.map((item) => `${escapeHtml(item.particulars || item.item || "Item")}${item.classification ? ` <em>(${escapeHtml(item.classification)})</em>` : ""}<small>${peso.format(item.amount || 0)}</small>`).join("") || "-"; }
 
+/** @param {string} id */
 function showExpenseDetail(id) {
   const expense = data.replenishments.find((item) => item.id === id);
   if (!expense) return toast("Expense not found.");
@@ -6131,6 +6446,7 @@ function showExpenseDetail(id) {
   dialog.showModal();
 }
 
+/** @param {Employee} employee */
 function employeeBenefitsSummary(employee) {
   const benefitIds = { SSS: employee.sssNo, PhilHealth: employee.philHealthNo, "Pag-IBIG": employee.pagIbigNo };
   return String(employee.benefits || "").split(",").map((benefit) => benefit.trim()).filter(Boolean).map((benefit) => `${escapeHtml(benefit)}${benefitIds[benefit] ? `<small>${escapeHtml(benefitIds[benefit])}</small>` : ""}`).join("") || "-";
@@ -6138,6 +6454,7 @@ function employeeBenefitsSummary(employee) {
 
 // Mirrors assertFinancialApprovalAllowed() in worker.js: payables are Superadmin/CEO-only, and
 // Accounting (who prepares payables and expenses) can't approve either.
+/** @param {any} type */
 function canApproveFinancialRequest(type) {
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
   if (type === "payable") return false;
@@ -6148,12 +6465,16 @@ function canApproveFinancialRequest(type) {
 // re-sorted or re-fetched (live sync, another user's approve/cancel) between when a row is
 // rendered and when its button is clicked, so an index baked into the button can silently
 // point at a different record by the time it's read back.
+/** @param {any} type @param {string} id */
 function requestActions(type, id) { return `<div class="inline-actions"><button class="mini-button" data-request-preview="${type}:${escapeHtml(id)}">Print</button>${canApproveFinancialRequest(type) ? `<button class="mini-button" data-request-approve="${type}:${escapeHtml(id)}">Approve</button>` : `<small>Awaiting ${type === "payable" ? "Superadmin/CEO" : "approver"}</small>`}<button class="mini-button danger-button" data-request-cancel="${type}:${escapeHtml(id)}">Cancel</button></div>`; }
 
+/** @param {any} type @param {string} id */
 function paymentConfirmActions(type, id) { return `<div class="inline-actions"><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cash">Cash</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Bank Transfer">Bank</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cheque">Cheque</button></div>`; }
 
+/** @param {any} type @param {string} id */
 function requestRecord(type, id) { return type === "payable" ? data.payables.find((p) => p.id === id) : data.replenishments.find((r) => r.id === id); }
 
+/** @param {any} type @param {string} id */
 async function previewFinancialRequest(type, id) {
   const record = requestRecord(type, id);
   if (!record) return toast("Request not found.");
@@ -6184,6 +6505,7 @@ function confirmDetailsModal({ eyebrow = "Confirm Action", title, fields = [], n
   });
 }
 
+/** @param {any} record @param {any} type */
 function financialRequestDetailFields(record, type) {
   const fields = [
     ["ID", record.id],
@@ -6196,6 +6518,7 @@ function financialRequestDetailFields(record, type) {
   return fields;
 }
 
+/** @param {any} type @param {string} id */
 async function approveFinancialRequest(type, id) {
   const record = requestRecord(type, id);
   if (!record) return;
@@ -6211,6 +6534,7 @@ async function approveFinancialRequest(type, id) {
   saveData(["notifications"]); renderAll(); toast(`${record.id} approved.`);
 }
 
+/** @param {any} type @param {string} id */
 async function cancelFinancialRequest(type, id) {
   const record = requestRecord(type, id);
   if (!record) return;
@@ -6231,16 +6555,19 @@ function canApproveCreditInvoice() {
   return ["Superadmin", "CEO", "Admin"].includes(currentUser?.role);
 }
 
+/** @param {any} request */
 function pendingCreditInvoiceActions(request) {
   if (request.status !== "Pending") return `<small>${escapeHtml(request.status)} by ${escapeHtml(request.decidedBy || "-")}</small>`;
   if (!canApproveCreditInvoice()) return `<small>Awaiting Admin/CEO</small>`;
   return `<div class="inline-actions"><button class="mini-button" data-credit-approve="${escapeHtml(request.id)}">Approve</button><button class="mini-button danger-button" data-credit-reject="${escapeHtml(request.id)}">Reject</button></div>`;
 }
 
+/** @param {any} request */
 function creditInvoiceRequestDetailFields(request) {
   return [["Client", request.client], ["Requested By", `${request.requestedBy} (${request.requestedByRole})`], ["Requested", request.requestedAt], ["Projected Balance", peso.format(request.projected)], ["Credit Limit", peso.format(request.limit)]];
 }
 
+/** @param {string} id */
 async function approveCreditInvoice(id) {
   const request = data.pendingCreditInvoices.find((entry) => entry.id === id);
   if (!request || request.status !== "Pending") return;
@@ -6269,6 +6596,7 @@ async function approveCreditInvoice(id) {
   saveData(["notifications"]); renderAll(); toast(`${sale.documentNo} created.`);
 }
 
+/** @param {string} id */
 async function rejectCreditInvoice(id) {
   const request = data.pendingCreditInvoices.find((entry) => entry.id === id);
   if (!request || request.status !== "Pending") return;
@@ -6309,6 +6637,7 @@ function renderPendingCreditInvoices() {
   table("#pending-credit-invoices-table", ["Request", "Client", "Requested By", "Requested", "Projected Balance", "Credit Limit", "Status", "Actions"], requests.map((request) => ({ focus: request.id, cells: [request.id, request.client, request.requestedBy, request.requestedAt || "-", peso.format(request.projected), peso.format(request.limit), `<span class="pill ${pillClass[request.status] || "gray"}">${escapeHtml(request.status)}</span>`, pendingCreditInvoiceActions(request)] })));
 }
 
+/** @param {any} record @param {any} type @param {any} method */
 function confirmPaymentDetailsModal(record, type, method) {
   return new Promise((resolve) => {
     const needsBank = ["Bank Transfer", "Cheque"].includes(method);
@@ -6333,6 +6662,7 @@ function confirmPaymentDetailsModal(record, type, method) {
   });
 }
 
+/** @param {any} type @param {string} id @param {any} method */
 async function confirmFinancialPayment(type, id, method) {
   const record = requestRecord(type, id);
   if (!record || record.requestStatus !== "Approved") return toast("Only approved requests can be confirmed paid.");
@@ -6350,12 +6680,14 @@ async function confirmFinancialPayment(type, id, method) {
   saveData(["notifications"]); renderAll(); toast(`${record.id} marked paid by ${method}.`);
 }
 
+/** @param {any} expense @param {any} index */
 function expenseApprovalAction(expense, index) {
   if (expense.status === "For HR Approval") return `<button class="mini-button" data-approve-expense="${index}" data-next-status="Approved by HR">Approve HR</button>`;
   if (expense.status === "Approved by HR" || expense.status === "For Accounting Approval") return `<button class="mini-button" data-approve-expense="${index}" data-next-status="Approved">Approve Accounting</button>`;
   return expense.approvedBy ? `Approved by ${escapeHtml(expense.approvedBy)}` : "Completed";
 }
 
+/** @param {any} index @param {any} nextStatus */
 async function approveExpense(index, nextStatus) {
   const expense = data.replenishments[index];
   if (!expense) return;
@@ -6387,6 +6719,7 @@ function renderReports() {
 // Each report gets real KPIs, two chart types suited to its own data, and a sortable
 // (table()-backed), searchable, filterable breakdown table via the shared #report-detail page.
 
+/** @param {{ statusLabel: any, statusOptions: any, section: string, sectionLabel: any, dateFilter?: boolean }} options */
 function setupReportDetailToolbar({ statusLabel, statusOptions, section, sectionLabel, dateFilter = true }) {
   const statusField = /** @type {AnyEl} */ (qs("#report-detail-status-filter").closest(".field"));
   if (statusOptions) {
@@ -6408,6 +6741,7 @@ function reportDetailFilters() {
   return { status: qs("#report-detail-status-filter")?.value || "", from: qs("#report-detail-date-from")?.value || "", to: qs("#report-detail-date-to")?.value || "" };
 }
 
+/** @param {any} entries */
 function renderReportKpis(entries) {
   qs("#report-detail-kpis").innerHTML = entries.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></div>`).join("");
 }
@@ -6427,6 +6761,7 @@ const operationalReports = {
 // global search box re-rendering whatever section is active) can refresh the open report in
 // place without calling showSection() again — showSection() itself calls renderSection(), which
 // would otherwise re-enter here and recurse.
+/** @param {any} key */
 function applyOperationalReport(key) {
   const config = operationalReports[key];
   if (!config) return toast("Report not found.");
@@ -6438,6 +6773,7 @@ function applyOperationalReport(key) {
   config.render();
 }
 
+/** @param {any} key */
 function renderOperationalReport(key) {
   applyOperationalReport(key);
   showSection("report-detail");
@@ -6568,7 +6904,7 @@ function renderClientDocumentsReport() {
   ]);
   const topOffenders = missingByClient.filter((entry) => entry.missing.length).sort((a, b) => b.missing.length - a.missing.length).slice(0, 10).map((entry) => [entry.client.name, entry.missing.length]);
   qs("#report-detail-chart-primary").innerHTML = barRows(topOffenders, (value) => `${value} missing`, ["red", "orange"]) + graphNote("Top 10 clients by number of missing required documents.");
-  const byDocType = requiredClientDocs.map((doc) => [doc, missingByClient.filter((entry) => entry.missing.includes(doc)).length]).sort((a, b) => b[1] - a[1]);
+  const byDocType = /** @type {[string, number][]} */ (requiredClientDocs.map((doc) => [doc, missingByClient.filter((entry) => entry.missing.includes(doc)).length])).sort((a, b) => b[1] - a[1]);
   qs("#report-detail-chart-secondary").innerHTML = barRows(byDocType, (value) => `${value} client${value === 1 ? "" : "s"}`, ["red", "orange"]) + graphNote("Clients missing each specific required document.");
   const filtered = missingByClient.filter((entry) => (!completion || (completion === "Complete" ? !entry.missing.length : entry.missing.length)) && includesSearch(Object.values(entry.client)));
   table("#report-detail-table", ["Client", "Area", "TIN", "Credit Limit", "Docs Uploaded", "Missing Docs"], filtered.map(({ client, missing }) => ({ focus: client.name, cells: [client.name, client.area || "-", client.tin || "-", peso.format(client.creditLimit), `${requiredClientDocs.length - missing.length}/${requiredClientDocs.length}`, missing.join(", ") || "None"] })));
@@ -6682,10 +7018,12 @@ function salesBreakdownScope() {
 
 // Mirrors the legacy single-line fallback already used by exportItemizedInvoicingCsv() —
 // older sales were saved with item/brand/qty/price on the sale itself, not a lines[] array.
+/** @param {any} sale */
 function salesBreakdownLines(sale) {
   return sale.lines?.length ? sale.lines : [{ item: sale.item, code: sale.code, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: sale.price }];
 }
 
+/** @param {any} line */
 function itemClassificationFor(line) {
   const item = data.items.find((entry) => entry.code === line.code || entry.name === line.item);
   return item?.classification || item?.category || "Unclassified";
@@ -6694,10 +7032,12 @@ function itemClassificationFor(line) {
 // Some invoice lines exist purely to keep an AR balance on the books (e.g. a migrated/manual
 // "Accounts Receivable" line) rather than record an actual product sold — they aren't real
 // product data, so product/item-demand views must not show them as if they were an item.
+/** @param {any} item @param {any} [classification] */
 function isBookkeepingOnlyLine(item, classification) {
   return /receivable/i.test(String(item || "")) || /receivable/i.test(String(classification || ""));
 }
 
+/** @param {any} dimension */
 function renderSalesBreakdownReport(dimension) {
   const config = salesBreakdownDimensions[dimension];
   if (!config) return toast("Report not found.");
@@ -6765,12 +7105,14 @@ function getReconRange() {
   return { from, to, label: from || to ? `${from || "Start"} to ${to || "Today"}` : "All dates" };
 }
 
+/** @param {any} dateValue @param {any} [range] */
 function isWithinReconRange(dateValue, range = getReconRange()) {
   if (!dateValue) return !range.from && !range.to;
   const value = fmtDate(dateValue);
   return (!range.from || value >= range.from) && (!range.to || value <= range.to);
 }
 
+/** @param {any} [range] */
 function getReconScope(range = getReconRange()) {
   const sales = data.sales.filter((sale) => isWithinReconRange(sale.date, range));
   const payments = data.payments.filter((payment) => isWithinReconRange(payment.dateRecorded || payment.dateCollected, range));
@@ -6779,10 +7121,12 @@ function getReconScope(range = getReconRange()) {
   return { range, sales, payments, clients, transfers };
 }
 
+/** @param {string} clientName @param {any} sales */
 function getScopedClientBalance(clientName, sales) {
   return sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
 }
 
+/** @param {any} [scope] */
 function getReconciliationFindings(scope = getReconScope()) {
   const findings = [];
   const docCounts = scope.sales.reduce((acc, sale) => { acc[sale.documentNo] = (acc[sale.documentNo] || 0) + 1; return acc; }, {});
@@ -6822,6 +7166,7 @@ function getReconciliationFindings(scope = getReconScope()) {
   return findings;
 }
 
+/** @param {any} findings @param {any} [scope] */
 function getReconciliationSuccesses(findings, scope = getReconScope()) {
   const issueRecords = new Set(findings.map((row) => row[1]));
   return [
@@ -6831,6 +7176,7 @@ function getReconciliationSuccesses(findings, scope = getReconScope()) {
   ];
 }
 
+/** @param {any} dateValue @param {any} period */
 function periodKey(dateValue, period) {
   const d = new Date(dateValue);
   const year = d.getFullYear();
@@ -6850,6 +7196,7 @@ function renderReconciliationTabs() {
   qsa(".recon-tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.reconPanel === reconciliationTab));
 }
 
+/** @param {any} index */
 function applyReconciliationHistory(index) {
   const run = data.reconHistory[index];
   if (!run) return toast("Reconciliation run not found.");
@@ -6863,6 +7210,7 @@ function applyReconciliationHistory(index) {
   toast(`Loaded reconciliation run from ${run.date}.`);
 }
 
+/** @param {any} findings @param {any} passRate @param {any} scope */
 function recordReconciliationRun(findings, passRate, scope) {
   const high = findings.filter((item) => item[3] === "High").length;
   const medium = findings.filter((item) => item[3] === "Medium").length;
@@ -6915,11 +7263,13 @@ function renderReconciliation() {
 
 function canManageUsers() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 function canUpdateDeliveryStatus() { return ["Accounting", "Superadmin", "CEO"].includes(currentUser?.role); }
+/** @param {any} value */
 function formatSessionDate(value) {
   if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
+/** @param {any} value */
 function formatBytes(value) {
   const bytes = Number(value || 0);
   if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(2)} GB`;
@@ -6927,6 +7277,7 @@ function formatBytes(value) {
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;
 }
+/** @param {string} [type] */
 function backupRunLabel(type = "manual") {
   const value = String(type).toLowerCase();
   if (value === "manual") return `<span class="pill purple">Manual</span>`;
@@ -6981,7 +7332,7 @@ async function renderUserSessions(target = selectedUserSessionsTarget) {
       return map;
     }, new Map());
     const rows = [...latestSessions.values()].map((session) => {
-      const user = session.profile || payload.user || {};
+      const user = session.profile || payload.user || /** @type {Record<string, any>} */ ({});
       const active = !session.revoked_at;
       const isCurrent = session.id === currentSessionId;
       return { focus: session.id, cells: [
@@ -7005,11 +7356,12 @@ function dedupedUsers() {
   data.users.forEach((user, index) => {
     const key = String(user.email || user.id || user.name || "").trim().toLowerCase();
     if (!key) return;
-    const previous = map.get(key) || {};
+    const previous = map.get(key) || /** @type {Record<string, any>} */ ({});
     map.set(key, { ...previous, ...user, customPermissions: user.customPermissions || previous.customPermissions, _sourceIndex: index });
   });
   return [...map.values()];
 }
+/** @param {string} [status] */
 function userStatusClass(status = "Active") {
   const value = String(status).toLowerCase();
   if (value.includes("active")) return "green";
@@ -7035,16 +7387,19 @@ function renderRoleTester() {
     ["Risk Level", ["Superadmin", "CEO"].includes(selected) ? "Full platform control" : edit.length ? "Operational editor" : "View / task limited", "Use custom permissions for exceptions."],
   ].map(([title, value, note]) => `<div class="report-preview-card"><small>${escapeHtml(title)}</small><strong>${escapeHtml(value)}</strong><span>${escapeHtml(note)}</span></div>`).join("");
 }
+/** @param {any} user */
 function userInviteStatus(user) {
   return user?.inviteStatus || "Active";
 }
 
 // A backend sync rewrites an archived user's inviteStatus back to "Disabled" (Supabase only
 // knows "banned"), so the durable archived signal is the archivedAt stamp set on archive.
+/** @param {any} user */
 function userIsArchived(user) {
   return Boolean(user?.archivedAt) || /archived/i.test(userInviteStatus(user));
 }
 
+/** @param {any} user */
 function userDisplayStatus(user) {
   return userIsArchived(user) ? "Archived" : userInviteStatus(user);
 }
@@ -7091,6 +7446,7 @@ function renderUsers() {
     return { focus: email || name, cells: [escapeHtml(name), email || "-", `<span class="pill ${statusClass(u.role)}">${escapeHtml(u.role)}</span>`, statusCell, grantControl, escapeHtml(accessSummary), canManageUsers() ? actions : "Superadmin/CEO only"] };
   }));
 }
+/** @param {AppNotification} notice @param {any} index */
 function notificationItem(notice, index) {
   return `<div class="alert-item clickable" data-notice-index="${index}" data-go-section="${escapeHtml(notice.section || "notifications")}" data-focus-record="${escapeHtml(notice.record || "")}"><span class="alert-dot ${notice.status === "Unread" ? "orange" : "green"}"></span><div><strong>${escapeHtml(notice.type)} · ${escapeHtml(notice.status)}</strong><span>${escapeHtml(notice.message)} · ${escapeHtml(notice.date)}</span></div></div>`;
 }
@@ -7098,7 +7454,7 @@ function renderNotifications() {
   syncGeneratedNotifications();
   const notices = visibleNotifications();
   const unread = notices.filter((notice) => notice.status === "Unread").length;
-  qs("#notification-count").textContent = unread;
+  qs("#notification-count").textContent = String(unread);
   qs("#notification-count").hidden = unread === 0;
   qs("#notification-toggle").classList.toggle("has-unread", unread > 0);
   qs("#notification-recent-list").innerHTML = notices.slice(0, 5).map((notice) => notificationItem(notice, data.notifications.indexOf(notice))).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>No notifications</strong><span>System alerts will appear here.</span></div></div>`;
@@ -7115,13 +7471,16 @@ function renderSecurity() {
   ];
   qs("#security-grid").innerHTML = controls.map(([title, body], index) => `<article class="panel security-card"><span class="feature-icon">${["⌖", "₱", "⌕", "●", "◎", "▧"][index]}</span><strong>${escapeHtml(title)}</strong><p>${escapeHtml(body)}</p></article>`).join("");
 }
+/** @param {any} value */
 function formatLogCell(value) { return escapeHtml(String(value || "-")); }
+/** @param {any} record */
 function formatLogRecord(record) {
   const compact = String(record || "-").replace(/\s+/g, " ");
   const short = compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
   return `<span class="log-record" title="${escapeHtml(compact)}">${escapeHtml(short)}</span>`;
 }
 const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Received", "Support Tracker", "Reconciliation", "Reports", "Settings", "System", "User Settings", "Users"];
+/** @param {any} entries */
 function visibleAuditLogEntries(entries) {
   const selectedModule = qs("#logs-module-filter")?.value || "all";
   return selectedModule === "all" ? entries.filter((entry) => String(entry.module || "System").toLowerCase() !== "system") : entries;
@@ -7157,6 +7516,7 @@ function renderLogTable() {
   if (loadMoreButton) loadMoreButton.hidden = !logsState.nextCursor || !tableFullyRevealed("#logs-table");
 }
 
+/** @param {any} index */
 function showAuditLogDetail(index) {
   const entry = logsState.entries[index];
   if (!entry) return toast("Audit log entry not found.");
@@ -7169,9 +7529,10 @@ function showAuditLogDetail(index) {
   document.body.appendChild(dialog);
   qsIn(dialog, "[data-close-audit-detail]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
-  dialog.querySelector("[data-view-digest-message]")?.addEventListener("click", () => showDigestMessagePreview(entry.digestMessageId));
+  qsIn(dialog, "[data-view-digest-message]")?.addEventListener("click", () => showDigestMessagePreview(entry.digestMessageId));
   dialog.showModal();
 }
+/** @param {string} id */
 async function showDigestMessagePreview(id) {
   if (!id) return;
   let result;
@@ -7234,6 +7595,7 @@ function notificationLogFilterParams() {
     module: channel === "all" ? "Discord,Email" : channel,
   };
 }
+/** @param {string} action */
 function notificationLogToneClass(action) {
   const value = String(action || "").toLowerCase();
   if (value.includes("failed")) return "red";
@@ -7468,6 +7830,7 @@ async function loadMorePaymentRequests() {
 /** @type {{ user?: string, entries: any[], nextCursor: any, loading: boolean }} */
 let userAuditLogState = { user: "", entries: [], nextCursor: null, loading: false };
 const userAuditLogWideDateFrom = "2020-01-01T00:00:00.000Z";
+/** @param {string} action */
 function userAuditLogEventTone(action) {
   const value = String(action || "").toLowerCase();
   if (value.includes("delete") || value.includes("cancel") || value.includes("reject") || value.includes("disable") || value.includes("revert")) return "blocked";
@@ -7489,6 +7852,7 @@ function renderUserAuditLogTimeline() {
   const summary = qs("#user-audit-log-summary");
   if (summary) summary.textContent = userAuditLogState.entries.length ? `${userAuditLogState.entries.length} action${userAuditLogState.entries.length === 1 ? "" : "s"} found for ${userAuditLogState.user}, newest first.` : `No actions found for ${userAuditLogState.user}.`;
 }
+/** @param {any} userName */
 async function openUserAuditLog(userName) {
   const name = String(userName || "").trim();
   if (!name) return toast("Type a user's name to search.");
@@ -7519,6 +7883,7 @@ async function loadMoreUserAuditLog() {
   renderUserAuditLogTimeline();
 }
 let appInitialRenderComplete = false;
+/** @type {Record<string, any>} */
 const sectionRenderers = {
   dashboard: () => { renderDashboard(); renderWorkflowAssist("dashboard"); },
   calendar: renderCalendarSection,
@@ -7551,6 +7916,7 @@ const sectionRenderers = {
   "user-settings": renderUserSettings,
   memos: renderMemos,
 };
+/** @param {string} [sectionId] */
 function renderSection(sectionId = document.body.dataset.activeSection || "dashboard") {
   sectionRenderers[sectionId]?.();
   renderUserMenu();
@@ -7576,6 +7942,7 @@ async function runReconciliationWorkflow() {
   toast("Reconciliation completed and saved to history.");
 }
 
+/** @param {string} action */
 function handleWorkflowAction(action) {
   if (action.startsWith("open-inventory:")) {
     const record = action.slice("open-inventory:".length);
@@ -7655,6 +8022,7 @@ function handleWorkflowAction(action) {
   }
 }
 
+/** @type {Record<string, any>} */
 const modalConfigs = {
   client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
   item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...activeItems().map((item) => item.brand), ...activeSuppliers().map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => activeSuppliers().map((supplier) => supplier.name)]] },
@@ -7812,11 +8180,11 @@ function openModal(type, edit = null) {
         const docs = new Set(String(value || "").split(",").map((item) => item.trim()).filter(Boolean));
         qsa("input[name='docsSelected']").forEach((input) => {
           const uploaded = docs.has(/** @type {string} */ (input.dataset.docName));
-          input.closest(".doc-upload-button")?.classList.toggle("uploaded", uploaded);
-          input.closest(".doc-upload-button")?.classList.toggle("missing", !uploaded);
-          const label = input.closest(".doc-upload-button")?.querySelector("strong");
+          closestEl(input, ".doc-upload-button")?.classList.toggle("uploaded", uploaded);
+          closestEl(input, ".doc-upload-button")?.classList.toggle("missing", !uploaded);
+          const label = closestEl(input, ".doc-upload-button")?.querySelector("strong");
           if (label) label.textContent = uploaded ? "Uploaded" : "Choose File";
-          const helper = input.closest(".doc-upload-button")?.querySelector("em");
+          const helper = closestEl(input, ".doc-upload-button")?.querySelector("em");
           if (helper) helper.textContent = uploaded ? "Replace" : "Choose document";
         });
         syncClientDocsHidden();
@@ -7876,11 +8244,12 @@ function syncClientDepartmentContactsHidden() {
   }).join(" | ");
 }
 
+/** @param {any} json */
 function populateClientDepartmentContacts(json) {
   let departments = {};
   try { departments = JSON.parse(json || "{}"); } catch { departments = {}; }
   clientContactDepartments.forEach(([key]) => {
-    const entry = departments[key] || {};
+    const entry = departments[key] || /** @type {Record<string, any>} */ ({});
     const personInput = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="person"]`);
     const phoneInput = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="phone"]`);
     const emailInput = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="email"]`);
@@ -7893,7 +8262,7 @@ function populateClientDepartmentContacts(json) {
 function syncClientDocsHidden() {
   const docsField = qs("#docs");
   if (!docsField) return;
-  docsField.value = qsa("input[name='docsSelected']").filter((input) => input.files?.length || input.closest(".doc-upload-button")?.classList.contains("uploaded")).map((input) => input.dataset.docName).join(", ");
+  docsField.value = qsa("input[name='docsSelected']").filter((input) => input.files?.length || closestEl(input, ".doc-upload-button")?.classList.contains("uploaded")).map((input) => input.dataset.docName).join(", ");
 }
 
 function syncInviteUserPermissions() {
@@ -7921,6 +8290,7 @@ function syncEmployeeBenefitsHidden() {
   benefitsField.value = qsa("input[name='benefitsSelected']:checked").map((input) => input.value).join(", ");
 }
 
+/** @param {string} name */
 function syncCheckboxGroupHidden(name) {
   const field = qs(`#${name}`);
   if (!field) return;
@@ -7931,10 +8301,11 @@ function toggleProductIssueResolvedByField() {
   const status = qs("#status")?.value;
   const field = qs("#resolvedBy");
   if (!field) return;
-  /** @type {AnyEl} */ (field.closest(".field")).hidden = status !== "Resolved";
+  /** @type {AnyEl} */ (closestEl(field, ".field")).hidden = status !== "Resolved";
   field.required = status === "Resolved";
 }
 
+/** @param {string} [type] */
 function nextProductIssueId(type = "productIssue") {
   const prefix = type === "instrumentalServiceReport" ? "ISR" : "TSR";
   const year = new Date(fmtDate(today)).getFullYear();
@@ -7968,6 +8339,7 @@ function syncProductIssueClientAddress() {
   if (client?.contact && qs("#contactPerson") && !qs("#contactPerson").value.trim()) qs("#contactPerson").value = client.contact;
 }
 
+/** @param {any} type @param {any} index */
 function openMasterEditModal(type, index) {
   const canEdit = ["Superadmin", "CEO"].includes(currentUser?.role);
   if (!canEdit) {
@@ -7982,6 +8354,7 @@ function openMasterEditModal(type, index) {
   openModal(type, { list: listByType[type], index, record: listByType[type][index] });
 }
 
+/** @param {any} record */
 function masterlistDisplayLabel(record) {
   return String(record?.code || record?.name || record?.email || "").trim();
 }
@@ -7989,6 +8362,7 @@ function masterlistDisplayLabel(record) {
 // A masterlist record can only be archived once it has no open / incomplete transaction
 // anywhere — the "floating transaction" must be completed or cancelled first. Returns a
 // short human reason string, or "" when the record is clear to archive.
+/** @param {any} type @param {any} record */
 function masterlistRecordOpenActivity(type, record) {
   const openDemo = (predicate) => (data.inventoryDemoRequests || []).some((demo) => !["Returned", "To Sales", "Cancelled"].includes(demo.status) && predicate(demo));
   const openPo = (predicate) => (data.purchaseOrders || []).some((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po)) && predicate(po));
@@ -8034,6 +8408,7 @@ function masterlistRecordOpenActivity(type, record) {
 
 // Archive/restore are CEO/Superadmin-only (also enforced server-side in /api/modules/records).
 // Archiving needs a type-the-name confirmation followed by the standard final-save confirm.
+/** @param {any} type @param {any} index */
 async function archiveMasterlistRecord(type, index) {
   if (!["Superadmin", "CEO"].includes(currentUser?.role)) return toast("Only CEO or Superadmin can archive masterlist records.");
   const moduleKey = masterlistModuleKey(type);
@@ -8058,6 +8433,7 @@ async function archiveMasterlistRecord(type, index) {
   toast(`${label} archived.`);
 }
 
+/** @param {any} type @param {any} index */
 async function restoreMasterlistRecord(type, index) {
   if (!["Superadmin", "CEO"].includes(currentUser?.role)) return toast("Only CEO or Superadmin can restore masterlist records.");
   const moduleKey = masterlistModuleKey(type);
@@ -8080,6 +8456,7 @@ async function restoreMasterlistRecord(type, index) {
   toast(`${label} restored.`);
 }
 
+/** @param {string} invoiceId */
 function openCancelReplaceModal(invoiceId) {
   const sale = data.sales.find((entry) => entry.id === invoiceId);
   if (Number(sale?.paid || 0) > 0) return toast("This invoice already has a payment recorded — it can no longer be cancelled or replaced.");
@@ -8089,8 +8466,9 @@ function openCancelReplaceModal(invoiceId) {
 /** @param {any} form @returns {Record<string, any>} */
 function formObject(form) { return Object.fromEntries(new FormData(form).entries()); }
 
+/** @param {any} type @param {any} record */
 function recordLabel(type, record) {
-  return record?.name || record?.code || record?.supplier || record?.id || record?.documentNo || Object.values(record || {})[0] || "record";
+  return record?.name || record?.code || record?.supplier || record?.id || record?.documentNo || Object.values(record || /** @type {Record<string, any>} */ ({}))[0] || "record";
 }
 
 function toggleReplenishmentEmployeeField() {
@@ -8104,16 +8482,19 @@ function toggleReplenishmentEmployeeField() {
   if (!required) field.value = "";
 }
 
+/** @param {any} type @param {any} record */
 function masterlistRecordKey(type, record) {
   if (type === "item") return String(record?.code || record?.name || "");
   if (type === "employee") return String(record?.email || record?.name || "");
   return String(record?.name || record?.code || record?.email || "");
 }
 
+/** @param {any} type */
 function masterlistModuleKey(type) {
   return ({ client: "clients", item: "items", supplier: "suppliers", employee: "employees", bank: "banks" })[type] || "";
 }
 
+/** @param {any} type @param {Record<string, any>} values @param {number} [exceptIndex] */
 function validateMasterRecord(type, values, exceptIndex = -1) {
   // Archived records never block uniqueness — restoring one is guarded separately, and an
   // archived name/code/TIN should be free to reuse for a fresh active record. Names and codes are
@@ -8160,6 +8541,7 @@ function nextInventoryPurchaseOrderId() {
   return `IPO-${String(next).padStart(3, "0")}`;
 }
 
+/** @param {Record<string, any>} values */
 function buildInventoryPurchaseOrder(values) {
   const supplier = data.suppliers.find((entry) => entry.name === values.supplier);
   if (!supplier) throw new Error("Supplier is required.");
@@ -8175,11 +8557,12 @@ function poHistoryTimestamp() {
   return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 
-/** @param {ClientPO | InventoryPO} po @returns {PoHistoryEntry[]} */
+/** @param {any} po @returns {PoHistoryEntry[]} */
 function poHistory(po) {
   return po.history?.length ? po.history : [{ date: po.date, status: po.status || "Pending Approval", note: "Purchase order created.", by: "System User" }];
 }
 
+/** @param {any} identifier */
 async function previewInventoryPurchaseOrder(identifier) {
   const po = typeof identifier === "number" ? (data.inventoryPurchaseOrders || [])[identifier] : (data.inventoryPurchaseOrders || []).find((item) => item.id === identifier);
   const id = po?.id || identifier;
@@ -8194,6 +8577,7 @@ async function previewInventoryPurchaseOrder(identifier) {
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
 }
 
+/** @param {Record<string, any>} values @param {Record<string, any>} [options] */
 function buildPurchaseOrder(values, options = {}) {
   const client = findClientByName(values.client);
   if (!client) throw new Error("Client is required.");
@@ -8226,6 +8610,7 @@ function buildPurchaseOrder(values, options = {}) {
   return { id, client: client.name, area: client.area, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
 }
 
+/** @param {any} sale */
 function inventoryTouchedBySale(sale) {
   // Skip-PO sales never reserve or deduct stock (see buildSale()), so there's nothing to
   // report as touched — including it anyway would ask the server to write an "inventory"
@@ -8255,6 +8640,7 @@ class CreditApprovalRequiredError extends Error {
   }
 }
 
+/** @param {any} values @param {string | null} [replacementOf] @param {{ allowCreditPending?: boolean }} [options] */
 function buildSale(values, replacementOf = null, { allowCreditPending = false } = {}) {
   const client = findClientByName(values.client);
   if (!client) throw new Error("Client is required.");
@@ -8369,6 +8755,7 @@ function togglePayableFields() {
   });
 }
 
+/** @param {any} sale */
 function restoreCancelledStock(sale) {
   // Skip-PO sales never deducted stock in the first place, so cancelling one must not add
   // stock back — that would credit quantity that was never actually reserved.
@@ -8380,6 +8767,7 @@ function restoreCancelledStock(sale) {
   });
 }
 
+/** @param {any} sale */
 function deductSaleStock(sale) {
   if (sale.noPo) return;
   const warehouse = warehouseForArea(sale.area);

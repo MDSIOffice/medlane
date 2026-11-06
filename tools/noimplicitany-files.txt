@@ -1,0 +1,9 @@
+# Files that must stay free of implicit-any errors (checked by tools/noimplicitany-gate.sh).
+# Add a file here once `npm run strict:progress` shows 0 errors for it; never remove one.
+public/scripts/config-data.js
+public/scripts/landing-motion.js
+public/scripts/events-bootstrap.js
+public/scripts/api-client.js
+public/scripts/state.js
+public/scripts/game.js
+public/scripts/ui-utils.js

@@ -19,5 +19,7 @@ jobs:
         run: npm run typecheck
       - name: Typecheck worker
         run: npm run typecheck:worker
+      - name: noImplicitAny gate (per file)
+        run: npm run check:noimplicitany
       - name: Syntax check
         run: for f in public/scripts/*.js src/*.js; do node --check "$f"; done

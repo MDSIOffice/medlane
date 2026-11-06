@@ -4,6 +4,7 @@ let data;
 // Per-module { hasMore, cursor, loading } for the transactional modules /api/modules/state trims
 // to "open + most recent 50" — populated from the state payload's `pagination` field, read/written
 // by the loadMore<Module>() handlers in modules.js to drive each list's "Load previous" button.
+/** @type {Record<string, any>} */
 let modulePagination = {};
 /** @type {any} */
 let modalType = null;
@@ -13,6 +14,7 @@ let currentOperationalReportKey = null; // set by applyOperationalReport() in mo
 let editContext = null;
 let modalReadOnly = false;
 let currentUser = JSON.parse(localStorage.getItem("medlane-session") || "null");
+/** @param {string} theme */
 function applyThemePreference(theme) {
   document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
 }
@@ -92,6 +94,7 @@ let userStatusFilter = "all";
 let invoiceViewMode = "table";
 /** @type {any} */
 let clientHistoryTab = "invoices";
+/** @type {Record<string, number>} */
 let purchaseHistoryVisibleCounts = {};
 let itemForecastMonths = 3;
 let itemForecastFilters = { brand: "", client: "", item: "", division: "", region: "", classification: "" };
@@ -188,6 +191,7 @@ const clientCoordinates = {
   "Mindanao Dealer Hub": [7.1907, 125.4553],
 };
 
+/** @type {Record<string, any>} */
 const accounts = {
   Superadmin: { name: "Superadmin", role: "Superadmin", branch: "all", email: "superadmin@medlane.local", phone: "+63 900 000 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
   Admin: { name: "Admin User", role: "Admin", branch: "all", email: "admin@medlane.local", phone: "+63 917 100 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
@@ -218,8 +222,10 @@ const sectionMeta = {
 };
 
 function userProfileKey() { return `medlane-profile-${currentUser?.role || "guest"}`; }
+/** @param {any} [role] */
 function passwordKey(role = currentUser?.role) { return `medlane-password-${role || "guest"}`; }
 function savedPassword() { return ""; }
+/** @param {string} email */
 function emailPasswordKey(email) { return `medlane-password-email-${String(email || "").trim().toLowerCase()}`; }
 function savedLoginPassword() { return ""; }
 function platformAreas() {
@@ -230,8 +236,9 @@ function platformAreas() {
   const custom = Array.isArray(data?.platformAreas) ? data.platformAreas : [];
   return [...new Set([...initialData.platformAreas, ...custom])];
 }
+/** @returns {string[]} */
 function platformBranches() { return data?.platformBranches?.length ? data.platformBranches : initialData.platformBranches; }
-function branchAddresses() { return data?.branchAddresses || {}; }
+function branchAddresses() { return data?.branchAddresses || /** @type {Record<string, any>} */ ({}); }
 function invoiceApprovals() { return data?.invoiceApprovals || { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" }; }
 function isDevEnvironment() { return ["localhost", "127.0.0.1", ""].includes(location.hostname) || location.protocol === "file:"; }
 function effectiveModules() {
@@ -242,10 +249,12 @@ function effectiveModules() {
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return accounts[currentUser.role]?.modules || currentUser?.modules || [];
   const modules = currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || [];
   const blocked = roleBlockedModules[currentUser?.role] || [];
-  return blocked.length ? modules.filter((module) => !blocked.includes(module)) : modules;
+  return blocked.length ? modules.filter((/** @type {string} */ module) => !blocked.includes(module)) : modules;
 }
 // Mirrors ROLE_BLOCKED_MODULES in worker.js (which also strips these from the server profile).
+/** @type {Record<string, string[]>} */
 const roleBlockedModules = { Logistics: ["logs", "product-issues"] };
+/** @type {Record<string, string[]>} */
 const roleEditableModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
   Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
@@ -268,8 +277,9 @@ function editableModules() {
   // partial stored permission set can't strip edit access the server would still grant them.
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return roleEditableModules[currentUser.role] || [];
   const list = currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || [];
-  return supportReportEditorRoles.includes(currentUser?.role) ? list : list.filter((id) => id !== "product-issues");
+  return supportReportEditorRoles.includes(currentUser?.role) ? list : list.filter((/** @type {string} */ id) => id !== "product-issues");
 }
+/** @param {string} sectionId */
 function canEditModule(sectionId) { return editableModules().includes(sectionId); }
 function canEditActiveSection() { return editableModules().includes(qs(".section.active")?.id || "dashboard"); }
 // Directly correcting a stored stock row's quantity / expiry / note is a higher bar than the
@@ -282,6 +292,7 @@ function canEditStockRecord() {
 }
 function permissionModules() { return [...new Set(Object.values(accounts).flatMap((account) => account.modules))].filter((module) => !["client-invoices", "invoice-flow-detail", "report-detail"].includes(module)); }
 function followupDate() { return new Date(); }
+/** @param {any} [date] */
 function followupWeekKey(date = followupDate()) {
   const value = date instanceof Date ? new Date(date) : new Date(`${date}T00:00:00`);
   if (Number.isNaN(value.getTime())) return "";
@@ -294,7 +305,9 @@ function getCurrentProfile() {
   const saved = {};
   return { email: currentUser?.email || `${String(currentUser?.role || "user").toLowerCase()}@medlane.local`, phone: currentUser?.phone || "+63", notes: "", ...currentUser, ...saved };
 }
+/** @param {string} name */
 function firstName(name) { return String(name || "User").split(/\s+/)[0]; }
+/** @param {string} name */
 function initials(name) { return String(name || "U").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 
 function emptyProductionData() {
@@ -341,11 +354,16 @@ function loadData() {
   return normalizeData(emptyProductionData());
 }
 
+/** @param {any} value */
 function roundCurrency(value) { return Math.round(Number(value || 0) * 100) / 100; }
+/** @param {number} gross */
 function withholdingBaseFromGross(gross) { return roundCurrency(Number(gross || 0) / 1.12); }
+/** @param {any} value */
 function hasWithholding(value) { return value === true || Number(value || 0) > 0; }
+/** @param {any[]} [items] */
 function itemGross(items = []) { return items.reduce((sum, item) => sum + Number(item.amount || 0), 0); }
 
+/** @param {PaymentRequest} request */
 function normalizePaymentRequestWithholding(request) {
   const items = request.items?.length ? request.items : [{ amount: request.amount || request.total || 0 }];
   const oldWithholdingTax = Number(request.withholdingTax || 0);
@@ -357,6 +375,7 @@ function normalizePaymentRequestWithholding(request) {
   return { ...request, gross, withholdingTax, expandedWithholdingTax, total: roundCurrency(Math.max(gross - withholdingTax - expandedWithholdingTax, 0)) };
 }
 
+/** @param {Record<string, any>} payable */
 function normalizePayableWithholding(payable) {
   const oldWithholdingTax1 = Number(payable.withholdingTax1 || 0);
   const oldWithholdingTax2 = Number(payable.withholdingTax2 || 0);
@@ -378,6 +397,7 @@ function normalizePayableWithholding(payable) {
 // records save under the same key and one silently overwrites the other. Assign fallback
 // ids only from numbers not already taken by a real id in this array, so a fabricated id
 // can never collide with one someone actually owns.
+/** @param {any[]} records @param {string} prefix */
 function withStableFallbackIds(records, prefix) {
   const used = new Set(records.map((record) => record.id).filter(Boolean));
   let next = 1;
@@ -391,6 +411,7 @@ function withStableFallbackIds(records, prefix) {
   });
 }
 
+/** @param {RawData} next @returns {AppData} */
 function normalizeData(next) {
   next.printTemplates ||= [];
   next.memos ||= [];
@@ -427,7 +448,7 @@ function normalizeData(next) {
   next.inventory = next.inventory.map((stock) => ({ brand: stock.brand || next.items.find((item) => item.code === stock.code)?.brand || "Medlane", ...stock }));
   next.pendingTransfers = next.pendingTransfers.map((transfer) => {
     const lot = transfer.sourceLot || String(transfer.lot || "").replace(/-TR$/, "");
-    const source = next.inventory.find((item) => item.code === transfer.code && item.lot === lot) || {};
+    const source = next.inventory.find((item) => item.code === transfer.code && item.lot === lot) || /** @type {Record<string, any>} */ ({});
     const expiry = transfer.expiry || source.expiry || "N/A";
     const lines = transfer.lines?.length ? transfer.lines : [{ code: transfer.code, item: transfer.item, brand: transfer.brand || source.brand || "Medlane", qty: Number(transfer.qty || 0), uom: transfer.uom || "unit", lot, expiry }];
     return { ...transfer, lot, sourceLot: lot, expiry, lines };
@@ -435,13 +456,13 @@ function normalizeData(next) {
   next.sales = next.sales.map((sale) => {
     const client = next.clients.find((c) => c.name === sale.client);
     const item = next.items.find((i) => i.name === sale.item);
-    const stock = next.inventory.find((entry) => entry.code === item?.code || entry.item === sale.item) || {};
+    const stock = next.inventory.find((entry) => entry.code === item?.code || entry.item === sale.item) || /** @type {Record<string, any>} */ ({});
     const line = { item: sale.item, code: item?.code || sale.code || sale.item, brand: sale.brand || item?.brand || "Medlane", qty: Number(sale.qty || 1), uom: sale.uom || item?.uom || "unit", price: sale.qty ? Math.round(((sale.amount || 0) / sale.qty) * 100) / 100 : item?.price || 0, lot: sale.lot || stock.lot || "Manual", expiry: sale.expiry || stock.expiry || "N/A", discount: Number(sale.discount || 0), discountReason: sale.discountReason || "", terms: Number(sale.terms || item?.terms || 30) };
     const amount = Number(sale.amount || 0);
     const manualDiscount = Number(sale.discount || 0);
     const withholdingTax = Boolean(sale.withholdingTax);
     const expandedWithholdingTax = Boolean(sale.expandedWithholdingTax);
-    return { po: sale.po || `PO-${sale.id}`, documentNo: sale.documentNo || sale.id, dealer: sale.dealer || client?.dealer || "Direct", brand: sale.brand || item?.brand || "Medlane", area: client?.area || sale.area, status: sale.status || "Active", lines: (sale.lines || [line]).map((entry) => ({ lot: stock.lot || "Manual", expiry: stock.expiry || "N/A", ...entry })), discount: manualDiscount, discountReason: sale.discountReason || "", withholdingTax, expandedWithholdingTax, autoTaxRate: 0, withholdingDiscount: 0, expandedWithholdingDiscount: 0, taxTreatment: sale.taxTreatment || [withholdingTax ? "Withholding Tax 5%" : "", expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), ...sale };
+    return { po: sale.po || `PO-${sale.id}`, documentNo: sale.documentNo || sale.id, dealer: sale.dealer || client?.dealer || "Direct", brand: sale.brand || item?.brand || "Medlane", area: client?.area || sale.area, status: sale.status || "Active", lines: (sale.lines || [line]).map((/** @type {any} */ entry) => ({ lot: stock.lot || "Manual", expiry: stock.expiry || "N/A", ...entry })), discount: manualDiscount, discountReason: sale.discountReason || "", withholdingTax, expandedWithholdingTax, autoTaxRate: 0, withholdingDiscount: 0, expandedWithholdingDiscount: 0, taxTreatment: sale.taxTreatment || [withholdingTax ? "Withholding Tax 5%" : "", expandedWithholdingTax ? "Expanded Withholding Tax 1%" : ""].filter(Boolean).join(" + "), ...sale };
   });
   next.paymentRequests = next.paymentRequests.map(normalizePaymentRequestWithholding);
   next.payables = withStableFallbackIds(next.payables, "PAY").map((payable) => normalizePayableWithholding({ id: payable.id, requestStatus: payable.requestStatus || (payable.status === "Cancelled" ? "Cancelled" : payable.status === "Approved" ? "Approved" : "For Approval"), paymentConfirmed: Boolean(payable.paymentConfirmed), items: payable.items || [{ particulars: payable.item || "Payable", qty: Number(payable.qty || 1), uom: payable.uom || "unit", amount: Number(payable.amount || 0) }], method: payable.method || (payable.cheque ? "Cheque" : "Cash"), bank: payable.bank || "", cheque: payable.cheque || "", chequeDate: payable.chequeDate || "", uom: payable.uom || "unit", qty: Number(payable.qty || 1), ...payable }));
@@ -449,18 +470,19 @@ function normalizeData(next) {
   next.payments = next.payments.map((payment) => ({ receiptNo: payment.receiptNo || payment.reference || "Manual", tag: payment.tag || (String(payment.invoice).startsWith("TS") ? "TS-PR" : "SI-CR"), dateRecorded: payment.dateRecorded || fmtDate(today), bank: payment.bank || "", chequeDate: payment.chequeDate || "", collectionStatus: payment.collectionStatus || "For Deposition", postedDate: payment.postedDate || "", cheques: payment.cheques || [], statusHistory: payment.statusHistory || [{ date: payment.dateRecorded || fmtDate(today), status: payment.collectionStatus || "For Deposition", user: payment.client || "Imported" }], ...payment }));
   next.purchaseOrders = next.purchaseOrders.map((po) => {
     const client = next.clients.find((item) => item.name === po.client);
-    const lines = (po.lines || []).map((line) => {
-      const item = next.items.find((entry) => entry.code === line.code || entry.name === line.item) || {};
+    const lines = (po.lines || []).map((/** @type {any} */ line) => {
+      const item = next.items.find((entry) => entry.code === line.code || entry.name === line.item) || /** @type {Record<string, any>} */ ({});
       return { ...line, item: line.item || item.name, code: line.code || item.code || line.item, brand: line.brand || item.brand || "Medlane", qty: Number(line.qty || 0), uom: line.uom || item.uom || "unit", price: Number(line.price || 0) };
     });
     return { ...po, id: po.id, client: po.client, area: po.area || client?.area || "Region I", salesperson: po.salesperson || currentUser?.name || "System User", date: po.date || fmtDate(today), lines, status: po.status || "For Invoicing" };
   });
+  /** @type {Record<string, string>} */
   const legacyPoStatus = { "Purchase Receiving": "Pending Approval", "For Receiving": "Pending Approval", Received: "Fully Received" };
-  next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ ...po, id: po.id, supplier: po.supplier, branch: po.branch || "", date: po.date || fmtDate(today), terms: po.terms || 30, status: legacyPoStatus[po.status] || po.status || "Pending Approval", approvedBy: po.approvedBy || "", approvedAt: po.approvedAt || "", cancelledBy: po.cancelledBy || "", cancelledAt: po.cancelledAt || "", receivedBy: po.receivedBy || "", receivedAt: po.receivedAt || "", history: po.history || [], lines: (po.lines || []).map((line) => ({ ...line, receivedQty: Number(line.receivedQty || 0) })) }));
-  next.inventoryDemoRequests = withStableFallbackIds(next.inventoryDemoRequests, "DEMO").map((request) => ({ id: request.id, date: request.date || fmtDate(today), requestedBy: request.requestedBy || "System User", client: request.client || "", salesAgent: request.salesAgent || request.requestedBy || "", demoDate: request.demoDate || "", returnDate: request.returnDate || "", purpose: request.purpose || "", location: request.location || "", contactPerson: request.contactPerson || "", contactNumber: request.contactNumber || "", status: request.status || "For Sales Approval", salesApprovedBy: request.salesApprovedBy || "", managementApprovedBy: request.managementApprovedBy || "", closedBy: request.closedBy || "", history: request.history || [], lines: (request.lines || []).map((line) => ({ type: line.type || "Machine", code: line.code || "", item: line.item || "", brand: line.brand || "", qty: Number(line.qty || 0), lot: line.lot || "", notes: line.notes || "" })), ...request }));
+  next.inventoryPurchaseOrders = next.inventoryPurchaseOrders.map((po) => ({ ...po, id: po.id, supplier: po.supplier, branch: po.branch || "", date: po.date || fmtDate(today), terms: po.terms || 30, status: legacyPoStatus[po.status] || po.status || "Pending Approval", approvedBy: po.approvedBy || "", approvedAt: po.approvedAt || "", cancelledBy: po.cancelledBy || "", cancelledAt: po.cancelledAt || "", receivedBy: po.receivedBy || "", receivedAt: po.receivedAt || "", history: po.history || [], lines: (po.lines || []).map((/** @type {any} */ line) => ({ ...line, receivedQty: Number(line.receivedQty || 0) })) }));
+  next.inventoryDemoRequests = withStableFallbackIds(next.inventoryDemoRequests, "DEMO").map((request) => ({ id: request.id, date: request.date || fmtDate(today), requestedBy: request.requestedBy || "System User", client: request.client || "", salesAgent: request.salesAgent || request.requestedBy || "", demoDate: request.demoDate || "", returnDate: request.returnDate || "", purpose: request.purpose || "", location: request.location || "", contactPerson: request.contactPerson || "", contactNumber: request.contactNumber || "", status: request.status || "For Sales Approval", salesApprovedBy: request.salesApprovedBy || "", managementApprovedBy: request.managementApprovedBy || "", closedBy: request.closedBy || "", history: request.history || [], lines: (request.lines || []).map((/** @type {any} */ line) => ({ type: line.type || "Machine", code: line.code || "", item: line.item || "", brand: line.brand || "", qty: Number(line.qty || 0), lot: line.lot || "", notes: line.notes || "" })), ...request }));
   const clientsWithBalance = new Set(next.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
   next.collectionContacts = next.clients.filter((client) => clientsWithBalance.has(client.name)).map((client) => {
-    const existing = next.collectionContacts.find((contact) => contact.client === client.name || contact.area === client.area) || {};
+    const existing = next.collectionContacts.find((contact) => contact.client === client.name || contact.area === client.area) || /** @type {Record<string, any>} */ ({});
     const status = existing.status === "Called" ? "Unreached" : existing.status || "Pending";
     const currentWeek = followupWeekKey();
     const savedWeek = existing.weekKey || followupWeekKey(existing.lastContact);
@@ -470,7 +492,7 @@ function normalizeData(next) {
       ? { client: client.name, area: client.area, status: "Pending", lastContact: "", employee: "", channels: [], notes: "Fresh weekly follow-up. Not yet contacted this week.", weekKey: currentWeek }
       : { client: client.name, area: client.area, status, lastContact: existing.lastContact || "", employee: existing.employee || "", channels: existing.channels || [], notes: existing.notes || "Not yet contacted this week.", weekKey: savedWeek || currentWeek };
   });
-  return next;
+  return /** @type {AppData} */ (/** @type {unknown} */ (next));
 }
 
 // Mirrors the server's recordKeyFor() (src/worker.js) so arrays can be de-duplicated by the
@@ -478,6 +500,7 @@ function normalizeData(next) {
 // to the same key in a single upsert make Postgres reject the whole batch with "ON CONFLICT
 // DO UPDATE command cannot affect row a second time" — this stops that from ever reaching the
 // server, and self-heals any already-duplicated local data on the very next save.
+/** @param {string} key @param {any} value @param {number} [index] */
 function saveRecordKeyFor(key, value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if (key === "inventory") return [value.code || value.item || "stock", value.branch || "branch", value.lot || value.serial || "lot"].map((part) => String(part).trim() || "-").join("|");
@@ -492,6 +515,7 @@ function saveRecordKeyFor(key, value, index) {
 // set of module keys that actually changed. Modules with unsaved local edits in the pending-save
 // queue are skipped so a background poll can never clobber work the user hasn't saved yet.
 const LIVE_SINGLETON_KEYS = ["branchAddresses", "invoiceApprovals"];
+/** @param {any[]} rows */
 function mergeLiveChanges(rows) {
   const changed = new Set();
   if (!Array.isArray(rows) || !rows.length || !data) return changed;
@@ -522,9 +546,11 @@ function mergeLiveChanges(rows) {
   return changed;
 }
 
+/** @param {string} key @param {any[]} records @param {Record<string, any>} [explicitKeys] */
 function dedupeRecordsForSave(key, records, explicitKeys) {
   if (!Array.isArray(records)) return records;
   const seen = new Map();
+  /** @type {string[]} */
   const order = [];
   records.forEach((record, index) => {
     const recordKey = (explicitKeys && explicitKeys[index]) || saveRecordKeyFor(key, record, index) || `__no-key-${index}`;
@@ -534,10 +560,12 @@ function dedupeRecordsForSave(key, records, explicitKeys) {
   return order.map((recordKey) => seen.get(recordKey));
 }
 
+/** @param {string[]} keys */
 function savePayloadForKeys(keys) {
+  /** @type {Record<string, any>} */
   const payload = {};
   [...new Set(keys)].forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(data || {}, key)) payload[key] = Array.isArray(data[key]) ? dedupeRecordsForSave(key, data[key]) : data[key];
+    if (Object.prototype.hasOwnProperty.call(data || /** @type {Record<string, any>} */ ({}), key)) payload[key] = Array.isArray(data[key]) ? dedupeRecordsForSave(key, data[key]) : data[key];
   });
   return payload;
 }
@@ -570,16 +598,18 @@ function openPendingSaveDb() {
   });
 }
 
+/** @param {string} key */
 function readPendingSaveQueueFromDb(key) {
   return openPendingSaveDb().then((db) => new Promise((resolve, reject) => {
     const getRequest = db.transaction(PENDING_SAVE_DB_STORE, "readonly").objectStore(PENDING_SAVE_DB_STORE).get(key);
-    getRequest.onsuccess = () => resolve(getRequest.result || {});
+    getRequest.onsuccess = () => resolve(getRequest.result || /** @type {Record<string, any>} */ ({}));
     getRequest.onerror = () => reject(getRequest.error || new Error("IndexedDB read failed"));
   }));
 }
 
 // Fire-and-forget: the caller (writePendingSaveQueue) has already updated pendingSaveQueueMemory
 // synchronously, so nothing downstream waits on this resolving or needs to handle its failure.
+/** @param {string} key @param {Record<string, any>} cleaned */
 function writePendingSaveQueueToDb(key, cleaned) {
   openPendingSaveDb().then((db) => {
     const store = db.transaction(PENDING_SAVE_DB_STORE, "readwrite").objectStore(PENDING_SAVE_DB_STORE);
@@ -599,16 +629,18 @@ function readPendingSaveQueue() {
   return pendingSaveQueueMemory;
 }
 
+/** @param {Record<string, any>} payload */
 function writePendingSaveQueue(payload) {
   const key = pendingSaveQueueKey();
-  const cleaned = Object.fromEntries(Object.entries(payload || {}).filter(([, value]) => value !== undefined));
+  const cleaned = Object.fromEntries(Object.entries(payload || /** @type {Record<string, any>} */ ({})).filter(([, value]) => value !== undefined));
   pendingSaveQueueMemoryKey = key;
   pendingSaveQueueMemory = cleaned;
   writePendingSaveQueueToDb(key, cleaned);
 }
 
+/** @param {Record<string, any>} payload */
 function mergePendingSaveQueue(payload) {
-  writePendingSaveQueue({ ...readPendingSaveQueue(), ...(payload || {}) });
+  writePendingSaveQueue({ ...readPendingSaveQueue(), ...(payload || /** @type {Record<string, any>} */ ({})) });
 }
 
 // Awaited once, at login and at session-restore (before applyPendingSaveQueueToLocal() needs
@@ -648,6 +680,7 @@ async function ensurePendingSaveQueueHydrated() {
 // approval), the queued snapshot is now stale and — left in place — would later
 // overwrite (and even re-push to the server) the newer data on the next reload.
 // Drop it once the module has a confirmed newer save.
+/** @param {string[]} keys */
 function clearPendingSaveQueueKeys(keys) {
   const pending = readPendingSaveQueue();
   let changed = false;
@@ -667,6 +700,7 @@ function applyPendingSaveQueueToLocal() {
   data = normalizeData({ ...emptyProductionData(), ...data, ...pending });
 }
 
+/** @param {string} status @param {string} text @param {string} [detail] */
 function setGlobalSaveStatus(status, text, detail = "") {
   const indicator = typeof qs === "function" ? qs("#save-status-indicator") : null;
   const label = typeof qs === "function" ? qs("#save-status-text") : null;
@@ -699,6 +733,7 @@ function updateSaveGuardOverlay() {
   if (busy && !dialog.open) dialog.showModal();
   if (!busy && dialog.open) dialog.close();
 }
+/** @param {string} [text] */
 function beginSaveOperation(text = "Saving…") {
   activeSaveCount += 1;
   const label = typeof qs === "function" ? qs("#save-guard-text") : null;
@@ -736,6 +771,7 @@ function isSaveInFlight() {
 // Mirrors the server's canAccessKey(..., "edit"): a user with no edit rights on a key's module gets
 // a 403 for the whole save, so the background auto-save (e.g. generated notifications at login)
 // must never queue keys they can't write — otherwise "Pending save failed" shows on every login.
+/** @param {string} key */
 function canEditSaveKey(key) {
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
   const editable = editableModules();
@@ -836,7 +872,7 @@ function flushPendingSaveQueue() {
     // forever (and be re-queued from IndexedDB on every login). Retry each module on its own:
     // modules that save are cleared, modules the server flatly refuses are discarded, and only
     // transient failures stay queued.
-    const isPermanentReject = (e) => ([400, 403, 404, 409, 422].includes(e.status) && !/APP_STATE_CONFLICT/.test(e.message || "")) || /Save blocked|cannot approve|permission|^Only /.test(e.message || "");
+    const isPermanentReject = (/** @type {any} */ e) => ([400, 403, 404, 409, 422].includes(e.status) && !/APP_STATE_CONFLICT/.test(e.message || "")) || /Save blocked|cannot approve|permission|^Only /.test(e.message || "");
     if (isPermanentReject(error) && Object.keys(queuedPayload).length > 1) {
       let transient = false;
       for (const [key, value] of Object.entries(queuedPayload)) {
@@ -878,9 +914,10 @@ function flushPendingSaveQueue() {
   });
 }
 
+/** @param {Record<string, any[] | undefined>} records @param {Record<string, any>} [recordKeys] */
 async function persistRecords(records, recordKeys = {}) {
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return null;
-  const filtered = Object.fromEntries(Object.entries(records || {}).filter(([, value]) => Array.isArray(value) && value.length).map(([key, value]) => [key, dedupeRecordsForSave(key, value, recordKeys?.[key])]));
+  const filtered = Object.fromEntries(Object.entries(records || /** @type {Record<string, any>} */ ({})).filter(([, value]) => Array.isArray(value) && value.length).map(([key, value]) => [key, dedupeRecordsForSave(key, /** @type {any[]} */ (value), recordKeys?.[key])]));
   if (!Object.keys(filtered).length) return null;
   setGlobalSaveStatus("saving", "Saving...");
   beginSaveOperation();
@@ -927,6 +964,7 @@ async function refreshItemsFromServer() {
 // in the Items masterlist" failure (keep this regex in sync with the message parseInvoiceLines()
 // throws), refetches the item masterlist once and retries before giving up — see
 // refreshItemsFromServer() above for why that failure can be transient rather than a real typo.
+/** @param {() => any} buildFn */
 async function buildWithItemRefresh(buildFn) {
   try {
     return buildFn();
@@ -940,18 +978,25 @@ async function buildWithItemRefresh(buildFn) {
 // from the active masterlist tables and from every picker used to build NEW transactions.
 // Identity keys for duplicate detection: case, extra/internal spaces and punctuation are ignored
 // ("Acme  Corp." == "ACME CORP", "X-RAY" == "XRAY"), TINs compare by digits only.
+/** @param {any} value */
 function normalizeMasterName(value) { return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, ""); }
 // Codes are only case/space-insensitive: punctuation can distinguish real codes ("AB-01" vs "AB01").
+/** @param {any} value */
 function normalizeMasterCode(value) { return String(value ?? "").toLowerCase().replace(/\s+/g, ""); }
+/** @param {any} value */
 function normalizeMasterTin(value) { return String(value ?? "").replace(/\D/g, ""); }
+/** @param {any} record */
 function isArchived(record) { return Boolean(record && record.archived); }
+/** @template T @param {T[] | null | undefined} list @returns {T[]} */
 function activeRecords(list) { return (list || []).filter((record) => !isArchived(record)); }
 function activeClients() { return activeRecords(data?.clients); }
 function activeItems() { return activeRecords(data?.items); }
 function activeSuppliers() { return activeRecords(data?.suppliers); }
+/** @returns {Employee[]} */
 function activeEmployees() { return activeRecords(data?.employees); }
 function activeBanks() { return activeRecords(data?.banks); }
 
+/** @param {any[]} items @param {string} prefix */
 function nextId(items, prefix) {
   const next = items.reduce((max, item) => Math.max(max, Number(String(item.id || "").replace(`${prefix}-`, "")) || 0), 0) + 1;
   return `${prefix}-${String(next).padStart(3, "0")}`;
@@ -968,12 +1013,18 @@ function qsIn(root, selector) { return /** @type {AnyEl} */ (root.querySelector(
 function qsaIn(root, selector) { return /** @type {AnyEl[]} */ ([...(root ? root.querySelectorAll(selector) : [])]); }
 /** Nearest ancestor (or self) of an event target matching selector, or null. @param {EventTarget | null} target @param {string} selector @returns {AnyEl} */
 function closestEl(target, selector) { return /** @type {AnyEl} */ (/** @type {Element} */ (target).closest(selector)); }
+/** @param {any[]} values */
 function includesSearch(values) {
   const term = qs("#global-search").value.trim().toLowerCase();
   return !term || values.some((value) => String(value ?? "").toLowerCase().includes(term));
 }
+/** @param {any[]} items @param {string} [key] */
 function byBranch(items, key = "branch") { return data.branch === "all" ? items : items.filter((item) => item[key] === data.branch || item[key] === "Both" || item.area === data.branch || item.office === data.branch || item.dealer === data.branch); }
+/** @param {any} date @param {any} days */
 function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + Number(days)); return d; }
+/** @param {any} date */
 function fmtDate(date) { return new Date(date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); }
+/** @param {any} date */
 function daysUntil(date) { return Math.ceil((new Date(date).getTime() - Number(today)) / 86400000); }
-function escapeHtml(value) { return String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]); }
+/** @param {any} value */
+function escapeHtml(value) { return String(value ?? "").replace(/[&<>"]/g, (char) => /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]); }
