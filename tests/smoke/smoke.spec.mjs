@@ -329,3 +329,38 @@ test("the navbar's Partners link goes to the partners section and lights up ther
   await expect(page.locator("#lr-partners")).toBeInViewport();
   await expect(link).toHaveClass(/is-active/);
 });
+
+test("every report opens from the hub and its card agrees with its page", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page);
+  await page.goto("/dashboard?section=reports");
+  await expect(page.locator("#report-grid .rh-card")).toHaveCount(13);
+
+  const cardFigure = await page.locator('.rh-card:has([data-operational-report="collections-ar"]) .rh-figure-value').textContent();
+  await page.locator('.rh-card [data-operational-report="collections-ar"]').click();
+  await expect(page.locator("#report-detail")).toHaveClass(/active/);
+  const outstanding = (await page.locator("#report-detail-kpis .rd-kpi").nth(1).locator("strong").textContent()).replace(/[₱,]/g, "");
+  expect(cardFigure).toBe(await page.evaluate((value) => pesoCompact(Number(value)), outstanding));
+
+  // A filter picked in one report must not carry over into the next one.
+  await page.selectOption("#report-detail-status-filter", { index: 1 });
+  await page.locator("#report-detail .rd-back").click();
+  await page.locator('.rh-card [data-operational-report="supplier-payables"]').click();
+  await expect(page.locator("#report-detail-status-filter")).toHaveValue("");
+
+  const reports = await page.evaluate(() => ({ operational: Object.keys(operationalReports), sales: Object.keys(salesBreakdownDimensions) }));
+  for (const key of reports.operational) {
+    await page.locator("#report-detail .rd-back").click();
+    await page.locator(`.rh-card [data-operational-report="${key}"]`).click();
+    await expect(page.locator("#report-detail-title")).toHaveText(await page.evaluate((k) => operationalReports[k].title, key));
+    await expect(page.locator("#report-detail-table-count")).toHaveText(/record/);
+  }
+  await page.locator("#report-detail .rd-back").click();
+  for (const key of reports.sales) {
+    await page.locator(`.rh-card [data-sales-breakdown="${key}"]`).click();
+    await expect(page.locator("#sales-breakdown-detail")).toHaveClass(/active/);
+    await expect(page.locator("#sales-breakdown-table-count")).toHaveText(/record/);
+    await page.locator("#sales-breakdown-detail .rd-back").click();
+  }
+  expect(problems).toEqual([]);
+});

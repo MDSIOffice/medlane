@@ -152,8 +152,8 @@ function monthLabel(value) {
   return new Date(`${value}-01T00:00:00`).toLocaleDateString("en-PH", { month: "short", year: "numeric" });
 }
 
-/** @param {any} entries */
-function lineChart(entries) {
+/** @param {any} entries @param {string} [label] */
+function lineChart(entries, label = "Monthly sales line graph") {
   if (!entries.length) return `<p>No sales trend available for this view.</p>`;
   const width = 720;
   const height = 260;
@@ -170,14 +170,17 @@ function lineChart(entries) {
   const area = `${pad},${height - pad} ${line} ${points.at(-1).x},${height - pad}`;
   const gridlines = [0.25, 0.5, 0.75, 1].map((ratio) => {
     const y = height - pad - ratio * (height - pad * 2);
-    return `<line class="chart-gridline" x1="${pad}" y1="${y}" x2="${width - pad}" y2="${y}"></line>`;
+    return `<line class="chart-gridline" x1="${pad}" y1="${y}" x2="${width - pad}" y2="${y}"></line>${ratio === 0.5 || ratio === 1 ? `<text class="chart-text chart-y-label" x="${pad - 8}" y="${y + 4}" text-anchor="end">${escapeHtml(pesoCompact(max * ratio).replace(/\.00$/, ""))}</text>` : ""}`;
   }).join("");
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly sales line graph">
+  // Past about 8 month labels they collide, so show every nth, always keeping the latest month.
+  const labelStep = Math.ceil(entries.length / 8);
+  const showLabel = (/** @type {number} */ index) => (entries.length - 1 - index) % labelStep === 0;
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}">
     <defs><linearGradient id="salesTrendGradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3db3cd" stop-opacity="0.28"/><stop offset="1" stop-color="#3db3cd" stop-opacity="0"/></linearGradient></defs>
     ${gridlines}<line class="chart-axis" x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}"></line>
     <polygon class="chart-area" points="${area}"></polygon><polyline class="chart-line" points="${line}"></polyline>
     ${points.map((/** @type {any} */ point, /** @type {any} */ index) => `<circle class="chart-point" cx="${point.x}" cy="${point.y}" r="7"><title>${monthLabel(entries[index][0])}: ${peso.format(point.value)}</title></circle>`).join("")}
-    ${entries.map((/** @type {any[]} */ [label], /** @type {any} */ index) => `<text class="chart-text" x="${points[index].x}" y="${height - 12}" text-anchor="middle">${escapeHtml(monthLabel(label))}</text>`).join("")}
+    ${entries.map((/** @type {any[]} */ [month], /** @type {any} */ index) => showLabel(index) ? `<text class="chart-text" x="${points[index].x}" y="${height - 12}" text-anchor="middle">${escapeHtml(monthLabel(month))}</text>` : "").join("")}
   </svg>`;
 }
 
@@ -6788,18 +6791,264 @@ async function approveExpense(index, nextStatus) {
   toast(`${expense.id} ${nextStatus}.`);
 }
 
+// ===== Reports hub =====
+// The hub groups reports by what they are for and previews each with its own live figure, drawn
+// from the same helpers its detail page uses, so the number on a card matches the page it opens.
+// Sales cards use the year to date (the range their detail pages open with). Collections, payables,
+// stock, warranty and document cards are all-time, because an open balance or an expiring lot
+// doesn't stop mattering just because it was raised last year.
+
+/** @type {Record<string, string>} */
+const reportIconPaths = {
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/>',
+  map: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  agent: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4 4-6 8-6s7.2 2 8 6"/>',
+  wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2Z"/><circle cx="16" cy="14.5" r="1"/>',
+  receipt: '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2Z"/><path d="M9 8h6M9 12h6"/>',
+  flask: '<path d="M9 3h6M10 3v6l-5.5 9.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7.5 15h9"/>',
+  shield: '<path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6Z"/><path d="m9 12 2 2 4-4"/>',
+  file: '<path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4"/><path d="m9 14 2 2 4-4"/>',
+  audit: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9ZM9 11h6M9 15h6"/>',
+  client: '<path d="M4 21V5l8-2v18M12 9l8 2v10M2 21h20M8 8v.01M8 12v.01M8 16v.01M16 14v.01M16 18v.01"/>',
+  tag: '<path d="M3 12V4h8l10 10-8 8Z"/><circle cx="7.5" cy="8.5" r="1"/>',
+  box: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/>',
+};
+
+/** @param {string} name */
+function reportIcon(name) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${reportIconPaths[name] || ""}</svg>`;
+}
+
+/** @type {Record<string, { label: string, scope: string, reports: string[] }>} */
+const reportHubCategories = {
+  sales: { label: "Sales & Revenue", scope: "Year to date · cancelled invoices excluded", reports: ["sales-month", "sales-territory", "sales-by-agent", "sales-client", "sales-brand", "sales-item", "sales-classification"] },
+  finance: { label: "Finance", scope: "All open balances, whenever they were raised", reports: ["collections-ar", "supplier-payables"] },
+  operations: { label: "Operations", scope: "Current stock and installed equipment", reports: ["reagent-expiry", "service-warranty"] },
+  compliance: { label: "Compliance", scope: "Client paperwork and the audit trail", reports: ["client-documents", "compliance-audit"] },
+};
+
+let reportHubCategory = "all";
+
+function reportYtdRange() {
+  const to = fmtDate(today);
+  return { from: `${to.slice(0, 4)}-01-01`, to };
+}
+
+// Server-side, a role only receives the records its modules cover (canAccessKey in worker.js), so
+// an empty array can mean "no access" rather than "nothing there". The hub must not show that as
+// a confident ₱0. This only decides what a card says; the server still owns actual access.
+/** @param {string} [key] */
+function reportDataVisible(key) {
+  if (!key || ["Superadmin", "CEO"].includes(currentUser?.role)) return true;
+  return effectiveModules().some((/** @type {string} */ module) => frontendModuleRecordKeys[module]?.includes(key));
+}
+
+// Tone comes from what the status means, never from where it lands in a sorted list.
+/** @param {unknown} status */
+function reportStatusTone(status) {
+  const value = String(status || "").toLowerCase();
+  if (/unpaid|overdue|critical|expired|disposal|reject|cancel/.test(value)) return "red";
+  if (/incomplete|partial|near|pending|approval|expiring|low/.test(value)) return "orange";
+  if (/paid|approved|active|complete|available/.test(value)) return "green";
+  return "";
+}
+
+/** @param {unknown} amount @param {unknown} paid */
+function reportBalance(amount, paid) { return Math.max(Number(amount || 0) - Number(paid || 0), 0); }
+
+/** @param {{ expiry: string }[]} inventory @returns {{ label: string, value: number, tone: string }[]} */
+function reportExpiryBuckets(inventory) {
+  const buckets = [{ label: "Expired", value: 0, tone: "red" }, { label: "Within 30 days", value: 0, tone: "orange" }, { label: "31–90 days", value: 0, tone: "amber" }, { label: "91–180 days", value: 0, tone: "accent-soft" }, { label: "Safe / no expiry", value: 0, tone: "neutral" }];
+  inventory.forEach((item) => {
+    if (item.expiry === "N/A") { buckets[4].value++; return; }
+    const days = daysUntil(item.expiry);
+    buckets[days < 0 ? 0 : days <= 30 ? 1 : days <= 90 ? 2 : days <= 180 ? 3 : 4].value++;
+  });
+  return buckets;
+}
+
+function reportClientDocumentGaps() {
+  return data.clients.map((client) => ({ client, missing: requiredClientDocs.filter((doc) => !client.docs?.includes(doc)) }));
+}
+
+/** @param {Warranty[]} warranties @returns {{ label: string, value: number, tone: string }[]} */
+function reportWarrantySegments(warranties) {
+  return Object.entries(sumBy(warranties, "status", () => 1)).map(([label, value]) => ({ label: label === "undefined" ? "No status" : label, value: Number(value), tone: reportStatusTone(label) || "neutral" })).sort((a, b) => b.value - a.value);
+}
+
+// A part-to-whole bar with a legend. Text stays in ink colours; the coloured dot carries identity,
+// so nothing is left to colour alone.
+/** @param {{ label: string, value: number, tone: string, display?: string }[]} segments */
+function reportStack(segments) {
+  const visible = segments.filter((segment) => segment.value > 0);
+  const total = visible.reduce((sum, segment) => sum + segment.value, 0);
+  if (!total) return `<p class="rs-empty">Nothing to show yet.</p>`;
+  const describe = (/** @type {{ value: number, display?: string }} */ segment) => segment.display || segment.value.toLocaleString("en-PH");
+  return `<div class="rs-bar" role="img" aria-label="${escapeHtml(visible.map((segment) => `${segment.label}: ${describe(segment)}`).join(", "))}">${visible.map((segment) => `<span class="rs-seg rs-${segment.tone}" style="flex-grow:${segment.value}" title="${escapeHtml(`${segment.label}: ${describe(segment)}`)}"></span>`).join("")}</div><ul class="rs-legend">${visible.map((segment) => `<li><i class="rs-dot rs-${segment.tone}"></i><span>${escapeHtml(segment.label)}</span><b>${escapeHtml(describe(segment))}</b></li>`).join("")}</ul>`;
+}
+
+/** @param {[string, number][]} entries */
+function reportMiniRank(entries) {
+  if (!entries.length) return `<p class="rs-empty">No invoices yet this year.</p>`;
+  const max = Math.max(...entries.map(([, value]) => value), 1);
+  return `<ol class="rh-rank">${entries.map(([label, value]) => `<li><span class="rh-rank-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span><b>${escapeHtml(pesoCompact(value))}</b><span class="rh-rank-track"><i style="width:${Math.max(3, Math.round((value / max) * 100))}%"></i></span></li>`).join("")}</ol>`;
+}
+
+// January through the current month, including months with nothing in them, so a quiet month
+// reads as a gap rather than silently disappearing from the axis.
+/** @param {Sale[]} sales */
+function reportMonthColumns(sales) {
+  const year = fmtDate(today).slice(0, 4);
+  const currentMonth = Number(fmtDate(today).slice(5, 7));
+  const months = Array.from({ length: currentMonth }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
+  /** @type {Record<string, number>} */
+  const totals = {};
+  sales.forEach((sale) => { const month = sale.date.slice(0, 7); totals[month] = (totals[month] || 0) + Number(sale.net || 0); });
+  const max = Math.max(...months.map((month) => totals[month] || 0), 1);
+  return `<div class="rh-cols">${months.map((month, index) => {
+    const value = totals[month] || 0;
+    const label = `${monthLabel(month)}: ${peso.format(value)}`;
+    return `<div class="rh-col${index === months.length - 1 ? " is-current" : ""}" title="${escapeHtml(label)}"><span class="rh-col-track"><i style="height:${value ? Math.max(4, Math.round((value / max) * 100)) : 0}%"></i></span><small>${monthLabel(month).charAt(0)}</small></div>`;
+  }).join("")}</div>`;
+}
+
+/** @param {Sale[]} sales */
+function reportTopSalesAgentsScope(sales) {
+  const agentNames = salesAgentNameSet();
+  return sales.map((sale) => ({ ...sale, agent: assignedSalesAgent(sale) })).filter((sale) => agentNames.has(sale.agent));
+}
+
+/** @param {Record<string, number>} totals @param {number} [limit] @returns {[string, number][]} */
+function reportTopEntries(totals, limit = 3) {
+  return Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, limit);
+}
+
+// Every card's preview: its headline figure and the small visual suited to that report's data.
+function reportHubPreviews() {
+  const ytd = reportYtdRange();
+  const openSales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled");
+  const ytdSales = openSales.filter((sale) => dateInRange(sale.date, ytd.from, ytd.to));
+  const agentSales = reportTopSalesAgentsScope(ytdSales);
+  const agentTotal = agentSales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const ytdTotal = ytdSales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const orderCount = (/** @type {number} */ count) => `${count.toLocaleString("en-PH")} order${count === 1 ? "" : "s"}`;
+
+  const overdue = openSales.filter((sale) => statusForSale(sale) === "Overdue");
+  const overdueBalance = overdue.reduce((sum, sale) => sum + reportBalance(sale.net, sale.paid), 0);
+  const outstanding = openSales.reduce((sum, sale) => sum + reportBalance(sale.net, sale.paid), 0);
+  const collected = openSales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+
+  const payableBalance = data.payables.reduce((sum, p) => sum + reportBalance(p.amount, p.paid), 0);
+  const payablePaid = data.payables.reduce((sum, p) => sum + Number(p.paid || 0), 0);
+  const pendingPayables = data.payables.filter((p) => !["Approved", "Cancelled", "Paid"].includes(p.requestStatus || p.status)).length;
+
+  const inventory = byBranch(data.inventory);
+  const expiryBuckets = reportExpiryBuckets(inventory);
+  const expiringIn90 = expiryBuckets[1].value + expiryBuckets[2].value;
+
+  const warrantySegments = reportWarrantySegments(data.warranties);
+  const activeWarranties = data.warranties.filter((w) => w.status === "Active").length;
+  const expiringWarranties = data.warranties.filter((w) => w.status === "Expiring Soon").length;
+
+  const gaps = reportClientDocumentGaps();
+  const compliant = gaps.filter((entry) => !entry.missing.length).length;
+  const clientsWithGaps = gaps.length - compliant;
+  const compliantPct = gaps.length ? Math.round((compliant / gaps.length) * 100) : 0;
+
+  /** @type {Record<string, number>} */
+  const monthTotals = {};
+  ytdSales.forEach((sale) => { const month = sale.date.slice(0, 7); monthTotals[month] = (monthTotals[month] || 0) + Number(sale.net || 0); });
+  const bestMonth = reportTopEntries(monthTotals, 1)[0];
+
+  // These two count only invoices whose client has a Sales-role agent. A role that can't load the
+  // user list gets none of those, which doesn't mean nothing was sold.
+  const noAgentSales = { note: "No invoices this year are attributed to a Sales-role agent in the records you can see." };
+  /** @type {Record<string, Record<string, string | undefined>>} */
+  const previews = {
+    "sales-month": { figure: pesoCompact(ytdTotal), figureLabel: `${orderCount(ytdSales.length)} this year${bestMonth ? ` · best month ${monthLabel(bestMonth[0])}` : ""}`, visual: reportMonthColumns(ytdSales) },
+    "sales-territory": agentSales.length ? { figure: pesoCompact(agentTotal), figureLabel: `across ${new Set(agentSales.map((sale) => sale.area)).size} areas`, visual: reportMiniRank(reportTopEntries(sumBy(agentSales, "area", (sale) => Number(sale.net || 0)))) } : noAgentSales,
+    "sales-by-agent": agentSales.length ? { figure: pesoCompact(agentTotal), figureLabel: `${new Set(agentSales.map((sale) => sale.agent)).size} active agents`, visual: reportMiniRank(reportTopEntries(sumBy(agentSales, "agent", (sale) => Number(sale.net || 0)))) } : noAgentSales,
+    "collections-ar": { figure: pesoCompact(outstanding), figureLabel: "outstanding receivables", visual: reportStack([{ label: "Collected", value: collected, tone: "green", display: pesoCompact(collected) }, { label: "Not yet overdue", value: Math.max(outstanding - overdueBalance, 0), tone: "accent-soft", display: pesoCompact(Math.max(outstanding - overdueBalance, 0)) }, { label: "Overdue", value: overdueBalance, tone: "red", display: pesoCompact(overdueBalance) }]) },
+    "supplier-payables": { figure: pesoCompact(payableBalance), figureLabel: `outstanding · ${pendingPayables} awaiting approval`, visual: reportStack([{ label: "Paid", value: payablePaid, tone: "green", display: pesoCompact(payablePaid) }, { label: "Outstanding", value: payableBalance, tone: "orange", display: pesoCompact(payableBalance) }]) },
+    "reagent-expiry": { figure: expiringIn90.toLocaleString("en-PH"), figureLabel: `stock records expire within 90 days · ${expiryBuckets[0].value} already expired`, visual: reportStack(expiryBuckets) },
+    "service-warranty": { figure: activeWarranties.toLocaleString("en-PH"), figureLabel: `of ${data.warranties.length.toLocaleString("en-PH")} installed units under active warranty`, visual: reportStack(warrantySegments) },
+    "client-documents": { figure: `${compliantPct}%`, figureLabel: `of ${gaps.length.toLocaleString("en-PH")} clients have every required document`, visual: reportStack([{ label: "Complete", value: compliant, tone: "green" }, { label: "With gaps", value: clientsWithGaps, tone: "orange" }]) },
+    "compliance-audit": { note: "Who did what, when, and in which module. The latest 200 logged actions load when you open it." },
+  };
+
+  ["client", "brand", "item", "classification"].forEach((dimension) => {
+    const config = salesBreakdownDimensions[dimension];
+    const { groupTotals } = salesBreakdownGroups(ytdSales, dimension, config);
+    const groupSum = Object.values(groupTotals).reduce((sum, value) => sum + value, 0);
+    const top = reportTopEntries(groupTotals, 1)[0];
+    previews[`sales-${dimension}`] = { topLabel: config.topLabel, topName: top?.[0], topValue: top ? `${pesoCompact(top[1])} · ${Math.round((top[1] / (groupSum || 1)) * 100)}%` : "" };
+  });
+
+  const canSee = (/** @type {string} */ key) => reportDataVisible(operationalReports[key].dataKey);
+  const attention = /** @type {{ report: string, tone: string, count: number, label: string, detail: string }[]} */ ([
+    canSee("collections-ar") && overdue.length ? { report: "collections-ar", tone: "red", count: overdue.length, label: `overdue invoice${overdue.length === 1 ? "" : "s"}`, detail: pesoCompact(overdueBalance) } : null,
+    canSee("reagent-expiry") && expiryBuckets[0].value ? { report: "reagent-expiry", tone: "red", count: expiryBuckets[0].value, label: `expired stock record${expiryBuckets[0].value === 1 ? "" : "s"}`, detail: "for disposal" } : null,
+    canSee("supplier-payables") && pendingPayables ? { report: "supplier-payables", tone: "orange", count: pendingPayables, label: `payable${pendingPayables === 1 ? "" : "s"} awaiting approval`, detail: "" } : null,
+    canSee("service-warranty") && expiringWarranties ? { report: "service-warranty", tone: "orange", count: expiringWarranties, label: `warrant${expiringWarranties === 1 ? "y" : "ies"} expiring soon`, detail: "" } : null,
+    canSee("client-documents") && clientsWithGaps ? { report: "client-documents", tone: "orange", count: clientsWithGaps, label: `client${clientsWithGaps === 1 ? "" : "s"} missing documents`, detail: "" } : null,
+  ].filter(Boolean));
+
+  return { previews, attention };
+}
+
+/** @param {string} id */
+function reportHubEntry(id) {
+  if (id.startsWith("sales-") && salesBreakdownDimensions[id.slice(6)] && !operationalReports[id]) return { id, config: salesBreakdownDimensions[id.slice(6)], attr: `data-sales-breakdown="${id.slice(6)}"` };
+  return { id, config: operationalReports[id], attr: `data-operational-report="${id}"` };
+}
+
+/** @typedef {{ title: string, body: string, icon: string, dataKey?: string, perLine?: boolean, lineKey?: string, groupBy?: (sale: Sale) => string }} ReportConfig */
+/** @param {{ id: string, config: ReportConfig, attr: string }} entry @param {Record<string, string | undefined> | undefined} preview */
+function reportHubCard(entry, preview) {
+  const { id, config, attr } = entry;
+  const allowed = reportDataVisible(config.dataKey);
+  const focus = `data-focus-record="${escapeHtml(config.title)}" data-focus-text="${escapeHtml(`${config.title} ${config.body}`)}"`;
+  const open = `<button class="rh-open" type="button" ${attr}><span>Open report</span><span aria-hidden="true">→</span><span class="sr-only"> ${escapeHtml(config.title)}</span></button>`;
+  const head = `<div class="rh-card-head"><span class="rh-icon">${reportIcon(config.icon)}</span><h4>${escapeHtml(config.title)}</h4></div>`;
+  if (preview && preview.topLabel !== undefined) {
+    return `<article class="report-card rh-card rh-compact" ${focus}>${head}${allowed && preview.topName ? `<div class="rh-top"><small>${escapeHtml(preview.topLabel)}</small><span class="rh-top-name" title="${escapeHtml(preview.topName)}">${escapeHtml(preview.topName)}</span><span class="rh-top-value">${escapeHtml(preview.topValue)}</span></div>` : `<p class="rs-empty">${allowed ? "No invoices yet this year." : "Not included in your role's access."}</p>`}${open}</article>`;
+  }
+  const layout = id === "sales-month" ? " rh-feature" : "";
+  const content = !allowed
+    ? `<p class="rs-empty">Not included in your role's access.</p>`
+    : preview?.note
+      ? `<p class="rh-note">${escapeHtml(preview.note)}</p>`
+      : `<div class="rh-figure"><span class="rh-figure-value">${escapeHtml(preview?.figure)}</span><span class="rh-figure-label">${escapeHtml(preview?.figureLabel)}</span></div><div class="rh-visual">${preview?.visual || ""}</div>`;
+  return `<article class="report-card rh-card${layout}" ${focus}>${head}<p class="rh-body">${escapeHtml(config.body)}</p>${content}${open}</article>`;
+}
+
 function renderReports() {
-  const operationalCards = Object.entries(operationalReports).map(([key, config]) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(config.title)}" data-focus-text="${escapeHtml(`${config.title} ${config.body}`)}"><div><span class="feature-icon">${config.icon}</span><strong>${config.title}</strong><p>${config.body}</p></div><button class="primary-button" data-operational-report="${key}">Open full report</button></article>`).join("");
-  const salesAnalyticsCards = Object.entries(salesBreakdownDimensions).map(([dimension, config]) => `<article class="report-card report-launch" data-focus-record="${escapeHtml(config.title)}" data-focus-text="${escapeHtml(`${config.title} ${config.body}`)}"><div><span class="feature-icon">${config.icon}</span><strong>${config.title}</strong><p>${config.body}</p></div><button class="primary-button" data-sales-breakdown="${dimension}">Open full report</button></article>`).join("");
-  qs("#report-grid").innerHTML = operationalCards + salesAnalyticsCards;
+  const { previews, attention } = reportHubPreviews();
+  const visibleEntries = (/** @type {string} */ categoryKey) => reportHubCategories[categoryKey].reports.map(reportHubEntry).filter((entry) => includesSearch([entry.config.title, entry.config.body, reportHubCategories[categoryKey].label]));
+  const categoryKeys = Object.keys(reportHubCategories);
+  const counts = Object.fromEntries(categoryKeys.map((key) => [key, visibleEntries(key).length]));
+  const total = categoryKeys.reduce((sum, key) => sum + counts[key], 0);
+
+  const attentionHtml = attention.length ? `<div class="rh-attention" aria-label="Needs attention"><span class="rh-attention-label">Needs attention</span>${attention.map((item) => `<button class="rh-alert" type="button" data-operational-report="${item.report}"><i class="rs-dot rs-${item.tone}"></i><b>${item.count.toLocaleString("en-PH")}</b> ${escapeHtml(item.label)}${item.detail ? `<span>${escapeHtml(item.detail)}</span>` : ""}</button>`).join("")}</div>` : "";
+
+  const tabs = [["all", "All reports", total], ...categoryKeys.map((key) => [key, reportHubCategories[key].label, counts[key]])];
+  const tabsHtml = `<div class="tabs rh-tabs" role="group" aria-label="Filter reports by type">${tabs.map(([key, label, count]) => `<button class="tab${reportHubCategory === key ? " active" : ""}" type="button" aria-pressed="${reportHubCategory === key}" data-report-category="${key}">${escapeHtml(String(label))} <span class="tab-count">${count}</span></button>`).join("")}</div>`;
+
+  const groups = categoryKeys.filter((key) => (reportHubCategory === "all" || reportHubCategory === key) && counts[key]).map((key) => {
+    const category = reportHubCategories[key];
+    return `<section class="rh-group rh-group-${key}"><header class="rh-group-head"><h3>${escapeHtml(category.label)}</h3><p>${escapeHtml(category.scope)}</p></header><div class="rh-grid">${visibleEntries(key).map((entry) => reportHubCard(entry, previews[entry.id])).join("")}</div></section>`;
+  }).join("");
+
+  qs("#report-grid").innerHTML = attentionHtml + tabsHtml + (groups || `<p class="rs-empty rh-none">No reports match your search.</p>`);
 }
 
 // Every report below (operational and Sales Analytics alike) is computed client-side straight
 // from data.* — same approach renderAnalytics() already uses — rather than the old single
 // generic template (3 stat cards + one "last numeric column" bar chart + a 12-row unsorted,
 // unfilterable table) that used to come from generateReportsFromState()/getReportDefinitions().
-// Each report gets real KPIs, two chart types suited to its own data, and a sortable
-// (table()-backed), searchable, filterable breakdown table via the shared #report-detail page.
+// Each report gets real KPIs, charts suited to its own data, and a sortable (table()-backed),
+// searchable, filterable breakdown table via the shared #report-detail page.
 
 /** @param {{ statusLabel: any, statusOptions: any, section: string, sectionLabel: any, dateFilter?: boolean }} options */
 function setupReportDetailToolbar({ statusLabel, statusOptions, section, sectionLabel, dateFilter = true }) {
@@ -6823,21 +7072,67 @@ function reportDetailFilters() {
   return { status: qs("#report-detail-status-filter")?.value || "", from: qs("#report-detail-date-from")?.value || "", to: qs("#report-detail-date-to")?.value || "" };
 }
 
+// Each KPI is [label, value, { tone, sub }]. A long name goes in value with its amount in sub, so
+// "Top Area" doesn't have to squeeze a place name and a peso figure onto one line.
+/** @param {[string, string, { tone?: string, sub?: string }?][]} entries */
+function reportKpisHtml(entries) {
+  return entries.map(([label, value, extra]) => `<div class="rd-kpi"><small>${extra?.tone ? `<i class="rs-dot rs-${extra.tone}"></i>` : ""}${escapeHtml(label)}</small><strong title="${escapeHtml(String(value))}">${escapeHtml(String(value))}</strong>${extra?.sub ? `<span>${escapeHtml(extra.sub)}</span>` : ""}</div>`).join("");
+}
+
 /** @param {any} entries */
 function renderReportKpis(entries) {
-  qs("#report-detail-kpis").innerHTML = entries.map((/** @type {any[]} */ [label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></div>`).join("");
+  qs("#report-detail-kpis").innerHTML = reportKpisHtml(entries);
+}
+
+// Fills one chart slot. An empty `html` empties the slot, and CSS collapses it with :empty.
+/** @param {string} target @param {{ title?: string, html?: string, note?: string, kind?: "bars" | "line" | "list" | "stack" }} [chart] */
+function setReportChart(target, { title = "", html = "", note = "", kind = "bars" } = {}) {
+  const el = qs(target);
+  if (!el) return;
+  const bodyClass = { bars: "chart-bars", line: "line-chart", list: "rd-list", stack: "rd-stack" }[kind];
+  el.innerHTML = html ? `<h3 class="rd-chart-title">${escapeHtml(title)}</h3><div class="${bodyClass}">${html}</div>${note ? graphNote(note) : ""}` : "";
+}
+
+/** @param {string} target @param {string[]} headers @param {Parameters<typeof table>[2]} rows */
+function reportTable(target, headers, rows) {
+  table(target, headers, rows);
+  const countEl = qs(`${target}-count`);
+  if (countEl) countEl.textContent = `${rows.length.toLocaleString("en-PH")} record${rows.length === 1 ? "" : "s"}`;
+}
+
+/** @param {[string, number][]} monthly @param {string} title @param {string} note */
+function setReportTrend(monthly, title, note) {
+  setReportChart("#report-detail-chart-trend", monthly.length ? { title, html: lineChart(monthly, title), note, kind: "line" } : {});
+}
+
+/**
+ * @template T
+ * @param {T[]} rows @param {(row: T) => unknown} dateOf @param {(row: T) => unknown} valueOf
+ * @returns {[string, number][]}
+ */
+function reportMonthlyTotals(rows, dateOf, valueOf) {
+  /** @type {Record<string, number>} */
+  const totals = {};
+  rows.forEach((row) => { const month = String(dateOf(row) || "").slice(0, 7); if (month) totals[month] = (totals[month] || 0) + Number(valueOf(row) || 0); });
+  return Object.entries(totals).sort(([a], [b]) => a.localeCompare(b));
+}
+
+/** @param {{ title: string, sub: string, days: number }[]} rows @param {string} emptyText */
+function reportCountdownList(rows, emptyText) {
+  if (!rows.length) return `<p class="rs-empty">${escapeHtml(emptyText)}</p>`;
+  return rows.map((row) => `<div class="rd-list-row"><span class="rd-list-name"><b title="${escapeHtml(row.title)}">${escapeHtml(row.title)}</b><small>${escapeHtml(row.sub)}</small></span><span class="pill ${row.days <= 30 ? "red" : row.days <= 90 ? "orange" : "gray"}">${row.days === 0 ? "Today" : `${row.days} day${row.days === 1 ? "" : "s"}`}</span></div>`).join("");
 }
 
 /** @type {Record<string, any>} */
 const operationalReports = {
-  "sales-territory": { title: "Sales by Territory", body: "Revenue by area and salesperson, with every document in view.", icon: "₱", render: renderSalesTerritoryReport },
-  "sales-by-agent": { title: "Sales by Agent", body: "Revenue and order count per salesperson, with every document in view.", icon: "◈", render: renderSalesByAgentReport },
-  "collections-ar": { title: "Collections & AR", body: "Collected vs. outstanding balance, AR aging, and status breakdown.", icon: "●", render: renderCollectionsArReport },
-  "reagent-expiry": { title: "Reagent Expiry", body: "Low/critical stock and expiry risk by branch and timeframe.", icon: "▤", render: renderReagentExpiryReport },
-  "client-documents": { title: "Client Documents", body: "Document compliance gaps by client and by document type.", icon: "◆", render: renderClientDocumentsReport },
-  "supplier-payables": { title: "Supplier Payables", body: "Outstanding payables by supplier and approval status.", icon: "◇", render: renderSupplierPayablesReport },
-  "service-warranty": { title: "Service & Warranty", body: "Installed equipment coverage by type and warranty status.", icon: "◉", render: renderServiceWarrantyReport },
-  "compliance-audit": { title: "Compliance Audit", body: "Recent traceable actions by module and by user.", icon: "◎", render: renderComplianceAuditReport },
+  "sales-territory": { title: "Sales by Territory", body: "Revenue by area and salesperson, with every document in view.", icon: "map", category: "sales", dataKey: "sales", defaultRange: "ytd", render: renderSalesTerritoryReport },
+  "sales-by-agent": { title: "Sales by Agent", body: "Revenue and order count per salesperson, with every document in view.", icon: "agent", category: "sales", dataKey: "sales", defaultRange: "ytd", render: renderSalesByAgentReport },
+  "collections-ar": { title: "Collections & AR", body: "Collected vs. outstanding balance, AR aging, and status breakdown.", icon: "wallet", category: "finance", dataKey: "sales", render: renderCollectionsArReport },
+  "reagent-expiry": { title: "Reagent Expiry", body: "Low/critical stock and expiry risk by branch and timeframe.", icon: "flask", category: "operations", dataKey: "inventory", render: renderReagentExpiryReport },
+  "client-documents": { title: "Client Documents", body: "Document compliance gaps by client and by document type.", icon: "file", category: "compliance", dataKey: "clients", render: renderClientDocumentsReport },
+  "supplier-payables": { title: "Supplier Payables", body: "Outstanding payables by supplier and approval status.", icon: "receipt", category: "finance", dataKey: "payables", render: renderSupplierPayablesReport },
+  "service-warranty": { title: "Service & Warranty", body: "Installed equipment coverage by type and warranty status.", icon: "shield", category: "operations", dataKey: "warranties", render: renderServiceWarrantyReport },
+  "compliance-audit": { title: "Compliance Audit", body: "Recent traceable actions by module and by user.", icon: "audit", category: "compliance", render: renderComplianceAuditReport },
 };
 
 // Split from renderOperationalReport() so sectionRenderers["report-detail"] (triggered by the
@@ -6849,63 +7144,67 @@ function applyOperationalReport(key) {
   const config = operationalReports[key];
   if (!config) return toast("Report not found.");
   currentOperationalReportKey = key;
-  qs("#report-detail-eyebrow").textContent = "Report Detail";
+  qs("#report-detail-eyebrow").textContent = reportHubCategories[config.category]?.label || "Report";
   qs("#report-detail-title").textContent = config.title;
   qs("#report-detail-body").textContent = config.body;
-  qs("#report-detail-chart-trend").innerHTML = "";
+  ["summary", "trend", "primary", "secondary"].forEach((slot) => setReportChart(`#report-detail-chart-${slot}`));
   config.render();
 }
 
+// Opening a report always starts clean. The filter inputs are shared by every report on this page,
+// so without this an Area or date picked in one report would quietly narrow the next one.
 /** @param {any} key */
 function renderOperationalReport(key) {
+  const config = operationalReports[key];
+  const range = config?.defaultRange === "ytd" ? reportYtdRange() : { from: "", to: "" };
+  qs("#report-detail-status-filter").value = "";
+  qs("#report-detail-date-from").value = range.from;
+  qs("#report-detail-date-to").value = range.to;
   applyOperationalReport(key);
   showSection("report-detail");
 }
 
 function renderSalesTerritoryReport() {
   const { status: area, from, to } = reportDetailFilters();
-  const agentNames = salesAgentNameSet();
-  const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to) && agentNames.has(assignedSalesAgent(sale))).map((sale) => ({ ...sale, agent: assignedSalesAgent(sale) }));
+  const sales = reportTopSalesAgentsScope(byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to)));
   setupReportDetailToolbar({ statusLabel: "Area", statusOptions: [...new Set(sales.map((s) => s.area))], section: "sales", sectionLabel: "Sales" });
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const topArea = Object.entries(sumBy(sales, "area", (sale) => sale.net)).sort((a, b) => b[1] - a[1])[0];
+  const byArea = Object.entries(sumBy(sales, "area", (sale) => Number(sale.net || 0))).sort((a, b) => b[1] - a[1]);
+  const topArea = byArea[0];
   renderReportKpis([
     ["Total Sales", peso.format(totalSales)],
     ["Total Orders", sales.length.toLocaleString("en-PH")],
     ["Average Order Value", peso.format(sales.length ? totalSales / sales.length : 0)],
-    ["Top Area", topArea ? `${topArea[0]} · ${peso.format(topArea[1])}` : "No data"],
+    ["Top Area", topArea ? topArea[0] : "No data", { sub: topArea ? peso.format(topArea[1]) : "" }],
   ]);
-  const monthly = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, sale) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.net || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
-  qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly invoice net totals for the areas in this view.") : "";
-  const byArea = Object.entries(sumBy(sales, "area", (sale) => sale.net)).sort((a, b) => b[1] - a[1]);
-  qs("#report-detail-chart-primary").innerHTML = barRows(byArea, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Invoice net totals grouped by sales area (Sales role agents only).");
-  const bySalesperson = Object.entries(sumBy(sales, "agent", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  qs("#report-detail-chart-secondary").innerHTML = barRows(bySalesperson, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Top 10 sales agents by invoice net total, attributed to the client's assigned agent (Sales role only).");
+  setReportTrend(reportMonthlyTotals(sales, (sale) => sale.date, (sale) => sale.net), "Monthly revenue", "Monthly invoice net totals for the areas in this view.");
+  setReportChart("#report-detail-chart-primary", { title: "Revenue by area", html: barRows(byArea, (value) => pesoCompact(value)), note: "Invoice net totals grouped by sales area (Sales role agents only)." });
+  const bySalesperson = Object.entries(sumBy(sales, "agent", (sale) => Number(sale.net || 0))).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  setReportChart("#report-detail-chart-secondary", { title: "Top salespeople", html: barRows(bySalesperson, (value) => pesoCompact(value)), note: "Top 10 agents by invoice net total, attributed to the client's assigned agent (Sales role only)." });
   const filtered = sales.filter((sale) => (!area || sale.area === area) && includesSearch(Object.values(sale)));
-  table("#report-detail-table", ["Area", "Client", "Salesperson", "Document", "Items", "Amount"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.area || "-", sale.client, sale.agent || "-", sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
+  reportTable("#report-detail-table", ["Area", "Client", "Salesperson", "Document", "Items", "Amount"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.area || "-", sale.client, sale.agent || "-", sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
 }
 
 function renderSalesByAgentReport() {
   const { status: agentFilter, from, to } = reportDetailFilters();
   const agentNames = salesAgentNameSet();
-  const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to)).map((sale) => ({ sale, agent: assignedSalesAgent(sale) })).filter(({ agent }) => agentNames.has(agent));
+  const sales = reportTopSalesAgentsScope(byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to)));
   setupReportDetailToolbar({ statusLabel: "Salesperson", statusOptions: [...agentNames].sort(), section: "sales", sectionLabel: "Sales" });
-  const totalSales = sales.reduce((sum, { sale }) => sum + Number(sale.net || 0), 0);
-  const bySalesperson = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, { sale, agent }) => { acc[agent] = (acc[agent] || 0) + Number(sale.net || 0); return acc; }, {})).sort((a, b) => b[1] - a[1]);
+  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const bySalesperson = Object.entries(sumBy(sales, "agent", (sale) => Number(sale.net || 0))).sort((a, b) => b[1] - a[1]);
   const topAgent = bySalesperson[0];
   renderReportKpis([
     ["Total Sales", peso.format(totalSales)],
     ["Total Orders", sales.length.toLocaleString("en-PH")],
     ["Active Agents", bySalesperson.length.toLocaleString("en-PH")],
-    ["Top Agent", topAgent ? `${topAgent[0]} · ${peso.format(topAgent[1])}` : "No data"],
+    ["Top Agent", topAgent ? topAgent[0] : "No data", { sub: topAgent ? peso.format(topAgent[1]) : "" }],
   ]);
-  qs("#report-detail-chart-primary").innerHTML = barRows(bySalesperson, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Invoice net totals grouped by the client's assigned sales agent (Sales role only).");
-  const ordersBySalesperson = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, { agent }) => { acc[agent] = (acc[agent] || 0) + 1; return acc; }, {})).sort((a, b) => b[1] - a[1]);
-  qs("#report-detail-chart-secondary").innerHTML = barRows(ordersBySalesperson, (value) => `${value} order${value === 1 ? "" : "s"}`, ["", "green", "orange", "red"]) + graphNote("Order count grouped by the client's assigned sales agent (Sales role only).");
-  const monthly = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, { sale }) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.net || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
-  qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly invoice net totals for the agents in this view.") : "";
-  const filtered = sales.filter(({ sale, agent }) => (!agentFilter || agent === agentFilter) && includesSearch(Object.values(sale)));
-  table("#report-detail-table", ["Salesperson", "Area", "Client", "Document", "Items", "Amount"], filtered.map(({ sale, agent }) => ({ focus: sale.documentNo || sale.id, cells: [agent, sale.area || "-", sale.client, sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
+  setReportTrend(reportMonthlyTotals(sales, (sale) => sale.date, (sale) => sale.net), "Monthly revenue", "Monthly invoice net totals for the agents in this view.");
+  setReportChart("#report-detail-chart-primary", { title: "Revenue by agent", html: barRows(bySalesperson, (value) => pesoCompact(value)), note: "Invoice net totals grouped by the client's assigned sales agent (Sales role only)." });
+  const ordersBySalesperson = Object.entries(sumBy(sales, "agent", () => 1)).sort((a, b) => b[1] - a[1]);
+  setReportChart("#report-detail-chart-secondary", { title: "Orders by agent", html: barRows(ordersBySalesperson, (value) => `${value} order${value === 1 ? "" : "s"}`), note: "Order count grouped by the client's assigned sales agent (Sales role only)." });
+  const filtered = sales.filter((sale) => (!agentFilter || sale.agent === agentFilter) && includesSearch(Object.values(sale)));
+  reportTable("#report-detail-table", ["Salesperson", "Area", "Client", "Document", "Items", "Amount"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.agent, sale.area || "-", sale.client, sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
 }
 
 function renderCollectionsArReport() {
@@ -6913,35 +7212,36 @@ function renderCollectionsArReport() {
   const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to));
   setupReportDetailToolbar({ statusLabel: "Status", statusOptions: [...new Set(sales.map(statusForSale))], section: "collections", sectionLabel: "Collections" });
   const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
-  const totalOutstanding = sales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  const totalOutstanding = sales.reduce((sum, sale) => sum + reportBalance(sale.net, sale.paid), 0);
   const totalNet = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const overdueCount = sales.filter((sale) => statusForSale(sale) === "Overdue").length;
+  const overdueSales = sales.filter((sale) => statusForSale(sale) === "Overdue");
+  const overdueBalance = overdueSales.reduce((sum, sale) => sum + reportBalance(sale.net, sale.paid), 0);
   renderReportKpis([
-    ["Total Collected", peso.format(totalCollected)],
-    ["Outstanding AR", peso.format(totalOutstanding)],
-    ["Overdue Invoices", overdueCount.toLocaleString("en-PH")],
+    ["Total Collected", peso.format(totalCollected), { tone: "green" }],
+    ["Outstanding AR", peso.format(totalOutstanding), { tone: "accent-soft" }],
+    ["Overdue Invoices", overdueSales.length.toLocaleString("en-PH"), { tone: "red", sub: `${peso.format(overdueBalance)} overdue` }],
     ["Collection Rate", `${totalNet ? Math.round((totalCollected / totalNet) * 100) : 0}%`],
   ]);
-  const monthly = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, sale) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.paid || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
-  qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly collected amount for the invoices in this view.") : "";
-  const byStatus = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
-    const key = statusForSale(sale);
-    acc[key] = (acc[key] || 0) + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
-    return acc;
-  }, {})).sort((a, b) => b[1] - a[1]);
-  qs("#report-detail-chart-primary").innerHTML = barRows(byStatus, (value) => pesoCompact(value), ["red", "orange", "", "green"]) + graphNote("Open balance grouped by invoice status.");
+  setReportChart("#report-detail-chart-summary", { title: "Where the billed amount stands", kind: "stack", html: reportStack([{ label: "Collected", value: totalCollected, tone: "green", display: pesoCompact(totalCollected) }, { label: "Not yet overdue", value: Math.max(totalOutstanding - overdueBalance, 0), tone: "accent-soft", display: pesoCompact(Math.max(totalOutstanding - overdueBalance, 0)) }, { label: "Overdue", value: overdueBalance, tone: "red", display: pesoCompact(overdueBalance) }]) });
+  setReportTrend(reportMonthlyTotals(sales, (sale) => sale.date, (sale) => sale.paid), "Amount collected by invoice month", "Collected amount for the invoices in this view, by the month each was issued.");
   /** @type {[string, number][]} */
-  const agingBuckets = [["Not Yet Due", 0], ["1-30 Days Overdue", 0], ["31-60 Days Overdue", 0], ["61-90 Days Overdue", 0], ["90+ Days Overdue", 0]];
+  const agingBuckets = [["Not yet due", 0], ["1–30 days", 0], ["31–60 days", 0], ["61–90 days", 0], ["90+ days", 0]];
   sales.forEach((sale) => {
-    const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+    const balance = reportBalance(sale.net, sale.paid);
     if (!balance) return;
     const overdueDays = -daysUntil(addDays(sale.date, sale.terms));
     const bucketIndex = overdueDays <= 0 ? 0 : overdueDays <= 30 ? 1 : overdueDays <= 60 ? 2 : overdueDays <= 90 ? 3 : 4;
     agingBuckets[bucketIndex][1] += balance;
   });
-  qs("#report-detail-chart-secondary").innerHTML = barRows(agingBuckets, (value) => pesoCompact(value), ["green", "", "orange", "orange", "red"]) + graphNote("Open balance grouped by days overdue (AR aging).");
+  setReportChart("#report-detail-chart-primary", { title: "AR aging, by days overdue", html: barRows(agingBuckets, (value) => pesoCompact(value), ["", "orange", "orange", "red", "red"]), note: "Open balance grouped by days overdue. Always oldest last, so a growing tail is easy to spot." });
+  const byStatus = /** @type {[string, number][]} */ (Object.entries(sales.reduce((/** @type {Record<string, number>} */ acc, sale) => {
+    const key = statusForSale(sale);
+    acc[key] = (acc[key] || 0) + reportBalance(sale.net, sale.paid);
+    return acc;
+  }, {})).filter(([, value]) => Number(value) > 0).sort((a, b) => Number(b[1]) - Number(a[1])));
+  setReportChart("#report-detail-chart-secondary", { title: "Open balance by status", html: barRows(byStatus, (value) => pesoCompact(value), byStatus.map(([label]) => reportStatusTone(label))), note: "Open balance grouped by invoice status." });
   const filtered = sales.filter((sale) => (!status || statusForSale(sale) === status) && includesSearch(Object.values(sale)));
-  table("#report-detail-table", ["Document", "Client", "Status", "Paid", "Balance", "Due Date"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.documentNo || sale.id, sale.client, `<span class="pill ${statusClass(statusForSale(sale))}">${escapeHtml(statusForSale(sale))}</span>`, peso.format(sale.paid), peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0)), fmtDate(addDays(sale.date, sale.terms))] })));
+  reportTable("#report-detail-table", ["Document", "Client", "Status", "Paid", "Balance", "Due Date"], filtered.map((sale) => ({ focus: sale.documentNo || sale.id, cells: [sale.documentNo || sale.id, sale.client, `<span class="pill ${statusClass(statusForSale(sale))}">${escapeHtml(statusForSale(sale))}</span>`, peso.format(sale.paid), peso.format(reportBalance(sale.net, sale.paid)), fmtDate(addDays(sale.date, sale.terms))] })));
 }
 
 function renderReagentExpiryReport() {
@@ -6953,44 +7253,39 @@ function renderReagentExpiryReport() {
   const expiringSoon = inventory.filter((item) => item.expiry !== "N/A" && daysUntil(item.expiry) >= 0 && daysUntil(item.expiry) <= 90);
   renderReportKpis([
     ["Total Stock Records", inventory.length.toLocaleString("en-PH")],
-    ["Low/Critical Stock", atRisk.length.toLocaleString("en-PH")],
-    ["Expiring Within 90 Days", expiringSoon.length.toLocaleString("en-PH")],
-    ["Expired / For Disposal", disposal.length.toLocaleString("en-PH")],
+    ["Low/Critical Stock", atRisk.length.toLocaleString("en-PH"), { tone: "orange" }],
+    ["Expiring Within 90 Days", expiringSoon.length.toLocaleString("en-PH"), { tone: "orange" }],
+    ["Expired / For Disposal", disposal.length.toLocaleString("en-PH"), { tone: "red" }],
   ]);
+  setReportChart("#report-detail-chart-summary", { title: "Time until expiry, all stock records", kind: "stack", html: reportStack(reportExpiryBuckets(inventory)) });
+  const nextToExpire = inventory.filter((item) => item.expiry !== "N/A" && daysUntil(item.expiry) >= 0).sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, 8).map((item) => ({ title: item.item, sub: [item.lot && `Lot ${item.lot}`, item.branch, `Qty ${item.qty}`].filter(Boolean).join(" · "), days: daysUntil(item.expiry) }));
+  setReportChart("#report-detail-chart-primary", { title: "Next to expire", kind: "list", html: reportCountdownList(nextToExpire, "Nothing is due to expire."), note: "The 8 soonest expiry dates in this view." });
   const byBranchCount = Object.entries(sumBy(atRisk, "branch", () => 1)).sort((a, b) => b[1] - a[1]);
-  qs("#report-detail-chart-primary").innerHTML = barRows(byBranchCount, (value) => `${value} record${value === 1 ? "" : "s"}`, ["red", "orange"]) + graphNote("Low/critical stock record count grouped by branch.");
-  /** @type {[string, number][]} */
-  const expiryBuckets = [["Expired", 0], ["≤30 Days", 0], ["31-60 Days", 0], ["61-90 Days", 0], ["91-180 Days", 0], ["Safe / No Expiry", 0]];
-  inventory.forEach(/** @returns {any} */ (item) => {
-    if (item.expiry === "N/A") return expiryBuckets[5][1]++;
-    const days = daysUntil(item.expiry);
-    const bucketIndex = days < 0 ? 0 : days <= 30 ? 1 : days <= 60 ? 2 : days <= 90 ? 3 : days <= 180 ? 4 : 5;
-    expiryBuckets[bucketIndex][1]++;
-  });
-  qs("#report-detail-chart-secondary").innerHTML = barRows(expiryBuckets, (value) => `${value} record${value === 1 ? "" : "s"}`, ["red", "red", "orange", "orange", "", "green"]) + graphNote("All stock records grouped by time until expiry.");
+  setReportChart("#report-detail-chart-secondary", { title: "Low or critical stock by branch", html: barRows(byBranchCount, (value) => `${value} record${value === 1 ? "" : "s"}`), note: "Low/critical stock record count grouped by branch." });
   const filtered = inventory.filter((item) => (!status || inventoryStatus(item) === status) && includesSearch(Object.values(item)));
-  table("#report-detail-table", ["Item", "Branch", "Lot", "Expiry", "Qty", "Status"], filtered.map((item) => ({ focus: `${item.item}|${item.lot}`, cells: [item.item, item.branch || "-", item.lot || "-", item.expiry, item.qty, `<span class="pill ${statusClass(inventoryStatus(item))}">${escapeHtml(inventoryStatus(item))}</span>`] })));
+  reportTable("#report-detail-table", ["Item", "Branch", "Lot", "Expiry", "Qty", "Status"], filtered.map((item) => ({ focus: `${item.item}|${item.lot}`, cells: [item.item, item.branch || "-", item.lot || "-", item.expiry, item.qty, `<span class="pill ${statusClass(inventoryStatus(item))}">${escapeHtml(inventoryStatus(item))}</span>`] })));
 }
 
 function renderClientDocumentsReport() {
   const { status: completion } = reportDetailFilters();
   const clients = data.clients;
   setupReportDetailToolbar({ statusLabel: "Completion", statusOptions: ["Complete", "Incomplete"], section: "masterlists", sectionLabel: "Masterlists", dateFilter: false });
-  const missingByClient = clients.map((client) => ({ client, missing: requiredClientDocs.filter((doc) => !client.docs?.includes(doc)) }));
+  const missingByClient = reportClientDocumentGaps();
   const compliantCount = missingByClient.filter((entry) => !entry.missing.length).length;
   const totalMissing = missingByClient.reduce((sum, entry) => sum + entry.missing.length, 0);
   renderReportKpis([
     ["Total Clients", clients.length.toLocaleString("en-PH")],
-    ["Fully Compliant", compliantCount.toLocaleString("en-PH")],
-    ["Clients With Gaps", (clients.length - compliantCount).toLocaleString("en-PH")],
+    ["Fully Compliant", compliantCount.toLocaleString("en-PH"), { tone: "green", sub: `${clients.length ? Math.round((compliantCount / clients.length) * 100) : 0}% of clients` }],
+    ["Clients With Gaps", (clients.length - compliantCount).toLocaleString("en-PH"), { tone: "orange" }],
     ["Total Missing Docs", totalMissing.toLocaleString("en-PH")],
   ]);
-  const topOffenders = missingByClient.filter((entry) => entry.missing.length).sort((a, b) => b.missing.length - a.missing.length).slice(0, 10).map((entry) => [entry.client.name, entry.missing.length]);
-  qs("#report-detail-chart-primary").innerHTML = barRows(topOffenders, (value) => `${value} missing`, ["red", "orange"]) + graphNote("Top 10 clients by number of missing required documents.");
+  setReportChart("#report-detail-chart-summary", { title: "Clients with every required document", kind: "stack", html: reportStack([{ label: "Complete", value: compliantCount, tone: "green" }, { label: "With gaps", value: clients.length - compliantCount, tone: "orange" }]) });
   const byDocType = /** @type {[string, number][]} */ (requiredClientDocs.map((doc) => [doc, missingByClient.filter((entry) => entry.missing.includes(doc)).length])).sort((a, b) => b[1] - a[1]);
-  qs("#report-detail-chart-secondary").innerHTML = barRows(byDocType, (value) => `${value} client${value === 1 ? "" : "s"}`, ["red", "orange"]) + graphNote("Clients missing each specific required document.");
+  setReportChart("#report-detail-chart-primary", { title: "Most-missing documents", html: barRows(byDocType, (value) => `${value} client${value === 1 ? "" : "s"}`), note: "Clients missing each specific required document." });
+  const topOffenders = /** @type {[string, number][]} */ (missingByClient.filter((entry) => entry.missing.length).sort((a, b) => b.missing.length - a.missing.length).slice(0, 10).map((entry) => [entry.client.name, entry.missing.length]));
+  setReportChart("#report-detail-chart-secondary", { title: "Clients with the most gaps", html: barRows(topOffenders, (value) => `${value} missing`), note: "Top 10 clients by number of missing required documents." });
   const filtered = missingByClient.filter((entry) => (!completion || (completion === "Complete" ? !entry.missing.length : entry.missing.length)) && includesSearch(Object.values(entry.client)));
-  table("#report-detail-table", ["Client", "Area", "TIN", "Credit Limit", "Docs Uploaded", "Missing Docs"], filtered.map(({ client, missing }) => ({ focus: client.name, cells: [client.name, client.area || "-", client.tin || "-", peso.format(client.creditLimit), `${requiredClientDocs.length - missing.length}/${requiredClientDocs.length}`, missing.join(", ") || "None"] })));
+  reportTable("#report-detail-table", ["Client", "Area", "TIN", "Credit Limit", "Docs Uploaded", "Missing Docs"], filtered.map(({ client, missing }) => ({ focus: client.name, cells: [client.name, client.area || "-", client.tin || "-", peso.format(client.creditLimit), `${requiredClientDocs.length - missing.length}/${requiredClientDocs.length}`, missing.join(", ") || "None"] })));
 }
 
 function renderSupplierPayablesReport() {
@@ -6999,30 +7294,30 @@ function renderSupplierPayablesReport() {
   setupReportDetailToolbar({ statusLabel: "Status", statusOptions: [...new Set(payables.map((p) => p.requestStatus || p.status).filter(Boolean))], section: "payables", sectionLabel: "Payables" });
   const totalPayables = payables.reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const totalPaid = payables.reduce((sum, p) => sum + Number(p.paid || 0), 0);
-  const totalBalance = payables.reduce((sum, p) => sum + Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0), 0);
+  const totalBalance = payables.reduce((sum, p) => sum + reportBalance(p.amount, p.paid), 0);
   const pendingCount = payables.filter((p) => !["Approved", "Cancelled", "Paid"].includes(p.requestStatus || p.status)).length;
   renderReportKpis([
     ["Total Payables", peso.format(totalPayables)],
-    ["Total Paid", peso.format(totalPaid)],
-    ["Outstanding Balance", peso.format(totalBalance)],
+    ["Total Paid", peso.format(totalPaid), { tone: "green" }],
+    ["Outstanding Balance", peso.format(totalBalance), { tone: "orange" }],
     ["Pending Requests", pendingCount.toLocaleString("en-PH")],
   ]);
-  const monthly = Object.entries(payables.reduce((/** @type {Record<string, any>} */ acc, p) => { const month = (p.date || "").slice(0, 7); if (month) acc[month] = (acc[month] || 0) + Number(p.amount || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
-  qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly payable amount requested for the records in this view.") : "";
-  const bySupplier = Object.entries(payables.reduce((/** @type {Record<string, any>} */ acc, p) => {
-    const balance = Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0);
+  setReportChart("#report-detail-chart-summary", { title: "Paid vs. outstanding", kind: "stack", html: reportStack([{ label: "Paid", value: totalPaid, tone: "green", display: pesoCompact(totalPaid) }, { label: "Outstanding", value: totalBalance, tone: "orange", display: pesoCompact(totalBalance) }]) });
+  setReportTrend(reportMonthlyTotals(payables, (p) => p.date, (p) => p.amount), "Payables requested by month", "Monthly payable amount requested for the records in this view.");
+  const bySupplier = /** @type {[string, number][]} */ (Object.entries(payables.reduce((/** @type {Record<string, number>} */ acc, p) => {
+    const balance = reportBalance(p.amount, p.paid);
     if (balance) acc[p.supplier] = (acc[p.supplier] || 0) + balance;
     return acc;
-  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  qs("#report-detail-chart-primary").innerHTML = barRows(bySupplier, (value) => pesoCompact(value), ["red", "orange"]) + graphNote("Top 10 suppliers by outstanding balance.");
-  const byStatus = Object.entries(payables.reduce((/** @type {Record<string, any>} */ acc, p) => {
+  }, {})).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 10));
+  setReportChart("#report-detail-chart-primary", { title: "Largest balances by supplier", html: barRows(bySupplier, (value) => pesoCompact(value)), note: "Top 10 suppliers by outstanding balance." });
+  const byStatus = /** @type {[string, number][]} */ (Object.entries(payables.reduce((/** @type {Record<string, number>} */ acc, p) => {
     const key = p.requestStatus || p.status || "Unknown";
     acc[key] = (acc[key] || 0) + 1;
     return acc;
-  }, {})).sort((a, b) => b[1] - a[1]);
-  qs("#report-detail-chart-secondary").innerHTML = barRows(byStatus, (value) => `${value} request${value === 1 ? "" : "s"}`, ["orange", "green", "red", ""]) + graphNote("Payable request count grouped by status.");
+  }, {})).sort((a, b) => Number(b[1]) - Number(a[1])));
+  setReportChart("#report-detail-chart-secondary", { title: "Requests by status", html: barRows(byStatus, (value) => `${value} request${value === 1 ? "" : "s"}`, byStatus.map(([label]) => reportStatusTone(label))), note: "Payable request count grouped by status." });
   const filtered = payables.filter((p) => (!status || (p.requestStatus || p.status) === status) && includesSearch(Object.values(p)));
-  table("#report-detail-table", ["Supplier", "Item/Service", "Method", "Amount", "Paid", "Balance", "Status"], filtered.map((p) => ({ focus: p.id, cells: [p.supplier, itemizedSummary(p.items), p.method || "-", peso.format(p.amount), peso.format(p.paid), peso.format(Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0)), `<span class="pill ${statusClass(p.requestStatus || p.status)}">${escapeHtml(p.requestStatus || p.status || "-")}</span>`] })));
+  reportTable("#report-detail-table", ["Supplier", "Item/Service", "Method", "Amount", "Paid", "Balance", "Status"], filtered.map((p) => ({ focus: p.id, cells: [p.supplier, itemizedSummary(p.items), p.method || "-", peso.format(p.amount), peso.format(p.paid), peso.format(reportBalance(p.amount, p.paid)), `<span class="pill ${statusClass(p.requestStatus || p.status)}">${escapeHtml(p.requestStatus || p.status || "-")}</span>`] })));
 }
 
 function renderServiceWarrantyReport() {
@@ -7034,16 +7329,17 @@ function renderServiceWarrantyReport() {
   const expired = warranties.filter((w) => w.status === "Expired").length;
   renderReportKpis([
     ["Total Units", warranties.length.toLocaleString("en-PH")],
-    ["Active", active.toLocaleString("en-PH")],
-    ["Expiring Soon", expiringSoon.toLocaleString("en-PH")],
-    ["Expired", expired.toLocaleString("en-PH")],
+    ["Active", active.toLocaleString("en-PH"), { tone: "green" }],
+    ["Expiring Soon", expiringSoon.toLocaleString("en-PH"), { tone: "orange" }],
+    ["Expired", expired.toLocaleString("en-PH"), { tone: "red" }],
   ]);
+  setReportChart("#report-detail-chart-summary", { title: "Warranty coverage, installed units", kind: "stack", html: reportStack(reportWarrantySegments(warranties)) });
+  const endingNext = warranties.filter((w) => w.warrantyEnd && Number.isFinite(daysUntil(w.warrantyEnd)) && daysUntil(w.warrantyEnd) >= 0).sort((a, b) => daysUntil(a.warrantyEnd) - daysUntil(b.warrantyEnd)).slice(0, 8).map((w) => ({ title: w.equipment, sub: [w.client, w.serial && `SN ${w.serial}`].filter(Boolean).join(" · "), days: daysUntil(w.warrantyEnd) }));
+  setReportChart("#report-detail-chart-primary", { title: "Coverage ending next", kind: "list", html: reportCountdownList(endingNext, "No upcoming warranty end dates."), note: "The 8 soonest warranty end dates." });
   const byEquipment = Object.entries(sumBy(warranties, "equipment", () => 1)).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  qs("#report-detail-chart-primary").innerHTML = barRows(byEquipment, (value) => `${value} unit${value === 1 ? "" : "s"}`, ["", "green"]) + graphNote("Top 10 equipment types by installed unit count.");
-  const byStatus = Object.entries(sumBy(warranties, "status", () => 1)).sort((a, b) => b[1] - a[1]);
-  qs("#report-detail-chart-secondary").innerHTML = barRows(byStatus, (value) => `${value} unit${value === 1 ? "" : "s"}`, ["green", "orange", "red", ""]) + graphNote("Installed units grouped by warranty status.");
+  setReportChart("#report-detail-chart-secondary", { title: "Installed units by equipment", html: barRows(byEquipment, (value) => `${value} unit${value === 1 ? "" : "s"}`), note: "Top 10 equipment types by installed unit count." });
   const filtered = warranties.filter((w) => (!status || w.status === status) && includesSearch(Object.values(w)));
-  table("#report-detail-table", ["Client", "Equipment", "Serial", "Install Date", "Warranty End", "Status"], filtered.map((w) => ({ focus: w.serial || w.client, cells: [w.client, w.equipment, w.serial || "-", w.installDate || "-", w.warrantyEnd || "-", `<span class="pill ${statusClass(w.status)}">${escapeHtml(w.status || "-")}</span>`] })));
+  reportTable("#report-detail-table", ["Client", "Equipment", "Serial", "Install Date", "Warranty End", "Status"], filtered.map((w) => ({ focus: w.serial || w.client, cells: [w.client, w.equipment, w.serial || "-", w.installDate || "-", w.warrantyEnd || "-", `<span class="pill ${statusClass(w.status)}">${escapeHtml(w.status || "-")}</span>`] })));
 }
 
 /** @type {any[]} */
@@ -7052,8 +7348,6 @@ async function renderComplianceAuditReport() {
   setupReportDetailToolbar({ statusLabel: "Module", statusOptions: null, section: "logs", sectionLabel: "Audit Logs", dateFilter: false });
   renderReportKpis([["Total Actions", "Loading…"], ["Unique Users", "Loading…"], ["Top Module", "Loading…"], ["Top User", "Loading…"]]);
   tableSkeleton("#report-detail-table", ["Date", "User", "Module", "Action", "Record"], 6);
-  qs("#report-detail-chart-primary").innerHTML = "";
-  qs("#report-detail-chart-secondary").innerHTML = "";
   try {
     const result = await MedlaneAPI.listLogs({ limit: 200 });
     complianceAuditEntries = result.entries || [];
@@ -7075,23 +7369,23 @@ function renderComplianceAuditTable() {
   renderReportKpis([
     ["Total Actions", entries.length.toLocaleString("en-PH")],
     ["Unique Users", uniqueUsers.toLocaleString("en-PH")],
-    ["Top Module", topModule ? `${topModule[0]} (${topModule[1]})` : "No data"],
-    ["Top User", topUser ? `${topUser[0]} (${topUser[1]})` : "No data"],
+    ["Top Module", topModule ? topModule[0] : "No data", { sub: topModule ? `${topModule[1]} actions` : "" }],
+    ["Top User", topUser ? topUser[0] : "No data", { sub: topUser ? `${topUser[1]} actions` : "" }],
   ]);
   const byModule = Object.entries(sumBy(entries, "module", () => 1)).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  qs("#report-detail-chart-primary").innerHTML = barRows(byModule, (value) => `${value} action${value === 1 ? "" : "s"}`, ["", "green"]) + graphNote(`Most recent ${entries.length} audit log entries grouped by module.`);
+  setReportChart("#report-detail-chart-primary", { title: "Actions by module", html: barRows(byModule, (value) => `${value} action${value === 1 ? "" : "s"}`), note: `Most recent ${entries.length} audit log entries grouped by module.` });
   const byUser = Object.entries(sumBy(entries, "user", () => 1)).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  qs("#report-detail-chart-secondary").innerHTML = barRows(byUser, (value) => `${value} action${value === 1 ? "" : "s"}`, ["", "green"]) + graphNote("Top 10 users by recorded action count in this window.");
+  setReportChart("#report-detail-chart-secondary", { title: "Actions by user", html: barRows(byUser, (value) => `${value} action${value === 1 ? "" : "s"}`), note: "Top 10 users by recorded action count in this window." });
   const filtered = entries.filter((entry) => (!module || entry.module === module) && includesSearch(Object.values(entry)));
-  table("#report-detail-table", ["Date", "User", "Module", "Action", "Record"], filtered.map((entry) => ({ focus: [entry.record, entry.action, entry.user].filter(Boolean).join("|"), cells: [entry.date, entry.user, entry.module, entry.action, entry.record || "-"] })));
+  reportTable("#report-detail-table", ["Date", "User", "Module", "Action", "Record"], filtered.map((entry) => ({ focus: [entry.record, entry.action, entry.user].filter(Boolean).join("|"), cells: [entry.date, entry.user, entry.module, entry.action, entry.record || "-"] })));
 }
 /** @type {Record<string, any>} */
 const salesBreakdownDimensions = {
-  month: { title: "Sales by Month", body: "Monthly revenue trend with orders, average order value, and best month.", icon: "₱", groupLabel: "Month", topLabel: "Top Month", groupBy: (/** @type {Sale} */ sale) => sale.date.slice(0, 7), formatGroup: monthLabel },
-  client: { title: "Sales per Client", body: "Revenue, order count, and average order value by client.", icon: "◆", groupLabel: "Client", topLabel: "Top Client", groupBy: (/** @type {Sale} */ sale) => sale.client },
-  brand: { title: "Sales per Brand", body: "Revenue by item brand, computed from invoice line items.", icon: "▤", groupLabel: "Brand", topLabel: "Top Brand", perLine: true, lineKey: "brand" },
-  item: { title: "Sales per Item", body: "Revenue by individual item, computed from invoice line items.", icon: "◇", groupLabel: "Item", topLabel: "Top Item", perLine: true, lineKey: "item" },
-  classification: { title: "Sales per Classification", body: "Revenue by item classification, computed from invoice line items.", icon: "●", groupLabel: "Classification", topLabel: "Top Classification", perLine: true, lineKey: "classification" },
+  month: { title: "Sales by Month", body: "Monthly revenue trend with orders, average order value, and best month.", icon: "calendar", dataKey: "sales", groupLabel: "Month", topLabel: "Top Month", groupBy: (/** @type {Sale} */ sale) => sale.date.slice(0, 7), formatGroup: monthLabel },
+  client: { title: "Sales per Client", body: "Revenue, order count, and average order value by client.", icon: "client", dataKey: "sales", groupLabel: "Client", topLabel: "Top Client", groupBy: (/** @type {Sale} */ sale) => sale.client },
+  brand: { title: "Sales per Brand", body: "Revenue by item brand, computed from invoice line items.", icon: "tag", dataKey: "sales", groupLabel: "Brand", topLabel: "Top Brand", perLine: true, lineKey: "brand" },
+  item: { title: "Sales per Item", body: "Revenue by individual item, computed from invoice line items.", icon: "box", dataKey: "sales", groupLabel: "Item", topLabel: "Top Item", perLine: true, lineKey: "item" },
+  classification: { title: "Sales per Classification", body: "Revenue by item classification, computed from invoice line items.", icon: "layers", dataKey: "sales", groupLabel: "Classification", topLabel: "Top Classification", perLine: true, lineKey: "classification" },
 };
 
 function salesBreakdownScope() {
@@ -7122,6 +7416,34 @@ function isBookkeepingOnlyLine(item, classification) {
   return /receivable/i.test(String(item || "")) || /receivable/i.test(String(classification || ""));
 }
 
+// Shared by the detail page and the hub's "Top client / brand / item" cards so they always agree.
+/** @param {Sale[]} sales @param {string} dimension @param {ReportConfig} config */
+function salesBreakdownGroups(sales, dimension, config) {
+  /** @type {Record<string, number>} */
+  const groupTotals = {};
+  /** @type {Record<string, number>} */
+  const groupOrders = {};
+  if (config.perLine) {
+    sales.forEach((sale) => {
+      const seenGroups = new Set();
+      salesBreakdownLines(sale).forEach((line) => {
+        if (isBookkeepingOnlyLine(line.item, itemClassificationFor(line))) return;
+        const key = (dimension === "classification" ? itemClassificationFor(line) : /** @type {Record<string, any>} */ (line)[/** @type {string} */ (config.lineKey)]) || "Unassigned";
+        groupTotals[key] = (groupTotals[key] || 0) + lineSubtotal(line);
+        seenGroups.add(key);
+      });
+      seenGroups.forEach((key) => { groupOrders[key] = (groupOrders[key] || 0) + 1; });
+    });
+  } else {
+    sales.forEach((sale) => {
+      const key = config.groupBy?.(sale) || "Unassigned";
+      groupTotals[key] = (groupTotals[key] || 0) + Number(sale.net || 0);
+      groupOrders[key] = (groupOrders[key] || 0) + 1;
+    });
+  }
+  return { groupTotals, groupOrders };
+}
+
 /** @param {any} dimension */
 function renderSalesBreakdownReport(dimension) {
   const config = salesBreakdownDimensions[dimension];
@@ -7131,56 +7453,50 @@ function renderSalesBreakdownReport(dimension) {
   const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
   const totalOrders = sales.length;
   const avgOrder = totalOrders ? totalSales / totalOrders : 0;
-
-  /** @type {Record<string, any>} */
-  const groupTotals = {};
-  /** @type {Record<string, any>} */
-  const groupOrders = {};
-  if (config.perLine) {
-    sales.forEach((sale) => {
-      const seenGroups = new Set();
-      salesBreakdownLines(sale).forEach((line) => {
-        if (isBookkeepingOnlyLine(line.item, itemClassificationFor(line))) return;
-        const key = (dimension === "classification" ? itemClassificationFor(line) : /** @type {Record<string, any>} */ (line)[config.lineKey]) || "Unassigned";
-        groupTotals[key] = (groupTotals[key] || 0) + lineSubtotal(line);
-        seenGroups.add(key);
-      });
-      seenGroups.forEach((key) => { groupOrders[key] = (groupOrders[key] || 0) + 1; });
-    });
-  } else {
-    sales.forEach((sale) => {
-      const key = config.groupBy(sale) || "Unassigned";
-      groupTotals[key] = (groupTotals[key] || 0) + Number(sale.net || 0);
-      groupOrders[key] = (groupOrders[key] || 0) + 1;
-    });
-  }
+  const { groupTotals, groupOrders } = salesBreakdownGroups(sales, dimension, config);
 
   const sortedEntries = Object.entries(groupTotals).sort((a, b) => b[1] - a[1]);
   const topEntry = sortedEntries[0];
   const formatGroup = (/** @type {any} */ key) => config.formatGroup ? config.formatGroup(key) : key;
+  // Line-based reports sum line subtotals, not invoice net, so shares use the groups' own sum to
+  // add up to 100%. For client and month the two totals are the same.
+  const groupSum = sortedEntries.reduce((sum, [, value]) => sum + value, 0);
+  const isMonth = dimension === "month";
 
   qs("#sales-breakdown-title").textContent = config.title;
-  qs("#sales-breakdown-kpis").innerHTML = [
+  qs("#sales-breakdown-body").textContent = config.body;
+  qs("#sales-breakdown-kpis").innerHTML = reportKpisHtml([
     ["Total Sales", peso.format(totalSales)],
     ["Total Orders", totalOrders.toLocaleString("en-PH")],
     ["Average Order Value", peso.format(avgOrder)],
-    [config.topLabel, topEntry ? `${formatGroup(topEntry[0])} · ${peso.format(topEntry[1])}` : "No data"],
-  ].map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join("");
+    [config.topLabel, topEntry ? formatGroup(topEntry[0]) : "No data", { sub: topEntry ? peso.format(topEntry[1]) : "" }],
+  ]);
 
-  const rankRows = sortedEntries.slice(0, 10).map(([key, value]) => [formatGroup(key), value]);
-  qs("#sales-breakdown-rank-chart").innerHTML = barRows(rankRows, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote(`Computed from invoice net totals grouped by ${config.groupLabel.toLowerCase()}, ranked by revenue, for the selected date range.`);
+  // How concentrated revenue is. Ranked, so a single-hue ramp reads darkest = largest. It's
+  // meaningless for months, whose trend chart already tells the story.
+  const rampTones = ["accent", "accent-mid", "accent-soft"];
+  const topThree = sortedEntries.slice(0, 3);
+  const restValue = sortedEntries.slice(3).reduce((sum, [, value]) => sum + value, 0);
+  const shareOf = (/** @type {number} */ value) => `${pesoCompact(value)} · ${Math.round((value / (groupSum || 1)) * 100)}%`;
+  const topThreeShare = groupSum ? Math.round((topThree.reduce((sum, [, value]) => sum + value, 0) / groupSum) * 100) : 0;
+  setReportChart("#sales-breakdown-summary", isMonth || !sortedEntries.length ? {} : {
+    title: `Top ${Math.min(3, topThree.length)} make up ${topThreeShare}% of revenue`,
+    kind: "stack",
+    html: reportStack([...topThree.map(([key, value], index) => ({ label: String(formatGroup(key)), value, tone: rampTones[index], display: shareOf(value) })), { label: "All others", value: restValue, tone: "neutral", display: shareOf(restValue) }]),
+  });
 
-  /** @type {Record<string, any>} */
-  const monthlyTrend = sales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
-    const month = sale.date.slice(0, 7);
-    acc[month] = (acc[month] || 0) + Number(sale.net || 0);
-    return acc;
-  }, {});
-  qs("#sales-breakdown-trend-chart").innerHTML = lineChart(Object.entries(monthlyTrend).sort(([a], [b]) => a.localeCompare(b))) + graphNote("Month-over-month invoice net totals for the selected date range.");
+  const rankRows = /** @type {[string, number][]} */ (sortedEntries.slice(0, 10).map(([key, value]) => [formatGroup(key), value]));
+  setReportChart("#sales-breakdown-rank-chart", { title: isMonth ? "Best months" : `Ranked by revenue`, html: barRows(rankRows, (value) => pesoCompact(value)), note: `${config.perLine ? "Invoice line subtotals" : "Invoice net totals"} grouped by ${config.groupLabel.toLowerCase()}, ranked by revenue, for the selected date range.` });
 
-  table("#sales-breakdown-table", [config.groupLabel, "Orders", "Total Revenue", "% of Total", "Avg Order Value"], sortedEntries.map(([key, value]) => {
+  /** @type {[string, number][]} */
+  const monthlyTrend = reportMonthlyTotals(sales, (sale) => sale.date, (sale) => sale.net);
+  setReportChart("#sales-breakdown-trend-chart", monthlyTrend.length ? { title: "Monthly revenue", html: lineChart(monthlyTrend, "Monthly revenue"), note: "Month-over-month invoice net totals for the selected date range.", kind: "line" } : {});
+
+  // A months table reads best in calendar order. Everything else reads best ranked.
+  const tableEntries = isMonth ? [...sortedEntries].sort(([a], [b]) => a.localeCompare(b)) : sortedEntries;
+  reportTable("#sales-breakdown-table", [config.groupLabel, "Orders", "Total Revenue", "% of Total", "Avg Order Value"], tableEntries.map(([key, value]) => {
     const orders = groupOrders[key] || 0;
-    const pct = totalSales ? (value / totalSales) * 100 : 0;
+    const pct = groupSum ? (value / groupSum) * 100 : 0;
     return { focus: String(key), cells: [formatGroup(key), orders, peso.format(value), `${pct.toFixed(1)}%`, peso.format(orders ? value / orders : 0)] };
   }));
 

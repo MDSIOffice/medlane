@@ -1142,41 +1142,55 @@
       </section>
 
       <section class="section" id="reports">
-        <div class="section-header"><div><p class="eyebrow">Reports</p><h2>Management, compliance, and operations</h2></div><button class="primary-button" id="print-report">Print Report</button></div>
-        <div class="report-grid" id="report-grid"></div>
+        <div class="section-header"><div><p class="eyebrow">Reports</p><h2>Management, compliance, and operations</h2></div><button class="ghost-button" id="print-report">Print Summary</button></div>
+        <div class="rh-hub" id="report-grid"></div>
       </section>
 
       <section class="section" id="report-detail">
-        <div class="section-header"><div><p class="eyebrow" id="report-detail-eyebrow">Report Detail</p><h2 id="report-detail-title">Report</h2><p id="report-detail-body"></p></div><div class="topbar-actions"><button class="ghost-button" data-go-section="reports">Back to Reports</button><button class="ghost-button" id="report-detail-open-module" type="button">Open Module</button><button class="primary-button" id="report-detail-print" type="button">Print This Report</button></div></div>
+        <button class="rd-back" type="button" data-go-section="reports"><span aria-hidden="true">←</span> All reports</button>
+        <div class="section-header"><div><p class="eyebrow" id="report-detail-eyebrow">Report</p><h2 id="report-detail-title">Report</h2><p class="rd-body" id="report-detail-body"></p></div><div class="topbar-actions"><button class="ghost-button" id="report-detail-open-module" type="button">Open Module</button><button class="primary-button" id="report-detail-print" type="button">Print This Report</button></div></div>
         <div class="toolbar date-toolbar" id="report-detail-toolbar">
-          <p class="field-help">Use the search box in the top bar to search this report's table.</p>
           <div class="field"><label for="report-detail-date-from">From</label><input id="report-detail-date-from" type="date" /></div>
           <div class="field"><label for="report-detail-date-to">To</label><input id="report-detail-date-to" type="date" /></div>
           <div class="field"><label for="report-detail-status-filter">Status</label><select id="report-detail-status-filter"><option value="">All Statuses</option></select></div>
           <button class="ghost-button" id="report-detail-clear-filters" type="button">Clear Filters</button>
+          <p class="field-help">Use the search box in the top bar to search this report's table.</p>
         </div>
-        <article class="panel report-page">
-          <div class="report-preview-grid" id="report-detail-kpis"></div>
-          <div class="line-chart" id="report-detail-chart-trend"></div>
-          <div class="chart-bars" id="report-detail-chart-primary"></div>
-          <div class="chart-bars" id="report-detail-chart-secondary"></div>
-          <div class="table-card"><table id="report-detail-table"></table></div>
-        </article>
+        <div class="report-page rd-page">
+          <div class="rd-kpis" id="report-detail-kpis"></div>
+          <div class="rd-charts">
+            <article class="panel rd-chart rd-wide" id="report-detail-chart-summary"></article>
+            <article class="panel rd-chart rd-wide" id="report-detail-chart-trend"></article>
+            <article class="panel rd-chart" id="report-detail-chart-primary"></article>
+            <article class="panel rd-chart" id="report-detail-chart-secondary"></article>
+          </div>
+          <article class="panel rd-records">
+            <div class="rd-records-head"><h3 class="rd-chart-title">Source records</h3><span id="report-detail-table-count"></span></div>
+            <div class="table-card"><table id="report-detail-table"></table></div>
+          </article>
+        </div>
       </section>
 
       <section class="section" id="sales-breakdown-detail">
-        <div class="section-header"><div><p class="eyebrow">Sales Analytics</p><h2 id="sales-breakdown-title">Sales Report</h2></div><div class="topbar-actions"><button class="ghost-button" data-go-section="reports">Back to Reports</button><button class="primary-button" id="sales-breakdown-print" type="button">Print This Report</button></div></div>
+        <button class="rd-back" type="button" data-go-section="reports"><span aria-hidden="true">←</span> All reports</button>
+        <div class="section-header"><div><p class="eyebrow">Sales &amp; Revenue</p><h2 id="sales-breakdown-title">Sales Report</h2><p class="rd-body" id="sales-breakdown-body"></p></div><div class="topbar-actions"><button class="primary-button" id="sales-breakdown-print" type="button">Print This Report</button></div></div>
         <div class="toolbar date-toolbar">
           <div class="field"><label for="sales-breakdown-date-from">From</label><input id="sales-breakdown-date-from" type="date" /></div>
           <div class="field"><label for="sales-breakdown-date-to">To</label><input id="sales-breakdown-date-to" type="date" /></div>
           <button class="ghost-button" id="sales-breakdown-clear-dates" type="button">Reset to Default</button>
         </div>
-        <article class="panel report-page">
-          <div class="report-preview-grid" id="sales-breakdown-kpis"></div>
-          <div class="chart-bars" id="sales-breakdown-rank-chart"></div>
-          <div class="line-chart" id="sales-breakdown-trend-chart"></div>
-          <div class="table-card"><table id="sales-breakdown-table"></table></div>
-        </article>
+        <div class="report-page rd-page">
+          <div class="rd-kpis" id="sales-breakdown-kpis"></div>
+          <div class="rd-charts">
+            <article class="panel rd-chart rd-wide" id="sales-breakdown-summary"></article>
+            <article class="panel rd-chart" id="sales-breakdown-rank-chart"></article>
+            <article class="panel rd-chart" id="sales-breakdown-trend-chart"></article>
+          </div>
+          <article class="panel rd-records">
+            <div class="rd-records-head"><h3 class="rd-chart-title">Breakdown</h3><span id="sales-breakdown-table-count"></span></div>
+            <div class="table-card"><table id="sales-breakdown-table"></table></div>
+          </article>
+        </div>
       </section>
 
       <section class="section" id="users">
