@@ -139,10 +139,20 @@ describe("credit-limit invoice requests", () => {
   });
 });
 
-describe("known gaps", () => {
-  test("a lowercase status must not dodge the credit approval check", { todo: "this guard compares case-sensitively, unlike the payables one" }, async () => {
+describe("credit request status casing", () => {
+  for (const status of ["approved", "APPROVED", " Rejected ", "rejected"]) {
+    test(`Accounting can't set status "${status}"`, async () => {
+      mockSupabase({ pendingCreditInvoices: [stored("C1", { status: "Pending" })] });
+      await assert.rejects(checkCredit(env, STATE, as("Accounting"), [row("pendingCreditInvoices", "C1", { status })]), /Only Superadmin, CEO, or Admin/);
+    });
+  }
+  test("re-saving a decided request in different casing isn't a new decision", async () => {
+    mockSupabase({ pendingCreditInvoices: [stored("C1", { status: "Approved" })] });
+    await checkCredit(env, STATE, as("Accounting"), [row("pendingCreditInvoices", "C1", { status: "approved" })]);
+  });
+  test("Admin can still approve", async () => {
     mockSupabase({ pendingCreditInvoices: [stored("C1", { status: "Pending" })] });
-    await assert.rejects(checkCredit(env, STATE, as("Accounting"), [row("pendingCreditInvoices", "C1", { status: "approved" })]));
+    await checkCredit(env, STATE, as("Admin"), [row("pendingCreditInvoices", "C1", { status: "approved" })]);
   });
 });
 

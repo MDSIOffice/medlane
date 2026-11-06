@@ -1115,6 +1115,32 @@ function daysUntilIso(value) {
   return Math.floor((target.getTime() - Date.now()) / 86400000);
 }
 
+/** @param {IncomingSale} sale @returns {IncomingSaleLine[]} */
+function saleLinesOf(sale) {
+  return Array.isArray(sale.lines) && sale.lines.length
+    ? sale.lines
+    : [{ item: sale.item, code: sale.code, qty: sale.qty, price: sale.price, sourceBranch: sale.sourceBranch || sale.branch, branch: sale.sourceBranch || sale.branch, lot: sale.lot, expiry: sale.expiry }];
+}
+
+// Comparisons against NaN are always false, so a non-numeric amount or net used to pass every
+// "does this add up" and "is this over the limit" check below. Reject those first, on every path:
+// neither buildSale() nor the migration importer can produce one.
+/** @param {IncomingSale} sale @param {string} label */
+function assertSaleBasics(sale, label) {
+  if (typeof sale.client !== "string" || !sale.client.trim()) throw new Error(`Invoice ${label}: client is required.`);
+  for (const field of /** @type {const} */ (["amount", "net", "discount"])) {
+    const value = sale[field];
+    if (value !== undefined && value !== null && !Number.isFinite(Number(value))) throw new Error(`Invoice ${label}: ${field} must be a number.`);
+  }
+}
+
+// buildSale() only ever produces a non-negative amount and net, so a negative one on a live invoice
+// is tampering. Migrated rows are exempt: the importer can carry a negative historical net.
+/** @param {IncomingSale} sale @param {string} label */
+function assertSaleNotNegative(sale, label) {
+  if (Number(sale.amount ?? 0) < 0 || Number(sale.net ?? 0) < 0) throw new Error(`Invoice ${label}: amount and net cannot be negative.`);
+}
+
 /** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow<IncomingSale>[]} newSaleRows */
 async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   const canAuthorizeDiscount = ["Superadmin", "CEO", "Admin"].includes(profile?.role);
@@ -1124,8 +1150,10 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   // client-trusted). Lazily loaded and keyed by client name; projectedBalanceByClient accumulates
   // net across every new row in this same save so splitting one over-limit order into several
   // rows in one batch can't slip past the per-row check.
-  /** @type {Map<string | undefined, number> | null} */
+  /** @type {Map<string, { name: string | undefined, limit: number }> | null} */
   let creditLimitByClient = null;
+  /** @type {{ name: string | undefined, limit: number }[]} */
+  let creditEntries = [];
   /** @type {Map<string, number> | null} */
   let projectedBalanceByClient = null;
   // Lazily loaded set of archived client names. buildSale() (modules.js) already blocks a
@@ -1158,10 +1186,17 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   if (!canAuthorizeDiscount && sale.client) {
     if (!creditLimitByClient) {
       const clientRows = await loadClientRows();
-      creditLimitByClient = new Map(clientRows.map((clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
+      creditEntries = clientRows.map((clientRow) => ({ name: clientRow.data?.name, limit: Number(clientRow.data?.creditLimit || 0) }));
+      creditLimitByClient = new Map(creditEntries.map((entry) => [masterName(entry.name), entry]));
     }
-    const limit = creditLimitByClient.get(sale.client) || 0;
+    // The exact name wins: two real clients can normalize alike, and neither should be blocked for it.
+    const creditEntry = creditEntries.find((entry) => entry.name === sale.client) || creditLimitByClient.get(masterName(sale.client));
+    const limit = creditEntry?.limit || 0;
     if (limit > 0) {
+      // Matched loosely so "LAB" can't dodge Lab's limit, but must then be saved under the exact
+      // name: client_sales_balance matches exactly, so a variant spelling would never count
+      // toward this client's balance on later invoices.
+      if (creditEntry?.name !== sale.client) throw new Error(`Invoice ${label}: client "${sale.client}" must match the masterlist name "${creditEntry?.name}" exactly.`);
       projectedBalanceByClient ||= new Map();
       if (!projectedBalanceByClient.has(sale.client)) {
         // One indexed Postgres aggregate (see docs/migrations/2026-10-19-client-sales-balance-rpc.sql)
@@ -1173,7 +1208,8 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
         });
         projectedBalanceByClient.set(sale.client, Number(balanceRow?.balance ?? 0));
       }
-      const net = Number(sale.net ?? sale.amount ?? 0);
+      // Floored at zero, as client_sales_balance does, so a negative migrated row can't lower the balance.
+      const net = Math.max(Number(sale.net ?? sale.amount ?? 0), 0);
       const projected = /** @type {number} */ (projectedBalanceByClient.get(sale.client)) + net;
       if (projected > limit) throw new Error(`Invoice ${label}: credit limit exceeded for ${sale.client} (${projected.toFixed(2)} / ${limit.toFixed(2)}). Needs Admin/CEO/Superadmin authorization.`);
       projectedBalanceByClient.set(sale.client, projected);
@@ -1184,6 +1220,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
 
   for (const row of newSaleRows) {
     const sale = row.data || {};
+    assertSaleBasics(sale, sale.documentNo || row.record_key);
     // A skip-PO invoice (buildSale's skipPo path) has no PO behind it, so it's the one invoice
     // shape where the client field is a brand-new, unanchored relationship — check it before the
     // `continue` below skips the rest of this row's validation along with it.
@@ -1204,12 +1241,21 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
       const flaggedDiscount = Number(sale.discount || 0);
       if (!Number.isFinite(flaggedDiscount) || flaggedDiscount < 0) throw new Error(`Invoice ${label}: discount cannot be negative.`);
       if (flaggedDiscount > 0 && !canAuthorizeDiscount) throw new Error(`Invoice ${label}: discounts require Admin/CEO/Superadmin authorization.`);
+      if (sale.noPo && !sale.migrated) {
+        // Skips stock, but not the arithmetic: otherwise a net of 0 on a large invoice would pass
+        // the credit check below. buildSale() computes these the same way on the skip-PO path.
+        assertSaleNotNegative(sale, label);
+        if (sale.type !== "DR") {
+          const flaggedAmount = Number(sale.amount || 0);
+          const recomputed = saleLinesOf(sale).reduce((/** @type {number} */ sum, line) => sum + Math.max(0, Number(line.qty) * Number(line.price)), 0);
+          if (!(Math.abs(recomputed - flaggedAmount) <= 0.01)) throw new Error(`Invoice ${label}: amount does not match its line items.`);
+          if (!(Math.abs(Number(sale.net ?? sale.amount ?? 0) - (flaggedAmount - flaggedDiscount)) <= 0.01)) throw new Error(`Invoice ${label}: net amount does not match amount minus discount.`);
+        }
+      }
       await checkCredit(sale, label);
       continue;
     }
-    const lines = Array.isArray(sale.lines) && sale.lines.length
-      ? sale.lines
-      : [{ item: sale.item, code: sale.code, qty: sale.qty, price: sale.price, sourceBranch: sale.sourceBranch || sale.branch, branch: sale.sourceBranch || sale.branch, lot: sale.lot, expiry: sale.expiry }];
+    const lines = saleLinesOf(sale);
 
     for (const line of lines) {
       const qty = Number(line.qty);
@@ -1219,6 +1265,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
       if (line.expiry && line.expiry !== "N/A" && daysUntilIso(line.expiry) < 0) throw new Error(`Invoice ${label}: expired lot blocked for ${line.item || line.code || "a line item"}.`);
     }
 
+    if (sale.type === "DR") assertSaleNotNegative(sale, label);
     if (sale.type !== "DR") {
       const recomputedAmount = lines.reduce((/** @type {number} */ sum, line) => sum + Math.max(0, Number(line.qty) * Number(line.price)), 0);
       const submittedAmount = Number(sale.amount || 0);
@@ -1536,12 +1583,14 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
 /** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
 async function assertCreditApprovalAllowed(env, stateKey, profile, rows) {
   if (["Superadmin", "CEO", "Admin"].includes(profile?.role)) return;
-  const candidates = rows.filter((row) => row.module_name === "pendingCreditInvoices" && ["Approved", "Rejected"].includes(/** @type {string} */ (row.data?.status)));
+  // Case-insensitive, like the payables check, so "approved" can't slip past as a different status.
+  const lower = (/** @type {unknown} */ value) => String(value ?? "").trim().toLowerCase();
+  const candidates = rows.filter((row) => row.module_name === "pendingCreditInvoices" && ["approved", "rejected"].includes(lower(row.data?.status)));
   if (!candidates.length) return;
   const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.pendingCreditInvoices&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=record_key,data`));
   const storedStatus = new Map(stored.map((row) => [row.record_key, row.data?.status]));
   for (const row of candidates) {
-    if (storedStatus.get(row.record_key) === row.data.status) continue;
+    if (lower(storedStatus.get(row.record_key)) === lower(row.data.status)) continue;
     throw new Error("Only Superadmin, CEO, or Admin can approve or reject a credit-limit invoice request");
   }
 }
