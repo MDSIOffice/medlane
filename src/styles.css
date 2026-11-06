@@ -3287,7 +3287,8 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 #inventory table.inv-table { min-width: 780px; }
 #inventory table.inv-table td:last-child::after, #inventory table.inv-table th:last-child::after { content: none; }
 #inventory table.inv-table td:first-child { max-width: 260px; }
-#inventory .inv-name { overflow-wrap: anywhere; }
+#inventory .inv-name { display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; word-break: break-word; line-height: 1.3; }
+#inventory table.inv-table td:first-child { width: 260px; overflow-wrap: anywhere; }
 #inventory table.inv-table td.actions-col, #inventory table.inv-table th.actions-col { padding-left: 4px; }
 /* Inventory has its own page header; hide the app shell's duplicate title + description there. */
 body[data-active-section="inventory"] #page-title,
