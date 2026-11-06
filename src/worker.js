@@ -2949,6 +2949,22 @@ async function runBirthdayGreetings(env, { force = false } = {}) {
   return { sent: true, recipients: sentTo, test: isTest };
 }
 
+// Posts the Monday (start-of-week) / Friday (end-of-week) odometer reminder, tagging @everyone.
+// Throws on a missing webhook or failed post so runOncePerPeriod retries on the next tick.
+async function runOdometerReminder(env, weekday) {
+  if (!env.ODOMETER_DISCORD_WEBHOOK_URL) {
+    await recordSystemLog(env, { action: "Discord odometer reminder skipped", module: "Discord", record: "ODOMETER_DISCORD_WEBHOOK_URL not configured" }).catch(() => null);
+    throw new Error("ODOMETER_DISCORD_WEBHOOK_URL is not configured");
+  }
+  const isStart = weekday === "Mon";
+  const content = isStart
+    ? "@everyone 🚗 **Start-of-week odometer reminder** — please post your odometer reading (with a photo) now."
+    : "@everyone 🚗 **End-of-week odometer reminder** — please post your closing odometer reading (with a photo) before you head out.";
+  await sendDiscordWebhookUrl(env, env.ODOMETER_DISCORD_WEBHOOK_URL, { content, allowedMentions: { parse: ["everyone"] } });
+  await recordSystemLog(env, { action: "Discord odometer reminder sent", module: "Discord", record: isStart ? "Start of week" : "End of week" }).catch(() => null);
+  return { sent: true };
+}
+
 async function runFiveMinuteDiscordMonitors(env) {
   const scheduled = manilaScheduleParts(Date.now());
   /** @type {Promise<any>[]} */
@@ -3109,6 +3125,12 @@ async function runFiveMinuteScheduledTasks(event, env) {
   if (Number(scheduled.hour) >= 8 && ["00", "15", "30", "45"].includes(scheduled.minute)) {
     const { dayKey } = manilaPeriodKeys(scheduled);
     tasks.push(runOncePerPeriod(env, "birthday-greetings", dayKey, () => runBirthdayGreetings(env)));
+  }
+  // Mon/Fri 17:00 Asia/Manila odometer reminder. Retried on the :15/:30/:45 ticks of that same
+  // hour if Discord fails, then dropped (a "start of week" ping at 6 PM would be misleading).
+  if (scheduled.hour === "17" && ["Mon", "Fri"].includes(scheduled.weekday) && ["00", "15", "30", "45"].includes(scheduled.minute)) {
+    const { dayKey } = manilaPeriodKeys(scheduled);
+    tasks.push(runOncePerPeriod(env, "odometer-reminder", dayKey, () => runOdometerReminder(env, scheduled.weekday)));
   }
   const results = await Promise.allSettled(tasks);
   for (const result of results) {
