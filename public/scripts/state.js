@@ -1018,7 +1018,7 @@ function includesSearch(values) {
   const term = qs("#global-search").value.trim().toLowerCase();
   return !term || values.some((value) => String(value ?? "").toLowerCase().includes(term));
 }
-/** @param {any[]} items @param {string} [key] */
+/** @template {Record<string, any>} T @param {T[]} items @param {string} [key] @returns {T[]} */
 function byBranch(items, key = "branch") { return data.branch === "all" ? items : items.filter((item) => item[key] === data.branch || item[key] === "Both" || item.area === data.branch || item.office === data.branch || item.dealer === data.branch); }
 /** @param {any} date @param {any} days */
 function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + Number(days)); return d; }

@@ -22,6 +22,7 @@ function moduleWorkflowItems(section) {
   const pendingExpenseRecords = facts.pendingExpenses.map((expense) => expense.id).join("|");
   const duePayableRecords = facts.duePayables.map((payable) => payable.id).join("|");
   const openIssueRecords = facts.openIssues.map((report) => report.id).join("|");
+  /** @type {Record<string, any>} */
   const queues = {
     dashboard: [
       topOverdue && { title: "Collect overdue AR", text: `${topOverdue.client} has ${peso.format(topOverdue.net - topOverdue.paid)} open.`, action: `open-ar:${topOverdue.documentNo || topOverdue.id}`, tone: "risk" },
@@ -162,6 +163,7 @@ function lineChart(entries) {
     const y = height - pad - (value / max) * (height - pad * 2);
     return { x, y, value };
   });
+  /** @type {Record<string, any>} */
   const line = points.map((point) => `${point.x},${point.y}`).join(" ");
   const area = `${pad},${height - pad} ${line} ${points.at(-1).x},${height - pad}`;
   const gridlines = [0.25, 0.5, 0.75, 1].map((ratio) => {
@@ -177,7 +179,8 @@ function lineChart(entries) {
   </svg>`;
 }
 
-/** @param {any} labels @param {any} series @param {Record<string, any>} [options] */
+/** @typedef {{ label: string, type?: string, color?: string, gradient?: any, dashed?: boolean, values: number[], format?: (v: number) => string }} ChartSeries */
+/** @param {string[]} labels @param {ChartSeries[]} series @param {Record<string, any>} [options] */
 function multiSeriesChart(labels, series, options = {}) {
   if (!labels.length) return `<p>No trend data available for this view.</p>`;
   // Drawn at the container's real pixel width (not a stretched fixed viewBox) so text stays
@@ -294,7 +297,7 @@ function isEquipmentItem(item) {
   return category === "equipment";
 }
 
-/** @param {any} line */
+/** @param {PoLine} line */
 function lineSubtotal(line) { return Math.max(0, line.qty * line.price); }
 /** @param {Sale} sale */
 function saleSummary(sale) { return (sale.lines || []).map((line) => `${line.item} (${line.qty} ${line.uom})`).join(", ") || `${sale.item} (${sale.qty || 0} ${sale.uom || "unit"})`; }
@@ -597,7 +600,7 @@ function invoiceRowLotOptionsHtml(item, branch) {
 // Exact code+branch+lot+qty match first. If that misses and there's an untracked (no lot
 // on file) row with enough qty, fall back to it — this is what lets a lot typed during
 // invoicing "claim" stock that was received without one (see itemStockLotTracked).
-/** @param {any} line */
+/** @param {PoLine} line */
 function matchInvoiceLineStock(line) {
   return data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && i.lot === line.lot && i.qty >= line.qty)
     || data.inventory.find((i) => i.code === line.code && i.branch === line.sourceBranch && !i.lot && i.qty >= line.qty);
@@ -700,7 +703,7 @@ function poServedQty(po, code) {
     .reduce((sum, line) => sum + Number(line.qty || 0), 0);
 }
 
-/** @param {any} po @param {any} line */
+/** @param {any} po @param {PoLine} line */
 function poLineStatus(po, line) {
   const served = poServedQty(po, line.code);
   return { served, pending: Math.max(Number(line.qty || 0) - served, 0) };
@@ -718,6 +721,7 @@ function poCanEdit(po) {
   return Boolean(po) && !PO_TERMINAL_STATUSES.includes(poStatus(/** @type {ClientPO} */ (po))) && !poHasAnyServed(po) && canEditModule("purchase-orders");
 }
 
+/** @type {Record<string, any>} */
 const PO_COMPLETED_DOC_LABELS = { SI: "Sales Invoice", TS: "Transmittal Slip", DR: "Delivery Receipt" };
 const PO_TERMINAL_STATUSES = Object.values(PO_COMPLETED_DOC_LABELS);
 
@@ -1384,6 +1388,7 @@ function startPtDrag(e) {
 function handlePtCanvasKeydown(e) {
   if (!ptSelectedField) return;
   const step = ptStepIn;
+  /** @type {Record<string, any>} */
   const map = { ArrowUp: [0, -step], ArrowDown: [0, step], ArrowLeft: [-step, 0], ArrowRight: [step, 0] };
   if (!map[e.key]) return;
   e.preventDefault();
@@ -1462,7 +1467,9 @@ function canApproveMigrations() { return ["Superadmin", "CEO"].includes(currentU
 
 const inventoryPoTerminalStatuses = ["Fully Received", "Cancelled"];
 const inventoryPoCancellableStatuses = ["Approved", "Sent to Supplier", "In Transit", "For Receiving", "Partially Received"];
+/** @type {Record<string, any>} */
 const inventoryPoStatusEmoji = { "Sent to Supplier": "📤", "In Transit": "🚚", "For Receiving": "📦", "Partially Received": "☑️", "Fully Received": "✔️", Cancelled: "❌" };
+/** @type {Record<string, any>} */
 const inventoryPoNextStatus = { Approved: "Sent to Supplier", "Sent to Supplier": "In Transit", "In Transit": "For Receiving" };
 /** @param {string} status */
 function poStatusLabel(status) { return `${inventoryPoStatusEmoji[status] ? `${inventoryPoStatusEmoji[status]} ` : ""}${status}`; }
@@ -1722,17 +1729,17 @@ function openStockSheetForPo(poId) {
   qs("#stock-sheet-modal").showModal();
 }
 
-/** @param {any} line */
+/** @param {PoLine} line */
 function transferLineQty(line) {
   return Number(line.dispatchedQty ?? line.requestedQty ?? 0);
 }
 
-/** @param {any} line */
+/** @param {PoLine} line */
 function transferLineLot(line) {
   return line.dispatchedLot || line.requestedLot || "-";
 }
 
-/** @param {any} line */
+/** @param {PoLine} line */
 function transferLineExpiry(line) {
   return line.dispatchedExpiry || line.requestedExpiry || "N/A";
 }
@@ -1836,6 +1843,7 @@ function renderDashboard() {
   renderCalendarWidget("dash-cal");
   const trendChart = qs("#dashboard-trend-chart");
   if (trendChart) {
+    /** @type {Record<string, any>} */
     const monthlyTrend = visibleSales.reduce((acc, sale) => {
       const month = sale.date.slice(0, 7);
       if (!acc[month]) acc[month] = { sales: 0, collections: 0, outstanding: 0 };
@@ -1902,7 +1910,9 @@ function printDashboardReport() {
   log("Exported dashboard report (PDF)", "Dashboard", dashboardRange.from || dashboardRange.to ? `${dashboardRange.from || "start"} to ${dashboardRange.to || "now"}` : "all-dates", { save: false });
 }
 
+/** @type {Record<string, any>} */
 const calendarWidgetRegistry = {};
+/** @type {Record<string, any>} */
 const calendarViewState = {};
 /** @param {string} prefix @param {any} containerId @param {any} compact */
 function registerCalendarWidget(prefix, containerId, compact) { calendarWidgetRegistry[prefix] = { containerId, compact }; }
@@ -1963,10 +1973,11 @@ function renderAnalytics() {
   // Date and reversed Bounced/Cancelled payments don't count yet.
   const visibleDocs = new Set(visibleSales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
   const depositedPayments = data.payments.filter((payment) => payment.collectionStatus === "Deposited" && visibleDocs.has(payment.invoice));
+  /** @type {Record<string, any>} */
   const salespersonCollections = {};
   depositedPayments.forEach((payment) => {
-    const agent = data.clients.find((client) => client.name === payment.client)?.salesperson;
-    if (!salesAgentNames.has(/** @type {string} */ (agent))) return;
+    const agent = /** @type {string} */ (data.clients.find((client) => client.name === payment.client)?.salesperson);
+    if (!salesAgentNames.has(agent)) return;
     salespersonCollections[agent] = (salespersonCollections[agent] || 0) + Number(payment.amount || 0);
   });
   // Total sales credited the same way as the collections above — by the client's assigned
@@ -2273,6 +2284,7 @@ function renderMasterlists() {
   qs("#master-add-button").hidden = !canEditModule("masterlists") || data.masterTab === "branches";
   qs("#master-table").classList.toggle("employee-table", data.masterTab === "employees");
   qs("#master-table").classList.toggle("client-table", data.masterTab === "clients");
+  /** @type {Record<string, any>} */
   const labels = { clients: "Add Client", items: "Add Item", suppliers: "Add Supplier", branches: "Add Branch", employees: "Add Employee", banks: "Add Bank" };
   qs("#master-add-button").textContent = labels[data.masterTab];
   const canArchive = ["Superadmin", "CEO"].includes(currentUser?.role);
@@ -2498,6 +2510,7 @@ const INVENTORY_STATUS_BY_NAME = Object.fromEntries(INVENTORY_STATUS_META.map((m
 const INVENTORY_PAGE_SIZE = 25;
 const INVENTORY_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const INVENTORY_TAB_LABELS = { stocks: "Stocks", receiving: "Receiving POs", receipts: "Pending receipts", completed: "Completed POs", transfers: "Transfers", demos: "Demo requests", rhist: "Receiving history", thist: "Transfer history" };
+/** @type {Record<string, any>} */
 const INVENTORY_ICONS = {
   transfer: "M7 7h13l-4-4M17 17H4l4 4",
   edit: "M4 20h4L19 9l-4-4L4 16v4z",
@@ -2838,6 +2851,7 @@ function showTransferTimeline(id) {
 // so the audit records intent and the lost-update window is just the dialog-open time. The
 // server key (code|branch|lot) is never touched — lot editing is a separate follow-up.
 
+/** @type {Record<string, any>} */
 const STOCK_EDIT_FIELD_LABELS = { qty: "Quantity", expiry: "Expiry", note: "Note" };
 
 /** @param {any} ref */
@@ -2957,6 +2971,7 @@ function ensureInventoryDatalists() {
   qs("#inventory-brand-options").innerHTML = [...new Set(data.items.map((item) => item.brand).filter(Boolean))].map((brand) => `<option value="${escapeHtml(brand)}"></option>`).join("");
 }
 
+/** @type {string | null} */
 let editingStockReceiptId = null;
 
 /** @param {any} index */
@@ -3478,6 +3493,7 @@ function refreshTransferDispatchModalRow(dialog, rowEl) {
   const transfer = data.pendingTransfers[Number(/** @type {string} */ (dialog.dataset.transferIndex))];
   const rows = [...dialog.querySelectorAll(".transfer-review-row")];
   const i = rows.indexOf(rowEl);
+  /** @type {Record<string, any>} */
   const line = transfer?.lines?.[i];
   if (!line) return;
   const lotInput = qsIn(rowEl, ".transfer-review-lot");
@@ -3501,12 +3517,14 @@ async function confirmTransferDispatch() {
   const updates = rows.map((row, i) => ({ index: i, qty: Number(qsIn(row, ".transfer-review-qty").value || 0), lot: qsIn(row, ".transfer-review-lot").value.trim(), expiry: qsIn(row, ".transfer-review-expiry").value.trim() }));
   if (updates.some((u) => u.qty <= 0 || !u.lot)) return toast("Enter a valid quantity and lot for every item.");
   for (const u of updates) {
+    /** @type {Record<string, any>} */
     const line = transfer.lines[u.index];
     const source = /** @type {StockRow} */ (data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot));
     if (!source || source.qty < u.qty) return toast(`Not enough stock for ${line.item} in lot ${u.lot}.`);
   }
   const touchedInventory = [];
   updates.forEach((u) => {
+    /** @type {Record<string, any>} */
     const line = transfer.lines[u.index];
     const source = /** @type {StockRow} */ (data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot));
     source.qty -= u.qty;
@@ -3565,6 +3583,7 @@ async function confirmTransferReceive() {
   const touchedInventory = [];
   updates.forEach((u) => {
     if (u.qty <= 0) return;
+    /** @type {Record<string, any>} */
     const line = transfer.lines[u.index];
     const existing = data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.to && entry.lot === u.lot);
     let target = existing;
@@ -3901,7 +3920,7 @@ function renderMemoBadge() {
   if (!badge || !toggle || !data?.memos) return;
   const visible = data.memos.filter(memoVisibleToCurrentUser);
   const pending = visible.filter((memo) => !memoAcknowledgedByCurrentUser(memo)).length;
-  badge.textContent = pending;
+  badge.textContent = String(pending);
   badge.hidden = pending === 0;
   toggle.classList.toggle("has-unread", pending > 0);
 }
@@ -4340,9 +4359,10 @@ function renderCollectionsWorkflowTabs() {
     requests: data.paymentRequests.filter((request) => !["Completed", "Cancelled"].includes(request.requestStatus || request.status)).length,
     followups: data.collectionContacts.filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status)).length,
   };
+  /** @type {Record<string, any>} */
   const labels = { ledger: "AR Ledger", requests: "Payment Received", history: "Collections History", followups: "Follow-ups Map" };
   qsaIn(qs("#collections-workflow-tabs"), "[data-collections-workflow]").forEach((button) => {
-    const tab = button.dataset.collectionsWorkflow;
+    const tab = /** @type {string} */ (button.dataset.collectionsWorkflow);
     button.classList.toggle("active", tab === collectionsWorkflowTab);
     button.innerHTML = `${escapeHtml(labels[tab])}${counts[tab] != null ? ` <span class="tab-count">${counts[tab]}</span>` : ""}`;
   });
@@ -4584,6 +4604,7 @@ function enforceExpenseClassification(input) {
 /** @returns {any[]} */
 function collectFinancialLines() {
   return qsa(".financial-line-row").map((row) => {
+    /** @type {Record<string, any>} */
     const line = {
       vendor: qsIn(row, ".payment-request-vendor")?.value.trim() || "",
       particulars: qsIn(row, ".payment-request-particulars")?.value.trim() || "",
@@ -4780,6 +4801,7 @@ const collectionRegionSources = [
   ["BARMM", "Mindanao Dealer"],
 ];
 
+/** @type {Record<string, any>} */
 const collectionMapLabelPositions = {
   "Region I": { dot: [1362, 535], card: [360, 420] },
   "CAR": { dot: [1548, 575], card: [410, 575] },
@@ -4897,6 +4919,7 @@ function geoJsonBounds(geoJson) {
 
 /** @param {string} area @param {any} index */
 function clientMapPosition(area, index) {
+  /** @type {Record<string, any>} */
   const slots = {
     "Region I": { x: 210, y: 96, cols: 1 },
     "Region II": { x: 390, y: 150, cols: 1 },
@@ -5578,7 +5601,9 @@ function itemForecastRows(allocationMonths) {
   const fromDate = fmtDate(addMonthsToDate(today, -3));
   const toDate = fmtDate(today);
   const monthKeys = itemForecastMonthKeys();
+  /** @type {Record<string, any>} */
   const qtyByCode = {};
+  /** @type {Record<string, any>} */
   const monthlyQtyByCode = {};
   const forecastFilters = /** @type {Record<string, any>} */ (itemForecastFilters || /** @type {Record<string, any>} */ ({}));
   data.sales.filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, fromDate, toDate)).forEach((sale) => {
@@ -5606,7 +5631,9 @@ function itemForecastRows(allocationMonths) {
       }
     });
   });
+  /** @type {Record<string, any>} */
   const stockByCode = {};
+  /** @type {Record<string, any>} */
   const stockByCodeBranch = {};
   data.inventory.forEach((stock) => {
     stockByCode[stock.code] = (stockByCode[stock.code] || 0) + Number(stock.qty || 0);
@@ -5695,6 +5722,7 @@ function purchaseHistoryDefaultLimit(agent) { return agent === "Unassigned" ? 20
 function renderPurchaseHistory() {
   const container = qs("#purchase-history-groups");
   if (!container) return;
+  /** @type {Record<string, any>} */
   const byAgent = purchaseHistoryVisibleClients().reduce((acc, client) => {
     const agent = client.salesperson || "Unassigned";
     (acc[agent] ||= []).push(client);
@@ -6086,6 +6114,7 @@ function importCheckedRows(checked) {
 function importRevertBlockers(recordType, key) {
   const needle = String(key || "").trim().toLowerCase();
   if (!needle) return [];
+  /** @type {Record<string, any>} */
   const scopes = {
     clients: ["sales", "payments", "paymentRequests", "collectionContacts", "collectionContactHistory", "warranties", "productIssues"],
     suppliers: ["inventoryPurchaseOrders", "payables", "items"],
@@ -6375,9 +6404,10 @@ function renderPayablesWorkflowTabs() {
     payment: data.payables.filter((p) => p.requestStatus === "Approved" && !p.paymentConfirmed).length,
     all: data.payables.length,
   };
+  /** @type {Record<string, any>} */
   const labels = { requests: "Requests", payment: "For Payment", all: "All Payables" };
   qsaIn(qs("#payables-workflow-tabs"), "[data-payables-workflow]").forEach((button) => {
-    const tab = button.dataset.payablesWorkflow;
+    const tab = /** @type {string} */ (button.dataset.payablesWorkflow);
     button.classList.toggle("active", tab === payablesWorkflowTab);
     button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
   });
@@ -6420,9 +6450,10 @@ function renderReplenishmentsWorkflowTabs() {
     payment: scoped.filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed).length,
     all: scoped.length,
   };
+  /** @type {Record<string, any>} */
   const labels = { requests: "Requests", payment: "For Payment", all: "All Expenses" };
   qsaIn(qs("#replenishments-workflow-tabs"), "[data-replenishments-workflow]").forEach((button) => {
-    const tab = button.dataset.replenishmentsWorkflow;
+    const tab = /** @type {string} */ (button.dataset.replenishmentsWorkflow);
     button.classList.toggle("active", tab === replenishmentsWorkflowTab);
     button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
   });
@@ -6448,6 +6479,7 @@ function showExpenseDetail(id) {
 
 /** @param {Employee} employee */
 function employeeBenefitsSummary(employee) {
+  /** @type {Record<string, any>} */
   const benefitIds = { SSS: employee.sssNo, PhilHealth: employee.philHealthNo, "Pag-IBIG": employee.pagIbigNo };
   return String(employee.benefits || "").split(",").map((benefit) => benefit.trim()).filter(Boolean).map((benefit) => `${escapeHtml(benefit)}${benefitIds[benefit] ? `<small>${escapeHtml(benefitIds[benefit])}</small>` : ""}`).join("") || "-";
 }
@@ -6633,6 +6665,7 @@ function renderPendingCreditInvoices() {
   qs("#credit-invoices-card-title").textContent = isHistory ? "Credit Approval History" : "Pending Credit Approval";
   qs("#credit-invoices-card-description").textContent = isHistory ? "Past invoice requests Accounting submitted over a client's credit limit, with the Admin/CEO decision." : "Invoices Accounting submitted over a client's credit limit, awaiting Admin/CEO sign-off. Nothing is deducted from stock until approved.";
   const requests = isHistory ? decided : pending;
+  /** @type {Record<string, any>} */
   const pillClass = { Pending: "orange", Approved: "green", Rejected: "red" };
   table("#pending-credit-invoices-table", ["Request", "Client", "Requested By", "Requested", "Projected Balance", "Credit Limit", "Status", "Actions"], requests.map((request) => ({ focus: request.id, cells: [request.id, request.client, request.requestedBy, request.requestedAt || "-", peso.format(request.projected), peso.format(request.limit), `<span class="pill ${pillClass[request.status] || "gray"}">${escapeHtml(request.status)}</span>`, pendingCreditInvoiceActions(request)] })));
 }
@@ -6746,6 +6779,7 @@ function renderReportKpis(entries) {
   qs("#report-detail-kpis").innerHTML = entries.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></div>`).join("");
 }
 
+/** @type {Record<string, any>} */
 const operationalReports = {
   "sales-territory": { title: "Sales by Territory", body: "Revenue by area and salesperson, with every document in view.", icon: "₱", render: renderSalesTerritoryReport },
   "sales-by-agent": { title: "Sales by Agent", body: "Revenue and order count per salesperson, with every document in view.", icon: "◈", render: renderSalesByAgentReport },
@@ -7001,6 +7035,7 @@ function renderComplianceAuditTable() {
   const filtered = entries.filter((entry) => (!module || entry.module === module) && includesSearch(Object.values(entry)));
   table("#report-detail-table", ["Date", "User", "Module", "Action", "Record"], filtered.map((entry) => ({ focus: [entry.record, entry.action, entry.user].filter(Boolean).join("|"), cells: [entry.date, entry.user, entry.module, entry.action, entry.record || "-"] })));
 }
+/** @type {Record<string, any>} */
 const salesBreakdownDimensions = {
   month: { title: "Sales by Month", body: "Monthly revenue trend with orders, average order value, and best month.", icon: "₱", groupLabel: "Month", topLabel: "Top Month", groupBy: (sale) => sale.date.slice(0, 7), formatGroup: monthLabel },
   client: { title: "Sales per Client", body: "Revenue, order count, and average order value by client.", icon: "◆", groupLabel: "Client", topLabel: "Top Client", groupBy: (sale) => sale.client },
@@ -7023,7 +7058,7 @@ function salesBreakdownLines(sale) {
   return sale.lines?.length ? sale.lines : [{ item: sale.item, code: sale.code, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: sale.price }];
 }
 
-/** @param {any} line */
+/** @param {PoLine} line */
 function itemClassificationFor(line) {
   const item = data.items.find((entry) => entry.code === line.code || entry.name === line.item);
   return item?.classification || item?.category || "Unclassified";
@@ -7047,7 +7082,9 @@ function renderSalesBreakdownReport(dimension) {
   const totalOrders = sales.length;
   const avgOrder = totalOrders ? totalSales / totalOrders : 0;
 
+  /** @type {Record<string, any>} */
   const groupTotals = {};
+  /** @type {Record<string, any>} */
   const groupOrders = {};
   if (config.perLine) {
     sales.forEach((sale) => {
@@ -7083,6 +7120,7 @@ function renderSalesBreakdownReport(dimension) {
   const rankRows = sortedEntries.slice(0, 10).map(([key, value]) => [formatGroup(key), value]);
   qs("#sales-breakdown-rank-chart").innerHTML = barRows(rankRows, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote(`Computed from invoice net totals grouped by ${config.groupLabel.toLowerCase()}, ranked by revenue, for the selected date range.`);
 
+  /** @type {Record<string, any>} */
   const monthlyTrend = sales.reduce((acc, sale) => {
     const month = sale.date.slice(0, 7);
     acc[month] = (acc[month] || 0) + Number(sale.net || 0);
@@ -7243,6 +7281,7 @@ function renderReconciliation() {
   ].map(([title, value, note]) => `<article class="stat-card"><span>${title}</span><strong>${value}</strong><small>${note}</small></article>`).join("");
   qs("#reconciliation-description").innerHTML = `<div class="panel-header"><div><p class="eyebrow">How It Computes</p><h2>Comparison Preview and Record Checks</h2>${selectedRun ? `<p class="selected-history-note">Viewing saved run from ${escapeHtml(selectedRun.date)}: ${selectedRun.findings} findings, ${selectedRun.passRate}% pass rate.</p>` : ""}</div><span class="badge">${scope.range.label} · ${findings.length} to fix · ${successes.length} examples passed</span></div><div class="recon-visual-grid"><div><h3>Issue Severity</h3><div class="chart-bars">${barRows([["High", high], ["Medium", medium], ["Low", low], ["Passed", passed]], (value) => `${value} check${value === 1 ? "" : "s"}`, ["red", "orange", "", "green"])}</div></div><div><h3>What is compared</h3><ul class="compact-list"><li><span>Date scope</span><strong>sales by invoice date, payments by recorded/collected date</strong></li><li><span>Sales amount</span><strong>sum(qty x price) vs gross before discount/VAT</strong></li><li><span>Collections</span><strong>paid vs net, receipt uniqueness, cheque bank/date</strong></li><li><span>Client risk</span><strong>selected-date AR against credit limit plus required docs</strong></li></ul></div></div><details class="recon-correct-records"><summary><strong><i class="collapse-icon" aria-hidden="true">›</i> Correct Records Preview</strong><span>${successes.length} passed example${successes.length === 1 ? "" : "s"}</span></summary><div class="table-card compact-table"><table><tbody>${successes.slice(0, 8).map((row) => `<tr><td>${escapeHtml(row[0])}</td><td>${escapeHtml(row[1])}</td><td>${escapeHtml(row[2])}</td><td><button class="mini-button" data-go-section="${row[3]}" data-focus-record="${escapeHtml(row[4])}">View</button></td></tr>`).join("") || `<tr><td>No passing examples available for the selected dates.</td></tr>`}</tbody></table></div></details>`;
   const period = qs("#recon-period")?.value || "month";
+  /** @type {Record<string, any>} */
   const buckets = scope.sales.reduce((acc, sale) => {
     const key = periodKey(sale.date, period);
     acc[key] ||= { sales: 0, findings: 0 };
@@ -7352,6 +7391,7 @@ async function renderUserSessions(target = selectedUserSessionsTarget) {
   }
 }
 function dedupedUsers() {
+  /** @type {Record<string, any>} */
   const map = new Map();
   data.users.forEach((user, index) => {
     const key = String(user.email || user.id || user.name || "").trim().toLowerCase();
@@ -8230,6 +8270,7 @@ function syncClientDepartmentContactsHidden() {
   const contactField = qs("#contact");
   const departmentsField = qs("#contactDepartments");
   if (!contactField || !departmentsField) return;
+  /** @type {Record<string, any>} */
   const departments = {};
   clientContactDepartments.forEach(([key]) => {
     const person = qs(`.dept-contact-input[data-dept="${key}"][data-dept-field="person"]`)?.value.trim() || "";
@@ -8246,6 +8287,7 @@ function syncClientDepartmentContactsHidden() {
 
 /** @param {any} json */
 function populateClientDepartmentContacts(json) {
+  /** @type {Record<string, any>} */
   let departments = {};
   try { departments = JSON.parse(json || "{}"); } catch { departments = {}; }
   clientContactDepartments.forEach(([key]) => {
@@ -8343,6 +8385,7 @@ function syncProductIssueClientAddress() {
 function openMasterEditModal(type, index) {
   const canEdit = ["Superadmin", "CEO"].includes(currentUser?.role);
   if (!canEdit) {
+    /** @type {Record<string, any>} */
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const record = listByType[type]?.[index];
     notify("Approval", `${currentUser?.name || "System User"} requested Superadmin/CEO approval to edit ${type}: ${record?.name || record?.code || "record"}.`, "masterlists", record?.name || record?.code || "");
@@ -8350,6 +8393,7 @@ function openMasterEditModal(type, index) {
     renderNotifications();
     return toast("Masterlist edits require Superadmin/CEO approval. Request sent.");
   }
+  /** @type {Record<string, any>} */
   const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
   openModal(type, { list: listByType[type], index, record: listByType[type][index] });
 }
