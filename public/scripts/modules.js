@@ -141,8 +141,10 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
+const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "inventory", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"];
+
 function renderWorkflowAssistAll() {
-  ["dashboard", "analytics", "masterlists", "inventory", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"].forEach(renderWorkflowAssist);
+  WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
 }
 
 /** @param {any} value */
@@ -3835,10 +3837,13 @@ async function refreshUploadedFiles() {
   uploadedFilesLoaded = true;
 }
 
+/** @type {Promise<void> | null} */
+let uploadedFilesLoading = null;
 /** @param {any} onLoaded */
 function ensureUploadedFilesLoaded(onLoaded) {
   if (uploadedFilesLoaded) return;
-  refreshUploadedFiles().then(onLoaded);
+  uploadedFilesLoading ||= refreshUploadedFiles().finally(() => { uploadedFilesLoading = null; });
+  uploadedFilesLoading.then(onLoaded);
 }
 
 /** @param {string} recordType @param {string} recordId */
@@ -7286,6 +7291,8 @@ function recordReconciliationRun(findings, passRate, scope) {
 }
 
 function renderReconciliation() {
+  // Findings flag clients with missing documents, so the file list has to be loaded to be accurate.
+  ensureUploadedFilesLoaded(renderReconciliation);
   defaultDateRangeIfEmpty("recon-date-from", "recon-date-to");
   const scope = getReconScope();
   const findings = getReconciliationFindings(scope);
@@ -7951,7 +7958,7 @@ async function loadMoreUserAuditLog() {
 let appInitialRenderComplete = false;
 /** @type {Record<string, any>} */
 const sectionRenderers = {
-  dashboard: () => { renderDashboard(); renderWorkflowAssist("dashboard"); },
+  dashboard: renderDashboard,
   calendar: renderCalendarSection,
   analytics: renderAnalytics,
   masterlists: renderMasterlists,
@@ -7985,12 +7992,17 @@ const sectionRenderers = {
 /** @param {string} [sectionId] */
 function renderSection(sectionId = document.body.dataset.activeSection || "dashboard") {
   sectionRenderers[sectionId]?.();
+  if (WORKFLOW_ASSIST_SECTIONS.includes(sectionId)) renderWorkflowAssist(sectionId);
   renderUserMenu();
   if (sectionId !== "user-settings") renderUserSettings();
 }
 function renderAll() {
   if (appInitialRenderComplete) return renderSection();
-  renderBranchFilter(); renderDashboard(); renderCalendarSection(); renderAnalytics(); renderMasterlists(); renderInventory(); renderItemForecast(); renderSales(); renderPurchaseOrders(); renderInvoicing(); renderCollections(); renderReceivablesTracker(); renderClientInvoices(); renderWarranty(); renderProductIssues(); renderPurchaseHistory(); renderImports(); renderPayables(); renderReplenishments(); renderReports(); renderReconciliation(); renderUsers(); renderNotifications(); renderMemoBadge(); renderSecurity(); renderPlatformSettings(); if (backupsLoaded || document.body.dataset.activeSection === "backup") renderBackup(); if (document.body.dataset.activeSection === "logs") renderLogs(); if (document.body.dataset.activeSection === "memos") renderMemos(); renderUserMenu(); renderUserSettings(); renderWorkflowAssistAll(); appInitialRenderComplete = true;
+  // Only what's visible on every page, plus the section on screen. showSection() draws the others
+  // when they're opened. Everything here changes the page outside its own section.
+  renderBranchFilter(); renderNotifications(); renderMemoBadge(); renderPlatformSettings();
+  renderSection();
+  appInitialRenderComplete = true;
 }
 
 async function runReconciliationWorkflow() {

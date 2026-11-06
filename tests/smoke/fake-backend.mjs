@@ -4,9 +4,11 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { seedData } from "./seed-data.mjs";
 
 const port = Number(process.argv[2] || 8799);
+const seedScale = Number(process.argv[3] || 0);
 const root = fileURLToPath(new URL("../../public/", import.meta.url));
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".mp3": "audio/mpeg" };
 const b64 = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -26,7 +28,7 @@ const readBody = async (req) => { let text = ""; for await (const chunk of req) 
 
 const authedRoutes = {
   "GET /api/auth/me": (role) => ({ user: userFor(role) }),
-  "GET /api/modules/state": () => ({ data: seedData(), revision: 1, changesCursor: "cursor-1", pagination: {} }),
+  "GET /api/modules/state": () => ({ data: seedData(seedScale), revision: 1, changesCursor: "cursor-1", pagination: {} }),
   "PUT /api/modules/state": () => ({ revision: 2 }),
   "POST /api/modules/records": () => ({ revision: 2 }),
   "GET /api/modules/changes": () => ({ rows: [], cursor: "cursor-2" }),
@@ -44,7 +46,8 @@ const authedRoutes = {
   "GET /api/game/me": () => ({ score: null }),
 };
 
-const send = (res, status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+// Compressed like production, so transfer sizes and timings mean something.
+const send = (res, status, body) => { res.writeHead(status, { "content-type": "application/json", "content-encoding": "gzip" }); res.end(gzipSync(JSON.stringify(body))); };
 
 createServer(async (req, res) => {
   const { pathname } = new URL(req.url, "http://x");
@@ -71,6 +74,9 @@ createServer(async (req, res) => {
   }
   let file = join(root, decodeURIComponent(pathname));
   try { if (!(await stat(file)).isFile()) throw new Error("not a file"); } catch { file = join(root, "index.html"); }
-  res.writeHead(200, { "content-type": TYPES[extname(file)] || "application/octet-stream", "cache-control": "no-store" });
-  res.end(await readFile(file));
+  const type = TYPES[extname(file)] || "application/octet-stream";
+  const content = await readFile(file);
+  const compress = /text|javascript|json|svg/.test(type);
+  res.writeHead(200, { "content-type": type, "cache-control": "no-store", ...(compress ? { "content-encoding": "gzip" } : {}) });
+  res.end(compress ? gzipSync(content) : content);
 }).listen(port, "127.0.0.1");

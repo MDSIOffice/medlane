@@ -1512,14 +1512,30 @@
          still guaranteeing document-order execution after parsing (same DOM-ready guarantee
          these already had at the bottom of body) — cuts wall-clock script load time without
          changing init order or DOMContentLoaded timing. -->
-    <script src="scripts/vendor/pdf-lib.min.js" defer></script>
-    <script src="scripts/config-data.js" defer></script>
-    <script src="scripts/api-client.js" defer></script>
-    <script src="scripts/state.js" defer></script>
-    <script src="scripts/ui-utils.js" defer></script>
-    <script src="scripts/modules.js" defer></script>
-    <script src="scripts/events-bootstrap.js" defer></script>
-    <script src="scripts/game.js" defer></script>
+    <script>
+      // The app's scripts are only needed by someone logging in or already logged in, so a public
+      // visitor to the landing page doesn't download them. Anything unrecognised loads the app, which
+      // then routes exactly as it always has: a query string or hash might be an invite or reset link.
+      (function () {
+        var path = location.pathname.replace(/\/$/, "");
+        var marketingParams = /^(utm_[a-z]+|fbclid|gclid|ref)$/;
+        var plainUrl = Array.from(new URLSearchParams(location.search).keys()).every(function (key) { return marketingParams.test(key); }) && location.hash.indexOf("=") === -1;
+        var loggedIn = true;
+        try { loggedIn = Boolean(localStorage.getItem("medlane-api-session") || localStorage.getItem("medlane-session")); } catch (e) {}
+        if ((path === "" || path === "/index.html") && plainUrl && !loggedIn) {
+          document.body.classList.add("public-landing");
+          document.getElementById("login-screen").classList.add("hidden");
+          setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
+          return;
+        }
+        ["vendor/pdf-lib.min.js", "config-data.js", "api-client.js", "state.js", "ui-utils.js", "modules.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+          var script = document.createElement("script");
+          script.src = "scripts/" + file;
+          script.async = false; // Run in this order: they share one global scope.
+          document.body.appendChild(script);
+        });
+      })();
+    </script>
     <script src="scripts/landing-motion.js" defer></script>
     <script src="scripts/landing-journey.js" defer></script>
     <script src="scripts/app-motion.js" defer></script>
