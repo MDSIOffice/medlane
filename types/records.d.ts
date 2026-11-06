@@ -238,3 +238,9 @@ interface RawData {
   pendingTransfers: any[]; payables: any[]; replenishments: any[]; payments: any[]; purchaseOrders: any[];
   inventoryPurchaseOrders: any[]; inventoryDemoRequests: any[]; collectionContacts: any[]; productIssues: any[];
 }
+
+/** Cloudflare Worker environment (vars, secrets and bindings). Loosely typed: bindings are only used inside src/. */
+interface WorkerEnv {
+  ENVIRONMENT?: string;
+  [binding: string]: any;
+}

@@ -27,8 +27,8 @@ for f in $FILES; do
   n="$(echo "$f" | tr / _)"
   if [ ! -s "$TMP/a/$n" ]; then echo "ERROR    $f (failed to compile)"; status=1; continue; fi
   if cmp -s "$TMP/b/$n" "$TMP/a/$n"; then echo "IDENTICAL $f"; continue; fi
-  d=$(diff <(norm "$TMP/b/$n") <(norm "$TMP/a/$n") || true)
+  d=$(diff -a <(norm "$TMP/b/$n") <(norm "$TMP/a/$n") || true)
   if [ -z "$d" ]; then echo "IDENTICAL $f (only redundant parentheses from casts)"; else
-    echo "CHANGED   $f — review these runtime differences:"; echo "$d" | grep '^[<>]' | cut -c1-220 | sed 's/^/    /'; fi
+    echo "CHANGED   $f — review these runtime differences:"; echo "$d" | grep -a '^[<>]' | cut -c1-220 | sed 's/^/    /'; fi
 done
 exit $status

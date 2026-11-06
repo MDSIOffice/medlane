@@ -9,10 +9,9 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
-    // Strict flags are being turned on one at a time (see tools/strict-progress.sh for the
-    // remaining error count of each flag that is still off).
-    "strict": false,
-    "noImplicitAny": false,
+    // Full strict mode is on (all strict flags, incl. noImplicitAny). New code must typecheck under it.
+    "strict": true,
+    "noImplicitAny": true,
     "strictNullChecks": true,
     "useUnknownInCatchVariables": true,
     "strictPropertyInitialization": true,

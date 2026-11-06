@@ -7,6 +7,7 @@ const jsonHeaders = {
   "cache-control": "no-store",
 };
 
+/** @type {Record<string, any>} */
 const roleModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   CEO: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
@@ -24,6 +25,7 @@ Object.values(roleModules).forEach((modules) => modules.push("memos"));
 
 // Modules a role may never see, even if an admin granted them in per-user module_permissions
 // (profileForUser strips them). Logistics has no business in the audit trail or support tracker.
+/** @type {Record<string, any>} */
 const ROLE_BLOCKED_MODULES = {
   Logistics: ["logs", "product-issues"],
 };
@@ -43,6 +45,7 @@ const DISCORD_ROLE_IDS = {
   "Product Specialist": "1527546344477036544",
 };
 
+/** @type {Record<string, any>} */
 const digestRoleMentions = {
   Accounting: [DISCORD_ROLE_IDS.Accounting],
   Sales: [DISCORD_ROLE_IDS.Sales],
@@ -89,6 +92,7 @@ const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
 const genericStateBlockedKeys = new Set(["users", "branch", "masterTab"]);
 const defaultSeedSignature = { clients: 2, items: 4, suppliers: 3, employees: 1, banks: 2 };
 
+/** @param {any} data @param {Record<string, any>} [init] */
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
@@ -100,16 +104,19 @@ function shortDate() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 }
 
+/** @type {Record<string, any>} */
 const poNextStatus = { Approved: "Sent to Supplier", "Sent to Supplier": "In Transit", "In Transit": "For Receiving" };
 const poCancellableStatuses = ["Approved", "Sent to Supplier", "In Transit", "For Receiving", "Partially Received"];
 function poTimestamp() {
   return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 
+/** @param {WorkerEnv} env */
 function appStateKey(env) {
   return env.APP_STATE_KEY || env.ENVIRONMENT || "production";
 }
 
+/** @param {WorkerEnv} env */
 function supabaseBaseUrl(env) {
   return new URL(env.SUPABASE_URL).origin;
 }
@@ -118,17 +125,20 @@ function methodNotAllowed() {
   return json({ error: "Method not allowed" }, { status: 405 });
 }
 
+/** @param {any} value */
 async function shortHash(value) {
   const bytes = new TextEncoder().encode(String(value || ""));
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(hash)].slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** @param {WorkerEnv} env @param {any} keys */
 function requireEnv(env, keys) {
-  const missing = keys.filter((key) => !env[key]);
+  const missing = keys.filter((/** @type {any} */ key) => !env[key]);
   if (missing.length) throw new Error(`Missing Worker secret/var: ${missing.join(", ")}`);
 }
 
+/** @param {WorkerEnv} env @param {string} [token] */
 function supabaseHeaders(env, token = env.SUPABASE_SERVICE_ROLE_KEY) {
   return {
     apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -143,11 +153,13 @@ function supabaseHeaders(env, token = env.SUPABASE_SERVICE_ROLE_KEY) {
 const PUBLIC_APP_ORIGIN = "https://medlanesolutions.com";
 const PRODUCTION_WORKERS_DEV_HOST = "medlane.tofllorin.workers.dev";
 
+/** @param {Request} request */
 function requestOrigin(request) {
   const url = new URL(request.url);
   return url.hostname === PRODUCTION_WORKERS_DEV_HOST ? PUBLIC_APP_ORIGIN : url.origin;
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {Record<string, any>} [init] */
 async function supabaseFetchOnce(env, path, init = {}) {
   const response = await fetch(`${supabaseBaseUrl(env)}${path}`, {
     ...init,
@@ -158,6 +170,7 @@ async function supabaseFetchOnce(env, path, init = {}) {
   return payload;
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {Record<string, any>} [init] */
 async function supabaseFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
   const result = await supabaseFetchWithRetry(env, path, init);
@@ -166,6 +179,7 @@ async function supabaseFetch(env, path, init = {}) {
   return result;
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {any} init */
 async function supabaseFetchWithRetry(env, path, init) {
   try {
     return await supabaseFetchOnce(env, path, init);
@@ -185,6 +199,7 @@ async function supabaseFetchWithRetry(env, path, init) {
 // names that changed; LiveHub fans that tiny message out to every connected tab over a hibernated
 // WebSocket, and each tab then pulls the actual rows through /api/modules/changes (which applies
 // the user's view permissions). No record data ever travels over the socket.
+/** @param {string} path @param {any} init */
 function liveModulesForWrite(path, init) {
   if (!String(path).startsWith("/rest/v1/app_records")) return [];
   const method = String(init?.method || "GET").toUpperCase();
@@ -202,6 +217,7 @@ function liveModulesForWrite(path, init) {
   return [...new Set(modules)].filter((module) => !NON_STATE_MODULES.includes(module));
 }
 
+/** @param {WorkerEnv} env @param {any} modules */
 async function notifyLiveClients(env, modules) {
   if (!env.LIVE_HUB || !modules.length) return;
   try {
@@ -219,6 +235,7 @@ const LOGIN_THROTTLE_WINDOW_MS = 5 * 60 * 1000;
 // Our own per-IP brute-force guard for /api/auth/login. Supabase only sees the Worker's egress
 // IPs, so its per-IP limits can't tell users apart. Fails open: a throttle outage must never lock
 // everyone out of the app.
+/** @param {WorkerEnv} env @param {Request} request @param {string} action */
 async function loginThrottle(env, request, action) {
   const ip = clientIp(request);
   if (!env.LIVE_HUB || !ip) return { blocked: false, retryAfter: 0 };
@@ -233,13 +250,13 @@ async function loginThrottle(env, request, action) {
 }
 
 export class LiveHub extends DurableObject {
-  constructor(ctx, env) {
+  constructor(/** @type {any} */ ctx, /** @type {any} */ env) {
     super(ctx, env);
     // Answered by the runtime itself, without waking this object — keepalives cost nothing.
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
-  async fetch(request) {
+  async fetch(/** @type {any} */ request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/login-throttle/") && request.method === "POST") {
       // Per-IP failed-login counter (one object per IP). Only failures count, so many staff
@@ -273,11 +290,12 @@ export class LiveHub extends DurableObject {
 
   async webSocketMessage() { /* clients only send keepalive pings, auto-answered above */ }
 
-  async webSocketClose(socket, code) {
+  async webSocketClose(/** @type {any} */ socket, /** @type {any} */ code) {
     try { socket.close(code === 1005 ? 1000 : code, "closing"); } catch { /* already closed */ }
   }
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {Record<string, any>} [init] */
 async function supabaseFetchOnceWithTotal(env, path, init = {}) {
   const headers = { ...supabaseHeaders(env), ...(init.headers || {}) };
   headers.prefer = [headers.prefer, "count=exact"].filter(Boolean).join(",");
@@ -291,6 +309,7 @@ async function supabaseFetchOnceWithTotal(env, path, init = {}) {
   return { payload, total: Number.isFinite(total) ? total : null };
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {Record<string, any>} [init] */
 async function supabaseFetchWithTotal(env, path, init = {}) {
   try {
     return await supabaseFetchOnceWithTotal(env, path, init);
@@ -315,6 +334,7 @@ async function supabaseFetchWithTotal(env, path, init = {}) {
 // round trip to learn the total plus a single parallel batch for the rest. Falls back to the
 // old single-page result if the count header is ever missing (e.g. a malformed query PostgREST
 // rejects the Prefer header for), so this can never return less data than before.
+/** @param {WorkerEnv} env @param {string} path @param {Record<string, any>} [init] */
 async function supabaseFetchAll(env, path, init = {}) {
   const pageSize = 1000;
   const separator = path.includes("?") ? "&" : "?";
@@ -329,6 +349,7 @@ async function supabaseFetchAll(env, path, init = {}) {
   return all;
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {Record<string, any>} [init] */
 async function supabaseAuthAdminFetchOnce(env, path, init = {}) {
   const response = await fetch(`${supabaseBaseUrl(env)}${path}`, {
     ...init,
@@ -339,6 +360,7 @@ async function supabaseAuthAdminFetchOnce(env, path, init = {}) {
   return payload;
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {Record<string, any>} [init] */
 async function supabaseAuthAdminFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
   try {
@@ -350,6 +372,7 @@ async function supabaseAuthAdminFetch(env, path, init = {}) {
   }
 }
 
+/** @param {string} password */
 function passwordPolicyError(password) {
   const value = String(password || "");
   if (value.length < 8) return "Password must be at least 8 characters";
@@ -360,10 +383,12 @@ function passwordPolicyError(password) {
   return "";
 }
 
+/** @param {WorkerEnv} env */
 function resendFrom(env) {
   return env.RESEND_FROM || "Medlane OS <onboarding@resend.dev>";
 }
 
+/** @param {any} actionLink @param {any} origin */
 function wrapAuthActionLink(actionLink, origin) {
   // Supabase's raw action_link points at the Supabase project domain (rawjrrhskunlbffhdfxm.supabase.co),
   // which never matches the Resend sending domain and gets flagged as a mismatched-URL spam signal.
@@ -379,25 +404,30 @@ function wrapAuthActionLink(actionLink, origin) {
   }
 }
 
+/** @param {any} [origin] */
 function medlaneLogoUrl(origin = PUBLIC_APP_ORIGIN) {
   return `${String(origin || PUBLIC_APP_ORIGIN).replace(/\/$/, "")}/medlane.jpg`;
 }
 
+/** @param {{ title: any, eyebrow?: string, intro?: string, bodyHtml?: string, origin?: any }} options */
 function brandedEmailHtml({ title, eyebrow = "Medlane Diagnostic Solutions", intro = "", bodyHtml = "", origin = PUBLIC_APP_ORIGIN }) {
   const year = new Date().getFullYear();
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:#eaf7ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#dff4ff 0%,#f7fcff 55%,#fff7ec 100%);padding:34px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:720px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #bfe7fb;box-shadow:0 24px 70px rgba(0,46,93,.16);"><tr><td style="background:linear-gradient(120deg,#0b2f52 0%,#1d6fa5 100%);padding:28px 30px;color:#fff;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="width:62px;vertical-align:top;"><img src="${escapeHtml(medlaneLogoUrl(origin))}" width="52" height="52" alt="Medlane" style="display:block;border-radius:16px;background:#fff;padding:5px;box-shadow:0 10px 28px rgba(0,0,0,.18);"></td><td style="vertical-align:top;padding-left:14px;"><div style="font-size:12px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#e8c684;">${escapeHtml(eyebrow)}</div><h1 style="margin:8px 0 0;font-size:30px;line-height:1.08;letter-spacing:-.02em;color:#ffffff;">${escapeHtml(title)}</h1>${intro ? `<p style="margin:10px 0 0;font-size:15px;line-height:1.55;color:#dcedf9;">${escapeHtml(intro)}</p>` : ""}</td></tr></table></td></tr><tr><td style="padding:28px 30px;font-size:14px;line-height:1.65;border-top:4px solid #c98a1f;">${bodyHtml || "<p>Nothing to report.</p>"}</td></tr><tr><td style="padding:18px 30px;background:#f3fbff;border-top:1px solid #d8eef9;color:#4f6b86;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. Automated system email - do not reply.</td></tr></table></td></tr></table></body></html>`;
 }
 
+/** @param {{ fullName: any, email: string, role: any, actionLink: any, origin: any }} options */
 function brandedInviteEmailHtml({ fullName, email, role, actionLink, origin }) {
   const body = `<p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#f59e0b;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#10213d;text-decoration:none;font-weight:900;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f3fbff;border:1px solid #bfe7fb;border-left:5px solid #f59e0b;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#003f73;">Account details</strong><div>Email: ${escapeHtml(email)}</div><div>Role: ${escapeHtml(role)}</div></div><p style="margin:18px 0 0;color:#4f6b86;font-size:13px;line-height:1.55;">If the button does not work, open this secure link:<br><a href="${escapeHtml(actionLink)}" style="color:#0077bd;word-break:break-all;">${escapeHtml(actionLink)}</a></p>`;
   return brandedEmailHtml({ title: "Welcome to Medlane OS", intro: "Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.", bodyHtml: body, origin });
 }
 
+/** @param {{ fullName: any, email: string, actionLink: any, origin: any }} options */
 function passwordResetEmailHtml({ fullName, email, actionLink, origin }) {
   const body = `<p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">We received a request to reset the password for your Medlane OS account. Use the button below to choose a new password.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:900;font-size:15px;border-radius:999px;">Reset Password</a></td></tr></table><div style="background:#f3fbff;border:1px solid #bfe7fb;border-left:5px solid #0077bd;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#003f73;">Account</strong><div>Email: ${escapeHtml(email)}</div></div><p style="margin:18px 0 0;color:#4f6b86;font-size:13px;line-height:1.55;">If the button does not work, open this secure link:<br><a href="${escapeHtml(actionLink)}" style="color:#0077bd;word-break:break-all;">${escapeHtml(actionLink)}</a></p><p style="margin:14px 0 0;color:#4f6b86;font-size:13px;line-height:1.55;">This link expires shortly. If you did not request a password reset, you can safely ignore this email &mdash; your password will not change.</p>`;
   return brandedEmailHtml({ title: "Reset your Medlane OS password", intro: "Choose a new password to get back into your workspace.", bodyHtml: body, origin });
 }
 
+/** @param {{ fullName: any, email: string, role: any, actionLink: any, origin: any }} options */
 function inviteEmailHtml({ fullName, email, role, actionLink, origin }) {
   const year = new Date().getFullYear();
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to Medlane OS</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:12px 0 6px;font-size:34px;line-height:1.05;">Welcome to Medlane OS</h1><p style="margin:0;font-size:16px;line-height:1.6;opacity:.96;">Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.</p></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#fff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f4f9ff;border:1px solid #d8ebfb;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#005a9c;">Security reminder</strong><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Create a password with at least 8 characters, one letter, one number, and one special character. Never share your password or invitation link.</p></div><p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#4c6280;">If the button does not work, copy and paste this link into your browser:</p><p style="word-break:break-all;margin:0 0 18px;font-size:13px;line-height:1.6;color:#0077bd;">${escapeHtml(actionLink)}</p><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Account email: <strong>${escapeHtml(email)}</strong><br>Login site: <a href="${escapeHtml(origin)}" style="color:#0077bd;">${escapeHtml(origin)}</a></p></td></tr><tr><td style="padding:22px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. This message was sent for account access setup. If you did not expect this invitation, ignore this email or contact your administrator.</td></tr></table></td></tr></table></body></html>`;
@@ -432,6 +462,7 @@ const RESEND_MIN_GAP_MS = 160;
 let resendGate = Promise.resolve();
 let resendLastAt = 0;
 function paceResend() {
+  /** @type {Record<string, any>} */
   const next = resendGate.then(async () => {
     const wait = resendLastAt + RESEND_MIN_GAP_MS - Date.now();
     if (wait > 0) await sleep(wait);
@@ -441,6 +472,7 @@ function paceResend() {
   return next;
 }
 
+/** @param {WorkerEnv} env @param {any} body */
 async function resendEmailRequest(env, body) {
   for (let attempt = 0; ; attempt++) {
     await paceResend();
@@ -478,6 +510,7 @@ async function sendResendEmail(env, { to, subject, html, digestMessageId = null 
 // Stashes the exact rendered HTML of a digest email in R2 so the app's Audit Logs detail
 // view can show "what did they actually get". Keyed by a random id that goes onto the
 // matching audit-log row. Best-effort: a failure here must never stop the digest sending.
+/** @param {WorkerEnv} env @param {{ periodLabel: any, role: any, subject: any, html: any }} options */
 async function saveDigestMessageSnapshot(env, { periodLabel, role, subject, html }) {
   if (!env.DOCUMENTS_BUCKET || !html) return null;
   const id = crypto.randomUUID();
@@ -489,6 +522,7 @@ async function saveDigestMessageSnapshot(env, { periodLabel, role, subject, html
   return id;
 }
 
+/** @param {WorkerEnv} env @param {string | null} id */
 async function readDigestMessageSnapshot(env, id) {
   if (!env.DOCUMENTS_BUCKET || !/^[0-9a-f-]{36}$/i.test(String(id || ""))) return null;
   const object = await env.DOCUMENTS_BUCKET.get(`digest-messages/${appStateKey(env)}/${id}.html.gz`);
@@ -578,6 +612,7 @@ async function editDiscordWebhookMessage(webhookUrl, messageId, { content = "", 
   return { edited: true };
 }
 
+/** @param {any} webhookUrl @param {any} messageId */
 async function deleteDiscordWebhookMessage(webhookUrl, messageId) {
   if (!webhookUrl || !messageId) return { deleted: false, reason: "Webhook URL or message ID is missing" };
   const url = new URL(webhookUrl);
@@ -591,6 +626,7 @@ async function deleteDiscordWebhookMessage(webhookUrl, messageId) {
   return { deleted: true };
 }
 
+/** @param {any} lines @param {number} [limit] @param {any} [totalCount] */
 function discordFieldValue(lines, limit = 900, totalCount = lines.length) {
   if (!lines.length) return "None";
   let value = "";
@@ -606,35 +642,41 @@ function discordFieldValue(lines, limit = 900, totalCount = lines.length) {
   return value || "None";
 }
 
+/** @param {any} rows @param {any} moduleName */
 function moduleRecordMap(rows, moduleName) {
   const map = new Map();
-  rows.filter((row) => row.module_name === moduleName).forEach((row) => map.set(String(row.record_key), row.data || {}));
+  rows.filter((/** @type {any} */ row) => row.module_name === moduleName).forEach((/** @type {any} */ row) => map.set(String(row.record_key), row.data || {}));
   return map;
 }
 
+/** @param {any} po */
 function inventoryPoTotal(po) {
-  return (po.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0);
+  return (po.lines || []).reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0);
 }
 
+/** @param {any} po */
 function salesPoTotal(po) {
   return Number(po.amount || po.total || po.net || 0);
 }
 
+/** @param {any} profile */
 function eventActor(profile) {
   return profile.name || profile.email || "System User";
 }
 
+/** @param {any} value @param {string} [fallback] */
 function webhookText(value, fallback = "-") {
   const text = String(value ?? "").trim();
   return text || fallback;
 }
 
+/** @param {any} title @param {any} color @param {any} fields @param {any} profile */
 function discordEventEmbed(title, color, fields, profile) {
   return {
     title,
     color,
     fields: [
-      ...fields.filter((field) => field.value !== undefined && field.value !== null).map((field) => ({ ...field, value: String(field.value).slice(0, 1024) })),
+      ...fields.filter((/** @type {any} */ field) => field.value !== undefined && field.value !== null).map((/** @type {any} */ field) => ({ ...field, value: String(field.value).slice(0, 1024) })),
       { name: "Created / Updated By", value: `${eventActor(profile)} (${profile.role || "Unknown"})`, inline: false },
     ].slice(0, 25),
     timestamp: new Date().toISOString(),
@@ -646,24 +688,28 @@ function discordEventEmbed(title, color, fields, profile) {
 // (with data) so the poster can diff before/after.
 const DISCORD_EVENT_MODULES = ["purchaseOrders", "inventoryPurchaseOrders", "paymentRequests", "pendingTransfers", "payments"];
 
+/** @param {WorkerEnv} env @param {any} profile @param {{ title: any, color: any, fields: any, label: any }} options */
 async function postWorkflowEventToDiscord(env, profile, { title, color, fields, label }) {
   if (!env.DISCORD_WEBHOOK_URL) return;
   await sendDiscordWebhook(env, { embeds: [discordEventEmbed(title, color, fields, profile)] })
     .catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `${label}: ${error.message}` }).catch(() => null));
 }
 
+/** @param {WorkerEnv} env @param {any} profile @param {any} beforeRows @param {any} savedRows */
 async function postRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
   if (!env.DISCORD_WEBHOOK_URL || !savedRows.length) return;
+  /** @type {Record<string, any>} */
   const beforeByModule = {};
   DISCORD_EVENT_MODULES.forEach((moduleName) => { beforeByModule[moduleName] = moduleRecordMap(beforeRows, moduleName); });
+  /** @type {any[]} */
   const posts = [];
-  const push = (title, color, fields, label) => posts.push(postWorkflowEventToDiscord(env, profile, { title, color, fields, label }));
+  const push = (/** @type {any} */ title, /** @type {any} */ color, /** @type {any} */ fields, /** @type {any} */ label) => posts.push(postWorkflowEventToDiscord(env, profile, { title, color, fields, label }));
   for (const row of savedRows) {
     const key = String(row.record_key);
     const before = beforeByModule[row.module_name]?.get(key);
     const record = row.data || {};
     const isNew = !before;
-    const statusChanged = (field) => before && String(before[field] || "") !== String(record[field] || "");
+    const statusChanged = (/** @type {any} */ field) => before && String(before[field] || "") !== String(record[field] || "");
 
     if (row.module_name === "purchaseOrders") {
       if (isNew) {
@@ -774,7 +820,7 @@ async function postRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
 }
 
 /** @returns {Promise<any[]>} */
-async function trackNewOccurrences(env, moduleName, currentIds) {
+async function trackNewOccurrences(/** @type {any} */ env, /** @type {any} */ moduleName, /** @type {any} */ currentIds) {
   const stateKey = appStateKey(env);
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=eq.state&select=data`);
   const known = new Set(rows[0]?.data?.ids || []);
@@ -789,17 +835,19 @@ async function trackNewOccurrences(env, moduleName, currentIds) {
   return fresh;
 }
 
+/** @param {WorkerEnv} env @param {string} email */
 async function findAuthUserByEmail(env, email) {
   const target = cleanEmail(email);
   for (let page = 1; page <= 25; page += 1) {
     const payload = await supabaseAuthAdminFetch(env, `/auth/v1/admin/users?page=${page}&per_page=1000`).catch((error) => ({ _error: error.message, users: [] }));
-    const match = (payload.users || []).find((user) => cleanEmail(user.email) === target);
+    const match = (payload.users || []).find((/** @type {any} */ user) => cleanEmail(user.email) === target);
     if (match) return match;
     if (!payload.users || payload.users.length < 1000) break;
   }
   return null;
 }
 
+/** @param {WorkerEnv} env @param {any} profile @param {string} email */
 async function findAuthUserForProfileOrEmail(env, profile, email) {
   if (profile?.id) {
     const user = await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(profile.id)}`).catch(() => null);
@@ -808,6 +856,7 @@ async function findAuthUserForProfileOrEmail(env, profile, email) {
   return findAuthUserByEmail(env, email);
 }
 
+/** @param {any} payload */
 function extractLinkResult(payload) {
   // Supabase's raw /admin/generate_link REST response puts the user's fields at the top level
   // of the payload (not nested under a "user" key the way the supabase-js SDK abstracts it), with
@@ -820,7 +869,7 @@ function extractLinkResult(payload) {
 }
 
 /** @returns {Promise<any>} */
-async function generateSupabaseActionLink(env, { email, fullName, role, branch, origin }) {
+async function generateSupabaseActionLink(/** @type {any} */ env, /** @type {any} */ { email, fullName, role, branch, origin }) {
   const redirectTo = `${origin}/?login=1`;
   const options = { redirect_to: redirectTo, data: { full_name: fullName, role, branch } };
   const invitePayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", {
@@ -858,6 +907,7 @@ async function generateSupabaseActionLink(env, { email, fullName, role, branch, 
   throw new Error(`Could not create Supabase user: ${detail}`);
 }
 
+/** @param {WorkerEnv} env @param {string} email @param {any} origin */
 async function resolveInviteLink(env, email, origin) {
   const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
   if (!profiles[0]) throw new Error("User profile not found");
@@ -868,6 +918,7 @@ async function resolveInviteLink(env, email, origin) {
   return { actionLink: generated.actionLink, fullName, role };
 }
 
+/** @param {Request} request @param {WorkerEnv} env */
 async function authenticatedUser(request, env) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
   const authorization = request.headers.get("authorization") || "";
@@ -881,10 +932,12 @@ async function authenticatedUser(request, env) {
   return { token, user };
 }
 
+/** @param {Request} request */
 function clientIp(request) {
   return request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
 }
 
+/** @param {string} [userAgent] */
 function browserName(userAgent = "") {
   const value = String(userAgent);
   if (/Edg\//.test(value)) return "Microsoft Edge";
@@ -895,6 +948,7 @@ function browserName(userAgent = "") {
   return "Unknown browser";
 }
 
+/** @param {string} [userAgent] */
 function deviceName(userAgent = "") {
   const value = String(userAgent);
   const os = /Windows/i.test(value) ? "Windows" : /Mac OS X|Macintosh/i.test(value) ? "Mac" : /iPhone/i.test(value) ? "iPhone" : /iPad/i.test(value) ? "iPad" : /Android/i.test(value) ? "Android" : /Linux/i.test(value) ? "Linux" : "Unknown device";
@@ -902,11 +956,13 @@ function deviceName(userAgent = "") {
   return os === "Unknown device" ? os : `${os} ${type}`;
 }
 
+/** @param {Request} request */
 function sessionHeader(request) {
   const value = request.headers.get("x-medlane-session-id") || "";
   return /^[0-9a-f-]{36}$/i.test(value) ? value : "";
 }
 
+/** @param {WorkerEnv} env @param {Request} request @param {any} userId */
 async function createAppSession(env, request, userId) {
   const userAgent = request.headers.get("user-agent") || "";
   try {
@@ -924,6 +980,7 @@ async function createAppSession(env, request, userId) {
 
 const APP_SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
+/** @param {WorkerEnv} env @param {Request} request @param {any} userId */
 async function validateAppSession(env, request, userId) {
   const id = sessionHeader(request);
   if (!id) {
@@ -957,13 +1014,14 @@ async function validateAppSession(env, request, userId) {
 
 const PASSWORD_KYC_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
+/** @param {WorkerEnv} env @param {any} userId @param {string} email */
 async function profileForUser(env, userId, email) {
   const profile = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`);
   if (!profile[0]) throw new Error(`No Medlane profile found for ${email || "this account"}`);
   const permissions = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}&select=module_key,can_view,can_edit`);
   const fallback = roleModules[profile[0].role] || roleModules.Sales;
-  const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
-  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : fallback;
+  const view = permissions.length ? permissions.filter((/** @type {any} */ item) => item.can_view).map((/** @type {any} */ item) => item.module_key) : fallback;
+  const edit = permissions.length ? permissions.filter((/** @type {any} */ item) => item.can_edit).map((/** @type {any} */ item) => item.module_key) : fallback;
   // Every role can view memos regardless of when their module_permissions rows were created —
   // this is a newer module that predates most existing users' explicit permission grants, and
   // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
@@ -997,6 +1055,7 @@ async function profileForUser(env, userId, email) {
   };
 }
 
+/** @param {WorkerEnv} env @param {any} userId */
 async function markPasswordConfirmed(env, userId) {
   try {
     await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
@@ -1009,24 +1068,29 @@ async function markPasswordConfirmed(env, userId) {
   }
 }
 
+/** @param {Request} request @param {WorkerEnv} env */
 async function authenticatedProfile(request, env) {
   const { user } = await authenticatedUser(request, env);
   await validateAppSession(env, request, user.id);
   return { authUser: user, profile: await profileForUser(env, user.id, user.email) };
 }
 
+/** @param {any} profile */
 function canWrite(profile) {
   return Boolean(profile?.customPermissions?.edit?.length || ["Superadmin", "CEO", "Admin"].includes(profile?.role));
 }
 
+/** @param {any} profile */
 function requireWriteAccess(profile) {
   if (!canWrite(profile)) throw new Error("You do not have permission to edit production data");
 }
 
+/** @param {any} profile */
 function requireUserAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage users");
 }
 
+/** @param {any} profile */
 function requireMemoAdmin(profile) {
   if (!["Superadmin", "CEO", "HR"].includes(profile?.role)) throw new Error("Only Superadmin, CEO, or HR can post a memo");
 }
@@ -1037,16 +1101,19 @@ function requireMemoAdmin(profile) {
 // overselling stock. This re-checks those specific invariants server-side for newly created
 // invoices only — editing an already-saved sale (status/payment updates) is left alone, since
 // re-validating stock against a historical sale would fight the stock that sale already consumed.
+/** @param {any} code @param {any} branch @param {any} lot */
 function saleStockLookupKey(code, branch, lot) {
   return [code, branch, lot].map((part) => String(part || "").trim().toLowerCase()).join("|");
 }
 
+/** @param {any} value */
 function daysUntilIso(value) {
   const target = new Date(value);
   if (Number.isNaN(target.getTime())) return Infinity;
   return Math.floor((target.getTime() - Date.now()) / 86400000);
 }
 
+/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} newSaleRows */
 async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   const canAuthorizeDiscount = ["Superadmin", "CEO", "Admin"].includes(profile?.role);
   /** @type {Map<any, any> | null} */
@@ -1085,11 +1152,11 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   // Credit-limit gate for a new invoice by a non-authorizer. Shared by the normal path and the
   // noPo/migrated path below — those client-set flags skip stock/amount validation but must not
   // also skip the discount and credit controls.
-  const checkCredit = async (sale, label) => {
+  const checkCredit = async (/** @type {any} */ sale, /** @type {any} */ label) => {
   if (!canAuthorizeDiscount && sale.client) {
     if (!creditLimitByClient) {
       const clientRows = await loadClientRows();
-      creditLimitByClient = new Map(clientRows.map((clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
+      creditLimitByClient = new Map(clientRows.map((/** @type {any} */ clientRow) => [clientRow.data?.name, Number(clientRow.data?.creditLimit || 0)]));
     }
     const limit = creditLimitByClient.get(sale.client) || 0;
     if (limit > 0) {
@@ -1121,7 +1188,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     if (sale.noPo && !sale.migrated && sale.client) {
       if (!archivedClientNames) {
         const clientRows = await loadClientRows();
-        archivedClientNames = new Set(clientRows.filter((clientRow) => clientRow.data?.archived).map((clientRow) => clientRow.data?.name));
+        archivedClientNames = new Set(clientRows.filter((/** @type {any} */ clientRow) => clientRow.data?.archived).map((/** @type {any} */ clientRow) => clientRow.data?.name));
       }
       if (archivedClientNames.has(sale.client)) throw new Error(`Invoice ${sale.documentNo || row.record_key}: ${sale.client} is archived and can no longer be used on a new invoice.`);
     }
@@ -1151,7 +1218,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     }
 
     if (sale.type !== "DR") {
-      const recomputedAmount = lines.reduce((sum, line) => sum + Math.max(0, Number(line.qty) * Number(line.price)), 0);
+      const recomputedAmount = lines.reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + Math.max(0, Number(line.qty) * Number(line.price)), 0);
       const submittedAmount = Number(sale.amount || 0);
       if (Math.abs(recomputedAmount - submittedAmount) > 0.01) throw new Error(`Invoice ${label}: amount does not match its line items.`);
 
@@ -1202,15 +1269,16 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
 // client client-side — this mirrors it server-side, the same way validateNewSaleRows() above
 // mirrors buildSale()'s skip-PO archived-client check. Checked for every incoming PO row (new
 // or edited), since buildPurchaseOrder() allows changing the client on an edit too.
+/** @param {WorkerEnv} env @param {any} stateKey @param {any} poRows */
 async function assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) {
-  const clientNames = [...new Set(poRows.map((row) => row.data?.client).filter(Boolean))];
+  const clientNames = [...new Set(poRows.map((/** @type {any} */ row) => row.data?.client).filter(Boolean))];
   if (!clientNames.length) return;
   const [clientRows, storedPoRows] = await Promise.all([
     supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`),
-    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(poRows.map((row) => row.record_key)))}&select=record_key,data`),
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&record_key=in.${encodeURIComponent(postgrestIn(poRows.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`),
   ]);
-  const archivedClientNames = new Set(clientRows.filter((clientRow) => clientRow.data?.archived).map((clientRow) => clientRow.data?.name));
-  const storedClientByKey = new Map(storedPoRows.map((entry) => [entry.record_key, entry.data?.client]));
+  const archivedClientNames = new Set(clientRows.filter((/** @type {any} */ clientRow) => clientRow.data?.archived).map((/** @type {any} */ clientRow) => clientRow.data?.name));
+  const storedClientByKey = new Map(storedPoRows.map((/** @type {any} */ entry) => [entry.record_key, entry.data?.client]));
   for (const row of poRows) {
     const client = row.data?.client;
     // A PO already saved against this client (e.g. client archived afterwards, then the PO is
@@ -1225,6 +1293,7 @@ async function assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) {
 // copy). Only rows that are new — or whose name/code/TIN actually changed — are checked, so
 // legacy duplicates already in the data never block an unrelated edit. Names compare ignoring
 // case, spaces and punctuation; codes ignore case and spaces; TINs compare by digits.
+/** @type {Record<string, any>} */
 const MASTERLIST_UNIQUE_FIELDS = {
   clients: { name: "name", code: "code", tin: "tin", label: "client" },
   suppliers: { name: "name", code: "code", tin: "tin", label: "supplier" },
@@ -1232,10 +1301,11 @@ const MASTERLIST_UNIQUE_FIELDS = {
   banks: { name: "name", label: "bank" },
   employees: { name: "name", label: "employee" },
 };
-const masterName = (value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-const masterCode = (value) => String(value ?? "").toLowerCase().replace(/\s+/g, "");
-const masterTin = (value) => String(value ?? "").replace(/\D/g, "");
+const masterName = (/** @type {any} */ value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const masterCode = (/** @type {any} */ value) => String(value ?? "").toLowerCase().replace(/\s+/g, "");
+const masterTin = (/** @type {any} */ value) => String(value ?? "").replace(/\D/g, "");
 
+/** @param {any} data @param {any} spec */
 function masterlistIdentity(data, spec) {
   return {
     name: masterName(data?.[spec.name]),
@@ -1244,32 +1314,37 @@ function masterlistIdentity(data, spec) {
   };
 }
 
+/** @param {WorkerEnv} env @param {any} stateKey @param {any} rows @param {{ replaceModules?: any }} options */
 async function assertMasterlistUnique(env, stateKey, rows, { replaceModules = false } = {}) {
+  /** @type {Record<string, any>} */
   const incomingByModule = {};
   for (const row of rows) if (MASTERLIST_UNIQUE_FIELDS[row.module_name] && !row.data?.archived) (incomingByModule[row.module_name] ||= []).push(row);
   for (const [moduleName, incoming] of Object.entries(incomingByModule)) {
     const spec = MASTERLIST_UNIQUE_FIELDS[moduleName];
     const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&select=record_key,data`);
-    const storedByKey = new Map(stored.map((entry) => [entry.record_key, entry.data || {}]));
-    const incomingKeys = new Set(incoming.map((row) => row.record_key));
+    const storedByKey = new Map(stored.map((/** @type {any} */ entry) => [entry.record_key, entry.data || {}]));
+    const incomingKeys = new Set(incoming.map((/** @type {any} */ row) => row.record_key));
     // A whole-module state save replaces the module: stored rows missing from it are being removed.
-    const active = stored.filter((entry) => !replaceModules && !entry.data?.archived && !incomingKeys.has(entry.record_key)).map((entry) => ({ key: entry.record_key, id: masterlistIdentity(entry.data, spec) }));
+    const active = stored.filter((/** @type {any} */ entry) => !replaceModules && !entry.data?.archived && !incomingKeys.has(entry.record_key)).map((/** @type {any} */ entry) => ({ key: entry.record_key, id: masterlistIdentity(entry.data, spec) }));
     // Rows in this same save count as "existing" for each other.
     for (const row of incoming) active.push({ key: row.record_key, id: masterlistIdentity(row.data, spec), incoming: true });
     for (const row of incoming) {
+      /** @type {Record<string, any>} */
       const id = masterlistIdentity(row.data, spec);
       const prev = storedByKey.get(row.record_key);
+      /** @type {Record<string, any> | null} */
       const prevId = prev ? masterlistIdentity(prev, spec) : null;
       for (const field of ["name", "code", "tin"]) {
         if (!id[field]) continue;
         if (prevId && prevId[field] === id[field]) continue;
-        const clash = active.find((other) => other.key !== row.record_key && other.id[field] === id[field]);
+        const clash = active.find((/** @type {any} */ other) => other.key !== row.record_key && other.id[field] === id[field]);
         if (clash) throw new Error(`Duplicate ${spec.label} ${field === "tin" ? "TIN" : field} detected: "${row.data?.[spec[field]]}" already exists.`);
       }
     }
   }
 }
 
+/** @param {WorkerEnv} env @param {any} memo */
 async function postMemoToDiscord(env, memo) {
   if (!env.MEMO_DISCORD_WEBHOOK_URL) {
     await recordSystemLog(env, { action: "Memo Discord post skipped", module: "Discord", record: `${memo.id}: MEMO_DISCORD_WEBHOOK_URL not configured` });
@@ -1292,22 +1367,27 @@ async function postMemoToDiscord(env, memo) {
   });
 }
 
+/** @param {any} profile */
 function requireBackupAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage backups");
 }
 
+/** @param {any} profile */
 function requireDigestAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can send digests");
 }
 
+/** @param {any} profile */
 function requirePoApprover(profile) {
   if (profile?.role !== "Superadmin") throw new Error("Only Superadmin can approve purchase orders");
 }
 
+/** @param {any} profile */
 function requirePoReceiver(profile) {
   if (!["Superadmin", "Logistics"].includes(profile?.role)) throw new Error("Only Logistics/Superadmin can update purchase order receiving");
 }
 
+/** @param {any} profile */
 function requirePaymentRequestApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve payment requests");
 }
@@ -1318,10 +1398,12 @@ function requirePaymentRequestApprover(profile) {
 //   any consumable line        -> "For Logistics Approval" (Logistics) -> "For Management Approval" -> "Approved"
 //   "Approved" -> "Returned" / "To Sales" when the units come back.
 // "For Sales Approval" is the retired first step; it is still honoured for requests filed before it.
+/** @param {any} request */
 function demoRequestInitialStatus(request) {
-  return (request?.lines || []).some((line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
+  return (request?.lines || []).some((/** @type {any} */ line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
 }
 
+/** @type {Record<string, any>} */
 const DEMO_TRANSITIONS = {
   "For Logistics Approval": { "For Management Approval": ["Logistics", "Superadmin", "CEO"] },
   "For Sales Approval": { "For Management Approval": ["Sales", "Admin", "Superadmin", "CEO"] },
@@ -1333,15 +1415,17 @@ const DEMO_TRANSITIONS = {
 // workflow: they cannot create reports or change anything beyond these workflow fields.
 const SUPPORT_STATUS_ONLY_ROLES = ["Engineering", "Product Specialist"];
 const SUPPORT_STATUS_FIELDS = new Set(["status", "currentActor", "resolvedBy", "resolvedAt", "history", "actionsTaken"]);
+/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} rows */
 async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
   if (!SUPPORT_STATUS_ONLY_ROLES.includes(profile?.role)) return;
-  const incoming = rows.filter((row) => row.module_name === "productIssues");
+  const incoming = rows.filter((/** @type {any} */ row) => row.module_name === "productIssues");
   if (!incoming.length) return;
-  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.productIssues&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((row) => row.record_key)))}&select=record_key,data`);
-  const storedByKey = new Map(stored.map((row) => [row.record_key, row.data || {}]));
+  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.productIssues&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`);
+  const storedByKey = new Map(stored.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
   for (const row of incoming) {
     const prev = storedByKey.get(row.record_key);
     if (!prev) throw new Error("Only Sales, Admin, CEO or Superadmin can request a service report");
+    /** @type {Record<string, any>} */
     const next = row.data || {};
     for (const field of new Set([...Object.keys(prev), ...Object.keys(next)])) {
       if (SUPPORT_STATUS_FIELDS.has(field)) continue;
@@ -1350,13 +1434,15 @@ async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
   }
 }
 
+/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} rows */
 async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows) {
-  const incoming = rows.filter((row) => row.module_name === "inventoryDemoRequests");
+  const incoming = rows.filter((/** @type {any} */ row) => row.module_name === "inventoryDemoRequests");
   if (!incoming.length) return;
-  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryDemoRequests&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((row) => row.record_key)))}&select=record_key,data`);
-  const storedByKey = new Map(stored.map((row) => [row.record_key, row.data || {}]));
+  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryDemoRequests&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`);
+  const storedByKey = new Map(stored.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
   const role = profile?.role;
   for (const row of incoming) {
+    /** @type {Record<string, any>} */
     const next = row.data || {};
     const prev = storedByKey.get(row.record_key);
     if (!prev) {
@@ -1375,23 +1461,24 @@ async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows)
 // Superadmin/CEO-only, and Accounting (who prepares both) can never approve either. Diffs each
 // incoming payables/replenishments row against the stored one so only an actual transition into
 // "Approved" is checked — ordinary edits and payment confirmation on already-approved rows pass.
+/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} rows */
 async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
   const role = profile?.role;
   const isManagement = ["Superadmin", "CEO"].includes(role);
-  const lower = (value) => String(value ?? "").trim().toLowerCase();
-  const fetchStored = async (moduleName, candidates) => {
+  const lower = (/** @type {any} */ value) => String(value ?? "").trim().toLowerCase();
+  const fetchStored = async (/** @type {any} */ moduleName, /** @type {any} */ candidates) => {
     if (!candidates.length) return new Map();
-    const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=record_key,data`);
-    return new Map(stored.map((row) => [row.record_key, row.data || {}]));
+    const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${moduleName}&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`);
+    return new Map(stored.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
   };
 
   // Payables / expense requests: any approved-or-paid-looking state (not just the literal
   // requestStatus) counts, compared case-insensitively against the stored row, so a non-approver
   // can't reach it by writing status/paymentConfirmed instead of requestStatus.
   if (!isManagement) {
-    const approvedLike = (data) => lower(data?.requestStatus) === "approved" || ["approved", "paid"].includes(lower(data?.status)) || data?.paymentConfirmed === true || data?.paymentConfirmed === "true";
+    const approvedLike = (/** @type {any} */ data) => lower(data?.requestStatus) === "approved" || ["approved", "paid"].includes(lower(data?.status)) || data?.paymentConfirmed === true || data?.paymentConfirmed === "true";
     for (const moduleName of ["payables", "replenishments"]) {
-      const candidates = rows.filter((row) => row.module_name === moduleName && approvedLike(row.data));
+      const candidates = rows.filter((/** @type {any} */ row) => row.module_name === moduleName && approvedLike(row.data));
       if (!candidates.length) continue;
       const stored = await fetchStored(moduleName, candidates);
       for (const row of candidates) {
@@ -1403,7 +1490,7 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
 
     // Collection payment requests: only Superadmin/CEO move one into Approved (the dedicated
     // approver guard was never wired into these generic writers).
-    const prCandidates = rows.filter((row) => row.module_name === "paymentRequests" && (lower(row.data?.requestStatus) === "approved" || lower(row.data?.status) === "approved"));
+    const prCandidates = rows.filter((/** @type {any} */ row) => row.module_name === "paymentRequests" && (lower(row.data?.requestStatus) === "approved" || lower(row.data?.status) === "approved"));
     if (prCandidates.length) {
       const stored = await fetchStored("paymentRequests", prCandidates);
       for (const row of prCandidates) {
@@ -1414,7 +1501,7 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
     }
 
     // Stock receipts: approving or cancelling one is Superadmin/CEO-only (requireStockReceiptApprover).
-    const receiptCandidates = rows.filter((row) => row.module_name === "stockReceipts" && lower(row.data?.status) !== "pending approval");
+    const receiptCandidates = rows.filter((/** @type {any} */ row) => row.module_name === "stockReceipts" && lower(row.data?.status) !== "pending approval");
     if (receiptCandidates.length) {
       const stored = await fetchStored("stockReceipts", receiptCandidates);
       for (const row of receiptCandidates) {
@@ -1426,7 +1513,7 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
 
   // Inventory purchase orders: approval is Superadmin-only (requirePoApprover) — CEO included.
   if (role !== "Superadmin") {
-    const poCandidates = rows.filter((row) => row.module_name === "inventoryPurchaseOrders" && lower(row.data?.status) === "approved");
+    const poCandidates = rows.filter((/** @type {any} */ row) => row.module_name === "inventoryPurchaseOrders" && lower(row.data?.status) === "approved");
     if (poCandidates.length) {
       const stored = await fetchStored("inventoryPurchaseOrders", poCandidates);
       for (const row of poCandidates) {
@@ -1441,24 +1528,27 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
 // but it lands in pendingCreditInvoices with status "Pending" rather than becoming a sale — only
 // Superadmin/CEO/Admin may move it to "Approved" or "Rejected". Diffs against the stored status so
 // only an actual transition out of "Pending" is checked.
+/** @param {WorkerEnv} env @param {any} stateKey @param {any} profile @param {any} rows */
 async function assertCreditApprovalAllowed(env, stateKey, profile, rows) {
   if (["Superadmin", "CEO", "Admin"].includes(profile?.role)) return;
-  const candidates = rows.filter((row) => row.module_name === "pendingCreditInvoices" && ["Approved", "Rejected"].includes(row.data?.status));
+  const candidates = rows.filter((/** @type {any} */ row) => row.module_name === "pendingCreditInvoices" && ["Approved", "Rejected"].includes(row.data?.status));
   if (!candidates.length) return;
-  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.pendingCreditInvoices&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=record_key,data`);
-  const storedStatus = new Map(stored.map((row) => [row.record_key, row.data?.status]));
+  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.pendingCreditInvoices&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((/** @type {any} */ row) => row.record_key)))}&select=record_key,data`);
+  const storedStatus = new Map(stored.map((/** @type {any} */ row) => [row.record_key, row.data?.status]));
   for (const row of candidates) {
     if (storedStatus.get(row.record_key) === row.data.status) continue;
     throw new Error("Only Superadmin, CEO, or Admin can approve or reject a credit-limit invoice request");
   }
 }
 
+/** @param {any} profile */
 function requireStockReceiptApprover(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve stock receipts");
 }
 
 const receivingSources = ["Shipment", "Local Purchase"];
 
+/** @param {any} body */
 function validateReceivingMeta(body) {
   const orderNumber = String(body.orderNumber || "").trim();
   if (!orderNumber) throw new Error("Order Number is required");
@@ -1474,18 +1564,20 @@ function validateReceivingMeta(body) {
 // preferred but any open line for the same item code is accepted. `allocated` tracks quantity
 // already claimed by earlier rows in the same receipt, so one item split across several lots
 // can't over-receive a single PO line.
+/** @param {any} po @param {any} code @param {any} lot @param {any} allocated */
 function matchReceivingPoLine(po, code, lot, allocated) {
-  const open = (po.lines || []).filter((entry) => entry.code === code && Number(entry.qty || 0) - Number(entry.receivedQty || 0) - (allocated.get(entry) || 0) > 0);
-  return open.find((entry) => entry.lot && entry.lot === lot) || open.find((entry) => !entry.lot) || open[0] || null;
+  const open = (po.lines || []).filter((/** @type {any} */ entry) => entry.code === code && Number(entry.qty || 0) - Number(entry.receivedQty || 0) - (allocated.get(entry) || 0) > 0);
+  return open.find((/** @type {any} */ entry) => entry.lot && entry.lot === lot) || open.find((/** @type {any} */ entry) => !entry.lot) || open[0] || null;
 }
 
+/** @param {any} po @param {any} submittedLines @param {any} items */
 function validateReceivingLines(po, submittedLines, items) {
   if (!Array.isArray(submittedLines) || !submittedLines.length) throw new Error("No receiving lines provided");
   const allocated = new Map();
   return submittedLines.map((submitted) => {
     const code = String(submitted.code || "").trim();
     if (!code) throw new Error("Item code is required for every receiving line");
-    const item = items.find((entry) => entry.code === code);
+    const item = items.find((/** @type {any} */ entry) => entry.code === code);
     if (!item) throw new Error(`Unknown item code: ${code}`);
     const equipment = isEquipmentItem(item);
     const qty = Number(submitted.qty || 0);
@@ -1507,6 +1599,7 @@ function validateReceivingLines(po, submittedLines, items) {
   });
 }
 
+/** @param {any} po @param {any} lines @param {any} inventory */
 function applyReceivingLines(po, lines, inventory) {
   let totalReceived = 0;
   for (const entry of lines) {
@@ -1521,13 +1614,14 @@ function applyReceivingLines(po, lines, inventory) {
       poLine.receivedQty = Number(poLine.receivedQty || 0) + entry.qty;
     }
     totalReceived += entry.qty;
-    const existing = inventory.find((inv) => inv.code === entry.code && inv.branch === entry.branch && inv.lot === entry.lot);
+    const existing = inventory.find((/** @type {any} */ inv) => inv.code === entry.code && inv.branch === entry.branch && inv.lot === entry.lot);
     if (existing) existing.qty = Number(existing.qty || 0) + entry.qty;
     else inventory.push({ code: entry.code, item: entry.item, brand: entry.brand, branch: entry.branch, lot: entry.lot, serial: entry.lot, expiry: entry.expiry, qty: entry.qty, min: 10 });
   }
   return totalReceived;
 }
 
+/** @param {any} authUser */
 function userStatusFromAuth(authUser) {
   if (!authUser) return "Profile only";
   if (authUser.banned_until) return "Disabled";
@@ -1536,11 +1630,13 @@ function userStatusFromAuth(authUser) {
   return "Pending";
 }
 
+/** @param {any} profile @param {any} authUser @param {string} [email] */
 function userDisplayName(profile, authUser, email = "") {
   const value = profile?.full_name || authUser?.user_metadata?.full_name || authUser?.raw_user_meta_data?.full_name || authUser?.user_metadata?.name || "";
   return String(value || "").trim() || (profile || authUser ? email : "Unlinked Auth Account (no profile)");
 }
 
+/** @param {any} profile @param {any} authUser @param {any[]} [permissions] */
 function userFromProfileAndAuth(profile, authUser, permissions = []) {
   const role = profile?.role || authUser?.user_metadata?.role || "Sales";
   const fallback = roleModules[role] || roleModules.Sales;
@@ -1563,8 +1659,10 @@ function userFromProfileAndAuth(profile, authUser, permissions = []) {
   };
 }
 
+/** @param {WorkerEnv} env @param {{ id: string, email: string, name: any }} options */
 async function userDeleteBlockers(env, { id, email, name }) {
   const needles = [id, email, name].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  /** @type {any[]} */
   const blockers = [];
   if (!needles.length) return blockers;
   const sessions = id ? await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(id)}&revoked_at=is.null&select=id`) .catch(() => []) : [];
@@ -1580,19 +1678,23 @@ async function userDeleteBlockers(env, { id, email, name }) {
   return blockers;
 }
 
+/** @param {any} role @param {any} view */
 function roleEditableFallback(role, view) {
   if (["Superadmin", "CEO", "Admin"].includes(role)) return view;
-  return view.filter((module) => !["users", "settings", "backup", "security", "logs"].includes(module));
+  return view.filter((/** @type {any} */ module) => !["users", "settings", "backup", "security", "logs"].includes(module));
 }
 
+/** @param {string | null | undefined} email */
 function cleanEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
+/** @param {string} email */
 function validEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+/** @param {any} role */
 function validRole(role) {
   return Object.prototype.hasOwnProperty.call(roleModules, role);
 }
@@ -1601,6 +1703,7 @@ function validRole(role) {
 // in modules.js) to the persisted module key canAccessKey() understands, so a file attached to
 // a module a user can't see isn't downloadable just because they're logged in. Any recordType
 // not listed here (or missing) resolves to undefined, which canAccessKey denies for non-admins.
+/** @type {Record<string, any>} */
 const fileRecordTypeKey = {
   memo: "memos",
   "client-doc": "clients",
@@ -1611,14 +1714,17 @@ const fileRecordTypeKey = {
   instrumentalServiceReport: "productIssues",
 };
 
+/** @param {string} key */
 function moduleForKey(key) {
   return Object.entries(moduleRecordKeys).find(([, keys]) => keys.includes(key))?.[0] || "system";
 }
 
+/** @param {string} key */
 function modulesForKey(key) {
   return Object.entries(moduleRecordKeys).filter(([, keys]) => keys.includes(key)).map(([module]) => module);
 }
 
+/** @param {any} profile @param {string} key @param {string} [mode] */
 function canAccessKey(profile, key, mode = "view") {
   if (["Superadmin", "CEO"].includes(profile?.role)) return true;
   // Memos are view-for-all, but posting/overwriting is Superadmin/CEO/HR only (requireMemoAdmin) —
@@ -1634,14 +1740,17 @@ function canAccessKey(profile, key, mode = "view") {
   return modules.some((module) => allowed.includes(module));
 }
 
+/** @param {any} profile */
 function writableKeys(profile) {
   return persistedKeys.filter((key) => !genericStateBlockedKeys.has(key) && canAccessKey(profile, key, "edit"));
 }
 
+/** @param {any} records @param {any} profile @param {string} [mode] */
 function filterRecordsForProfile(records, profile, mode = "view") {
-  return records.filter((row) => canAccessKey(profile, row.module_name, mode));
+  return records.filter((/** @type {any} */ row) => canAccessKey(profile, row.module_name, mode));
 }
 
+/** @param {string} key @param {any} value @param {number} index */
 function recordKeyFor(key, value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return key;
   if (key === "inventory") return [value.code || value.item || "stock", value.branch || "branch", value.lot || value.serial || "lot"].map((part) => String(part).trim() || "-").join("|");
@@ -1652,8 +1761,11 @@ function recordKeyFor(key, value, index) {
   return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
 }
 
+/** @param {any} records */
 function stateFromRecords(records) {
+  /** @type {Record<string, any>} */
   const next = {};
+  /** @type {Record<string, any>} */
   const keyedArrays = {};
   for (const key of persistedKeys) next[key] = ["branch", "masterTab", "branchAddresses", "invoiceApprovals"].includes(key) ? undefined : [];
   for (const row of records) {
@@ -1677,11 +1789,13 @@ function stateFromRecords(records) {
   return next;
 }
 
+/** @param {Request} request */
 function auditContextForRequest(request) {
   const userAgent = request.headers.get("user-agent") || "";
   return { device: deviceName(userAgent), browser: browserName(userAgent), ipAddress: clientIp(request), userAgent, serverCapturedAt: new Date().toISOString() };
 }
 
+/** @param {any} entry @param {any} auditContext */
 function enrichAuditLogEntry(entry, auditContext) {
   if (!entry || typeof entry !== "object") return entry;
   return { ...entry, device: auditContext.device, browser: auditContext.browser, ipAddress: auditContext.ipAddress, userAgent: auditContext.userAgent, serverCapturedAt: entry.serverCapturedAt || auditContext.serverCapturedAt };
@@ -1711,6 +1825,7 @@ function recordsFromState(data, userId, stateKey, allowedKeys = persistedKeys, a
 // resolve to the same derived key (e.g. an import with a repeated code) must never be
 // allowed to reach that statement — collapse them here, keeping the last occurrence so
 // the most recently supplied version of a record wins, matching normal upsert semantics.
+/** @param {any} rows */
 function dedupeRowsByRecordKey(rows) {
   const seen = new Map();
   const order = [];
@@ -1722,14 +1837,16 @@ function dedupeRowsByRecordKey(rows) {
   return order.map((dedupeKey) => seen.get(dedupeKey));
 }
 
+/** @param {any} values */
 function postgrestIn(values) {
-  return `(${values.map((value) => `"${String(value).replace(/"/g, "\\\"")}"`).join(",")})`;
+  return `(${values.map((/** @type {any} */ value) => `"${String(value).replace(/"/g, "\\\"")}"`).join(",")})`;
 }
 
 function manilaTimestamp() {
   return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 
+/** @param {any} score */
 function gameBadgeForScore(score) {
   if (score >= 50000) return "Platinum";
   if (score >= 20000) return "Gold";
@@ -1741,33 +1858,39 @@ function gameBadgeForScore(score) {
 // Cumulative XP needed to REACH a given level (level 1 needs 0). Quadratic curve —
 // each level costs more than the last, so early levels come quickly (rewarding a
 // first run) while high levels take sustained, repeated play to "flex".
+/** @param {any} level */
 function gameXpForLevel(level) {
   return 1800 * (Math.max(level, 1) - 1) ** 2;
 }
+/** @param {any} xp */
 function gameLevelForXp(xp) {
   return Math.floor(Math.sqrt(Math.max(xp, 0) / 1800)) + 1;
 }
 
+/** @type {Record<string, any>} */
 const GAME_BADGE_TIER = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
 
 // Cosmetic runner skins — mirrors SKINS in public/scripts/game.js. The server is the
 // authority for the leaderboard "flex": a skin is stored and shown only if the
 // player's level (cumulative XP) or badge tier (best score) actually unlocks it, so a
 // spoofed submit can't parade a skin that wasn't earned.
+/** @type {Record<string, any>} */
 const GAME_SKIN_RULES = {
   classic: () => true,
-  hardhat: (level) => level >= 3,
-  shades: (level) => level >= 6,
-  cape: (level, tier) => tier >= 2,
-  gold: (level, tier) => tier >= 3,
-  platinum: (level, tier) => tier >= 4,
+  hardhat: (/** @type {any} */ level) => level >= 3,
+  shades: (/** @type {any} */ level) => level >= 6,
+  cape: (/** @type {any} */ level, /** @type {any} */ tier) => tier >= 2,
+  gold: (/** @type {any} */ level, /** @type {any} */ tier) => tier >= 3,
+  platinum: (/** @type {any} */ level, /** @type {any} */ tier) => tier >= 4,
 };
+/** @param {string} id @param {any} level @param {any} badge */
 function gameSkinAllowed(id, level, badge) {
   const rule = GAME_SKIN_RULES[id];
   return rule ? !!rule(level || 1, GAME_BADGE_TIER[badge] || 0) : false;
 }
 // Pick the skin to persist: the requested one if unlocked, else keep the stored one if
 // it is still unlocked, else fall back to classic.
+/** @param {any} requested @param {any} stored @param {any} level @param {any} badge */
 function gameResolveSkin(requested, stored, level, badge) {
   if (requested && gameSkinAllowed(requested, level, badge)) return requested;
   if (stored && gameSkinAllowed(stored, level, badge)) return stored;
@@ -1777,6 +1900,7 @@ function gameResolveSkin(requested, stored, level, badge) {
 // Writes directly to the "logs" module so a save's trail survives even if the
 // save that produced it gets rejected — never routed through the same
 // delete-then-insert path used for regular module state.
+/** @param {WorkerEnv} env @param {any} stateKey @param {{ actor: any, role: any, action: string, module: any, record: any }} options @param {any} userId @param {any} context */
 async function writeAuditTrace(env, stateKey, { actor, role, action, module, record }, userId, context) {
   const entry = {
     date: manilaTimestamp(),
@@ -1798,20 +1922,24 @@ async function writeAuditTrace(env, stateKey, { actor, role, action, module, rec
   }).catch(() => null);
 }
 
+/** @param {any} value */
 function money(value) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
 }
 
+/** @param {any} value */
 function moneyWithCents(value) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
 }
 
+/** @param {any} date @param {any} days */
 function addDays(date, days) {
   const d = new Date(date);
   d.setDate(d.getDate() + Number(days || 0));
   return d.toISOString().slice(0, 10);
 }
 
+/** @param {any} sale */
 function saleStatus(sale) {
   if (sale.status === "Cancelled") return "Cancelled";
   const balance = Number(sale.net || 0) - Number(sale.paid || 0);
@@ -1824,6 +1952,7 @@ function saleStatus(sale) {
   return "Unpaid";
 }
 
+/** @param {any} item */
 function inventoryState(item) {
   const expiry = item.expiry && item.expiry !== "N/A" ? new Date(item.expiry).getTime() : null;
   if (expiry && expiry < Date.now()) return "For Disposal";
@@ -1833,56 +1962,68 @@ function inventoryState(item) {
   return "Available";
 }
 
+/** @param {any} data @param {string} [branch] */
 function generateReportsFromState(data, branch = "all") {
-  const byBranch = (rows, key = "branch") => branch === "all" ? rows : rows.filter((row) => row[key] === branch || row.area === branch);
+  const byBranch = (/** @type {any} */ rows, key = "branch") => branch === "all" ? rows : rows.filter((/** @type {any} */ row) => row[key] === branch || row.area === branch);
   const sales = byBranch(data.sales || [], "area");
   const inventory = byBranch(data.inventory || []);
-  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const totalPaid = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
-  const overdue = sales.filter((sale) => saleStatus(sale) === "Overdue").length;
-  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryState(item))).length;
+  const totalSales = sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.net || 0), 0);
+  const totalPaid = sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.paid || 0), 0);
+  const overdue = sales.filter((/** @type {any} */ sale) => saleStatus(sale) === "Overdue").length;
+  const lowStock = inventory.filter((/** @type {any} */ item) => ["Low Stock", "Critical"].includes(inventoryState(item))).length;
   return [
-    { icon: "₱", title: "Sales by Territory", body: `Area, client, salesperson, SI/TS/DR, and item movement. ${money(totalSales)} current view.`, section: "sales", actionLabel: "Open Sales", rows: sales.map((sale) => [sale.area, sale.client, sale.salesperson, sale.documentNo || sale.id, `${sale.qty || ""} ${sale.uom || ""} ${sale.item || ""}`.trim(), money(sale.net)]) },
-    { icon: "●", title: "Collections & AR", body: `${money(totalPaid)} collected. ${overdue} overdue invoice/s.`, section: "collections", actionLabel: "Open Collections", rows: sales.map((sale) => [sale.id, sale.client, saleStatus(sale), money(sale.paid), money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0)), addDays(sale.date, sale.terms || 0)]) },
-    { icon: "▤", title: "Reagent Expiry", body: `${lowStock} low or critical stock records with lot and expiry tracking.`, section: "inventory", actionLabel: "Open Inventory", rows: inventory.map((item) => [item.item, item.branch, item.lot, item.expiry, item.qty, inventoryState(item)]) },
-    { icon: "◆", title: "Client Documents", body: "BIR, SEC, TIN, required permits, and account attachments.", section: "masterlists", actionLabel: "Open Masterlists", rows: (data.clients || []).map((client) => [client.name, client.area, client.tin, money(client.creditLimit), client.docs]) },
-    { icon: "◇", title: "Supplier Payables", body: `${(data.payables || []).length} supplier payable records with payment method tracking.`, section: "payables", actionLabel: "Open Payables", rows: (data.payables || []).map((payable) => [payable.supplier, payable.item, payable.method, money(payable.amount), money(payable.paid), money(Number(payable.amount || 0) - Number(payable.paid || 0)), payable.status]) },
-    { icon: "◉", title: "Service & Warranty", body: "Equipment install, serial number, warranty, and customer support history.", section: "warranty", actionLabel: "Open Warranty", rows: (data.warranties || []).map((warranty) => [warranty.client, warranty.equipment, warranty.serial, warranty.installDate, warranty.warrantyEnd, warranty.status]) },
-    { icon: "◎", title: "Compliance Audit", body: `${(data.logs || []).length} traceable changes for corrections, exports, and approvals.`, section: "logs", actionLabel: "Open Audit Logs", rows: (data.logs || []).map((log) => [log.date, log.user, log.module, log.action, log.record]) },
+    { icon: "₱", title: "Sales by Territory", body: `Area, client, salesperson, SI/TS/DR, and item movement. ${money(totalSales)} current view.`, section: "sales", actionLabel: "Open Sales", rows: sales.map((/** @type {any} */ sale) => [sale.area, sale.client, sale.salesperson, sale.documentNo || sale.id, `${sale.qty || ""} ${sale.uom || ""} ${sale.item || ""}`.trim(), money(sale.net)]) },
+    { icon: "●", title: "Collections & AR", body: `${money(totalPaid)} collected. ${overdue} overdue invoice/s.`, section: "collections", actionLabel: "Open Collections", rows: sales.map((/** @type {any} */ sale) => [sale.id, sale.client, saleStatus(sale), money(sale.paid), money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0)), addDays(sale.date, sale.terms || 0)]) },
+    { icon: "▤", title: "Reagent Expiry", body: `${lowStock} low or critical stock records with lot and expiry tracking.`, section: "inventory", actionLabel: "Open Inventory", rows: inventory.map((/** @type {any} */ item) => [item.item, item.branch, item.lot, item.expiry, item.qty, inventoryState(item)]) },
+    { icon: "◆", title: "Client Documents", body: "BIR, SEC, TIN, required permits, and account attachments.", section: "masterlists", actionLabel: "Open Masterlists", rows: (data.clients || []).map((/** @type {any} */ client) => [client.name, client.area, client.tin, money(client.creditLimit), client.docs]) },
+    { icon: "◇", title: "Supplier Payables", body: `${(data.payables || []).length} supplier payable records with payment method tracking.`, section: "payables", actionLabel: "Open Payables", rows: (data.payables || []).map((/** @type {any} */ payable) => [payable.supplier, payable.item, payable.method, money(payable.amount), money(payable.paid), money(Number(payable.amount || 0) - Number(payable.paid || 0)), payable.status]) },
+    { icon: "◉", title: "Service & Warranty", body: "Equipment install, serial number, warranty, and customer support history.", section: "warranty", actionLabel: "Open Warranty", rows: (data.warranties || []).map((/** @type {any} */ warranty) => [warranty.client, warranty.equipment, warranty.serial, warranty.installDate, warranty.warrantyEnd, warranty.status]) },
+    { icon: "◎", title: "Compliance Audit", body: `${(data.logs || []).length} traceable changes for corrections, exports, and approvals.`, section: "logs", actionLabel: "Open Audit Logs", rows: (data.logs || []).map((/** @type {any} */ log) => [log.date, log.user, log.module, log.action, log.record]) },
   ];
 }
 
+/** @param {any} value */
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+  return String(value ?? "").replace(/[&<>"']/g, (/** @type {string} */ char) => (/** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }))[char]);
 }
 
+/** @param {any} type */
 function documentType(type) {
   return type === "DRS" ? "DR" : String(type || "SI");
 }
 
+/** @param {any} value */
 function formMoney(value) {
   return Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** @param {any} value */
 function roundCurrency(value) { return Math.round(Number(value || 0) * 100) / 100; }
+/** @param {number} gross */
 function withholdingBaseFromGross(gross) { return roundCurrency(Number(gross || 0) / 1.12); }
+/** @param {any} value */
 function hasWithholding(value) { return value === true || Number(value || 0) > 0; }
+/** @param {any[]} [items] */
 function itemGross(items = []) { return items.reduce((sum, item) => sum + Number(item.amount || 0), 0); }
 
+/** @param {any} value */
 function formDate(value) {
   const date = value ? new Date(value) : new Date();
   return date.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric", timeZone: "Asia/Manila" });
 }
 
+/** @param {any} line */
 function lineAmount(line) {
   return Number(line?.qty || 0) * Number(line?.price || 0);
 }
 
+/** @param {any} item */
 function isEquipmentItem(item) {
   const category = String(item?.category || item?.classification || "").trim().toLowerCase();
   return category === "equipment";
 }
 
+/** @param {any} sale */
 function saleTaxBreakdown(sale) {
   const subtotal = Number(sale.amount || 0) - Number(sale.discount || 0);
   const totalAmountDue = Number(sale.net || subtotal);
@@ -1893,6 +2034,7 @@ function saleTaxBreakdown(sale) {
   return { totalSalesVatInclusive, amountNetVat: totalSalesVatInclusive - addVat, addVat, totalAmountDue };
 }
 
+/** @param {any} profile @param {any} sale */
 function printableBranchAllowed(profile, sale) {
   const branch = String(profile?.branch || "all");
   return ["all", "Both", "All"].includes(branch) || sale.area === branch || sale.branch === branch;
@@ -1903,11 +2045,13 @@ function printableBranchAllowed(profile, sale) {
 // Print-template overrides are stored verbatim and interpolated into a style attribute, so every
 // value is coerced to a finite number (or allowlisted) — a stored string must never be able to
 // close the attribute and inject markup.
+/** @param {any} value */
 function overrideNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? round3(number) : null;
 }
 
+/** @param {any} o */
 function fieldOverrideStyle(o) {
   if (!o) return "";
   const parts = [];
@@ -1920,6 +2064,7 @@ function fieldOverrideStyle(o) {
   return parts.length ? ` style="${parts.join(";")}"` : "";
 }
 
+/** @param {any} row @param {number} index */
 function rowOverrideStyle(row, index) {
   if (!row) return ` style="--row:${index}"`;
   const parts = [`--row:${index}`, `top:${round3(Number(row.top) || 0) + index * (Number(row.spacing) || 0)}in`];
@@ -1930,15 +2075,17 @@ function rowOverrideStyle(row, index) {
   return ` style="${parts.join(";")}"`;
 }
 
+/** @param {any} value */
 function round3(value) {
   return Math.round(Number(value || 0) * 1000) / 1000;
 }
 
+/** @param {any} sale @param {any} variant @param {any} templateOverrides */
 function printableRows(sale, variant, templateOverrides) {
   const lines = sale.lines?.length ? sale.lines : [{ item: sale.item, brand: sale.brand, qty: sale.qty, uom: sale.uom, price: Number(sale.amount || 0) / Math.max(Number(sale.qty || 1), 1), lot: "", expiry: "" }];
   const fields = templateOverrides?.fields || {};
   const row = templateOverrides?.row || null;
-  return lines.slice(0, variant === "si" ? 10 : 8).map((line, index) => {
+  return lines.slice(0, variant === "si" ? 10 : 8).map((/** @type {any} */ line, /** @type {any} */ index) => {
     const expiry = line.expiry && line.expiry !== "N/A" ? ` · Exp ${escapeHtml(line.expiry)}` : "";
     // Lot / expiry is its own positioned field (si-lot / ts-lot / dr-lot) so it can be moved
     // independently in the custom print-layout editor — no longer a <small> glued under the name.
@@ -1952,6 +2099,7 @@ function printableRows(sale, variant, templateOverrides) {
 }
 
 const printableCompanyFooter = "MEDLANE DIAGNOSTIC SOLUTIONS, INC.<br>13 Gumamela St. Pilar Village, Las Piñas<br>Las Piñas City 1740<br>Tel. No. (02) 8836-2853 Email: receivables.mdsi@gmail.com";
+/** @param {string} [title] */
 function printableBrandHeader(title = "") {
   return `<header class="print-brand-header"><img src="/medlane.jpg" alt="Medlane Diagnostic Solutions" /><div><strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong>${title ? `<span>${escapeHtml(title)}</span>` : ""}</div></header>`;
 }
@@ -1962,30 +2110,32 @@ function templateBranding() {
   return `<img class="template-print-logo" src="/medlane.jpg" alt="Medlane Diagnostic Solutions" /><div class="template-print-footer">${printableCompanyFooter}</div>`;
 }
 
+/** @param {{ sale: any, client: any, approvals: any, preparedBy: any, noDate: any, templateOverrides: any }} options */
 function printableInvoiceHtml({ sale, client, approvals, preparedBy, noDate, templateOverrides }) {
   const type = documentType(sale.type);
   const approvedBy = escapeHtml(approvals?.[type] || "ECTOSOC");
   const f = templateOverrides?.fields || {};
-  const fs = (key) => fieldOverrideStyle(f[key]);
+  const fs = (/** @type {any} */ key) => fieldOverrideStyle(f[key]);
   if (type === "TS") return `<section class="template-overlay template-ts">${noDate ? "" : `<span class="field ts-date"${fs("ts-date")}>${formDate(new Date().toISOString())}</span>`}<span class="field ts-po"${fs("ts-po")}>${escapeHtml(sale.po || "")}</span><span class="field ts-terms"${fs("ts-terms")}>Terms: ${Number(sale.terms || 30)} Days</span><span class="field ts-client"${fs("ts-client")}>${escapeHtml(sale.client)}</span><span class="field ts-address"${fs("ts-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "ts", templateOverrides)}<span class="field ts-tax-label"${fs("ts-tax-label")}>NOT VALID FOR CLAIMING OF INPUT TAX</span><span class="field ts-total"${fs("ts-total")}>${formMoney(sale.net || sale.amount || 0)}</span><span class="field ts-prepared"${fs("ts-prepared")}>${escapeHtml(preparedBy)}</span><span class="field ts-approved"${fs("ts-approved")}>${approvedBy}</span><span class="field ts-received"></span></section>`;
   if (type === "DR") return `<section class="template-overlay template-dr">${noDate ? "" : `<span class="field dr-date"${fs("dr-date")}>${formDate(new Date().toISOString())}</span>`}<span class="field dr-po"${fs("dr-po")}>${escapeHtml(sale.po || "")}</span><span class="field dr-terms"${fs("dr-terms")}>${Number(sale.terms || 30)} Days</span><span class="field dr-client"${fs("dr-client")}>${escapeHtml(sale.client)}</span><span class="field dr-address"${fs("dr-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "dr", templateOverrides)}<span class="field dr-prepared"${fs("dr-prepared")}>${escapeHtml(preparedBy)}</span><span class="field dr-recorded"${fs("dr-recorded")}></span><span class="field dr-approved"${fs("dr-approved")}>${approvedBy}</span><span class="field dr-received"${fs("dr-received")}></span></section>`;
   const breakdown = saleTaxBreakdown(sale);
   return `<section class="template-overlay template-si">${noDate ? "" : `<span class="field si-date"${fs("si-date")}>${formDate(sale.date)}</span>`}<span class="field si-po"${fs("si-po")}>${escapeHtml(sale.po || "")}</span><span class="field si-terms"${fs("si-terms")}>Terms of Payment ${Number(sale.terms || 30)} Days</span><span class="field si-sold"${fs("si-sold")}>${escapeHtml(sale.client)}</span><span class="field si-registered"${fs("si-registered")}>${escapeHtml(sale.client)}</span><span class="field si-tin"${fs("si-tin")}>${escapeHtml(client.tin || "")}</span><span class="field si-address"${fs("si-address")}>${escapeHtml(client.address || sale.area || "")}</span>${printableRows(sale, "si", templateOverrides)}<span class="field si-total-sales"${fs("si-total-sales")}>${formMoney(breakdown.totalSalesVatInclusive)}</span><span class="field si-net-vat"${fs("si-net-vat")}>${formMoney(breakdown.amountNetVat)}</span><span class="field si-discount"${fs("si-discount")}>${formMoney(sale.discount || 0)}</span><span class="field si-vat"${fs("si-vat")}>${formMoney(breakdown.addVat)}</span><span class="field si-amount-due"${fs("si-amount-due")}>${formMoney(breakdown.totalAmountDue)}</span><span class="field si-prepared"${fs("si-prepared")}>${escapeHtml(preparedBy)}</span><span class="field si-approved"${fs("si-approved")}>${approvedBy}</span></section>`;
 }
 
+/** @param {any} request */
 function paymentRequestPrintableHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
   // Collections created with the per-invoice itemized editor carry an explicit invoice + net
   // amount on every item; older/general payment requests only have flat particulars/amount
   // lines with one aggregate withholding deduction for the whole voucher.
-  const perInvoice = items.length > 0 && items.every((item) => item.invoice && item.netAmount != null);
+  const perInvoice = items.length > 0 && items.every((/** @type {any} */ item) => item.invoice && item.netAmount != null);
   const paymentDetails = ["Check", "Bank Transfer"].includes(request.paymentType) ? `<div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Account No.: ${escapeHtml(request.bankAccount || "-")}<br>Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml((request.paymentType === "Bank Transfer" ? request.transferDate : request.chequeDate) || "-")}</div>` : "";
   const metaNetAmount = request.netAmount ? `<span>Net Amount: <strong>${money(request.netAmount)}</strong></span>` : "";
   let tableHtml;
   let total;
   if (perInvoice) {
-    total = items.reduce((sum, item) => sum + Number(item.netAmount || 0), 0);
-    tableHtml = `<table><thead><tr><th>Invoice</th><th>Amount</th><th>VAT-excl. Base</th><th>WTax 5%</th><th>EWT 1%</th><th>Net Amount</th></tr></thead><tbody>${items.map((item) => {
+    total = items.reduce((/** @type {number} */ sum, /** @type {any} */ item) => sum + Number(item.netAmount || 0), 0);
+    tableHtml = `<table><thead><tr><th>Invoice</th><th>Amount</th><th>VAT-excl. Base</th><th>WTax 5%</th><th>EWT 1%</th><th>Net Amount</th></tr></thead><tbody>${items.map((/** @type {any} */ item) => {
       // Withholding is computed off the invoice's gross amount due (falling back to the
       // collected amount for older records saved before amountDue was tracked per line), not
       // the cash collected — see paymentRequestRowDeductions in modules.js for why.
@@ -2002,11 +2152,12 @@ function paymentRequestPrintableHtml(request) {
     const withholdingTax = hasWithholding(request.withholdingTax) ? roundCurrency(taxBase * 0.05) : 0;
     const expandedWithholdingTax = hasWithholding(request.expandedWithholdingTax) ? roundCurrency(taxBase * 0.01) : 0;
     total = roundCurrency(Math.max(gross - withholdingTax - expandedWithholdingTax, 0));
-    tableHtml = `<table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${money(item.amount)}</td></tr>`).join("")}${withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${moneyWithCents(withholdingTax)}</td></tr>` : ""}${expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${moneyWithCents(expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table>`;
+    tableHtml = `<table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((/** @type {any} */ item, /** @type {any} */ index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${money(item.amount)}</td></tr>`).join("")}${withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${moneyWithCents(withholdingTax)}</td></tr>` : ""}${expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${moneyWithCents(expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table>`;
   }
   return `<section class="payment-request-print">${printableBrandHeader(request.cvNo)}<div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Collector: <strong>${escapeHtml(request.preparedBy)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span>${metaNetAmount}</div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Bank Transfer" ? "[x]" : "[ ]"} Bank Transfer</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div>${tableHtml}<p class="pr-instructions"><strong>Attach supporting official receipts, invoices, or billing statements before approval and release.</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div>${paymentDetails}</footer>${printableFooter()}</section>`;
 }
 
+/** @param {any} record @param {any} type */
 function financialRequestPrintableHtml(record, type) {
   const items = record.items?.length ? record.items : [{ particulars: record.item || record.requestNote || "Request", amount: record.amount || 0 }];
   const partyLabel = type === "payable" ? "Supplier" : "Requester";
@@ -2014,7 +2165,7 @@ function financialRequestPrintableHtml(record, type) {
   const extraMeta = type === "payable"
     ? ""
     : `<span>Office: <strong>${escapeHtml(record.office || "-")}</strong></span><span>Type: <strong>${escapeHtml(record.type || "-")}</strong></span>`;
-  const hasVendorColumn = items.some((item) => item.vendor);
+  const hasVendorColumn = items.some((/** @type {any} */ item) => item.vendor);
   const gross = Number(record.grossAmount || 0) || itemGross(items) || Number(record.amount || 0) + Number(record.withholdingTax1 || 0) + Number(record.withholdingTax2 || 0);
   const taxBase = withholdingBaseFromGross(gross);
   const withholdingTax1 = type === "payable" && hasWithholding(record.withholdingTax1) ? roundCurrency(taxBase * 0.01) : 0;
@@ -2022,37 +2173,43 @@ function financialRequestPrintableHtml(record, type) {
   const netTotal = type === "payable" ? roundCurrency(Math.max(gross - withholdingTax1 - withholdingTax2, 0)) : Number(record.amount || 0);
   const withholdingRows = type === "payable" ? `${withholdingTax1 ? `<tr><td${hasVendorColumn ? ' colspan="2"' : ""}>Less: Withholding 1%</td><td>${moneyWithCents(withholdingTax1)}</td></tr>` : ""}${withholdingTax2 ? `<tr><td${hasVendorColumn ? ' colspan="2"' : ""}>Less: Withholding 2%</td><td>${moneyWithCents(withholdingTax2)}</td></tr>` : ""}` : "";
   const totalLabel = type === "payable" ? "Net Total" : "Total";
-  return `<section class="payment-request-print">${printableBrandHeader(record.id)}<div class="pr-meta"><span>${partyLabel}: <strong>${escapeHtml(partyValue || "-")}</strong></span>${extraMeta}<span>Status: <strong>${escapeHtml(record.requestStatus || record.status || "-")}</strong></span></div><table><thead><tr>${hasVendorColumn ? "<th>Vendor</th>" : ""}<th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item) => `<tr>${hasVendorColumn ? `<td>${escapeHtml(item.vendor || "-")}</td>` : ""}<td>${escapeHtml(item.particulars || "")}</td><td>${money(item.amount || 0)}</td></tr>`).join("")}${type === "payable" ? `<tr><td${hasVendorColumn ? ' colspan="2"' : ""}>Gross Total</td><td>${money(gross)}</td></tr>` : ""}${withholdingRows}<tr><td${hasVendorColumn ? ' colspan="2"' : ""}><strong>${totalLabel}</strong></td><td><strong>${money(netTotal)}</strong></td></tr></tbody></table>${record.requestNote ? `<p class="pr-instructions"><strong>Notes:</strong> ${escapeHtml(record.requestNote)}</p>` : ""}<footer><div>Payment Method:<br><strong>${escapeHtml(record.method || "Not set")}</strong></div><div>Approved by:<br><strong>${escapeHtml(record.approvedBy || "Pending")}</strong></div></footer>${printableFooter()}</section>`;
+  return `<section class="payment-request-print">${printableBrandHeader(record.id)}<div class="pr-meta"><span>${partyLabel}: <strong>${escapeHtml(partyValue || "-")}</strong></span>${extraMeta}<span>Status: <strong>${escapeHtml(record.requestStatus || record.status || "-")}</strong></span></div><table><thead><tr>${hasVendorColumn ? "<th>Vendor</th>" : ""}<th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((/** @type {any} */ item) => `<tr>${hasVendorColumn ? `<td>${escapeHtml(item.vendor || "-")}</td>` : ""}<td>${escapeHtml(item.particulars || "")}</td><td>${money(item.amount || 0)}</td></tr>`).join("")}${type === "payable" ? `<tr><td${hasVendorColumn ? ' colspan="2"' : ""}>Gross Total</td><td>${money(gross)}</td></tr>` : ""}${withholdingRows}<tr><td${hasVendorColumn ? ' colspan="2"' : ""}><strong>${totalLabel}</strong></td><td><strong>${money(netTotal)}</strong></td></tr></tbody></table>${record.requestNote ? `<p class="pr-instructions"><strong>Notes:</strong> ${escapeHtml(record.requestNote)}</p>` : ""}<footer><div>Payment Method:<br><strong>${escapeHtml(record.method || "Not set")}</strong></div><div>Approved by:<br><strong>${escapeHtml(record.approvedBy || "Pending")}</strong></div></footer>${printableFooter()}</section>`;
 }
 
+/** @param {any} po */
 function inventoryPoPrintableHtml(po) {
-  const total = (po.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0);
-  return `<section class="payment-request-print inventory-po-print">${printableBrandHeader(po.id)}<div class="pr-meta"><span>Supplier: <strong>${escapeHtml(po.supplier)}</strong></span><span>Date: <strong>${escapeHtml(po.date)}</strong></span><span>Terms: <strong>${Number(po.terms || 30)} Days</strong></span></div><table><thead><tr><th>Qty.</th><th>U/M</th><th>Item Description</th><th>Lot</th><th>Expiry</th><th>Unit Cost</th><th>Disc. Amt</th><th>Total Amount</th></tr></thead><tbody>${(po.lines || []).map((line) => { const discount = Number(line.discount || 0); const totalLine = Number(line.qty || 0) * Number(line.price || 0) - discount; return `<tr><td>${Number(line.qty || 0)}</td><td>${escapeHtml(line.uom || "")}</td><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.brand || "")}</small></td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${money(line.price || 0)}</td><td>${money(discount)}</td><td>${money(totalLine)}</td></tr>`; }).join("")}<tr><td colspan="7"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table>${printableFooter()}</section>`;
+  const total = (po.lines || []).reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0);
+  return `<section class="payment-request-print inventory-po-print">${printableBrandHeader(po.id)}<div class="pr-meta"><span>Supplier: <strong>${escapeHtml(po.supplier)}</strong></span><span>Date: <strong>${escapeHtml(po.date)}</strong></span><span>Terms: <strong>${Number(po.terms || 30)} Days</strong></span></div><table><thead><tr><th>Qty.</th><th>U/M</th><th>Item Description</th><th>Lot</th><th>Expiry</th><th>Unit Cost</th><th>Disc. Amt</th><th>Total Amount</th></tr></thead><tbody>${(po.lines || []).map((/** @type {any} */ line) => { const discount = Number(line.discount || 0); const totalLine = Number(line.qty || 0) * Number(line.price || 0) - discount; return `<tr><td>${Number(line.qty || 0)}</td><td>${escapeHtml(line.uom || "")}</td><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.brand || "")}</small></td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${money(line.price || 0)}</td><td>${money(discount)}</td><td>${money(totalLine)}</td></tr>`; }).join("")}<tr><td colspan="7"><strong>Total</strong></td><td><strong>${money(total)}</strong></td></tr></tbody></table>${printableFooter()}</section>`;
 }
 
+/** @param {any} transfer */
 function transferRequestPrintableHtml(transfer) {
   const lines = transfer.lines || [];
-  return `<section class="payment-request-print">${printableBrandHeader(transfer.id)}<div class="pr-meta"><span>From: <strong>${escapeHtml(transfer.from)}</strong></span><span>To: <strong>${escapeHtml(transfer.to)}</strong></span><span>Status: <strong>${escapeHtml(transfer.status || "-")}</strong></span><span>Requested by: <strong>${escapeHtml(transfer.requestedBy || "-")}</strong></span>${transfer.dispatchedAt ? `<span>Dispatched: <strong>${escapeHtml(transfer.dispatchedAt)}</strong></span>` : ""}</div><table><thead><tr><th>Item</th><th>Requested Qty</th><th>Requested Lot</th><th>Requested Expiry</th><th>Dispatched Qty</th><th>Dispatched Lot</th><th>Dispatched Expiry</th></tr></thead><tbody>${lines.map((line) => `<tr><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.code || "")}</small></td><td>${Number(line.requestedQty || 0)}</td><td>${escapeHtml(line.requestedLot || "-")}</td><td>${escapeHtml(line.requestedExpiry || "N/A")}</td><td>${line.dispatchedQty != null ? Number(line.dispatchedQty) : "-"}</td><td>${escapeHtml(line.dispatchedLot || "-")}</td><td>${escapeHtml(line.dispatchedExpiry || "-")}</td></tr>`).join("")}</tbody></table><footer><div>Prepared by:<br><strong>${escapeHtml(transfer.requestedBy || "-")}</strong></div><div>Dispatched by:<br><strong>${escapeHtml(transfer.dispatchedBy || "Pending")}</strong></div></footer>${printableFooter()}</section>`;
+  return `<section class="payment-request-print">${printableBrandHeader(transfer.id)}<div class="pr-meta"><span>From: <strong>${escapeHtml(transfer.from)}</strong></span><span>To: <strong>${escapeHtml(transfer.to)}</strong></span><span>Status: <strong>${escapeHtml(transfer.status || "-")}</strong></span><span>Requested by: <strong>${escapeHtml(transfer.requestedBy || "-")}</strong></span>${transfer.dispatchedAt ? `<span>Dispatched: <strong>${escapeHtml(transfer.dispatchedAt)}</strong></span>` : ""}</div><table><thead><tr><th>Item</th><th>Requested Qty</th><th>Requested Lot</th><th>Requested Expiry</th><th>Dispatched Qty</th><th>Dispatched Lot</th><th>Dispatched Expiry</th></tr></thead><tbody>${lines.map((/** @type {any} */ line) => `<tr><td>${escapeHtml(line.item)}<br><small>${escapeHtml(line.code || "")}</small></td><td>${Number(line.requestedQty || 0)}</td><td>${escapeHtml(line.requestedLot || "-")}</td><td>${escapeHtml(line.requestedExpiry || "N/A")}</td><td>${line.dispatchedQty != null ? Number(line.dispatchedQty) : "-"}</td><td>${escapeHtml(line.dispatchedLot || "-")}</td><td>${escapeHtml(line.dispatchedExpiry || "-")}</td></tr>`).join("")}</tbody></table><footer><div>Prepared by:<br><strong>${escapeHtml(transfer.requestedBy || "-")}</strong></div><div>Dispatched by:<br><strong>${escapeHtml(transfer.dispatchedBy || "Pending")}</strong></div></footer>${printableFooter()}</section>`;
 }
 
+/** @param {any} value */
 function splitList(value) {
   return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
+/** @param {any} report */
 function productIssuePrintableHtml(report) {
   const selectedTypes = new Set(splitList(report.typeOfSupport));
   const selectedTopics = new Set(splitList(report.topicsDiscussed));
-  const mark = (on) => (on ? "X" : "");
+  const mark = (/** @type {any} */ on) => (on ? "X" : "");
   const rows = report.qcParameters?.length ? report.qcParameters : [];
-  const paramRows = rows.slice(0, 12).map((row, index) => `<span class="field tsr-param-row" style="--row:${index}"><span class="field tsr-param-name">${escapeHtml(row.parameter || "")}</span><span class="field tsr-param-factor">${escapeHtml(row.factor || "")}</span><span class="field tsr-l1-range">${escapeHtml(row.l1Range || "")}</span><span class="field tsr-l1-result">${escapeHtml(row.l1Result || "")}</span><span class="field tsr-l1-p">${mark(row.l1P)}</span><span class="field tsr-l1-f">${mark(row.l1F)}</span><span class="field tsr-l2-range">${escapeHtml(row.l2Range || "")}</span><span class="field tsr-l2-result">${escapeHtml(row.l2Result || "")}</span><span class="field tsr-l2-p">${mark(row.l2P)}</span><span class="field tsr-l2-f">${mark(row.l2F)}</span><span class="field tsr-l3-range">${escapeHtml(row.l3Range || "")}</span><span class="field tsr-l3-result">${escapeHtml(row.l3Result || "")}</span><span class="field tsr-l3-p">${mark(row.l3P)}</span><span class="field tsr-l3-f">${mark(row.l3F)}</span></span>`).join("");
+  const paramRows = rows.slice(0, 12).map((/** @type {any} */ row, /** @type {any} */ index) => `<span class="field tsr-param-row" style="--row:${index}"><span class="field tsr-param-name">${escapeHtml(row.parameter || "")}</span><span class="field tsr-param-factor">${escapeHtml(row.factor || "")}</span><span class="field tsr-l1-range">${escapeHtml(row.l1Range || "")}</span><span class="field tsr-l1-result">${escapeHtml(row.l1Result || "")}</span><span class="field tsr-l1-p">${mark(row.l1P)}</span><span class="field tsr-l1-f">${mark(row.l1F)}</span><span class="field tsr-l2-range">${escapeHtml(row.l2Range || "")}</span><span class="field tsr-l2-result">${escapeHtml(row.l2Result || "")}</span><span class="field tsr-l2-p">${mark(row.l2P)}</span><span class="field tsr-l2-f">${mark(row.l2F)}</span><span class="field tsr-l3-range">${escapeHtml(row.l3Range || "")}</span><span class="field tsr-l3-result">${escapeHtml(row.l3Result || "")}</span><span class="field tsr-l3-p">${mark(row.l3P)}</span><span class="field tsr-l3-f">${mark(row.l3F)}</span></span>`).join("");
   return `<section class="template-overlay template-tsr">${templateBranding()}<span class="field tsr-company">${escapeHtml(report.companyName || "")}</span><span class="field tsr-address">${escapeHtml(report.address || "")}</span><span class="field tsr-contact-person">${escapeHtml(report.contactPerson || "")}</span><span class="field tsr-type-app">${selectedTypes.has("Application Troubleshooting") ? "X" : ""}</span><span class="field tsr-type-training">${selectedTypes.has("Training Support") ? "X" : ""}</span><span class="field tsr-type-tech">${selectedTypes.has("Technical Support") ? "X" : ""}</span><span class="field tsr-topic-theories">${selectedTopics.has("Theories and Principles") ? "X" : ""}</span><span class="field tsr-topic-operation">${selectedTopics.has("Unit Operation") ? "X" : ""}</span><span class="field tsr-topic-parameter">${selectedTopics.has("Parameter Prog.") ? "X" : ""}</span><span class="field tsr-topic-maintenance">${selectedTopics.has("Unit Maintenance") ? "X" : ""}</span><span class="field tsr-topic-basic">${selectedTopics.has("Basic Troubleshooting") ? "X" : ""}</span><span class="field tsr-topic-pm">${selectedTopics.has("PM and Calibration") ? "X" : ""}</span><span class="field tsr-equipment">${escapeHtml(report.equipment || "")}</span><span class="field tsr-serial">${escapeHtml(report.serialNo || "")}</span><span class="field tsr-concerns">${escapeHtml(report.concerns || "")}</span><span class="field tsr-actions">${escapeHtml(report.actionsTaken || "")}</span><span class="field tsr-l1-lot">${escapeHtml(report.qcLevel1Lot || "")}</span><span class="field tsr-l2-lot">${escapeHtml(report.qcLevel2Lot || "")}</span><span class="field tsr-l3-lot">${escapeHtml(report.qcLevel3Lot || "")}</span>${paramRows}<span class="field tsr-performed">${escapeHtml(report.performedBy || "")}</span><span class="field tsr-conforme">${escapeHtml(report.conforme || "")}</span></section>`;
 }
 
+/** @param {WorkerEnv} env */
 async function storageUsage(env) {
   if (!env.DOCUMENTS_BUCKET) {
     return { configured: false, usedBytes: 0, objectCount: 0, truncated: false };
   }
 
+  /** @type {string | undefined} */
   let cursor;
   let usedBytes = 0;
   let objectCount = 0;
@@ -2071,17 +2228,19 @@ async function storageUsage(env) {
   return { configured: true, usedBytes, objectCount, truncated };
 }
 
+/** @param {WorkerEnv} env */
 async function activeMetadataUsage(env) {
   try {
     const rows = await supabaseFetch(env, `/rest/v1/storage_usage?bucket=eq.${encodeURIComponent(env.R2_BUCKET_NAME || "medlane-documents")}&select=used_bytes`);
     if (rows[0]) return Number(rows[0].used_bytes || 0);
     const files = await supabaseFetch(env, "/rest/v1/file_objects?deleted_at=is.null&select=size_bytes");
-    return files.reduce((sum, row) => sum + Number(row.size_bytes || 0), 0);
+    return files.reduce((/** @type {number} */ sum, /** @type {any} */ row) => sum + Number(row.size_bytes || 0), 0);
   } catch {
     return null;
   }
 }
 
+/** @param {WorkerEnv} env @param {any} size */
 async function reserveStorage(env, size) {
   return supabaseFetch(env, "/rest/v1/rpc/reserve_file_storage", {
     method: "POST",
@@ -2089,6 +2248,7 @@ async function reserveStorage(env, size) {
   });
 }
 
+/** @param {WorkerEnv} env @param {any} size */
 async function releaseStorage(env, size) {
   return supabaseFetch(env, "/rest/v1/rpc/release_file_storage", {
     method: "POST",
@@ -2096,25 +2256,30 @@ async function releaseStorage(env, size) {
   });
 }
 
+/** @param {any} name */
 function safeFileName(name) {
   return String(name || "upload.bin").replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-").slice(0, 140) || "upload.bin";
 }
 
+/** @param {any} fileName @param {any} recordType */
 function objectKeyFor(fileName, recordType) {
   const folder = safeFileName(recordType || "general").toLowerCase();
   return `uploads/${folder}/${crypto.randomUUID()}-${safeFileName(fileName)}`;
 }
 
+/** @param {any} text */
 async function gzipBytes(text) {
   const stream = new Blob([text], { type: "application/json" }).stream().pipeThrough(new CompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
+/** @param {any} object */
 async function gunzipText(object) {
   const stream = object.body.pipeThrough(new DecompressionStream("gzip"));
   return new Response(stream).text();
 }
 
+/** @param {WorkerEnv} env @param {string} [backupType] @param {any} [actor] */
 async function createBackup(env, backupType = "manual", actor = null) {
   if (env.ENVIRONMENT !== "production") throw new Error("Backups are disabled outside production");
   if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
@@ -2144,6 +2309,7 @@ async function createBackup(env, backupType = "manual", actor = null) {
   }
 }
 
+/** @param {WorkerEnv} env @param {string} key @param {any} actorId @param {any} auditContext */
 async function restoreBackupObject(env, key, actorId, auditContext) {
   if (env.ENVIRONMENT !== "production") throw new Error("Restore is disabled outside production");
   if (!env.DOCUMENTS_BUCKET) throw new Error("R2 bucket binding is not configured");
@@ -2155,8 +2321,8 @@ async function restoreBackupObject(env, key, actorId, auditContext) {
   const payload = JSON.parse(await gunzipText(object));
   if (!payload || payload.app !== "medlane" || payload.stateKey !== stateKey || !Array.isArray(payload.records)) throw new Error("Invalid Medlane backup payload");
   const records = payload.records
-    .filter((row) => (!row?.state_key || row.state_key === stateKey) && persistedKeys.includes(row.module_name) && row.module_name !== "logs")
-    .map((row) => ({ state_key: stateKey, module_name: row.module_name, record_key: String(row.record_key || recordKeyFor(row.module_name, row.data, 0)), data: row.data || {}, updated_by: actorId || null }));
+    .filter((/** @type {any} */ row) => (!row?.state_key || row.state_key === stateKey) && persistedKeys.includes(row.module_name) && row.module_name !== "logs")
+    .map((/** @type {any} */ row) => ({ state_key: stateKey, module_name: row.module_name, record_key: String(row.record_key || recordKeyFor(row.module_name, row.data, 0)), data: row.data || {}, updated_by: actorId || null }));
   if (!records.length) throw new Error("Backup has no restorable app records");
   // Snapshot the current data BEFORE overwriting it with the older backup. This is not the
   // backup being restored — it is a full backup of whatever was live a moment ago, so the true
@@ -2195,11 +2361,13 @@ const DIGEST_ROLE_RECIPIENTS = {
 
 const FIVE_MINUTE_MONITOR_CRON = "*/5 * * * *";
 
+/** @param {any} dateStr */
 function digestDaysUntil(dateStr) {
   if (!dateStr || dateStr === "N/A") return NaN;
   return Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / 86400000);
 }
 
+/** @param {any} item */
 function digestInventoryStatus(item) {
   const min = Number(item.min || 0);
   if (item.expiry && item.expiry !== "N/A" && digestDaysUntil(item.expiry) < 0) return "For Disposal";
@@ -2209,6 +2377,7 @@ function digestInventoryStatus(item) {
   return "Available";
 }
 
+/** @param {any} sale */
 function digestSaleStatus(sale) {
   if (sale.status === "Cancelled") return "Cancelled";
   const balance = Number(sale.net || 0) - Number(sale.paid || 0);
@@ -2220,28 +2389,31 @@ function digestSaleStatus(sale) {
   return "Unpaid";
 }
 
+/** @param {any} clientName @param {any} sales */
 function digestClientBalance(clientName, sales) {
-  return sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  return sales.filter((/** @type {any} */ sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
 }
 
 const LARGE_TRANSACTION_THRESHOLD = 100000;
 
+/** @param {any} po @param {any} sales */
 function poFullyPaidServer(po, sales) {
-  const linkedSales = sales.filter((sale) => sale.po === po.id && sale.status !== "Cancelled");
-  return linkedSales.length > 0 && linkedSales.every((sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
+  const linkedSales = sales.filter((/** @type {any} */ sale) => sale.po === po.id && sale.status !== "Cancelled");
+  return linkedSales.length > 0 && linkedSales.every((/** @type {any} */ sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
 }
 
+/** @param {any} po @param {any} sales */
 function salesPoStatusServer(po, sales) {
   const lines = po.lines || [];
-  const linkedSales = sales.filter((sale) => sale.po === po.id && sale.status !== "Cancelled");
+  const linkedSales = sales.filter((/** @type {any} */ sale) => sale.po === po.id && sale.status !== "Cancelled");
   if (!linkedSales.length) return "For Invoicing";
-  const pendingQty = lines.reduce((sum, line) => {
-    const served = linkedSales.flatMap((sale) => sale.lines || []).filter((saleLine) => (saleLine.code && line.code && saleLine.code === line.code) || saleLine.item === line.item).reduce((lineSum, saleLine) => lineSum + Number(saleLine.qty || 0), 0);
+  const pendingQty = lines.reduce((/** @type {number} */ sum, /** @type {any} */ line) => {
+    const served = linkedSales.flatMap((/** @type {any} */ sale) => sale.lines || []).filter((/** @type {any} */ saleLine) => (saleLine.code && line.code && saleLine.code === line.code) || saleLine.item === line.item).reduce((/** @type {any} */ lineSum, /** @type {any} */ saleLine) => lineSum + Number(saleLine.qty || 0), 0);
     return sum + Math.max(Number(line.qty || 0) - served, 0);
   }, 0);
   if (pendingQty > 0) return "Pending Orders";
-  if (linkedSales.some((sale) => sale.type === "SI")) return "Sales Invoice";
-  if (linkedSales.some((sale) => sale.type === "DR")) return "Delivery Receipt";
+  if (linkedSales.some((/** @type {any} */ sale) => sale.type === "SI")) return "Sales Invoice";
+  if (linkedSales.some((/** @type {any} */ sale) => sale.type === "DR")) return "Delivery Receipt";
   return "Transmittal Slip";
 }
 
@@ -2270,6 +2442,7 @@ const PAGINATED_MODULE_PAGE_SIZE = 50;
 // same way the client's poServedQty()/poStatus() (public/scripts/modules.js) do — the PO's own
 // stored `status` field is frozen at creation and never rewritten to a terminal value, so it
 // cannot be used as a shortcut here.
+/** @param {any} salesRows */
 function buildServedQtyByPo(salesRows) {
   const map = new Map();
   for (const row of salesRows) {
@@ -2285,6 +2458,7 @@ function buildServedQtyByPo(salesRows) {
   return map;
 }
 
+/** @param {any} po @param {any} servedQtyByPo */
 function purchaseOrderIsOpen(po, servedQtyByPo) {
   const byCode = servedQtyByPo.get(po?.id);
   const lines = po?.lines || [];
@@ -2297,35 +2471,36 @@ function purchaseOrderIsOpen(po, servedQtyByPo) {
 // Per-module "still open" predicate (kept regardless of age/page) and sort value (what "most
 // recent" and pagination cursors are measured against). pendingTransfers has no date field on
 // the record itself, so it falls back to the row's own `updated_at` column.
+/** @param {any} servedQtyByPo @returns {Record<string, any>} */
 function paginatedModulePredicates(servedQtyByPo) {
   return {
     sales: {
-      isOpen: (data) => data?.status !== "Cancelled" && Number(data?.net || 0) - Number(data?.paid || 0) > 0,
-      sortValue: (data) => data?.date || "",
+      isOpen: (/** @type {any} */ data) => data?.status !== "Cancelled" && Number(data?.net || 0) - Number(data?.paid || 0) > 0,
+      sortValue: (/** @type {any} */ data) => data?.date || "",
     },
     purchaseOrders: {
-      isOpen: (data) => purchaseOrderIsOpen(data, servedQtyByPo),
-      sortValue: (data) => data?.date || "",
+      isOpen: (/** @type {any} */ data) => purchaseOrderIsOpen(data, servedQtyByPo),
+      sortValue: (/** @type {any} */ data) => data?.date || "",
     },
     inventoryPurchaseOrders: {
-      isOpen: (data) => !["Fully Received", "Cancelled"].includes(data?.status),
-      sortValue: (data) => data?.date || "",
+      isOpen: (/** @type {any} */ data) => !["Fully Received", "Cancelled"].includes(data?.status),
+      sortValue: (/** @type {any} */ data) => data?.date || "",
     },
     pendingTransfers: {
-      isOpen: (data) => !["Received", "Cancelled"].includes(data?.status),
-      sortValue: (data, updatedAt) => updatedAt || "",
+      isOpen: (/** @type {any} */ data) => !["Received", "Cancelled"].includes(data?.status),
+      sortValue: (/** @type {any} */ data, /** @type {any} */ updatedAt) => updatedAt || "",
     },
     payables: {
-      isOpen: (data) => data?.requestStatus !== "Cancelled" && !(data?.requestStatus === "Approved" && data?.paymentConfirmed === true),
-      sortValue: (data) => data?.date || "",
+      isOpen: (/** @type {any} */ data) => data?.requestStatus !== "Cancelled" && !(data?.requestStatus === "Approved" && data?.paymentConfirmed === true),
+      sortValue: (/** @type {any} */ data) => data?.date || "",
     },
     payments: {
-      isOpen: (data) => data?.collectionStatus !== "Deposited",
-      sortValue: (data) => data?.dateRecorded || data?.date || data?.postedDate || "",
+      isOpen: (/** @type {any} */ data) => data?.collectionStatus !== "Deposited",
+      sortValue: (/** @type {any} */ data) => data?.dateRecorded || data?.date || data?.postedDate || "",
     },
     paymentRequests: {
-      isOpen: (data) => !["Completed", "Cancelled"].includes(data?.requestStatus),
-      sortValue: (data) => data?.date || data?.createdAt || "",
+      isOpen: (/** @type {any} */ data) => !["Completed", "Cancelled"].includes(data?.requestStatus),
+      sortValue: (/** @type {any} */ data) => data?.date || data?.createdAt || "",
     },
   };
 }
@@ -2334,8 +2509,9 @@ function paginatedModulePredicates(servedQtyByPo) {
 // updated_at}) down to "open ∪ most recent PAGINATED_MODULE_PAGE_SIZE", leaving every other
 // module untouched. Returns the trimmed row list plus per-module { hasMore, cursor } metadata
 // for the client's "Load previous" control (cursor = the `before` value for /api/modules/page).
+/** @param {any} rows */
 function trimPaginatedModuleRows(rows) {
-  const servedQtyByPo = buildServedQtyByPo(rows.filter((row) => row.module_name === "sales"));
+  const servedQtyByPo = buildServedQtyByPo(rows.filter((/** @type {any} */ row) => row.module_name === "sales"));
   const predicates = paginatedModulePredicates(servedQtyByPo);
   const byModule = new Map();
   for (const row of rows) {
@@ -2343,25 +2519,27 @@ function trimPaginatedModuleRows(rows) {
     if (!byModule.has(row.module_name)) byModule.set(row.module_name, []);
     byModule.get(row.module_name).push(row);
   }
+  /** @type {Record<string, any>} */
   const pagination = {};
   const kept = [];
   for (const moduleName of PAGINATED_MODULES) {
     const moduleRows = byModule.get(moduleName) || [];
     const { isOpen, sortValue } = predicates[moduleName];
-    const sortOf = (row) => sortValue(row.data, row.updated_at) || "";
+    const sortOf = (/** @type {any} */ row) => sortValue(row.data, row.updated_at) || "";
     if (!moduleRows.length) { pagination[moduleName] = { hasMore: false, cursor: null }; continue; }
     const sortedDesc = [...moduleRows].sort((a, b) => sortOf(b).localeCompare(sortOf(a)));
     const recent = sortedDesc.slice(0, PAGINATED_MODULE_PAGE_SIZE);
     const recentKeys = new Set(recent.map((row) => row.record_key));
-    const openRows = moduleRows.filter((row) => !recentKeys.has(row.record_key) && isOpen(row.data));
+    const openRows = moduleRows.filter((/** @type {any} */ row) => !recentKeys.has(row.record_key) && isOpen(row.data));
     const finalRows = [...recent, ...openRows].sort((a, b) => sortOf(a).localeCompare(sortOf(b)));
     kept.push(...finalRows);
     pagination[moduleName] = { hasMore: finalRows.length < moduleRows.length, cursor: sortOf(recent[recent.length - 1]) || null };
   }
-  const untouched = rows.filter((row) => !PAGINATED_MODULES.includes(row.module_name));
+  const untouched = rows.filter((/** @type {any} */ row) => !PAGINATED_MODULES.includes(row.module_name));
   return { rows: [...untouched, ...kept], pagination };
 }
 
+/** @param {WorkerEnv} env @param {any} [modules] */
 async function loadDigestState(env, modules = digestStateModules) {
   const stateKey = appStateKey(env);
   const chunks = [];
@@ -2370,29 +2548,30 @@ async function loadDigestState(env, modules = digestStateModules) {
   return stateFromRecords(results.flat());
 }
 
+/** @param {any} state */
 function pendingSummaryFields(state) {
   const sales = state.sales || [];
-  const salesPurchaseOrders = (state.purchaseOrders || []).filter((po) => !["Sales Invoice", "Transmittal Slip", "Delivery Receipt"].includes(salesPoStatusServer(po, sales)) && !poFullyPaidServer(po, sales));
-  const inventoryPurchaseOrders = (state.inventoryPurchaseOrders || []).filter((po) => !/approved|fully received|cancelled/i.test(po.status || ""));
-  const inventoryPoApproval = inventoryPurchaseOrders.filter((po) => po.status === "Pending Approval");
-  const transfers = (state.pendingTransfers || []).filter((transfer) => !/received|cancelled/i.test(transfer.status || ""));
-  const collectionContacts = (state.collectionContacts || []).filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status));
+  const salesPurchaseOrders = (state.purchaseOrders || []).filter((/** @type {any} */ po) => !["Sales Invoice", "Transmittal Slip", "Delivery Receipt"].includes(salesPoStatusServer(po, sales)) && !poFullyPaidServer(po, sales));
+  const inventoryPurchaseOrders = (state.inventoryPurchaseOrders || []).filter((/** @type {any} */ po) => !/approved|fully received|cancelled/i.test(po.status || ""));
+  const inventoryPoApproval = inventoryPurchaseOrders.filter((/** @type {any} */ po) => po.status === "Pending Approval");
+  const transfers = (state.pendingTransfers || []).filter((/** @type {any} */ transfer) => !/received|cancelled/i.test(transfer.status || ""));
+  const collectionContacts = (state.collectionContacts || []).filter((/** @type {any} */ contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status));
   // Payment requests awaiting approval are surfaced once, under "Pending Approvals" —
   // repeating them under "Collections" as well just duplicates the same rows and was
   // a big part of why this digest read as noisy.
-  const collectionApprovals = (state.paymentRequests || []).filter((request) => request.invoice && request.requestStatus === "Pending");
-  const payables = (state.payables || []).filter((payable) => (payable.requestStatus || payable.status) === "For Approval");
-  const expenses = (state.replenishments || []).filter((expense) => (expense.requestStatus || expense.status) === "For Approval");
+  const collectionApprovals = (state.paymentRequests || []).filter((/** @type {any} */ request) => request.invoice && request.requestStatus === "Pending");
+  const payables = (state.payables || []).filter((/** @type {any} */ payable) => (payable.requestStatus || payable.status) === "For Approval");
+  const expenses = (state.replenishments || []).filter((/** @type {any} */ expense) => (expense.requestStatus || expense.status) === "For Approval");
   const PREVIEW_ROWS = 6;
-  const field = (emoji, name, rows, mapper) => {
+  const field = (/** @type {any} */ emoji, /** @type {any} */ name, /** @type {any} */ rows, /** @type {(row: any) => string} */ mapper) => {
     if (!rows.length) return null;
-    const preview = rows.slice(0, PREVIEW_ROWS).map((row) => `▸ ${mapper(row)}`);
+    const preview = rows.slice(0, PREVIEW_ROWS).map((/** @type {any} */ row) => `▸ ${mapper(row)}`);
     return { name: `${emoji} ${name} (${rows.length})`, value: discordFieldValue(preview, 900, rows.length), inline: false };
   };
   return [
     field("📄", "Sales Purchase Orders", salesPurchaseOrders, (po) => `\`${po.id}\` — **${po.client || "No client"}** · ${salesPoStatusServer(po, sales)}`),
     field("📦", "Inventory Purchase Orders", inventoryPurchaseOrders, (po) => `\`${po.id}\` — **${po.supplier || "No supplier"}** · ${po.status || "Pending"}`),
-    field("✅", "Pending Approvals", [...inventoryPoApproval, ...collectionApprovals], (item) => item.supplier ? `Inventory PO \`${item.id}\` — **${item.supplier}**` : `Collection \`${item.cvNo || item.id || "Request"}\` — **${item.employee || item.invoice}**`),
+    field("✅", "Pending Approvals", [...inventoryPoApproval, ...collectionApprovals], (/** @type {any} */ item) => item.supplier ? `Inventory PO \`${item.id}\` — **${item.supplier}**` : `Collection \`${item.cvNo || item.id || "Request"}\` — **${item.employee || item.invoice}**`),
     field("🚚", "Transfers", transfers, (transfer) => `\`${transfer.id}\` — **${transfer.item || "Items"}**, ${transfer.from || "-"} → ${transfer.to || "-"} · ${transfer.status || "Pending"}`),
     field("💰", "Collections", collectionContacts, (contact) => `**${contact.client || "Client"}** — ${contact.status}${contact.chequeInvoice ? ` (${contact.chequeInvoice})` : ""}`),
     field("💸", "Payables", payables, (payable) => `\`${payable.id || "Payable"}\` — **${payable.supplier || "Vendor"}**, ${money(payable.amount || payable.total || 0)} · ${payable.requestStatus || payable.status}`),
@@ -2400,11 +2579,13 @@ function pendingSummaryFields(state) {
   ].filter(Boolean);
 }
 
+/** @param {any} state */
 function detectThresholdsAndApprovals(state) {
+  /** @type {Record<string, any>} */
   const sections = {};
-  const pushSection = (roles, title, lines) => {
+  const pushSection = (/** @type {any} */ roles, /** @type {any} */ title, /** @type {any} */ lines) => {
     if (!lines.length) return;
-    roles.forEach((role) => {
+    roles.forEach((/** @type {any} */ role) => {
       sections[role] ||= [];
       sections[role].push({ title, lines });
     });
@@ -2413,69 +2594,70 @@ function detectThresholdsAndApprovals(state) {
   const inventory = state.inventory || [];
   // Worst-first: the most urgent shortages/expiries are what digestSectionHtml's cap keeps
   // visible once a branch has dozens of low-stock or near-expiry lots.
-  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).sort((a, b) => Number(a.qty || 0) - Number(b.qty || 0));
-  const nearExpiry = inventory.filter((item) => digestInventoryStatus(item) === "Near Expiry").sort((a, b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
-  if (lowStock.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Low / Critical Stock", lowStock.map((item) => `${item.item} (${item.branch}) — ${item.qty} left, lot ${item.lot}`));
-  if (nearExpiry.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Near-Expiry Stock", nearExpiry.map((item) => `${item.item} (${item.branch}) — lot ${item.lot}, expires ${item.expiry} (${digestDaysUntil(item.expiry)}d)`));
+  const lowStock = inventory.filter((/** @type {any} */ item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).sort((/** @type {any} */ a, /** @type {any} */ b) => Number(a.qty || 0) - Number(b.qty || 0));
+  const nearExpiry = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "Near Expiry").sort((/** @type {any} */ a, /** @type {any} */ b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
+  if (lowStock.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Low / Critical Stock", lowStock.map((/** @type {any} */ item) => `${item.item} (${item.branch}) — ${item.qty} left, lot ${item.lot}`));
+  if (nearExpiry.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdInventory, "Near-Expiry Stock", nearExpiry.map((/** @type {any} */ item) => `${item.item} (${item.branch}) — lot ${item.lot}, expires ${item.expiry} (${digestDaysUntil(item.expiry)}d)`));
 
   const sales = state.sales || [];
   const clients = state.clients || [];
-  const overdue = sales.filter((sale) => digestSaleStatus(sale) === "Overdue").sort((a, b) => Math.max(Number(b.net || 0) - Number(b.paid || 0), 0) - Math.max(Number(a.net || 0) - Number(a.paid || 0), 0));
-  if (overdue.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Overdue Invoices", overdue.map((sale) => `${sale.documentNo || sale.id} — ${sale.client}, ${money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))} overdue`));
-  const creditBreach = clients.filter((client) => Number(client.creditLimit || 0) > 0 && digestClientBalance(client.name, sales) > Number(client.creditLimit)).sort((a, b) => (digestClientBalance(b.name, sales) - Number(b.creditLimit)) - (digestClientBalance(a.name, sales) - Number(a.creditLimit)));
-  if (creditBreach.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Credit Limit Breach", creditBreach.map((client) => `${client.name} — ${money(digestClientBalance(client.name, sales))} used / ${money(client.creditLimit)} limit`));
+  const overdue = sales.filter((/** @type {any} */ sale) => digestSaleStatus(sale) === "Overdue").sort((/** @type {any} */ a, /** @type {any} */ b) => Math.max(Number(b.net || 0) - Number(b.paid || 0), 0) - Math.max(Number(a.net || 0) - Number(a.paid || 0), 0));
+  if (overdue.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Overdue Invoices", overdue.map((/** @type {any} */ sale) => `${sale.documentNo || sale.id} — ${sale.client}, ${money(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))} overdue`));
+  const creditBreach = clients.filter((/** @type {any} */ client) => Number(client.creditLimit || 0) > 0 && digestClientBalance(client.name, sales) > Number(client.creditLimit)).sort((/** @type {any} */ a, /** @type {any} */ b) => (digestClientBalance(b.name, sales) - Number(b.creditLimit)) - (digestClientBalance(a.name, sales) - Number(a.creditLimit)));
+  if (creditBreach.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdCredit, "Credit Limit Breach", creditBreach.map((/** @type {any} */ client) => `${client.name} — ${money(digestClientBalance(client.name, sales))} used / ${money(client.creditLimit)} limit`));
 
   const warranties = state.warranties || [];
-  const warrantyEnding = warranties.filter((item) => { const d = digestDaysUntil(item.warrantyEnd); return d >= 0 && d <= 30; });
-  const warrantyExpired = warranties.filter((item) => digestDaysUntil(item.warrantyEnd) < 0 || String(item.status || "").toLowerCase().includes("expired"));
-  if (warrantyEnding.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdWarranty, "Warranty Ending Soon", warrantyEnding.map((item) => `${item.client} — ${item.equipment} (${item.serial}), ends ${item.warrantyEnd}`));
-  if (warrantyExpired.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdWarranty, "Warranty Expired", warrantyExpired.map((item) => `${item.client} — ${item.equipment} (${item.serial})`));
+  const warrantyEnding = warranties.filter((/** @type {any} */ item) => { const d = digestDaysUntil(item.warrantyEnd); return d >= 0 && d <= 30; });
+  const warrantyExpired = warranties.filter((/** @type {any} */ item) => digestDaysUntil(item.warrantyEnd) < 0 || String(item.status || "").toLowerCase().includes("expired"));
+  if (warrantyEnding.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdWarranty, "Warranty Ending Soon", warrantyEnding.map((/** @type {any} */ item) => `${item.client} — ${item.equipment} (${item.serial}), ends ${item.warrantyEnd}`));
+  if (warrantyExpired.length) pushSection(DIGEST_ROLE_RECIPIENTS.thresholdWarranty, "Warranty Expired", warrantyExpired.map((/** @type {any} */ item) => `${item.client} — ${item.equipment} (${item.serial})`));
 
   const inventoryPOs = state.inventoryPurchaseOrders || [];
-  const poPending = inventoryPOs.filter((po) => po.status === "Pending Approval");
-  if (poPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPo, "Purchase Orders Awaiting Approval", poPending.map((po) => `${po.id} — ${po.supplier}`));
+  const poPending = inventoryPOs.filter((/** @type {any} */ po) => po.status === "Pending Approval");
+  if (poPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPo, "Purchase Orders Awaiting Approval", poPending.map((/** @type {any} */ po) => `${po.id} — ${po.supplier}`));
 
   const paymentRequests = state.paymentRequests || [];
-  const paymentPending = paymentRequests.filter((request) => request.invoice && request.requestStatus === "Pending");
-  if (paymentPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPaymentRequest, "Payments Received Awaiting Approval", paymentPending.map((request) => `${request.cvNo} — ${request.invoice}, ${money(request.total)}`));
+  const paymentPending = paymentRequests.filter((/** @type {any} */ request) => request.invoice && request.requestStatus === "Pending");
+  if (paymentPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPaymentRequest, "Payments Received Awaiting Approval", paymentPending.map((/** @type {any} */ request) => `${request.cvNo} — ${request.invoice}, ${money(request.total)}`));
 
   const payables = state.payables || [];
-  const payablesPending = payables.filter((payable) => (payable.requestStatus || payable.status) === "For Approval");
+  const payablesPending = payables.filter((/** @type {any} */ payable) => (payable.requestStatus || payable.status) === "For Approval");
   const replenishments = state.replenishments || [];
-  const replenishmentsPending = replenishments.filter((item) => (item.requestStatus || item.status) === "For Approval");
-  const financialPending = [...payablesPending.map((p) => `Payable — ${p.supplier}, ${money(p.amount)}`), ...replenishmentsPending.map((r) => `Expense — ${r.type}, ${money(r.amount)}`)];
+  const replenishmentsPending = replenishments.filter((/** @type {any} */ item) => (item.requestStatus || item.status) === "For Approval");
+  const financialPending = [...payablesPending.map((/** @type {any} */ p) => `Payable — ${p.supplier}, ${money(p.amount)}`), ...replenishmentsPending.map((/** @type {any} */ r) => `Expense — ${r.type}, ${money(r.amount)}`)];
   if (financialPending.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalPayable, "Payables / Expenses Awaiting Approval", financialPending);
 
   const demoRequests = state.inventoryDemoRequests || [];
-  const demoSalesApproval = demoRequests.filter((request) => request.status === "For Sales Approval");
-  const demoLogisticsApproval = demoRequests.filter((request) => request.status === "For Logistics Approval");
-  if (demoLogisticsApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoLogistics, "Demo Requests Awaiting Logistics Approval (Consumables)", demoLogisticsApproval.map((request) => `${request.id} — ${request.client}, ${request.lines?.length || 0} item(s)`));
-  const demoManagementApproval = demoRequests.filter((request) => request.status === "For Management Approval");
-  if (demoSalesApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoSales, "Demo Requests Awaiting Sales Approval", demoSalesApproval.map((request) => `${request.id} — ${request.client}, ${request.lines?.length || 0} item(s)`));
-  if (demoManagementApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoManagement, "Demo Requests Awaiting Management Approval", demoManagementApproval.map((request) => `${request.id} — ${request.client}, ${request.logisticsApprovedBy ? `logistics-approved by ${request.logisticsApprovedBy}` : request.salesApprovedBy ? `sales-approved by ${request.salesApprovedBy}` : `requested by ${request.requestedBy || "-"}`}`));
+  const demoSalesApproval = demoRequests.filter((/** @type {any} */ request) => request.status === "For Sales Approval");
+  const demoLogisticsApproval = demoRequests.filter((/** @type {any} */ request) => request.status === "For Logistics Approval");
+  if (demoLogisticsApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoLogistics, "Demo Requests Awaiting Logistics Approval (Consumables)", demoLogisticsApproval.map((/** @type {any} */ request) => `${request.id} — ${request.client}, ${request.lines?.length || 0} item(s)`));
+  const demoManagementApproval = demoRequests.filter((/** @type {any} */ request) => request.status === "For Management Approval");
+  if (demoSalesApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoSales, "Demo Requests Awaiting Sales Approval", demoSalesApproval.map((/** @type {any} */ request) => `${request.id} — ${request.client}, ${request.lines?.length || 0} item(s)`));
+  if (demoManagementApproval.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalDemoManagement, "Demo Requests Awaiting Management Approval", demoManagementApproval.map((/** @type {any} */ request) => `${request.id} — ${request.client}, ${request.logisticsApprovedBy ? `logistics-approved by ${request.logisticsApprovedBy}` : request.salesApprovedBy ? `sales-approved by ${request.salesApprovedBy}` : `requested by ${request.requestedBy || "-"}`}`));
 
   const productIssues = state.productIssues || [];
-  const passedIssues = productIssues.filter((report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status));
-  if (passedIssues.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalProductIssue, "Support Reports Awaiting Handoff", passedIssues.map((report) => `${report.id} — ${report.companyName} (${report.status})`));
+  const passedIssues = productIssues.filter((/** @type {any} */ report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status));
+  if (passedIssues.length) pushSection(DIGEST_ROLE_RECIPIENTS.approvalProductIssue, "Support Reports Awaiting Handoff", passedIssues.map((/** @type {any} */ report) => `${report.id} — ${report.companyName} (${report.status})`));
 
   return sections;
 }
 
+/** @param {any} state */
 function computeBusinessMetrics(state) {
-  const sales = (state.sales || []).filter((sale) => sale.status !== "Cancelled");
+  const sales = (state.sales || []).filter((/** @type {any} */ sale) => sale.status !== "Cancelled");
   const payments = state.payments || [];
   const inventory = state.inventory || [];
   const payables = state.payables || [];
   const replenishments = state.replenishments || [];
   const demoRequests = state.inventoryDemoRequests || [];
-  const totalSales = sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const totalCollected = sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const totalSales = sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.net || 0), 0);
+  const totalCollected = sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.paid || 0), 0);
   const totalExpenses = [...payables, ...replenishments].reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0);
-  const overdueCount = sales.filter((sale) => digestSaleStatus(sale) === "Overdue").length;
-  const pendingDeposit = payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
-  const bounced = payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
-  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).length;
-  const activeDemos = demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || "")).length;
+  const overdueCount = sales.filter((/** @type {any} */ sale) => digestSaleStatus(sale) === "Overdue").length;
+  const pendingDeposit = payments.filter((/** @type {any} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
+  const bounced = payments.filter((/** @type {any} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
+  const lowStock = inventory.filter((/** @type {any} */ item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).length;
+  const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || "")).length;
   return {
     salesCount: sales.length,
     totalSales,
@@ -2490,6 +2672,7 @@ function computeBusinessMetrics(state) {
   };
 }
 
+/** @param {any} state */
 function buildBusinessSummaryLines(state) {
   const m = computeBusinessMetrics(state);
   return [
@@ -2506,29 +2689,30 @@ function buildBusinessSummaryLines(state) {
   ];
 }
 
+/** @param {any} state @param {any} sinceIso */
 function financialDigestLines(state, sinceIso) {
   const since = new Date(sinceIso);
-  const inPeriod = (value) => value && new Date(value) >= since;
+  const inPeriod = (/** @type {any} */ value) => value && new Date(value) >= since;
   const purchaseOrders = state.purchaseOrders || [];
   const inventoryPurchaseOrders = state.inventoryPurchaseOrders || [];
   const payables = state.payables || [];
   const replenishments = state.replenishments || [];
   const demoRequests = state.inventoryDemoRequests || [];
-  const openClientPos = purchaseOrders.filter((po) => !/completed|cancelled|invoice/i.test(po.status || ""));
-  const newClientPos = purchaseOrders.filter((po) => inPeriod(po.date));
-  const openInventoryPos = inventoryPurchaseOrders.filter((po) => !/completed|cancelled|received/i.test(po.status || ""));
-  const inventoryPoTotal = openInventoryPos.reduce((sum, po) => sum + (po.lines || []).reduce((lineSum, line) => lineSum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0), 0);
-  const openPayables = payables.filter((payable) => !/paid|cancelled|rejected/i.test(payable.requestStatus || payable.status || ""));
-  const pendingExpenses = replenishments.filter((expense) => !/paid|liquidated|cancelled|rejected/i.test(expense.requestStatus || expense.status || ""));
+  const openClientPos = purchaseOrders.filter((/** @type {any} */ po) => !/completed|cancelled|invoice/i.test(po.status || ""));
+  const newClientPos = purchaseOrders.filter((/** @type {any} */ po) => inPeriod(po.date));
+  const openInventoryPos = inventoryPurchaseOrders.filter((/** @type {any} */ po) => !/completed|cancelled|received/i.test(po.status || ""));
+  const inventoryPoTotal = openInventoryPos.reduce((/** @type {number} */ sum, /** @type {any} */ po) => sum + (po.lines || []).reduce((/** @type {any} */ lineSum, /** @type {any} */ line) => lineSum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0), 0);
+  const openPayables = payables.filter((/** @type {any} */ payable) => !/paid|cancelled|rejected/i.test(payable.requestStatus || payable.status || ""));
+  const pendingExpenses = replenishments.filter((/** @type {any} */ expense) => !/paid|liquidated|cancelled|rejected/i.test(expense.requestStatus || expense.status || ""));
   const combinedExpenses = [...payables, ...replenishments];
-  const activeDemos = demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
-  const newDemos = demoRequests.filter((request) => inPeriod(request.date || request.demoDate));
+  const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
+  const newDemos = demoRequests.filter((/** @type {any} */ request) => inPeriod(request.date || request.demoDate));
   return [
     `Client purchase orders open: ${openClientPos.length}`,
     `Client purchase orders created: ${newClientPos.length}`,
     `Inventory purchase orders open: ${openInventoryPos.length} (${money(inventoryPoTotal)})`,
-    `Payables open/for approval: ${openPayables.length} (${money(openPayables.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
-    `Expenses pending/for approval: ${pendingExpenses.length} (${money(pendingExpenses.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
+    `Payables open/for approval: ${openPayables.length} (${money(openPayables.reduce((/** @type {number} */ sum, /** @type {any} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
+    `Expenses pending/for approval: ${pendingExpenses.length} (${money(pendingExpenses.reduce((/** @type {number} */ sum, /** @type {any} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
     `All expenses booked (payables + expenses): ${combinedExpenses.length} (${money(combinedExpenses.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
     `Demo requests active/created: ${activeDemos.length} active / ${newDemos.length} created`,
   ];
@@ -2541,6 +2725,7 @@ function manilaMonthParts(value = Date.now()) {
   return { key: `${map.year}-${map.month}`, label: new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "long", year: "numeric" }).format(new Date(value)) };
 }
 
+/** @param {any} value */
 function recordMonthKey(value) {
   if (!value) return "";
   const text = String(value);
@@ -2549,31 +2734,32 @@ function recordMonthKey(value) {
   return Number.isNaN(date.getTime()) ? "" : manilaMonthParts(date).key;
 }
 
+/** @param {any} state @param {any} monthKey */
 function dashboardAnalyticsFields(state, monthKey) {
-  const sales = (state.sales || []).filter((sale) => sale.status !== "Cancelled");
+  const sales = (state.sales || []).filter((/** @type {any} */ sale) => sale.status !== "Cancelled");
   const payments = state.payments || [];
   const inventory = state.inventory || [];
   const payables = state.payables || [];
   const replenishments = state.replenishments || [];
   const demoRequests = state.inventoryDemoRequests || [];
-  const monthSales = sales.filter((sale) => recordMonthKey(sale.date) === monthKey);
-  const monthPayments = payments.filter((payment) => recordMonthKey(payment.dateRecorded || payment.date || payment.postedDate) === monthKey);
-  const monthPayables = payables.filter((payable) => recordMonthKey(payable.date) === monthKey);
-  const monthExpenses = replenishments.filter((expense) => recordMonthKey(expense.date) === monthKey);
-  const totalSales = monthSales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const totalCollected = monthPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const openReceivables = Math.max(sales.reduce((sum, sale) => sum + Number(sale.net || 0), 0) - sales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0), 0);
-  const overdue = sales.filter((sale) => digestSaleStatus(sale) === "Overdue");
-  const lowStock = inventory.filter((item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item)));
-  const pendingPayables = monthPayables.filter((payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
-  const pendingExpenses = monthExpenses.filter((expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
+  const monthSales = sales.filter((/** @type {any} */ sale) => recordMonthKey(sale.date) === monthKey);
+  const monthPayments = payments.filter((/** @type {any} */ payment) => recordMonthKey(payment.dateRecorded || payment.date || payment.postedDate) === monthKey);
+  const monthPayables = payables.filter((/** @type {any} */ payable) => recordMonthKey(payable.date) === monthKey);
+  const monthExpenses = replenishments.filter((/** @type {any} */ expense) => recordMonthKey(expense.date) === monthKey);
+  const totalSales = monthSales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.net || 0), 0);
+  const totalCollected = monthPayments.reduce((/** @type {number} */ sum, /** @type {any} */ payment) => sum + Number(payment.amount || 0), 0);
+  const openReceivables = Math.max(sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.net || 0), 0) - sales.reduce((/** @type {number} */ sum, /** @type {any} */ sale) => sum + Number(sale.paid || 0), 0), 0);
+  const overdue = sales.filter((/** @type {any} */ sale) => digestSaleStatus(sale) === "Overdue");
+  const lowStock = inventory.filter((/** @type {any} */ item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item)));
+  const pendingPayables = monthPayables.filter((/** @type {any} */ payable) => ["For Approval", "Approved"].includes(payable.requestStatus || payable.status));
+  const pendingExpenses = monthExpenses.filter((/** @type {any} */ expense) => ["For Approval", "Approved"].includes(expense.requestStatus || expense.status));
   const monthExpenseTotal = [...monthPayables, ...monthExpenses].reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0);
-  const activeDemos = demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
+  const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
   return [
     { name: "💰 Sales", value: [`**Invoices this month:** ${monthSales.length}`, `**Month invoiced:** ${money(totalSales)}`, `**Open AR total:** ${money(openReceivables)}`].join("\n"), inline: true },
-    { name: "🏦 Collections", value: [`**Collected this month:** ${money(totalCollected)}`, `**Deposits pending:** ${payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`, `**Overdue invoices:** ${overdue.length}`].join("\n"), inline: true },
+    { name: "🏦 Collections", value: [`**Collected this month:** ${money(totalCollected)}`, `**Deposits pending:** ${payments.filter((/** @type {any} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`, `**Overdue invoices:** ${overdue.length}`].join("\n"), inline: true },
     { name: "📦 Operations", value: [`**Low / critical stock:** ${lowStock.length}`, `**Business expenses this month:** ${monthPayables.length + monthExpenses.length}`, `**Expense amount:** ${money(monthExpenseTotal)}`].join("\n"), inline: true },
-    { name: "⚠️ Attention", value: [`**Payables/expenses pending:** ${pendingPayables.length + pendingExpenses.length}`, `**Active demo requests:** ${activeDemos.length}`, `**Bounced payments:** ${payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length}`].join("\n"), inline: true },
+    { name: "⚠️ Attention", value: [`**Payables/expenses pending:** ${pendingPayables.length + pendingExpenses.length}`, `**Active demo requests:** ${activeDemos.length}`, `**Bounced payments:** ${payments.filter((/** @type {any} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length}`].join("\n"), inline: true },
   ];
 }
 
@@ -2582,18 +2768,19 @@ function dashboardAnalyticsFields(state, monthKey) {
 // so the most urgent row (lowest qty, soonest expiry) leads the list — matches the same
 // thresholds the Low/Critical Stock and Near-Expiry Stock digest sections already use, just
 // scoped to their own channel instead of mixed into the general digest.
+/** @param {any} inventory */
 function inventoryStatusFields(inventory) {
-  const disposal = inventory.filter((item) => digestInventoryStatus(item) === "For Disposal").sort((a, b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
-  const critical = inventory.filter((item) => digestInventoryStatus(item) === "Critical").sort((a, b) => Number(a.qty || 0) - Number(b.qty || 0));
-  const lowStock = inventory.filter((item) => digestInventoryStatus(item) === "Low Stock").sort((a, b) => Number(a.qty || 0) - Number(b.qty || 0));
-  const nearExpiry = inventory.filter((item) => digestInventoryStatus(item) === "Near Expiry").sort((a, b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
+  const disposal = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "For Disposal").sort((/** @type {any} */ a, /** @type {any} */ b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
+  const critical = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "Critical").sort((/** @type {any} */ a, /** @type {any} */ b) => Number(a.qty || 0) - Number(b.qty || 0));
+  const lowStock = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "Low Stock").sort((/** @type {any} */ a, /** @type {any} */ b) => Number(a.qty || 0) - Number(b.qty || 0));
+  const nearExpiry = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "Near Expiry").sort((/** @type {any} */ a, /** @type {any} */ b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
   const flaggedCount = disposal.length + critical.length + lowStock.length + nearExpiry.length;
   const healthy = inventory.length - flaggedCount;
 
   const PREVIEW_ROWS = 10;
   // Every row renders the same two-line block so quantity and expiry are always in the same
   // spot and easy to scan: title line (item · branch · lot), then a labelled Qty / Exp line.
-  const expiryTag = (item) => {
+  const expiryTag = (/** @type {any} */ item) => {
     if (!item.expiry || item.expiry === "N/A") return "no expiry set";
     const days = digestDaysUntil(item.expiry);
     if (Number.isNaN(days)) return item.expiry;
@@ -2601,13 +2788,13 @@ function inventoryStatusFields(inventory) {
     if (days === 0) return `${item.expiry} · expires today`;
     return `${item.expiry} · in ${days}d`;
   };
-  const rowLine = (item) => {
+  const rowLine = (/** @type {any} */ item) => {
     const title = `**${item.item || item.code || "Item"}** · ${item.branch || "-"}${item.lot ? ` · lot ${item.lot}` : ""}`;
     return `${title}\n   📦 Qty **${item.qty ?? 0} / ${item.min ?? 0}**   ⏳ Exp **${expiryTag(item)}**`;
   };
-  const field = (emoji, name, rows) => {
+  const field = (/** @type {any} */ emoji, /** @type {any} */ name, /** @type {any} */ rows) => {
     if (!rows.length) return null;
-    const preview = rows.slice(0, PREVIEW_ROWS).map((row) => `▸ ${rowLine(row)}`);
+    const preview = rows.slice(0, PREVIEW_ROWS).map((/** @type {any} */ row) => `▸ ${rowLine(row)}`);
     return { name: `${emoji} ${name} (${rows.length})`, value: discordFieldValue(preview, 950, rows.length), inline: false };
   };
 
@@ -2621,10 +2808,12 @@ function inventoryStatusFields(inventory) {
   return { fields, flaggedCount, criticalCount: disposal.length + critical.length };
 }
 
+/** @param {any} value */
 function normalizeBranchName(value) {
   return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
 }
 
+/** @param {WorkerEnv} env @param {any} branchLabel @param {any} branchInventory */
 async function postInventoryBranchBoard(env, branchLabel, branchInventory) {
   const { fields, flaggedCount, criticalCount } = inventoryStatusFields(branchInventory);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -2651,6 +2840,7 @@ async function postInventoryBranchBoard(env, branchLabel, branchInventory) {
 // Deletes the Discord message and clears the tracked state for a branch board that no longer
 // has a matching masterlist branch (removed, or renamed to a different normalized key) — so a
 // stale board doesn't sit there forever showing data that stopped being true.
+/** @param {WorkerEnv} env @param {any} branchKey */
 async function removeInventoryBranchBoard(env, branchKey) {
   const stateKey = `discord-inventory-${branchKey}`;
   const stored = await monitoringState(env, stateKey).catch(() => ({}));
@@ -2660,8 +2850,10 @@ async function removeInventoryBranchBoard(env, branchKey) {
   await recordSystemLog(env, { action: "Discord inventory board removed", module: "Discord", record: `Branch board no longer in masterlist: ${branchKey}` }).catch(() => null);
 }
 
+/** @param {WorkerEnv} env */
 async function runInventoryStatusMonitor(env) {
   if (!env.DISCORD_INVENTORY_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord inventory monitor skipped", module: "Discord", record: "DISCORD_INVENTORY_WEBHOOK_URL not configured" });
+  /** @type {Record<string, any>} */
   const state = await loadDigestState(env, ["inventory", "platformBranches"]);
   const inventory = state.inventory || [];
   // Branch list comes from the masterlist (Settings > Branches), not a hardcoded pair, so a
@@ -2669,22 +2861,24 @@ async function runInventoryStatusMonitor(env) {
   // back to whatever branch names actually appear on inventory rows if masterlist is empty,
   // so this never silently produces zero boards.
   const configuredBranches = (state.platformBranches || []).filter(Boolean);
-  const branches = configuredBranches.length ? configuredBranches : [...new Set(inventory.map((item) => item.branch).filter(Boolean))].sort();
+  const branches = configuredBranches.length ? configuredBranches : [...new Set(inventory.map((/** @type {any} */ item) => item.branch).filter(Boolean))].sort();
   const activeKeys = new Set(branches.map(normalizeBranchName));
 
   const registry = await monitoringState(env, "discord-inventory-branches").catch(() => ({}));
-  const staleKeys = (registry.keys || []).filter((key) => !activeKeys.has(key));
+  const staleKeys = (registry.keys || []).filter((/** @type {any} */ key) => !activeKeys.has(key));
 
   await Promise.allSettled([
-    ...branches.map((branch) => postInventoryBranchBoard(env, branch, inventory.filter((item) => normalizeBranchName(item.branch) === normalizeBranchName(branch)))),
-    ...staleKeys.map((key) => removeInventoryBranchBoard(env, key)),
+    ...branches.map((/** @type {any} */ branch) => postInventoryBranchBoard(env, branch, inventory.filter((/** @type {any} */ item) => normalizeBranchName(item.branch) === normalizeBranchName(branch)))),
+    ...staleKeys.map((/** @type {any} */ key) => removeInventoryBranchBoard(env, key)),
   ]);
   await saveMonitoringState(env, "discord-inventory-branches", { keys: [...activeKeys] }).catch((error) => recordSystemLog(env, { action: "Discord inventory registry save failed", module: "Discord", record: error.message }));
 }
 
 const GAME_BADGE_EMOJI = { Bronze: "🥉", Silver: "🥈", Gold: "🥇", Platinum: "💎" };
+/** @type {Record<string, any>} */
 const GAME_SKIN_EMOJI = { hardhat: "👷", shades: "😎", cape: "🦸", gold: "👑", platinum: "🔷" };
 
+/** @param {any} value @param {string} [fallback] */
 function discordSafeText(value, fallback = "Player") {
   // Strip Discord markdown control chars so a player name can't italicise / spoiler the row.
   return webhookText(String(value ?? "").replace(/[*_~`|\\>]/g, ""), fallback).slice(0, 60);
@@ -2697,16 +2891,17 @@ function discordSafeText(value, fallback = "Player") {
 // edited in place on the same 15-minute cadence as the inventory boards (skips the 18:00 hour
 // reserved for digests/backups). Mirrors postInventoryBranchBoard: edit the tracked message,
 // fall back to posting a fresh one and re-tracking its id.
+/** @param {WorkerEnv} env */
 async function runLuksongLeaderboardMonitor(env) {
   if (!env.DISCORD_LUKSONG_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord Luksong leaderboard skipped", module: "Discord", record: "DISCORD_LUKSONG_WEBHOOK_URL not configured" });
   const stateKey = appStateKey(env);
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&select=data`);
-  const entries = rows.map((row) => row.data).filter((entry) => entry && Number(entry.score) > 0)
-    .sort((a, b) => (b.score || 0) - (a.score || 0))
+  const entries = rows.map((/** @type {any} */ row) => row.data).filter((/** @type {any} */ entry) => entry && Number(entry.score) > 0)
+    .sort((/** @type {any} */ a, /** @type {any} */ b) => (b.score || 0) - (a.score || 0))
     .slice(0, 15);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const medal = (i) => ["🥇", "🥈", "🥉"][i] || `**${i + 1}.**`;
-  const lines = entries.map((entry, i) => {
+  const medal = (/** @type {any} */ i) => ["🥇", "🥈", "🥉"][i] || `**${i + 1}.**`;
+  const lines = entries.map((/** @type {any} */ entry, /** @type {any} */ i) => {
     const badge = gameBadgeForScore(entry.score);
     const level = gameLevelForXp(entry.totalXp || 0);
     const skin = gameResolveSkin(null, entry.skin, level, badge);
@@ -2729,12 +2924,15 @@ async function runLuksongLeaderboardMonitor(env) {
   else await recordSystemLog(env, { action: "Discord Luksong leaderboard message id missing", module: "Discord", record: "Post succeeded but no message ID returned" });
 }
 
+/** @param {any} ms */
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
+/** @param {any} error */
 function isTransientJwtClockSkew(error) {
   return /jwt.*future|issued at future|not active|nbf/i.test(String(error?.message || error || ""));
 }
 
+/** @param {WorkerEnv} env */
 async function checkSupabaseAppRecordsHealth(env) {
   const query = `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name&limit=1`;
   try {
@@ -2748,6 +2946,7 @@ async function checkSupabaseAppRecordsHealth(env) {
   }
 }
 
+/** @param {WorkerEnv} env @param {string} path @param {any} name */
 async function checkAssetPageHealth(env, path, name) {
   if (!env.ASSETS) return { name, ok: false, error: "ASSETS binding missing" };
   try {
@@ -2763,6 +2962,7 @@ async function checkAssetPageHealth(env, path, name) {
 // "stale" on 6 of every 7 days by design, not because anything is wrong.
 const BACKUP_STALE_HOURS = 24 * 7;
 
+/** @param {WorkerEnv} env */
 async function backupStatus(env) {
   const rows = await supabaseFetch(env, `/rest/v1/backup_runs?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=id,backup_type,mode,object_key,records_count,size_bytes,created_at&order=created_at.desc&limit=1`);
   const latest = rows[0] || null;
@@ -2771,6 +2971,7 @@ async function backupStatus(env) {
   return { latest, ageHours, stale: !latest || /** @type {number} */ (ageHours) > BACKUP_STALE_HOURS };
 }
 
+/** @param {WorkerEnv} env */
 async function checkBackupFreshnessHealth(env) {
   try {
     const status = await backupStatus(env);
@@ -2780,6 +2981,7 @@ async function checkBackupFreshnessHealth(env) {
   }
 }
 
+/** @param {any} name @param {any} check */
 async function timedHealthCheck(name, check) {
   const started = Date.now();
   try {
@@ -2790,18 +2992,22 @@ async function timedHealthCheck(name, check) {
   }
 }
 
+/** @param {any} name @param {any} ok @param {string} [error] */
 function staticHealthCheck(name, ok, error = "") {
   return { name, ok, error: ok ? "" : error, durationMs: 0 };
 }
 
+/** @param {any} check */
 function healthCheckLine(check) {
   const timing = typeof check.durationMs === "number" ? ` (${check.durationMs} ms)` : "";
   return `${check.ok ? "✅" : "❌"} **${check.name}**${timing}${check.note ? `\n↳ ${check.note}` : ""}${check.error ? `\n↳ ${check.error}` : ""}`;
 }
 
+/** @param {WorkerEnv} env @param {any} ok */
 async function updateMonthlyUptime(env, ok) {
   const month = manilaMonthParts();
   const key = `api-health-uptime-${month.key}`;
+  /** @type {Record<string, any>} */
   const state = await monitoringState(env, key).catch(() => ({}));
   const checks = Number(state.checks || 0) + 1;
   const successes = Number(state.successes || 0) + (ok ? 1 : 0);
@@ -2811,11 +3017,13 @@ async function updateMonthlyUptime(env, ok) {
   return updated;
 }
 
+/** @param {WorkerEnv} env @param {any} recordKey */
 async function monitoringState(env, recordKey) {
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.system-monitoring&record_key=eq.${encodeURIComponent(recordKey)}&select=data`);
   return rows[0]?.data || {};
 }
 
+/** @param {WorkerEnv} env @param {any} recordKey @param {any} state */
 async function saveMonitoringState(env, recordKey, state) {
   await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
     method: "POST",
@@ -2824,6 +3032,7 @@ async function saveMonitoringState(env, recordKey, state) {
   });
 }
 
+/** @param {WorkerEnv} env */
 async function runApiHealthMonitor(env) {
   const checks = [];
   const started = Date.now();
@@ -2869,10 +3078,12 @@ async function runApiHealthMonitor(env) {
   else if (recovered) await sendDiscordWebhook(env, { embeds: [{ title: "Medlane API Health Recovered", color: 0x22c55e, description: "All monitored API checks are back to OK after the previous failure.", fields: [{ name: "Recovered At", value: `**${updatedAt} PHT**`, inline: false }, { name: "Monthly Uptime", value: `${uptime.uptimePercent.toFixed(2)}%`, inline: true }], timestamp: new Date().toISOString() }] });
 }
 
+/** @param {WorkerEnv} env */
 async function runDashboardAnalyticsMonitor(env) {
   if (!env.DISCORD_DASHBOARD_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord dashboard monitor skipped", module: "Discord", record: "DISCORD_DASHBOARD_WEBHOOK_URL not configured" });
   const cached = await monitoringState(env, "dashboard-analytics-cache").catch(() => ({}));
   const cacheAgeMs = cached.cachedAt ? Date.now() - new Date(cached.cachedAt).getTime() : Infinity;
+  /** @type {Record<string, any>} */
   const state = cached.state && cacheAgeMs < 10 * 60 * 1000 ? cached.state : await loadDigestState(env, ["sales", "payments", "inventory", "payables", "replenishments"]);
   if (!cached.state || cacheAgeMs >= 10 * 60 * 1000) await saveMonitoringState(env, "dashboard-analytics-cache", { cachedAt: new Date().toISOString(), state }).catch((error) => recordSystemLog(env, { action: "Dashboard analytics cache save failed", module: "Monitoring", record: error.message }));
   const month = manilaMonthParts();
@@ -2891,8 +3102,10 @@ async function runDashboardAnalyticsMonitor(env) {
   if (sent.messageId) await saveMonitoringState(env, "discord-dashboard", { messageId: sent.messageId, updatedAt: new Date().toISOString() });
 }
 
+/** @param {WorkerEnv} env */
 async function runPendingItemsMonitor(env) {
   if (!env.DISCORD_PENDING_WEBHOOK_URL) return recordSystemLog(env, { action: "Discord pending monitor skipped", module: "Discord", record: "DISCORD_PENDING_WEBHOOK_URL not configured" });
+  /** @type {Record<string, any>} */
   const state = await loadDigestState(env, ["sales", "purchaseOrders", "inventoryPurchaseOrders", "pendingTransfers", "collectionContacts", "paymentRequests", "payables", "replenishments"]);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const fields = pendingSummaryFields(state);
@@ -2940,15 +3153,17 @@ function randomBirthdayGifUrl() {
 // an admin can confirm the webhook is wired up correctly without waiting for one.
 // Throws on anything that should make runOncePerPeriod retry on the next 15-minute tick
 // (missing config, a failed Discord post); "no birthdays today" is a normal, non-retried result.
+/** @param {WorkerEnv} env @param {{ force?: any }} options */
 async function runBirthdayGreetings(env, { force = false } = {}) {
   if (!env.DISCORD_BIRTHDAY_WEBHOOK_URL) {
     await recordSystemLog(env, { action: "Discord birthday monitor skipped", module: "Discord", record: "DISCORD_BIRTHDAY_WEBHOOK_URL not configured" }).catch(() => null);
     throw new Error("DISCORD_BIRTHDAY_WEBHOOK_URL is not configured");
   }
+  /** @type {Record<string, any>} */
   const state = await loadDigestState(env, ["employees"]);
   const todayKey = manilaScheduleParts(Date.now());
   const monthDay = `${todayKey.month}-${todayKey.day}`;
-  let birthdays = (state.employees || []).filter((employee) => !employee.archived && String(employee.birthday || "").slice(5) === monthDay);
+  let birthdays = (state.employees || []).filter((/** @type {any} */ employee) => !employee.archived && String(employee.birthday || "").slice(5) === monthDay);
   const isTest = force && !birthdays.length;
   if (isTest) birthdays = [{ name: "Test Employee" }];
   if (!birthdays.length) return { sent: false, reason: "No birthdays today" };
@@ -2975,6 +3190,7 @@ async function runBirthdayGreetings(env, { force = false } = {}) {
 
 // Posts the Monday (start-of-week) / Friday (end-of-week) odometer reminder, tagging @everyone.
 // Throws on a missing webhook or failed post so runOncePerPeriod retries on the next tick.
+/** @param {WorkerEnv} env @param {any} weekday */
 async function runOdometerReminder(env, weekday) {
   if (!env.ODOMETER_DISCORD_WEBHOOK_URL) {
     await recordSystemLog(env, { action: "Discord odometer reminder skipped", module: "Discord", record: "ODOMETER_DISCORD_WEBHOOK_URL not configured" }).catch(() => null);
@@ -2989,6 +3205,7 @@ async function runOdometerReminder(env, weekday) {
   return { sent: true };
 }
 
+/** @param {WorkerEnv} env */
 async function runFiveMinuteDiscordMonitors(env) {
   const scheduled = manilaScheduleParts(Date.now());
   /** @type {Promise<any>[]} */
@@ -2997,6 +3214,7 @@ async function runFiveMinuteDiscordMonitors(env) {
   await Promise.allSettled(tasks);
 }
 
+/** @param {any} value */
 function manilaScheduleParts(value) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", weekday: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(value));
   return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
@@ -3010,6 +3228,7 @@ function manilaScheduleParts(value) {
 // inside it, but guard each job with a persisted "already ran for this period" flag so it only
 // actually executes once per day/week/month/year and safely retries on the next tick if an
 // earlier attempt in the same hour threw.
+/** @param {any} scheduled */
 function manilaPeriodKeys(scheduled) {
   const dayKey = `${scheduled.year}-${scheduled.month}-${scheduled.day}`;
   return { dayKey, monthKey: `${scheduled.year}-${scheduled.month}`, yearKey: scheduled.year };
@@ -3021,8 +3240,10 @@ function manilaPeriodKeys(scheduled) {
 const AUTOMATION_LOCK_MS = 6 * 60 * 1000;
 const AUTOMATION_HEARTBEAT_MS = 2 * 60 * 1000;
 
+/** @param {WorkerEnv} env @param {any} jobKey @param {any} periodKey */
 async function claimAutomationPeriod(env, jobKey, periodKey) {
   const stateKey = `automation-once-${jobKey}`;
+  /** @type {Record<string, any>} */
   const state = await monitoringState(env, stateKey).catch(() => ({}));
   if (state.lastPeriod === periodKey) return null; // already completed for this period
   // Hold an in-flight lock so two overlapping 5-minute invocations (or a retry landing while
@@ -3037,11 +3258,13 @@ async function claimAutomationPeriod(env, jobKey, periodKey) {
   return claimed;
 }
 
+/** @param {WorkerEnv} env @param {any} jobKey @param {any} periodKey @param {any} fn */
 async function runOncePerPeriod(env, jobKey, periodKey, fn) {
   const claimed = await claimAutomationPeriod(env, jobKey, periodKey);
   if (!claimed) return null;
   const stateKey = `automation-once-${jobKey}`;
   let running = true;
+  /** @type {((value?: any) => void) | undefined} */
   let stopHeartbeat;
   const heartbeatStopped = new Promise((resolve) => { stopHeartbeat = resolve; });
   // Refresh attemptAt on a fixed cadence for as long as fn() runs. An overlapping tick then
@@ -3077,7 +3300,7 @@ async function runOncePerPeriod(env, jobKey, periodKey, fn) {
     throw error;
   } finally {
     running = false;
-    stopHeartbeat();
+    /** @type {(value?: any) => void} */ (stopHeartbeat)();
     await heartbeat.catch(() => {});
   }
 }
@@ -3089,8 +3312,10 @@ async function runOncePerPeriod(env, jobKey, periodKey, fn) {
 // together, so one Worker invocation ran two digests plus a full-database gzip backup at
 // once, exhausted its CPU/subrequest budget, and died mid-run — leaving digests half-sent
 // (and re-sending every ~10 min) and the weekly backup skipped for the whole week.
+/** @param {WorkerEnv} env @param {any} jobs */
 async function runNextPendingAutomationJob(env, jobs) {
   for (const [jobKey, periodKey, fn] of jobs) {
+    /** @type {Record<string, any>} */
     const state = await monitoringState(env, `automation-once-${jobKey}`).catch(() => ({}));
     if (state.lastPeriod === periodKey) continue; // already completed this period
     // First still-pending job claims this tick. If it is currently in-flight in an
@@ -3101,6 +3326,7 @@ async function runNextPendingAutomationJob(env, jobs) {
   return null;
 }
 
+/** @param {any} event @param {WorkerEnv} env */
 async function runFiveMinuteScheduledTasks(event, env) {
   // event.scheduledTime is documented as milliseconds, but this Worker has observed it
   // arrive in seconds (log samples decode to sane current dates only when read as seconds,
@@ -3165,10 +3391,11 @@ async function runFiveMinuteScheduledTasks(event, env) {
   }
 }
 
+/** @param {any} auditRows */
 function backupDigestLines(auditRows) {
-  const backupRows = auditRows.filter((entry) => String(entry.module || "").toLowerCase() === "backup" || /backup/i.test(`${entry.action || ""} ${entry.record || ""}`));
-  const completed = backupRows.filter((entry) => /created|completed|success/i.test(`${entry.action || ""} ${entry.record || ""}`)).length;
-  const failed = backupRows.filter((entry) => /failed|error/i.test(`${entry.action || ""} ${entry.record || ""}`)).length;
+  const backupRows = auditRows.filter((/** @type {any} */ entry) => String(entry.module || "").toLowerCase() === "backup" || /backup/i.test(`${entry.action || ""} ${entry.record || ""}`));
+  const completed = backupRows.filter((/** @type {any} */ entry) => /created|completed|success/i.test(`${entry.action || ""} ${entry.record || ""}`)).length;
+  const failed = backupRows.filter((/** @type {any} */ entry) => /failed|error/i.test(`${entry.action || ""} ${entry.record || ""}`)).length;
   return [`Backups completed/logged: ${completed}`, `Backups failed/logged: ${failed}`];
 }
 
@@ -3177,10 +3404,11 @@ function backupDigestLines(auditRows) {
 // reflects actions someone would actually want to scan.
 const DIGEST_AUDIT_NOISE_ACTIONS = new Set(["Saved app state (record count changed)", "Ignored destructive save cleanup", "Discord post sent", "Email sent"]);
 
+/** @param {WorkerEnv} env @param {any} sinceIso */
 async function auditLogDigestRows(env, sinceIso) {
   const stateKey = appStateKey(env);
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(sinceIso)}&select=data&order=updated_at.desc&limit=200`);
-  return rows.map((row) => row.data).filter((entry) => !DIGEST_AUDIT_NOISE_ACTIONS.has(entry.action));
+  return rows.map((/** @type {any} */ row) => row.data).filter((/** @type {any} */ entry) => !DIGEST_AUDIT_NOISE_ACTIONS.has(entry.action));
 }
 
 // One pass over profiles + app users, resolving every wanted role at once, keyed by
@@ -3188,10 +3416,11 @@ async function auditLogDigestRows(env, sinceIso) {
 // roles. Returns Map<emailKey, { email, roles:Set }>. composeAndSendDigest then sends each
 // person ONE combined email instead of one per role (a Superadmin used to get the business
 // digest and the audit-log digest as two separate messages, every run).
+/** @param {WorkerEnv} env @param {any} roles */
 async function digestRecipients(env, roles) {
   const wanted = new Set(roles);
   const byEmail = new Map();
-  const add = (role, email) => {
+  const add = (/** @type {any} */ role, /** @type {any} */ email) => {
     if (!role || !email || !wanted.has(role)) return;
     const clean = String(email).trim();
     if (!clean) return;
@@ -3200,10 +3429,10 @@ async function digestRecipients(env, roles) {
     byEmail.get(key).roles.add(role);
   };
   const profiles = await supabaseFetch(env, "/rest/v1/profiles?select=email,role").catch(() => []);
-  profiles.forEach((row) => add(row.role, row.email));
+  profiles.forEach((/** @type {any} */ row) => add(row.role, row.email));
   const stateKey = appStateKey(env);
   const appUsers = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.users&select=data`).catch(() => []);
-  appUsers.forEach((row) => { const user = row.data || {}; add(user.role, user.email); });
+  appUsers.forEach((/** @type {any} */ row) => { const user = row.data || {}; add(user.role, user.email); });
   return byEmail;
 }
 
@@ -3229,6 +3458,7 @@ const DIGEST_COLORS = {
   text: "#16233d",
 };
 
+/** @param {any} tone */
 function digestToneColors(tone) {
   switch (tone) {
     case "good": return { fg: DIGEST_COLORS.success, bg: DIGEST_COLORS.successSoft, border: DIGEST_COLORS.successBorder };
@@ -3239,6 +3469,7 @@ function digestToneColors(tone) {
   }
 }
 
+/** @param {any} current @param {any} previous @param {{ invert?: any }} options */
 function digestDeltaBadge(current, previous, { invert = false } = {}) {
   if (typeof previous !== "number" || Number.isNaN(previous)) {
     const colors = digestToneColors("neutral");
@@ -3257,18 +3488,19 @@ function digestDeltaBadge(current, previous, { invert = false } = {}) {
 }
 
 const DIGEST_METRIC_CARDS = [
-  { key: "salesCount", label: "Invoices Tracked", format: (v) => String(v) },
+  { key: "salesCount", label: "Invoices Tracked", format: (/** @type {any} */ v) => String(v) },
   { key: "totalSales", label: "Total Invoiced", format: money, trend: true },
   { key: "totalCollected", label: "Total Collected", format: money, trend: true },
   { key: "openReceivables", label: "Open Receivables", format: money, trend: true, invert: true },
   { key: "totalExpenses", label: "Business Expenses", format: money, trend: true, invert: true },
-  { key: "overdueCount", label: "Overdue Invoices", format: (v) => String(v), tone: (v) => (v > 0 ? "critical" : "good") },
-  { key: "bounced", label: "Bounced Payments", format: (v) => String(v), tone: (v) => (v > 0 ? "critical" : "good") },
-  { key: "lowStock", label: "Low / Critical Stock", format: (v) => String(v), tone: (v) => (v > 0 ? "warn" : "good") },
-  { key: "pendingDeposit", label: "Pending Deposit", format: (v) => String(v), tone: (v) => (v > 0 ? "warn" : "good") },
-  { key: "activeDemos", label: "Active Demo Requests", format: (v) => String(v) },
+  { key: "overdueCount", label: "Overdue Invoices", format: (/** @type {any} */ v) => String(v), tone: (/** @type {any} */ v) => (v > 0 ? "critical" : "good") },
+  { key: "bounced", label: "Bounced Payments", format: (/** @type {any} */ v) => String(v), tone: (/** @type {any} */ v) => (v > 0 ? "critical" : "good") },
+  { key: "lowStock", label: "Low / Critical Stock", format: (/** @type {any} */ v) => String(v), tone: (/** @type {any} */ v) => (v > 0 ? "warn" : "good") },
+  { key: "pendingDeposit", label: "Pending Deposit", format: (/** @type {any} */ v) => String(v), tone: (/** @type {any} */ v) => (v > 0 ? "warn" : "good") },
+  { key: "activeDemos", label: "Active Demo Requests", format: (/** @type {any} */ v) => String(v) },
 ];
 
+/** @param {any} metrics @param {any} previous */
 function digestStatCardsHtml(metrics, previous) {
   const cells = DIGEST_METRIC_CARDS.map(({ key, label, format, trend, invert, tone }) => {
     const value = metrics[key] ?? 0;
@@ -3281,18 +3513,20 @@ function digestStatCardsHtml(metrics, previous) {
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">${rows.join("")}</table>`;
 }
 
+/** @param {any} metrics @param {any} taskFailures */
 function digestAttentionBannerHtml(metrics, taskFailures) {
   const items = [
-    { count: metrics.overdueCount, label: (n) => `${n} overdue invoice${n === 1 ? "" : "s"} need follow-up` },
-    { count: metrics.bounced, label: (n) => `${n} bounced payment${n === 1 ? "" : "s"} to resolve` },
-    { count: metrics.lowStock, label: (n) => `${n} item${n === 1 ? "" : "s"} at low/critical stock` },
-    { count: taskFailures, label: (n) => `${n} scheduled task${n === 1 ? "" : "s"} failed in this period` },
+    { count: metrics.overdueCount, label: (/** @type {any} */ n) => `${n} overdue invoice${n === 1 ? "" : "s"} need follow-up` },
+    { count: metrics.bounced, label: (/** @type {any} */ n) => `${n} bounced payment${n === 1 ? "" : "s"} to resolve` },
+    { count: metrics.lowStock, label: (/** @type {any} */ n) => `${n} item${n === 1 ? "" : "s"} at low/critical stock` },
+    { count: taskFailures, label: (/** @type {any} */ n) => `${n} scheduled task${n === 1 ? "" : "s"} failed in this period` },
   ].filter((item) => item.count > 0);
   if (!items.length) return `<div style="border:1px solid ${DIGEST_COLORS.successBorder};border-left:5px solid ${DIGEST_COLORS.success};border-radius:16px;padding:14px 18px;margin:0 0 22px;background:${DIGEST_COLORS.successSoft};color:${DIGEST_COLORS.success};font-weight:800;font-size:13.5px;">✅ No overdue invoices, bounced payments, stock shortages, or task failures this period.</div>`;
   const rows = items.map((item) => `<li style="margin:0 0 4px;">${escapeHtml(item.label(item.count))}</li>`).join("");
   return `<div style="border:1px solid ${DIGEST_COLORS.criticalBorder};border-left:5px solid ${DIGEST_COLORS.critical};border-radius:16px;padding:14px 18px 12px;margin:0 0 22px;background:${DIGEST_COLORS.criticalSoft};"><strong style="display:block;color:${DIGEST_COLORS.critical};font-size:14px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">⚠ Needs Attention</strong><ul style="margin:0;padding-left:18px;color:#7a1f1f;font-size:13.5px;line-height:1.6;">${rows}</ul></div>`;
 }
 
+/** @type {Record<string, any>} */
 const DIGEST_SECTION_STYLE = {
   "Low / Critical Stock": "warn",
   "Near-Expiry Stock": "warn",
@@ -3305,6 +3539,7 @@ const DIGEST_SECTION_STYLE = {
 // Discord-only: emoji per section title, used to make the daily/weekly digest embed
 // scannable at a glance. Never applied to the email HTML (digestSectionHtml), which has
 // its own color-coded styling via DIGEST_SECTION_STYLE above.
+/** @type {Record<string, any>} */
 const DIGEST_SECTION_EMOJI = {
   "Low / Critical Stock": "📦",
   "Near-Expiry Stock": "⏳",
@@ -3324,6 +3559,7 @@ const DIGEST_SECTION_EMOJI = {
 // shape most digest lines follow, bolds the lead so the record's identity pops out
 // when scanning a field with several rows. Pure presentation — never mutates the
 // source line, so the same lines array stays plain text for the email digest.
+/** @param {any} line */
 function discordBullet(line) {
   const dashIndex = line.indexOf(" — ");
   if (dashIndex === -1) return `▸ ${line}`;
@@ -3337,36 +3573,41 @@ function discordBullet(line) {
 // rest — same pattern auditLogTableHtml() already uses for the audit section.
 const DIGEST_SECTION_MAX_LINES = 8;
 
+/** @param {any} sections */
 function digestSectionHtml(sections) {
-  return sections.map((section) => {
+  return sections.map((/** @type {any} */ section) => {
     const colors = digestToneColors(DIGEST_SECTION_STYLE[section.title] || "default");
     const shown = section.lines.slice(0, DIGEST_SECTION_MAX_LINES);
     const overflow = section.lines.length - shown.length;
-    const rows = shown.map((line) => `<li style="margin:0 0 4px;">${escapeHtml(line)}</li>`).join("");
+    const rows = shown.map((/** @type {any} */ line) => `<li style="margin:0 0 4px;">${escapeHtml(line)}</li>`).join("");
     const moreRow = overflow > 0 ? `<li style="margin:4px 0 0;list-style:none;margin-left:-18px;color:${DIGEST_COLORS.muted};font-weight:700;">+ ${overflow} more — open Medlane OS for the full list.</li>` : "";
     return `<div style="border:1px solid ${colors.border};border-left:4px solid ${colors.fg};border-radius:14px;padding:12px 16px;margin:0 0 14px;background:${DIGEST_COLORS.card};"><strong style="display:block;color:${colors.fg};font-size:13.5px;margin-bottom:6px;">${escapeHtml(section.title)} <span style="color:${DIGEST_COLORS.muted};font-weight:700;">(${section.lines.length})</span></strong><ul style="margin:0;padding-left:18px;color:${DIGEST_COLORS.text};font-size:13.5px;line-height:1.6;">${rows}${moreRow}</ul></div>`;
   }).join("");
 }
 
+/** @param {any} rows */
 function auditLogTableHtml(rows) {
   if (!rows.length) return `<div style="border:1px solid ${DIGEST_COLORS.border};border-radius:16px;padding:16px;background:${DIGEST_COLORS.surface};color:${DIGEST_COLORS.muted};">No recorded actions in this period.</div>`;
   const truncated = rows.length >= 200;
-  const byModule = rows.reduce((acc, entry) => { const key = entry.module || "Other"; acc[key] = (acc[key] || 0) + 1; return acc; }, {});
-  const byAction = rows.reduce((acc, entry) => { const key = entry.action || "Action"; acc[key] = (acc[key] || 0) + 1; return acc; }, {});
+  const byModule = rows.reduce((/** @type {Record<string, any>} */ acc, /** @type {any} */ entry) => { const key = entry.module || "Other"; acc[key] = (acc[key] || 0) + 1; return acc; }, {});
+  const byAction = rows.reduce((/** @type {Record<string, any>} */ acc, /** @type {any} */ entry) => { const key = entry.action || "Action"; acc[key] = (acc[key] || 0) + 1; return acc; }, {});
   const moduleCards = Object.entries(byModule).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([module, count]) => `<td width="33%" valign="top" style="padding:5px;"><div style="padding:10px;border:1px solid ${DIGEST_COLORS.border};border-radius:14px;background:${DIGEST_COLORS.surface};"><span style="display:block;color:${DIGEST_COLORS.muted};font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;">${escapeHtml(module)}</span><strong style="display:block;margin-top:4px;color:${DIGEST_COLORS.blue};font-size:22px;">${count}</strong></div></td>`).join("");
   const topActions = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([action, count]) => { const failed = /fail|error/i.test(action); return `<li style="${failed ? `color:${DIGEST_COLORS.critical};` : ""}"><strong>${escapeHtml(action)}</strong> - ${count} time${count === 1 ? "" : "s"}${failed ? " ⚠" : ""}</li>`; }).join("");
-  const recent = rows.slice(0, 12).map((entry) => { const failed = /fail|error/i.test(`${entry.action || ""}`); const accent = failed ? DIGEST_COLORS.critical : DIGEST_COLORS.border; return `<div style="border:1px solid ${DIGEST_COLORS.border};border-left:3px solid ${accent};border-radius:14px;padding:12px 14px;margin:8px 0;background:${DIGEST_COLORS.card};"><div style="color:${DIGEST_COLORS.muted};font-size:12px;font-weight:800;">${escapeHtml(entry.date || "-")} · ${escapeHtml(entry.user || "System")} · ${escapeHtml(entry.role || "-")}</div><strong style="display:block;margin-top:5px;color:${failed ? DIGEST_COLORS.critical : DIGEST_COLORS.text};">${escapeHtml(entry.action || "Action")}</strong><div style="margin-top:4px;color:${DIGEST_COLORS.blue};font-weight:800;">${escapeHtml(entry.module || "-")}</div>${entry.record ? `<div style="margin-top:4px;color:#334155;">${escapeHtml(String(entry.record).slice(0, 180))}</div>` : ""}</div>`; }).join("");
+  const recent = rows.slice(0, 12).map((/** @type {any} */ entry) => { const failed = /fail|error/i.test(`${entry.action || ""}`); const accent = failed ? DIGEST_COLORS.critical : DIGEST_COLORS.border; return `<div style="border:1px solid ${DIGEST_COLORS.border};border-left:3px solid ${accent};border-radius:14px;padding:12px 14px;margin:8px 0;background:${DIGEST_COLORS.card};"><div style="color:${DIGEST_COLORS.muted};font-size:12px;font-weight:800;">${escapeHtml(entry.date || "-")} · ${escapeHtml(entry.user || "System")} · ${escapeHtml(entry.role || "-")}</div><strong style="display:block;margin-top:5px;color:${failed ? DIGEST_COLORS.critical : DIGEST_COLORS.text};">${escapeHtml(entry.action || "Action")}</strong><div style="margin-top:4px;color:${DIGEST_COLORS.blue};font-weight:800;">${escapeHtml(entry.module || "-")}</div>${entry.record ? `<div style="margin-top:4px;color:#334155;">${escapeHtml(String(entry.record).slice(0, 180))}</div>` : ""}</div>`; }).join("");
   return `<div style="margin-bottom:14px;"><strong style="display:block;color:${DIGEST_COLORS.blue};font-size:16px;margin-bottom:8px;">Audit Summary</strong><p style="margin:0 0 12px;color:${DIGEST_COLORS.muted};">${rows.length} action${rows.length === 1 ? "" : "s"} recorded. Grouped below so the important activity is easier to scan.</p><table role="presentation" width="100%" cellspacing="6" cellpadding="0"><tr>${moduleCards}</tr></table><ul style="margin:12px 0 0;padding-left:20px;">${topActions}</ul></div><div><strong style="display:block;color:${DIGEST_COLORS.blue};font-size:16px;margin:18px 0 8px;">Recent Activity Highlights</strong>${recent}</div>${truncated ? `<p style="color:${DIGEST_COLORS.muted};">Showing summary from the first 200 actions - see Audit Logs in Medlane OS for full history.</p>` : ""}`;
 }
 
+/** @param {{ title: any, bodyHtml: any }} options */
 function digestEmailHtml({ title, bodyHtml }) {
   return brandedEmailHtml({ title, intro: "Operational summary, approvals, finance, and audit highlights from Medlane OS.", bodyHtml: bodyHtml || "<p>Nothing to report for this period.</p>" });
 }
 
+/** @param {WorkerEnv} env @param {any} periodLabel */
 async function loadDigestSnapshot(env, periodLabel) {
   return monitoringState(env, `digest-snapshot-${periodLabel.toLowerCase()}`).catch(() => ({}));
 }
 
+/** @param {WorkerEnv} env @param {any} periodLabel @param {any} metrics */
 async function saveDigestSnapshot(env, periodLabel, metrics) {
   await saveMonitoringState(env, `digest-snapshot-${periodLabel.toLowerCase()}`, { ...metrics, capturedAt: new Date().toISOString() }).catch((error) => recordSystemLog(env, { action: "Digest snapshot save failed", module: "Email", record: error.message }));
 }
@@ -3376,16 +3617,20 @@ async function saveDigestSnapshot(env, periodLabel, metrics) {
 // already got this period's email and whether Discord was posted, so a retry only fills the
 // gaps instead of re-blasting everyone. Keyed by periodLabel + Manila day; a new period
 // resets it. `periodKey` here matches the dayKey runOncePerPeriod uses for the same run.
+/** @param {any} periodLabel */
 function digestProgressStateKey(periodLabel) {
   return `digest-progress-${String(periodLabel).toLowerCase()}`;
 }
 
+/** @param {WorkerEnv} env @param {any} periodLabel @param {any} periodKey */
 async function loadDigestProgress(env, periodLabel, periodKey) {
+  /** @type {Record<string, any>} */
   const state = await monitoringState(env, digestProgressStateKey(periodLabel)).catch(() => ({}));
   if (state.periodKey !== periodKey) return { periodKey, discordSent: false, sentEmails: new Set() };
   return { periodKey, discordSent: Boolean(state.discordSent), sentEmails: new Set(state.sentEmails || []) };
 }
 
+/** @param {WorkerEnv} env @param {any} periodLabel @param {any} progress */
 async function saveDigestProgress(env, periodLabel, progress) {
   await saveMonitoringState(env, digestProgressStateKey(periodLabel), {
     periodKey: progress.periodKey,
@@ -3395,6 +3640,7 @@ async function saveDigestProgress(env, periodLabel, progress) {
   }).catch((error) => console.error(JSON.stringify({ message: "Digest progress not persisted", periodLabel, error: error.message })));
 }
 
+/** @param {WorkerEnv} env @param {{ periodLabel: any, auditSinceIso: any, auditLimitLabel: any, force?: boolean }} options */
 async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimitLabel, force = false }) {
   const periodKey = manilaPeriodKeys(manilaScheduleParts(Date.now())).dayKey;
   const progress = force
@@ -3402,7 +3648,9 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
     : await loadDigestProgress(env, periodLabel, periodKey);
   if (force) await saveDigestProgress(env, periodLabel, progress); // wipe the ledger so a forced resend reaches everyone
 
+  /** @type {Record<string, any>} */
   const state = await loadDigestState(env);
+  /** @type {Record<string, any>} */
   const sections = detectThresholdsAndApprovals(state);
   const allRoles = new Set([...Object.keys(sections), ...DIGEST_ROLE_RECIPIENTS.digestBusiness, ...DIGEST_ROLE_RECIPIENTS.digestAuditLog]);
   const businessSummary = buildBusinessSummaryLines(state);
@@ -3413,7 +3661,7 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   const previousSnapshot = await loadDigestSnapshot(env, periodLabel);
   await saveDigestSnapshot(env, periodLabel, metrics);
 
-  const taskFailures = auditRows.filter((entry) => entry.action === "Scheduled task failed").length;
+  const taskFailures = auditRows.filter((/** @type {any} */ entry) => entry.action === "Scheduled task failed").length;
   const attentionHtml = digestAttentionBannerHtml(metrics, taskFailures);
   const statCardsHtml = digestStatCardsHtml(metrics, previousSnapshot);
   const operationalHtml = digestSectionHtml([{ title: `${periodLabel} Purchase Orders, Expenses & Backups`, lines: [...financialSummary, ...backupDigestLines(auditRows)] }]);
@@ -3513,6 +3761,7 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
   return { discord: discordResult, recipients: recipients.size, sent: progress.sentEmails.size };
 }
 
+/** @param {WorkerEnv} env @param {{ periodLabel: any, state: any, sections: any, businessSummary: any, financialSummary: any, auditRows: any, auditLimitLabel: any, auditSinceIso: any }} options */
 async function sendDiscordDigest(env, { periodLabel, state, sections, businessSummary, financialSummary, auditRows, auditLimitLabel, auditSinceIso }) {
   if (!env.DISCORD_WEBHOOK_URL) {
     await recordSystemLog(env, { action: "Discord digest skipped", module: "Discord", record: `${periodLabel}: DISCORD_WEBHOOK_URL not configured` });
@@ -3526,25 +3775,25 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   const reconHistory = state.reconHistory || [];
   const demoRequests = state.inventoryDemoRequests || [];
 
-  const bouncedCheques = payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
-  const pendingDeposits = payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
-  const largeSales = sales.filter((sale) => sale.status !== "Cancelled" && Number(sale.net || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(sale.date) >= new Date(auditSinceIso));
-  const largePayments = payments.filter((payment) => Number(payment.amount || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(payment.dateRecorded || payment.dateCollected || 0) >= new Date(auditSinceIso));
-  const blockedImports = imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status || ""));
-  const activeDemos = demoRequests.filter((request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
-  const closedDemos = demoRequests.filter((request) => /[Rr]eturned|To Sales/.test(request.status || "") && new Date(request.history?.at(-1)?.date || request.date || 0) >= new Date(auditSinceIso));
+  const bouncedCheques = payments.filter((/** @type {any} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
+  const pendingDeposits = payments.filter((/** @type {any} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
+  const largeSales = sales.filter((/** @type {any} */ sale) => sale.status !== "Cancelled" && Number(sale.net || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(sale.date) >= new Date(auditSinceIso));
+  const largePayments = payments.filter((/** @type {any} */ payment) => Number(payment.amount || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(payment.dateRecorded || payment.dateCollected || 0) >= new Date(auditSinceIso));
+  const blockedImports = imports.filter((/** @type {any} */ item) => /blocked|invalid|skipped|no valid/i.test(item.status || ""));
+  const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
+  const closedDemos = demoRequests.filter((/** @type {any} */ request) => /[Rr]eturned|To Sales/.test(request.status || "") && new Date(request.history?.at(-1)?.date || request.date || 0) >= new Date(auditSinceIso));
   const latestRecon = reconHistory[0];
 
   // These two "what's new since last digest" lookups are a nice-to-have, not core to the
   // digest — a failure here (e.g. a transient Supabase error) must never prevent the digest
   // embed itself from posting, so each is isolated with its own catch.
   /** @type {any[]} */
-  const newlyPaidPoIds = await trackNewOccurrences(env, "discordKnownPaidPOs", purchaseOrders.filter((po) => poFullyPaidServer(po, sales)).map((po) => po.id)).catch(async (error) => {
+  const newlyPaidPoIds = await trackNewOccurrences(env, "discordKnownPaidPOs", purchaseOrders.filter((/** @type {any} */ po) => poFullyPaidServer(po, sales)).map((/** @type {any} */ po) => po.id)).catch(async (error) => {
     await recordSystemLog(env, { action: "Discord digest tracking failed", module: "Discord", record: `discordKnownPaidPOs: ${error.message}` }).catch(() => null);
     return [];
   });
-  const newlyPaidPos = purchaseOrders.filter((po) => newlyPaidPoIds.includes(po.id));
-  const newClientNames = await trackNewOccurrences(env, "discordKnownClients", clients.map((client) => client.name)).catch(async (error) => {
+  const newlyPaidPos = purchaseOrders.filter((/** @type {any} */ po) => newlyPaidPoIds.includes(po.id));
+  const newClientNames = await trackNewOccurrences(env, "discordKnownClients", clients.map((/** @type {any} */ client) => client.name)).catch(async (error) => {
     await recordSystemLog(env, { action: "Discord digest tracking failed", module: "Discord", record: `discordKnownClients: ${error.message}` }).catch(() => null);
     return [];
   });
@@ -3556,8 +3805,8 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   const mentionedRoleIds = new Set();
   const sectionsByTitle = new Map();
   Object.entries(sections).forEach(([role, roleSections]) => {
-    (digestRoleMentions[role] || []).forEach((id) => mentionedRoleIds.add(id));
-    roleSections.forEach((section) => {
+    (digestRoleMentions[role] || []).forEach((/** @type {any} */ id) => mentionedRoleIds.add(id));
+    roleSections.forEach((/** @type {any} */ section) => {
       if (!sectionsByTitle.has(section.title)) sectionsByTitle.set(section.title, { section, roles: new Set() });
       sectionsByTitle.get(section.title).roles.add(role);
     });
@@ -3572,17 +3821,17 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   });
   if (businessSummary.length) fields.push({ name: `📊 ${periodLabel} Business Summary`, value: discordFieldValue(businessSummary.map(discordBullet), 300) });
   if (financialSummary.length) fields.push({ name: "💼 Payables, Expenses & POs", value: discordFieldValue(financialSummary.map(discordBullet), 300) });
-  if (pendingDeposits.length) fields.push({ name: `🏦 Collections Pending Deposit (${pendingDeposits.length})`, value: discordFieldValue(pendingDeposits.map((p) => discordBullet(`${p.receiptNo} — ${p.client}, ${money(p.amount)} (${p.collectionStatus})`)), 300, pendingDeposits.length) });
-  if (bouncedCheques.length) fields.push({ name: `🔴 Bounced Cheques (${bouncedCheques.length})`, value: discordFieldValue(bouncedCheques.map((p) => discordBullet(`${p.receiptNo} — ${p.client}, ${money(p.amount)}`)), 300, bouncedCheques.length) });
+  if (pendingDeposits.length) fields.push({ name: `🏦 Collections Pending Deposit (${pendingDeposits.length})`, value: discordFieldValue(pendingDeposits.map((/** @type {any} */ p) => discordBullet(`${p.receiptNo} — ${p.client}, ${money(p.amount)} (${p.collectionStatus})`)), 300, pendingDeposits.length) });
+  if (bouncedCheques.length) fields.push({ name: `🔴 Bounced Cheques (${bouncedCheques.length})`, value: discordFieldValue(bouncedCheques.map((/** @type {any} */ p) => discordBullet(`${p.receiptNo} — ${p.client}, ${money(p.amount)}`)), 300, bouncedCheques.length) });
   fields.push({ name: "🗄️ Backup Status", value: discordFieldValue(backupDigestLines(auditRows).map(discordBullet), 300) });
-  const largeTransactionLines = [...largeSales.map((s) => `Invoice ${s.documentNo || s.id} — ${s.client}, ${money(s.net)}`), ...largePayments.map((p) => `Payment ${p.receiptNo} — ${p.client}, ${money(p.amount)}`)];
+  const largeTransactionLines = [...largeSales.map((/** @type {any} */ s) => `Invoice ${s.documentNo || s.id} — ${s.client}, ${money(s.net)}`), ...largePayments.map((/** @type {any} */ p) => `Payment ${p.receiptNo} — ${p.client}, ${money(p.amount)}`)];
   if (largeTransactionLines.length) fields.push({ name: `💰 Large Transactions (≥ ${money(LARGE_TRANSACTION_THRESHOLD)}) (${largeTransactionLines.length})`, value: discordFieldValue(largeTransactionLines.map(discordBullet), 300, largeTransactionLines.length) });
-  const demoLines = [...activeDemos.slice(0, 6).map((request) => `${request.id} — ${request.client} (${request.status})`), ...closedDemos.slice(0, 4).map((request) => `${request.id} — ${request.client} closed as ${request.status}`)];
+  const demoLines = [...activeDemos.slice(0, 6).map((/** @type {any} */ request) => `${request.id} — ${request.client} (${request.status})`), ...closedDemos.slice(0, 4).map((/** @type {any} */ request) => `${request.id} — ${request.client} closed as ${request.status}`)];
   if (demoLines.length) fields.push({ name: `🧪 Demo Requests (${activeDemos.length + closedDemos.length})`, value: discordFieldValue(demoLines.map(discordBullet), 300, activeDemos.length + closedDemos.length) });
-  if (newlyPaidPos.length) fields.push({ name: `✅ Purchase Orders Fully Paid (${newlyPaidPos.length})`, value: discordFieldValue(newlyPaidPos.map((po) => discordBullet(`${po.id} — ${po.client}`)), 300, newlyPaidPos.length) });
+  if (newlyPaidPos.length) fields.push({ name: `✅ Purchase Orders Fully Paid (${newlyPaidPos.length})`, value: discordFieldValue(newlyPaidPos.map((/** @type {any} */ po) => discordBullet(`${po.id} — ${po.client}`)), 300, newlyPaidPos.length) });
   if (newClientNames.length) fields.push({ name: `🆕 New Clients Onboarded (${newClientNames.length})`, value: discordFieldValue(newClientNames.map((name) => `▸ ${name}`), 300, newClientNames.length) });
   // Import Issues are excluded from the Daily Discord post (too noisy day-to-day); still surfaced on the Weekly digest.
-  if (blockedImports.length && periodLabel !== "Daily") fields.push({ name: `📥 Import Issues (${blockedImports.length})`, value: discordFieldValue(blockedImports.map((item) => discordBullet(`${item.date} ${item.module} ${item.file} — ${item.status}`)), 300, blockedImports.length) });
+  if (blockedImports.length && periodLabel !== "Daily") fields.push({ name: `📥 Import Issues (${blockedImports.length})`, value: discordFieldValue(blockedImports.map((/** @type {any} */ item) => discordBullet(`${item.date} ${item.module} ${item.file} — ${item.status}`)), 300, blockedImports.length) });
   if (latestRecon?.high > 0) fields.push({ name: "🧭 Reconciliation Risk", value: `${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"} (${latestRecon.date || "latest run"})` });
   fields.push({ name: `📜 Audit Log (${auditLimitLabel})`, value: `${auditRows.length} recorded action${auditRows.length === 1 ? "" : "s"} — see the Audit Logs page for details.` });
 
@@ -3606,6 +3855,7 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   return sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { parse: ["everyone"], roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, description, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
 }
 
+/** @param {WorkerEnv} env @param {{ force?: any }} options */
 async function runDailyDigest(env, { force = false } = {}) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   return composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: "last 24 hours", force });
@@ -3614,16 +3864,19 @@ async function runDailyDigest(env, { force = false } = {}) {
 // ---- Weekly Supabase performance report -------------------------------------------------
 // Hourly samples are stored one app_records row per Manila day (perf-snapshots / day-YYYY-MM-DD,
 // up to 24 samples), so a week is 7 small rows and app_records deletes (blocked) are never needed.
+/** @param {any} ms */
 function manilaDayKey(ms) {
   return new Date(ms + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
+/** @param {WorkerEnv} env @param {any} dayCount */
 async function loadPerfSamples(env, dayCount) {
   const keys = Array.from({ length: dayCount }, (_, i) => `day-${manilaDayKey(Date.now() - i * 86400000)}`);
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.${PERF_MODULE}&record_key=in.${encodeURIComponent(postgrestIn(keys))}&select=record_key,data`);
-  return rows.flatMap((row) => row.data?.samples || []);
+  return rows.flatMap((/** @type {any} */ row) => row.data?.samples || []);
 }
 
+/** @param {WorkerEnv} env */
 async function runPerfSampler(env) {
   if (!hasAccessToken(env)) return null; // report email explains the missing token
   const sample = await collectSample(env);
@@ -3647,6 +3900,7 @@ async function runPerfSampler(env) {
   return sample;
 }
 
+/** @param {WorkerEnv} env @param {{ force?: boolean, onlyTo?: any }} options */
 async function runWeeklyPerfReport(env, { force = false, onlyTo = "" } = {}) {
   const dayKey = manilaPeriodKeys(manilaScheduleParts(Date.now())).dayKey;
   const ledgerKey = `perf-report-sent-${dayKey}`;
@@ -3654,8 +3908,8 @@ async function runWeeklyPerfReport(env, { force = false, onlyTo = "" } = {}) {
   const sentTo = new Set(ledger.sent || []);
   const all = await loadPerfSamples(env, 14);
   const cutoff = Date.now() - 7 * 86400000;
-  const samples = all.filter((entry) => new Date(entry.t).getTime() >= cutoff);
-  const prevSamples = all.filter((entry) => new Date(entry.t).getTime() < cutoff);
+  const samples = all.filter((/** @type {any} */ entry) => new Date(entry.t).getTime() >= cutoff);
+  const prevSamples = all.filter((/** @type {any} */ entry) => new Date(entry.t).getTime() < cutoff);
   const details = hasAccessToken(env) ? await collectLiveDetails(env) : null;
   const report = await buildWeeklyReport({ samples, prevSamples, details });
   const tokenNote = hasAccessToken(env) ? "" : `<div style="background:#fff4e8;border-left:4px solid #b4561a;padding:8px 12px;margin:8px 0;font-size:13px;"><strong>SUPABASE_ACCESS_TOKEN is not set on the Worker</strong>, so no performance data is being collected. Add it with <code>wrangler secret put SUPABASE_ACCESS_TOKEN</code>.</div>`;
@@ -3680,17 +3934,18 @@ async function runWeeklyPerfReport(env, { force = false, onlyTo = "" } = {}) {
   return { recipients: recipients.size, sent: sentTo.size, samples: report.sampleCount, warnings: report.warnCount };
 }
 
+/** @param {WorkerEnv} env @param {{ force?: any }} options */
 async function runWeeklyDigest(env, { force = false } = {}) {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   return composeAndSendDigest(env, { periodLabel: "Weekly", auditSinceIso: since, auditLimitLabel: "last 7 days", force });
 }
 
 export default {
-  async scheduled(event, env, ctx) {
+  async scheduled(/** @type {any} */ event, /** @type {any} */ env, /** @type {any} */ ctx) {
     if (env.ENVIRONMENT !== "production") return;
     ctx.waitUntil(runFiveMinuteScheduledTasks(event, env).catch((error) => console.error(JSON.stringify({ message: "Scheduled tasks failed", cron: event.cron || FIVE_MINUTE_MONITOR_CRON, error: error.message }))));
   },
-  async fetch(request, env, ctx) {
+  async fetch(/** @type {any} */ request, /** @type {any} */ env, /** @type {any} */ ctx) {
     const url = new URL(request.url);
     try {
 
@@ -3702,7 +3957,7 @@ export default {
       if (url.pathname === "/api/live") {
         if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return json({ error: "Expected WebSocket" }, { status: 426 });
         if (!env.LIVE_HUB) return json({ error: "Live updates are not configured" }, { status: 503 });
-        const protocols = (request.headers.get("sec-websocket-protocol") || "").split(",").map((part) => part.trim());
+        const protocols = (request.headers.get("sec-websocket-protocol") || "").split(",").map((/** @type {any} */ part) => part.trim());
         if (protocols[0] !== "medlane-live" || !protocols[1]) return json({ error: "Authentication required" }, { status: 401 });
         const authHeaders = new Headers({ authorization: `Bearer ${protocols[1]}` });
         const sid = url.searchParams.get("sid");
@@ -3969,7 +4224,7 @@ export default {
         const before = url.searchParams.get("before") || "";
         const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
         const modules = moduleFilter ? moduleFilter.split(",").map((m) => m.trim()).filter(Boolean) : null;
-        const matchesFilters = (entry) => (!roleFilter || entry.role === roleFilter) && (!modules || modules.includes(entry.module)) && (!userFilter || String(entry.user || "").trim().toLowerCase() === userFilter);
+        const matchesFilters = (/** @type {any} */ entry) => (!roleFilter || entry.role === roleFilter) && (!modules || modules.includes(entry.module)) && (!userFilter || String(entry.user || "").trim().toLowerCase() === userFilter);
         // A narrow filter (e.g. one module) can match only a small fraction of raw
         // audit rows in any given window. Fetching one flat batch and filtering it
         // in-memory could yield an empty page — with matches only a few windows
@@ -4011,7 +4266,7 @@ export default {
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&updated_at=gte.${encodeURIComponent(since)}&module_name=not.in.${encodeURIComponent(postgrestIn([...NON_STATE_MODULES, "branch", "masterTab", "logs"]))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
         const visible = filterRecordsForProfile(rows, profile, "view");
         const cursor = rows.length ? rows[rows.length - 1].updated_at : new Date(sinceMs).toISOString();
-        return json({ rows: visible.map(({ module_name, record_key, data }) => ({ module: module_name, key: record_key, data })), cursor });
+        return json({ rows: visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data })), cursor });
       }
 
       // "Load previous" — older records for one module that /api/modules/state trimmed out,
@@ -4028,12 +4283,12 @@ export default {
         const limit = Math.min(Number(url.searchParams.get("limit")) || PAGINATED_MODULE_PAGE_SIZE, 200);
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
         const { sortValue } = paginatedModulePredicates(new Map())[moduleName];
-        const sortOf = (row) => sortValue(row.data, row.updated_at) || "";
-        const older = rows.filter((row) => sortOf(row) < before).sort((a, b) => sortOf(b).localeCompare(sortOf(a)));
+        const sortOf = (/** @type {any} */ row) => sortValue(row.data, row.updated_at) || "";
+        const older = rows.filter((/** @type {any} */ row) => sortOf(row) < before).sort((/** @type {any} */ a, /** @type {any} */ b) => sortOf(b).localeCompare(sortOf(a)));
         const page = older.slice(0, limit);
         const visible = filterRecordsForProfile(page, profile, "view");
         return json({
-          rows: visible.map(({ module_name, record_key, data }) => ({ module: module_name, key: record_key, data })),
+          rows: visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data })),
           nextCursor: page.length ? sortOf(page[page.length - 1]) : null,
           hasMore: older.length > limit,
         });
@@ -4112,14 +4367,18 @@ export default {
                 ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(inventoryRecordKeys))}&select=record_key,data`)
                 : Promise.resolve([]),
             ]);
+            /** @type {Record<string, any>} */
             const beforeCounts = {};
+            /** @type {Record<string, any>} */
             const beforeKeysByModule = {};
             for (const row of beforeRows) {
               beforeCounts[row.module_name] = (beforeCounts[row.module_name] || 0) + 1;
               beforeKeysByModule[row.module_name] ||= new Set();
               beforeKeysByModule[row.module_name].add(row.record_key);
             }
+            /** @type {Record<string, any>} */
             const afterCounts = {};
+            /** @type {Record<string, any>} */
             const incomingKeysByModule = {};
             for (const row of rows) {
               afterCounts[row.module_name] = (afterCounts[row.module_name] || 0) + 1;
@@ -4144,7 +4403,7 @@ export default {
             // through this bulk state PUT. New rows, and changes bundled with a stock-moving flow
             // (`sales` invoicing, `pendingTransfers`), are unaffected.
             if (checkInventoryStock) {
-              const storedStockByKey = new Map(storedStock.map((row) => [row.record_key, row.data || {}]));
+              const storedStockByKey = new Map(storedStock.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
               for (const row of rows) {
                 if (row.module_name !== "inventory") continue;
                 const prev = storedStockByKey.get(row.record_key);
@@ -4262,14 +4521,14 @@ export default {
         // race with another admin posting at the same time.
         const requestedId = String(body.id || "").trim();
         if (!requestedId) return json({ error: "Memo number is required" }, { status: 400 });
-        if (existing.some((row) => row.record_key.toLowerCase() === requestedId.toLowerCase())) return json({ error: `${requestedId} is already in use. Enter a different memo number.` }, { status: 409 });
+        if (existing.some((/** @type {any} */ row) => row.record_key.toLowerCase() === requestedId.toLowerCase())) return json({ error: `${requestedId} is already in use. Enter a different memo number.` }, { status: 409 });
         const id = requestedId;
         const memo = {
           id, title, body: bodyText,
           eventDate: String(body.eventDate || "").trim(),
           eventTime: String(body.eventTime || "").trim(),
           place: String(body.place || "").trim(),
-          attachments: Array.isArray(body.attachments) ? body.attachments.filter((item) => item?.id && item?.file_name) : [],
+          attachments: Array.isArray(body.attachments) ? body.attachments.filter((/** @type {any} */ item) => item?.id && item?.file_name) : [],
           audience,
           createdBy: profile.name || profile.email || "System User",
           createdByRole: profile.role,
@@ -4459,10 +4718,10 @@ export default {
         const stateKey = appStateKey(env);
         const byLevel = url.searchParams.get("by") === "level";
         const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.game-scores&select=data`);
-        const entries = rows.map((row) => row.data).filter(Boolean)
-          .sort((a, b) => byLevel ? (b.totalXp || 0) - (a.totalXp || 0) : (b.score || 0) - (a.score || 0))
+        const entries = rows.map((/** @type {any} */ row) => row.data).filter(Boolean)
+          .sort((/** @type {any} */ a, /** @type {any} */ b) => byLevel ? (b.totalXp || 0) - (a.totalXp || 0) : (b.score || 0) - (a.score || 0))
           .slice(0, 20)
-          .map((entry) => {
+          .map((/** @type {any} */ entry) => {
             const badge = gameBadgeForScore(entry.score);
             const level = gameLevelForXp(entry.totalXp || 0);
             return { ...entry, badge, level, skin: gameResolveSkin(null, entry.skin, level, badge) };
@@ -4484,6 +4743,7 @@ export default {
         // those rows only as part of a sale save — validated below to be limited to the sale's
         // own item codes and to quantity/lot changes, so this is not a general stock-edit grant.
         const saleScopedInventory = !allowedKeys.has("inventory") && allowedKeys.has("sales") && Array.isArray(records.sales) && records.sales.length > 0;
+        /** @type {any[]} */
         let rows = [];
         for (const [key, value] of Object.entries(records)) {
           if (!allowedKeys.has(key) && !(key === "inventory" && saleScopedInventory)) throw new Error(`You do not have permission to edit ${key}`);
@@ -4492,7 +4752,7 @@ export default {
         }
         rows = dedupeRowsByRecordKey(rows);
 
-        const saleCodes = saleScopedInventory ? new Set(records.sales.flatMap((sale) => (sale?.lines || []).map((line) => String(line?.code || ""))).filter(Boolean)) : null;
+        const saleCodes = saleScopedInventory ? new Set(records.sales.flatMap((/** @type {any} */ sale) => (sale?.lines || []).map((/** @type {any} */ line) => String(line?.code || ""))).filter(Boolean)) : null;
         const saleStockRows = saleScopedInventory ? rows.filter((row) => row.module_name === "inventory") : [];
 
         // Archiving / restoring a masterlist record is CEO/Superadmin-only. The per-module
@@ -4501,6 +4761,7 @@ export default {
         const MASTERLIST_ARCHIVE_MODULES = ["clients", "items", "suppliers", "employees", "banks"];
         const archiveCandidateRows = rows.filter((row) => MASTERLIST_ARCHIVE_MODULES.includes(row.module_name));
         const checkMasterlistArchive = archiveCandidateRows.length && !["Superadmin", "CEO"].includes(profile?.role);
+        /** @type {Record<string, any>} */
         const archiveKeysByModule = {};
         if (checkMasterlistArchive) for (const row of archiveCandidateRows) (archiveKeysByModule[row.module_name] ||= []).push(row.record_key);
 
@@ -4557,7 +4818,7 @@ export default {
           checkMasterlistArchive
             ? Promise.all(Object.entries(archiveKeysByModule).map(async ([moduleName, keys]) => {
                 const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=in.${encodeURIComponent(postgrestIn(keys))}&select=record_key,data`);
-                return stored.map((entry) => ({ moduleName, ...entry }));
+                return stored.map((/** @type {any} */ entry) => ({ moduleName, ...entry }));
               })).then((groups) => groups.flat())
             : Promise.resolve([]),
           checkStockEdit
@@ -4572,7 +4833,7 @@ export default {
         ]);
 
         if (saleScopedInventory) {
-          const storedStockByKey = new Map(saleScopedStock.map((entry) => [entry.record_key, entry.data || {}]));
+          const storedStockByKey = new Map(saleScopedStock.map((/** @type {any} */ entry) => [entry.record_key, entry.data || {}]));
           for (const row of saleStockRows) {
             const incoming = row.data || {};
             if (!(/** @type {Set<string>} */ (saleCodes)).has(String(incoming.code || ""))) throw new Error("You do not have permission to edit inventory");
@@ -4588,7 +4849,7 @@ export default {
         const clientsBeingArchived = archiveCandidateRows.filter((row) => row.module_name === "clients" && row.data?.archived && row.data?.name).map((row) => row.data.name);
         if (clientsBeingArchived.length) {
           const poClientRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.purchaseOrders&select=data`);
-          const allPoData = [...poClientRows.map((r) => r.data), ...incomingPoRows.map((r) => r.data)].filter((d) => d?.client);
+          const allPoData = [...poClientRows.map((/** @type {any} */ r) => r.data), ...incomingPoRows.map((r) => r.data)].filter((d) => d?.client);
           for (const name of clientsBeingArchived) {
             const ids = [...new Set(allPoData.filter((d) => d.client === name).map((d) => d.id).filter(Boolean))];
             if (ids.length) throw new Error(`${name} has an existing purchase order (${ids.slice(0, 5).join(", ")}${ids.length > 5 ? `, +${ids.length - 5} more` : ""}) and cannot be archived.`);
@@ -4606,7 +4867,7 @@ export default {
         }
 
         if (checkStockEdit) {
-          const storedStockByKey = new Map(stockEditStoredStock.map((entry) => [entry.record_key, entry.data || {}]));
+          const storedStockByKey = new Map(stockEditStoredStock.map((/** @type {any} */ entry) => [entry.record_key, entry.data || {}]));
           for (const row of incomingStockRows) {
             const prev = storedStockByKey.get(row.record_key);
             if (!prev) continue;
@@ -4617,13 +4878,13 @@ export default {
         }
 
         if (incomingSaleRows.length) {
-          const existingSaleKeys = new Set(existingSaleRows.map((row) => row.record_key));
+          const existingSaleKeys = new Set(existingSaleRows.map((/** @type {any} */ row) => row.record_key));
           const newSaleRows = incomingSaleRows.filter((row) => !existingSaleKeys.has(row.record_key));
           if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
         }
 
         if (checkPoEditLock) {
-          const storedPoByKey = new Map(storedPoRows.map((row) => [row.record_key, row.data || {}]));
+          const storedPoByKey = new Map(storedPoRows.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
           const editedPoRows = incomingPoRows.filter((row) => storedPoByKey.has(row.record_key));
           if (editedPoRows.length) {
             // Narrowed to sales referencing one of these specific PO ids instead of scanning the
@@ -4631,7 +4892,7 @@ export default {
             // every invoice the company has ever issued just to check whether this one PO is locked.
             const poIdFilter = postgrestIn(editedPoRows.map((row) => row.record_key));
             const saleRows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&data->>po=in.${encodeURIComponent(poIdFilter)}&select=data`);
-            const lockedPoIds = new Set(saleRows.map((row) => row.data).filter((sale) => sale && sale.po && sale.status !== "Cancelled").map((sale) => sale.po));
+            const lockedPoIds = new Set(saleRows.map((/** @type {any} */ row) => row.data).filter((/** @type {any} */ sale) => sale && sale.po && sale.status !== "Cancelled").map((/** @type {any} */ sale) => sale.po));
             for (const row of editedPoRows) {
               if (!lockedPoIds.has(row.record_key)) continue;
               const stored = storedPoByKey.get(row.record_key);
@@ -4688,6 +4949,7 @@ export default {
           po.history.push({ date: timestamp, status: "Approved", note: `Approved by ${by}.`, by });
         } else if (action === "advance") {
           requirePoReceiver(profile);
+          /** @type {Record<string, any>} */
           const next = poNextStatus[po.status];
           if (!next) throw new Error(`Cannot advance a purchase order with status "${po.status}"`);
           po.status = next;
@@ -4747,7 +5009,7 @@ export default {
               ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(poId)}&select=data`).then((rows) => rows[0]?.data || null)
               : Promise.resolve(null),
             poId
-              ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockReceipts&select=data`).then((rows) => rows.map((row) => row.data).find((entry) => entry.poId === poId && entry.status === "Pending Approval") || null)
+              ? supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockReceipts&select=data`).then((rows) => rows.map((/** @type {any} */ row) => row.data).find((/** @type {any} */ entry) => entry.poId === poId && entry.status === "Pending Approval") || null)
               : Promise.resolve(null),
             supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`),
           ]);
@@ -4756,7 +5018,7 @@ export default {
             if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot receive stock for a purchase order with status "${po.status}"`);
             if (openReceipt) throw new Error(`${poId} already has a stock receipt (${openReceipt.id}) awaiting approval.`);
           }
-          const items = itemRows.map((row) => row.data);
+          const items = itemRows.map((/** @type {any} */ row) => row.data);
           const lines = validateReceivingLines(po, Array.isArray(body.lines) ? body.lines : [], items);
           const { orderNumber, dateReceived, source } = validateReceivingMeta(body);
           // Accept a client-generated id so a retried submit (network blip after the server already
@@ -4814,7 +5076,7 @@ export default {
               : Promise.resolve(null),
             supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`),
           ]);
-          const items = itemRows.map((row) => row.data);
+          const items = itemRows.map((/** @type {any} */ row) => row.data);
           receipt.lines = validateReceivingLines(po, Array.isArray(body.lines) ? body.lines : [], items);
           const { orderNumber, dateReceived, source } = validateReceivingMeta(body);
           receipt.orderNumber = orderNumber;
@@ -4852,14 +5114,14 @@ export default {
           if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot approve this stock receipt: ${po.id} is no longer ready for receiving (status "${po.status}").`);
           po.history = po.history || [];
         }
-        const inventory = invRows.map((row) => row.data);
+        const inventory = invRows.map((/** @type {any} */ row) => row.data);
         const totalReceived = applyReceivingLines(po, receipt.lines, inventory);
         receipt.status = "Approved";
         receipt.approvedBy = by;
         receipt.approvedAt = shortDate();
         receipt.history.push({ date: timestamp, status: "Approved", note: `Approved by ${by}. Posted ${totalReceived} unit(s) across ${receipt.lines.length} line(s).`, by });
         if (po) {
-          const fullyReceived = (po.lines || []).every((line) => Number(line.receivedQty || 0) >= Number(line.qty || 0));
+          const fullyReceived = (po.lines || []).every((/** @type {any} */ line) => Number(line.receivedQty || 0) >= Number(line.qty || 0));
           po.status = fullyReceived ? "Fully Received" : "Partially Received";
           if (fullyReceived) { po.receivedBy = by; po.receivedAt = shortDate(); }
           po.history.push({ date: timestamp, status: po.status, note: `Received ${totalReceived} unit(s) across ${receipt.lines.length} line(s) via ${receipt.id}.`, by });
@@ -4898,6 +5160,7 @@ export default {
         if (request.method !== "GET") return methodNotAllowed();
         if (!profile.customPermissions?.view?.includes("reports") && !["Superadmin", "CEO"].includes(profile.role)) throw new Error("You do not have permission to view reports");
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=not.in.${encodeURIComponent(postgrestIn(GAME_MODULES))}&select=module_name,record_key,data&order=updated_at.asc`);
+        /** @type {Record<string, any>} */
         const state = stateFromRecords(filterRecordsForProfile(rows, profile, "view"));
         return json({ reports: generateReportsFromState(state, url.searchParams.get("branch") || "all") });
       }
@@ -4909,11 +5172,12 @@ export default {
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Invoice ID is required" }, { status: 400 });
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=in.${encodeURIComponent(postgrestIn(["sales", "clients", "invoiceApprovals", "printTemplates"]))}&select=module_name,record_key,data&order=updated_at.asc`);
+        /** @type {Record<string, any>} */
         const state = stateFromRecords(rows);
-        const sale = (state.sales || []).find((item) => item.id === id || item.documentNo === id);
+        const sale = (state.sales || []).find((/** @type {any} */ item) => item.id === id || item.documentNo === id);
         if (!sale || !printableBranchAllowed(profile, sale)) return json({ error: "Invoice not found" }, { status: 404 });
         const type = documentType(sale.type);
-        const customTemplate = (state.printTemplates || []).find((t) => t.type === type) || null;
+        const customTemplate = (state.printTemplates || []).find((/** @type {any} */ t) => t.type === type) || null;
         const useCustom = url.searchParams.get("template") === "custom" && customTemplate;
         return json({
           id: sale.id,
@@ -4922,7 +5186,7 @@ export default {
           title: `Print ${type} ${sale.documentNo || sale.id}`,
           description: url.searchParams.get("noDate") === "1" ? "Server-rendered data-only overlay without date. Load the physical template in the printer before printing." : "Server-rendered data-only overlay for the pre-printed form. Load the physical template in the printer before printing.",
           hasCustomTemplate: Boolean(customTemplate),
-          html: printableInvoiceHtml({ sale, client: (state.clients || []).find((client) => client.name === sale.client) || {}, approvals: state.invoiceApprovals || {}, preparedBy: profile.name || "System User", noDate: url.searchParams.get("noDate") === "1", templateOverrides: useCustom ? customTemplate : null }),
+          html: printableInvoiceHtml({ sale, client: (state.clients || []).find((/** @type {any} */ client) => client.name === sale.client) || {}, approvals: state.invoiceApprovals || {}, preparedBy: profile.name || "System User", noDate: url.searchParams.get("noDate") === "1", templateOverrides: useCustom ? customTemplate : null }),
         });
       }
 
@@ -4933,8 +5197,9 @@ export default {
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Payment request ID is required" }, { status: 400 });
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.paymentRequests&select=module_name,record_key,data&order=updated_at.asc`);
+        /** @type {Record<string, any>} */
         const state = stateFromRecords(rows);
-        const requestRecord = (state.paymentRequests || []).find((item) => item.cvNo === id || item.id === id);
+        const requestRecord = (state.paymentRequests || []).find((/** @type {any} */ item) => item.cvNo === id || item.id === id);
         if (!requestRecord) return json({ error: "Payment request not found" }, { status: 404 });
         return json({ id: requestRecord.cvNo || requestRecord.id, title: requestRecord.cvNo || requestRecord.id, html: paymentRequestPrintableHtml(requestRecord) });
       }
@@ -4946,8 +5211,9 @@ export default {
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Transfer ID is required" }, { status: 400 });
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.pendingTransfers&select=module_name,record_key,data&order=updated_at.asc`);
+        /** @type {Record<string, any>} */
         const state = stateFromRecords(rows);
-        const transfer = (state.pendingTransfers || []).find((item) => item.id === id);
+        const transfer = (state.pendingTransfers || []).find((/** @type {any} */ item) => item.id === id);
         if (!transfer) return json({ error: "Transfer request not found" }, { status: 404 });
         return json({ id: transfer.id, title: `Transfer Request ${transfer.id}`, description: `${transfer.from} to ${transfer.to} · ${transfer.status || "-"}`, html: transferRequestPrintableHtml(transfer) });
       }
@@ -4959,8 +5225,9 @@ export default {
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Inventory PO ID is required" }, { status: 400 });
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.inventoryPurchaseOrders&select=module_name,record_key,data&order=updated_at.asc`);
+        /** @type {Record<string, any>} */
         const state = stateFromRecords(rows);
-        const po = (state.inventoryPurchaseOrders || []).find((item) => item.id === id);
+        const po = (state.inventoryPurchaseOrders || []).find((/** @type {any} */ item) => item.id === id);
         if (!po) return json({ error: "Inventory PO not found" }, { status: 404 });
         return json({ id: po.id, title: `Purchase Order ${po.id}`, description: `${po.supplier} · Terms ${po.terms || 30} days`, html: inventoryPoPrintableHtml(po) });
       }
@@ -4972,8 +5239,9 @@ export default {
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Report ID is required" }, { status: 400 });
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.productIssues&select=module_name,record_key,data&order=updated_at.asc`);
+        /** @type {Record<string, any>} */
         const state = stateFromRecords(rows);
-        const report = (state.productIssues || []).find((item) => item.id === id);
+        const report = (state.productIssues || []).find((/** @type {any} */ item) => item.id === id);
         if (!report) return json({ error: "Support report not found" }, { status: 404 });
         return json({ id: report.id, title: `Technical Support Report ${report.id}`, description: `${report.companyName || "Client"} · ${report.status || "Open"}`, html: productIssuePrintableHtml(report) });
       }
@@ -4988,8 +5256,9 @@ export default {
         const id = String(url.searchParams.get("id") || "").trim();
         if (!id) return json({ error: "Request ID is required" }, { status: 400 });
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.${encodeURIComponent(key)}&select=module_name,record_key,data&order=updated_at.asc`);
+        /** @type {Record<string, any>} */
         const state = stateFromRecords(rows);
-        const record = (state[key] || []).find((item) => item.id === id);
+        const record = (state[key] || []).find((/** @type {any} */ item) => item.id === id);
         if (!record) return json({ error: "Request not found" }, { status: 404 });
         const titleType = type === "payable" ? "Payable" : "Expense";
         return json({ id: record.id, title: `${titleType} Request ${record.id}`, description: `${record.supplier || record.requester || "Request"} · ${money(record.amount)}`, html: financialRequestPrintableHtml(record, type) });
@@ -5005,9 +5274,9 @@ export default {
           supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] })),
         ]);
         const authUsers = authPayload.users || [];
-        const profileById = new Map(profiles.map((item) => [item.id, item]));
-        const authById = new Map(authUsers.map((item) => [item.id, item]));
-        const permissionByUser = permissions.reduce((map, item) => {
+        const profileById = new Map(profiles.map((/** @type {any} */ item) => [item.id, item]));
+        const authById = new Map(authUsers.map((/** @type {any} */ item) => [item.id, item]));
+        const permissionByUser = permissions.reduce((/** @type {any} */ map, /** @type {any} */ item) => {
           map.set(item.user_id, [...(map.get(item.user_id) || []), item]);
           return map;
         }, new Map());
@@ -5026,7 +5295,7 @@ export default {
         const role = String(body.role || "").trim();
         const branch = "all";
         const view = Array.isArray(body.modules) ? body.modules.filter(Boolean) : roleModules[role] || [];
-        const edit = Array.isArray(body.editModules) ? body.editModules.filter((module) => view.includes(module)) : view;
+        const edit = Array.isArray(body.editModules) ? body.editModules.filter((/** @type {any} */ module) => view.includes(module)) : view;
         if (!fullName) return json({ error: "Name is required" }, { status: 400 });
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
         if (!validRole(role)) return json({ error: "Invalid role" }, { status: 400 });
@@ -5083,7 +5352,7 @@ export default {
         if (view.length) {
           await supabaseFetch(env, "/rest/v1/module_permissions", {
             method: "POST",
-            body: JSON.stringify(view.map((moduleKey) => ({ user_id: authUser.id, module_key: moduleKey, can_view: true, can_edit: edit.includes(moduleKey) }))),
+            body: JSON.stringify(view.map((/** @type {any} */ moduleKey) => ({ user_id: authUser.id, module_key: moduleKey, can_view: true, can_edit: edit.includes(moduleKey) }))),
           });
         }
         const emailDelivery = actionLink ? await sendResendEmail(env, { to: email, subject: "Welcome to Medlane OS - activate your account", html: brandedInviteEmailHtml({ fullName, email, role, actionLink: wrapAuthActionLink(actionLink, requestOrigin(request)), origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message })) : { sent: false, reason: linkError ? `Invitation link could not be generated: ${linkError}` : "Invitation link could not be generated" };
@@ -5142,7 +5411,7 @@ export default {
         if (disabled && !String(reason).trim()) return json({ error: "Disable reason is required" }, { status: 400 });
         const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id`);
         const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
-        const target = await findAuthUserForProfileOrEmail(env, profiles[0], email) || (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
+        const target = await findAuthUserForProfileOrEmail(env, profiles[0], email) || (authPayload.users || []).find((/** @type {any} */ user) => cleanEmail(user.email) === email);
         if (!target?.id) return json({ error: "Supabase Auth user not found" }, { status: 404 });
         await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, {
           method: "PUT",
@@ -5222,7 +5491,7 @@ export default {
         if (email === cleanEmail(authUser.email)) return json({ error: "You cannot delete your own account" }, { status: 400 });
         const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
         const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
-        const target = await findAuthUserForProfileOrEmail(env, profiles[0], email) || (authPayload.users || []).find((user) => cleanEmail(user.email) === email);
+        const target = await findAuthUserForProfileOrEmail(env, profiles[0], email) || (authPayload.users || []).find((/** @type {any} */ user) => cleanEmail(user.email) === email);
         const fullName = userDisplayName(profiles[0], target, email);
         if (String(confirmation || "").trim() !== fullName) return json({ error: `Type the user's full name exactly: ${fullName}` }, { status: 400 });
         const userId = profiles[0]?.id || target?.id;
@@ -5262,7 +5531,7 @@ export default {
         if (!/^[0-9a-f-]{36}$/i.test(userId)) return json({ sessions: [], user: null });
         const rows = await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(userId)}&select=id,user_id,device_name,browser,ip_address,created_at,last_seen_at,revoked_at&order=last_seen_at.desc`);
         const profiles = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,email,full_name,role`);
-        return json({ user: profiles[0] || null, sessions: rows.map((row) => ({ ...row, profile: profiles[0] || null })) });
+        return json({ user: profiles[0] || null, sessions: rows.map((/** @type {any} */ row) => ({ ...row, profile: profiles[0] || null })) });
       }
 
       if (url.pathname === "/api/users/sessions/revoke") {
@@ -5362,7 +5631,7 @@ export default {
         const prefix = `backups/${appStateKey(env)}/`;
         const cursor = url.searchParams.get("cursor") || undefined;
         const listed = await env.DOCUMENTS_BUCKET.list({ prefix, cursor, limit: 100 });
-        return json({ objects: listed.objects.map((object) => ({ key: object.key, size: object.size, uploaded: object.uploaded, customMetadata: object.customMetadata || {} })), cursor: listed.truncated ? listed.cursor : null, truncated: listed.truncated });
+        return json({ objects: listed.objects.map((/** @type {any} */ object) => ({ key: object.key, size: object.size, uploaded: object.uploaded, customMetadata: object.customMetadata || {} })), cursor: listed.truncated ? listed.cursor : null, truncated: listed.truncated });
       }
 
       if (url.pathname === "/api/backups/object" && request.method === "GET") {
@@ -5418,7 +5687,7 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         if (request.method === "GET") {
           const rows = await supabaseFetch(env, "/rest/v1/file_objects?deleted_at=is.null&select=*&order=uploaded_at.desc");
-          const visible = rows.filter((row) => canAccessKey(profile, fileRecordTypeKey[row.record_type], "view"));
+          const visible = rows.filter((/** @type {any} */ row) => canAccessKey(profile, fileRecordTypeKey[row.record_type], "view"));
           return json({ files: visible });
         }
         if (request.method !== "POST") return methodNotAllowed();

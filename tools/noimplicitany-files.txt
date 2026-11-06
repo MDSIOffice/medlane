@@ -8,3 +8,5 @@ public/scripts/state.js
 public/scripts/game.js
 public/scripts/ui-utils.js
 public/scripts/modules.js
+src/worker.js
+src/perf-report.js
