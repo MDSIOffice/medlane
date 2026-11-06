@@ -3249,6 +3249,23 @@ async function runBirthdayGreetings(env, { force = false } = {}) {
   return { sent: true, recipients: sentTo, test: isTest };
 }
 
+// The @everyone has to stay in `content`: Discord doesn't ping mentions placed inside an embed.
+/** @param {string} weekday @param {Date} now */
+function odometerReminderMessage(weekday, now) {
+  const isStart = weekday === "Mon";
+  const date = now.toLocaleDateString("en-US", { timeZone: "Asia/Manila", weekday: "long", month: "short", day: "numeric", year: "numeric" });
+  return {
+    content: "@everyone",
+    embeds: [{
+      title: isStart ? "🚗 Start-of-Week Odometer Reminder" : "🚗 End-of-Week Odometer Reminder",
+      description: isStart ? "Please post your odometer reading **now**." : "Please post your **closing** odometer reading **before you head out**.",
+      color: isStart ? 0x0077bd : 0xf59e0b,
+      fields: [{ name: "📝 What to post", value: `• Your ${isStart ? "" : "closing "}odometer reading\n• A photo of the odometer` }],
+      footer: { text: `Medlane OS · ${date}` },
+    }],
+  };
+}
+
 // Posts the Monday (start-of-week) / Friday (end-of-week) odometer reminder, tagging @everyone.
 // Throws on a missing webhook or failed post so runOncePerPeriod retries on the next tick.
 /** @param {WorkerEnv} env @param {any} weekday */
@@ -3258,10 +3275,7 @@ async function runOdometerReminder(env, weekday) {
     throw new Error("ODOMETER_DISCORD_WEBHOOK_URL is not configured");
   }
   const isStart = weekday === "Mon";
-  const content = isStart
-    ? "@everyone 🚗 **Start-of-week odometer reminder** — please post your odometer reading (with a photo) now."
-    : "@everyone 🚗 **End-of-week odometer reminder** — please post your closing odometer reading (with a photo) before you head out.";
-  await sendDiscordWebhookUrl(env, env.ODOMETER_DISCORD_WEBHOOK_URL, { content, allowedMentions: { parse: ["everyone"] } });
+  await sendDiscordWebhookUrl(env, env.ODOMETER_DISCORD_WEBHOOK_URL, { ...odometerReminderMessage(weekday, new Date()), allowedMentions: { parse: ["everyone"] } });
   await recordSystemLog(env, { action: "Discord odometer reminder sent", module: "Discord", record: isStart ? "Start of week" : "End of week" }).catch(() => null);
   return { sent: true };
 }
@@ -3387,6 +3401,16 @@ async function runNextPendingAutomationJob(env, jobs) {
   return null;
 }
 
+// When the Discord boards refresh (Manila time): every 15 minutes in the day, hourly from 10 PM to
+// 6 AM, and not at all on Saturday or Sunday. 6-7 PM is left to the digest and backup jobs. Each run
+// reads the current data, so the 12:00 AM Monday run picks up everything done over the weekend.
+/** @param {Record<string, string>} scheduled */
+function boardMonitorsDue({ weekday, hour, minute }) {
+  if (weekday === "Sat" || weekday === "Sun" || hour === "18") return false;
+  const overnight = Number(hour) >= 22 || Number(hour) < 6;
+  return overnight ? minute === "00" : ["00", "15", "30", "45"].includes(minute);
+}
+
 /** @param {any} event @param {WorkerEnv} env */
 async function runFiveMinuteScheduledTasks(event, env) {
   // event.scheduledTime is documented as milliseconds, but this Worker has observed it
@@ -3404,7 +3428,7 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // Keep the heavier analytics/pending/inventory monitors out of the 18:00 hour entirely —
   // that hour is reserved for the digest/backup jobs below, and stacking the monitors on the
   // same invocation is part of what used to blow the CPU/subrequest budget.
-  if (!inDigestHour && ["00", "15", "30", "45"].includes(scheduled.minute)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env), runLuksongLeaderboardMonitor(env));
+  if (boardMonitorsDue(scheduled)) tasks.push(runDashboardAnalyticsMonitor(env), runPendingItemsMonitor(env), runInventoryStatusMonitor(env), runLuksongLeaderboardMonitor(env));
   // 18:00 (6:00 PM) Asia/Manila is the only place digest/backup send time is configured. There
   // used to be separate "0 10 * * *" (daily digest) / "0 10 * * fri" (weekly digest) cron
   // strings, but wrangler.jsonc only ever registers the 5-minute cron, so those never actually
@@ -3916,10 +3940,17 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   return sendDiscordWebhook(env, { content: mentionContent, allowedMentions: { parse: ["everyone"], roles: [...mentionedRoleIds] }, embeds: [{ title: `Medlane OS — ${periodLabel} Digest`, description, color, fields: budgetedFields, timestamp: new Date().toISOString() }] });
 }
 
+// No daily digest goes out on Saturday or Sunday, so Monday's reaches back to Friday's.
+/** @param {string} weekday */
+function dailyDigestHours(weekday) {
+  return weekday === "Mon" ? 72 : 24;
+}
+
 /** @param {WorkerEnv} env @param {{ force?: any }} options */
 async function runDailyDigest(env, { force = false } = {}) {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  return composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: "last 24 hours", force });
+  const hours = dailyDigestHours(manilaScheduleParts(Date.now()).weekday);
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  return composeAndSendDigest(env, { periodLabel: "Daily", auditSinceIso: since, auditLimitLabel: `last ${hours} hours`, force });
 }
 
 // ---- Weekly Supabase performance report -------------------------------------------------
