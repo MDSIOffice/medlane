@@ -620,7 +620,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
   const equipment = isEquipmentItem(item);
   const selectedInvoiceBranch = qs("#sourceBranch")?.value || line.sourceBranch || line.branch || inventoryBranchTab || platformBranches()[0] || "";
   const preferredBranch = selectedInvoiceBranch;
-  const stock = item ? data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === preferredBranch) || {} : {};
+  const stock = item ? data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === preferredBranch) || /** @type {Partial<StockRow>} */ ({}) : /** @type {Partial<StockRow>} */ ({});
   const lotTracked = itemStockLotTracked(item, preferredBranch);
   const selectedUom = line.uom || item?.uom || "unit";
   const uid = ++invoiceRowUid;
@@ -647,6 +647,7 @@ function findClientByName(value) {
     || data.clients.find((client) => client.name.toLowerCase().includes(query));
 }
 
+/** @param {ClientPO} po @param {string} code */
 function poServedQty(po, code) {
   return data.sales
     .filter((sale) => sale.po === po.id && sale.status !== "Cancelled")
@@ -655,6 +656,7 @@ function poServedQty(po, code) {
     .reduce((sum, line) => sum + Number(line.qty || 0), 0);
 }
 
+/** @param {ClientPO} po @param {PoLine} line */
 function poLineStatus(po, line) {
   const served = poServedQty(po, line.code);
   return { served, pending: Math.max(Number(line.qty || 0) - served, 0) };
@@ -663,9 +665,11 @@ function poLineStatus(po, line) {
 // A submitted client PO can still be edited only while nothing has been invoiced/served
 // against it and it is not in a terminal (fully served) status. Once any quantity is served,
 // the PO is locked — corrections then go through the invoice cancel/replace flow instead.
+/** @param {ClientPO | null | undefined} po */
 function poHasAnyServed(po) {
   return (po?.lines || []).some((line) => poServedQty(po, line.code) > 0);
 }
+/** @param {ClientPO | null | undefined} po */
 function poCanEdit(po) {
   return Boolean(po) && !PO_TERMINAL_STATUSES.includes(poStatus(po)) && !poHasAnyServed(po) && canEditModule("purchase-orders");
 }
@@ -673,6 +677,7 @@ function poCanEdit(po) {
 const PO_COMPLETED_DOC_LABELS = { SI: "Sales Invoice", TS: "Transmittal Slip", DR: "Delivery Receipt" };
 const PO_TERMINAL_STATUSES = Object.values(PO_COMPLETED_DOC_LABELS);
 
+/** @param {ClientPO} po */
 function poStatus(po) {
   const pending = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0);
   const served = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).served, 0);
@@ -687,6 +692,7 @@ function poStatus(po) {
 // POs (not yet fully served). Surfaced on the Stocks table so a "1 in stock" row that reads
 // as available isn't a surprise "No stock available" once someone tries to invoice it, and
 // enforced in buildSale() so one PO can't silently eat stock another open PO is waiting on.
+/** @param {string} code @param {string} branch @param {string | null} [excludePoId] */
 function competingPurchaseOrdersForItem(code, branch, excludePoId = null) {
   return data.purchaseOrders
     .filter((po) => po.id !== excludePoId && warehouseForArea(po.area) === branch)
@@ -720,6 +726,7 @@ function poFullyPaid(po) {
   return linkedSales.length > 0 && linkedSales.every((sale) => Number(sale.paid || 0) >= Number(sale.net || 0));
 }
 
+/** @param {ClientPO} po */
 function poInvoiceable(po) {
   return !PO_TERMINAL_STATUSES.includes(poStatus(po)) && !poFullyPaid(po);
 }
@@ -7880,14 +7887,14 @@ function syncInviteUserPermissions() {
   const viewDefaults = new Set(accounts[role]?.modules || []);
   const editDefaults = new Set(roleEditableModules[role] || []);
   const modules = permissionModules();
-  const groups = [
+  const groups = /** @type {[string, string[]][]} */ ([
     ["Core", ["dashboard", "analytics", "notifications", "user-settings"]],
     ["Master Data", ["masterlists", "users", "settings", "backup", "security", "logs", "print-templates"]],
     ["Inventory & Orders", ["inventory", "purchase-orders", "warranty"]],
     ["Sales & Receivables", ["sales", "invoicing", "collections", "receivables-tracker", "purchase-history"]],
     ["Support", ["product-issues"]],
     ["Finance", ["payables", "replenishments", "reconciliation", "reports", "imports"]],
-  ].map((/** @type {[string, string[]]} */ [label, items]) => [label, items.filter((module) => modules.includes(module))]).filter(([, items]) => items.length);
+  ]).map(([label, items]) => /** @type {[string, string[]]} */ ([label, items.filter((module) => modules.includes(module))])).filter(([, items]) => items.length);
   const renderGroup = (name, items, inputName, defaults, _index) => `<details class="permission-feature-group"><summary><strong>${escapeHtml(name)}</strong><span>${items.filter((module) => defaults.has(module)).length}/${items.length} selected</span></summary><div>${items.map((module) => `<label class="ios-check-row compact-doc-check"><input name="${inputName}" type="checkbox" value="${escapeHtml(module)}" ${defaults.has(module) ? "checked" : ""} /><span></span><strong>${escapeHtml(module)}</strong></label>`).join("")}</div></details>`;
   panel.innerHTML = `<div class="invite-permission-grid"><section><h3>View Access</h3>${groups.map(([name, items], index) => renderGroup(name, items, "userViewModules", viewDefaults, index)).join("")}</section><section><h3>Edit Access</h3>${groups.map(([name, items], index) => renderGroup(name, items, "userEditModules", editDefaults, index)).join("")}</section></div>`;
 }
@@ -8152,6 +8159,7 @@ function poHistoryTimestamp() {
   return new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
 }
 
+/** @param {ClientPO | InventoryPO} po @returns {PoHistoryEntry[]} */
 function poHistory(po) {
   return po.history?.length ? po.history : [{ date: po.date, status: po.status || "Pending Approval", note: "Purchase order created.", by: "System User" }];
 }
@@ -8212,6 +8220,7 @@ function inventoryTouchedBySale(sale) {
   return [...new Map(touched.map((item) => [`${item.code}|${item.branch}|${item.lot}`, item])).values()];
 }
 
+/** @param {any[]} [sales] @returns {ClientPO[]} */
 function purchaseOrdersTouchedBySales(sales = []) {
   const ids = new Set(sales.map((sale) => sale?.po).filter(Boolean));
   return data.purchaseOrders.filter((po) => ids.has(po.id));

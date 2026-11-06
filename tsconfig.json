@@ -9,8 +9,14 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
+    // Strict flags are being turned on one at a time (see tools/strict-progress.sh for the
+    // remaining error count of each flag that is still off).
     "strict": false,
     "noImplicitAny": false,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "strictBindCallApply": true,
+    "strictFunctionTypes": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },

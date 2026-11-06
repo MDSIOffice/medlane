@@ -1,4 +1,5 @@
 // @ts-check
+/** @type {AppData} */
 let data;
 // Per-module { hasMore, cursor, loading } for the transactional modules /api/modules/state trims
 // to "open + most recent 50" — populated from the state payload's `pagination` field, read/written
