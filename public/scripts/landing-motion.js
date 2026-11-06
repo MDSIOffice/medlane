@@ -135,7 +135,7 @@
   // ---- Smooth in-page scrolling for landing anchors ----
   $$('a[href^="#lr-"]').forEach((anchor) => {
     anchor.addEventListener("click", (event) => {
-      const target = document.getElementById(anchor.getAttribute("href").slice(1));
+      const target = document.getElementById(/** @type {string} */ (anchor.getAttribute("href")).slice(1));
       if (!target) return;
       event.preventDefault();
       target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
@@ -198,6 +198,7 @@
   if (!reduceMotion && window.matchMedia("(pointer: fine)").matches) {
     const darkSurfaces = [...$$(".lr-hero, .lr-section--dark")];
     let pointerRaf = 0;
+    /** @type {any} */
     let lastPointer = null;
     const applyPointer = () => {
       pointerRaf = 0;

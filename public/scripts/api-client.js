@@ -11,6 +11,7 @@ const MedlaneAPI = (() => {
     else localStorage.removeItem(sessionKey);
   }
 
+  /** @type {any} */
   let refreshInFlight = null;
   let pendingRequestCount = 0;
   function trackGlobalLoading(delta) {
@@ -73,12 +74,13 @@ const MedlaneAPI = (() => {
   const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
   // Wraps fetch() with a timeout (so a hung connection fails fast and distinctly, instead of
   // hanging indefinitely) and classifies whatever it throws via classifyFetchFailure above.
+  /** @param {string} path @param {RequestInit} [options] @param {number | null} [timeoutMs] */
   async function fetchWithDiagnostics(path, options = {}, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS) {
     const controller = new AbortController();
     const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
     try {
       return await fetch(path, { ...options, signal: controller.signal });
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       throw classifyFetchFailure(error);
     } finally {
       if (timer) clearTimeout(timer);
@@ -144,7 +146,7 @@ const MedlaneAPI = (() => {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
         return await send();
-      } catch (error) {
+      } catch (/** @type {any} */ error) {
         lastError = error;
         const status = Number(error?.status || 0);
         const networkFailure = error?.transient || (!status && /failed to fetch|networkerror|network error|load failed|timed? ?out/i.test(String(error?.message || "")));
@@ -517,7 +519,7 @@ const MedlaneAPI = (() => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         return await request("/api/game/score", { method: "POST", body: JSON.stringify({ score, token, skin }) });
-      } catch (error) {
+      } catch (/** @type {any} */ error) {
         lastError = error;
         const message = String(error?.message || "");
         const transient = error?.transient || /failed to fetch|networkerror|network error|load failed|request failed: 5\d\d|timed? ?out/i.test(message);

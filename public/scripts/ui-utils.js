@@ -197,6 +197,7 @@ function log(action, module, record, options = {}) {
   MedlaneAPI.recordLog({ action, module, record: String(record ?? "") }).catch(() => {});
   if (options.save !== false) saveData();
 }
+/** @param {string} type @param {string} message @param {string} [section] @param {string} [record] @param {string[] | null} [audience] @param {string | null} [targetUser] */
 function notify(type, message, section = "notifications", record = "", audience = null, targetUser = null) {
   const entry = { date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), type, message, section, record, status: "Unread" };
   if (Array.isArray(audience)) entry.audience = audience;
@@ -520,7 +521,8 @@ function focusRecord(record) {
   ensureFocusedRecordsRendered(queries);
   const active = qs(".section.active");
   const candidates = qsa("[data-focus-record], tr, .invoice-card, .tracker-card, .client-ar-card, .report-card, .alert-item, .contact-action-card, .map-marker, .platform-area-chip, .security-card").filter((el) => active?.contains(el) && !el.closest(".workflow-assist"));
-  const targets = queries.map((query) => candidates.find((el) => String(el.dataset.focusRecord || "").toLowerCase().split("|").map((item) => item.trim()).includes(query)) || candidates.find((el) => (el.dataset.focusText || el.innerText || "").toLowerCase().includes(query))).filter(Boolean);
+  /** @type {AnyEl[]} */
+  const targets = /** @type {any} */ (queries.map((query) => candidates.find((el) => String(el.dataset.focusRecord || "").toLowerCase().split("|").map((item) => item.trim()).includes(query)) || candidates.find((el) => (el.dataset.focusText || el.innerText || "").toLowerCase().includes(query))).filter(Boolean));
   if (!targets.length) return;
   qsa(".focus-target").forEach((el) => el.classList.remove("focus-target"));
   targets.forEach((target) => target.classList.add("focus-target"));
@@ -678,6 +680,7 @@ function calendarDayDetailHtml(dateKey, entries) {
 // itself is the problem, not anything in our stylesheet). We keep every <datalist> element
 // as-is (the data source) but suppress the native `list` wiring and drive our own always-
 // opaque dropdown instead. Wired up via delegated listeners in events-bootstrap.js.
+/** @type {AnyEl | null} */
 let comboOpenInput = null;
 let comboHighlightIndex = -1;
 

@@ -5,8 +5,11 @@ let data;
 // to "open + most recent 50" — populated from the state payload's `pagination` field, read/written
 // by the loadMore<Module>() handlers in modules.js to drive each list's "Load previous" button.
 let modulePagination = {};
+/** @type {any} */
 let modalType = null;
+/** @type {any} */
 let currentOperationalReportKey = null; // set by applyOperationalReport() in modules.js; was an undeclared implicit global
+/** @type {any} */
 let editContext = null;
 let modalReadOnly = false;
 let currentUser = JSON.parse(localStorage.getItem("medlane-session") || "null");
@@ -14,26 +17,37 @@ function applyThemePreference(theme) {
   document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
 }
 applyThemePreference(currentUser?.themePreference);
+/** @type {any} */
 let currentClientView = null;
 let clientInvoicesStatusFilter = "all";
 let clientInvoicesFrom = "";
 let clientInvoicesTo = "";
+/** @type {any} */
 let currentInvoiceFlow = null;
 let currentPrintNoDate = false;
 let currentPrintTemplateId = "default";
+/** @type {any} */
 let paymentRequestPreselectedInvoice = null;
 let paymentRequestRowUid = 0;
 let uploadedFilesCache = [];
 let uploadedFilesLoaded = false;
+/** @type {any} */
 let selectedReconHistoryIndex = null;
+/** @type {any} */
 let reconciliationTab = "current";
 let reconciliationAreaFilter = "";
+/** @type {any} */
 let collectionLeafletMap = null;
+/** @type {any} */
 let collectionLeafletLayer = null;
+/** @type {any} */
 let collectionRegionLayer = null;
+/** @type {any} */
 let philippinesRegionGeoJson = null;
+/** @type {any} */
 let arTrackerTab = "all";
 let arTrackerStatusFilter = "all";
+/** @type {any} */
 let collectionsWorkflowTab = "ledger";
 let collectionsClientSearch = "";
 let collectionMapZoom = 1;
@@ -41,43 +55,61 @@ let inventoryBranchTab = "Las Pinas";
 // Inventory page view state. Seeded from the URL (?section=inventory&tab=…&branch=…) so a
 // refresh or shared link restores the same view; read here at parse time because showSection()
 // rewrites the URL later during startup.
-const INVENTORY_TABS = ["stocks", "receiving", "receipts", "completed", "transfers", "demos", "rhist", "thist"];
-const INVENTORY_SORT_KEYS = ["item", "lot", "branch", "expiry", "qty"];
-const INVENTORY_STATUS_KEYS = ["all", "available", "near", "low", "critical", "disposal"];
+const INVENTORY_TABS = /** @type {(string | null)[]} */ (["stocks", "receiving", "receipts", "completed", "transfers", "demos", "rhist", "thist"]);
+const INVENTORY_SORT_KEYS = /** @type {(string | null)[]} */ (["item", "lot", "branch", "expiry", "qty"]);
+const INVENTORY_STATUS_KEYS = /** @type {(string | null)[]} */ (["all", "available", "near", "low", "critical", "disposal"]);
 const inventoryUrlParams = (() => {
   try { const p = new URLSearchParams(location.search); return p.get("section") === "inventory" ? p : new URLSearchParams(); } catch { return new URLSearchParams(); }
 })();
+/** @type {any} */
 let inventoryWorkflowTab = INVENTORY_TABS.includes(inventoryUrlParams.get("tab")) ? inventoryUrlParams.get("tab") : "stocks";
 let inventoryCompactView = inventoryUrlParams.get("compact") === "1";
+/** @type {any} */
 let inventoryBranchView = inventoryUrlParams.get("branch") || "all"; // "all" or a branch name
+/** @type {any} */
 let inventoryStatusKey = INVENTORY_STATUS_KEYS.includes(inventoryUrlParams.get("status")) ? inventoryUrlParams.get("status") : "all";
 let inventorySearch = inventoryUrlParams.get("q") || "";
+/** @type {any} */
 let inventorySort = { key: INVENTORY_SORT_KEYS.includes(inventoryUrlParams.get("sort")) ? inventoryUrlParams.get("sort") : "expiry", dir: inventoryUrlParams.get("dir") === "desc" ? -1 : 1 };
 let inventoryPage = Math.max(0, (Number(inventoryUrlParams.get("page")) || 1) - 1);
+/** @type {any} */
 let inventorySelectedRef = null;
 let inventoryFocusQuery = "";
+/** @type {any} */
 let poViewMode = "table";
+/** @type {any} */
 let poWorkflowTab = "pending";
+/** @type {any} */
 let creditInvoiceWorkflowTab = "pending";
 let masterShowArchived = false;
+/** @type {any} */
 let currentSalesBreakdownDimension = null;
 let clientInvoicesReturnSection = "receivables-tracker";
+/** @type {any} */
 let editingPoId = null;
 let userStatusFilter = "all";
+/** @type {any} */
 let invoiceViewMode = "table";
+/** @type {any} */
 let clientHistoryTab = "invoices";
 let purchaseHistoryVisibleCounts = {};
 let itemForecastMonths = 3;
 let itemForecastFilters = { brand: "", client: "", item: "", division: "", region: "", classification: "" };
+/** @type {any} */
 let payablesWorkflowTab = "all";
+/** @type {any} */
 let replenishmentsWorkflowTab = "all";
 let transferRowUid = 0;
 let invoiceRowUid = 0;
 let stockSheetRowUid = 0;
 let demoRowUid = 0;
+/** @type {any} */
 let ptActiveType = "SI";
+/** @type {{ fields: Record<string, any>, row: any }} */
 let ptOverrides = { fields: {}, row: null };
+/** @type {any} */
 let ptSelectedField = null;
+/** @type {any} */
 let ptSelectedKind = null;
 let ptStepIn = 0.05;
 const PRINT_TEMPLATE_FIELDS = {
@@ -105,6 +137,7 @@ const PRINT_TEMPLATE_FIELDS = {
     rowCols: [["dr-qty", "Qty"], ["dr-item", "Item"], ["dr-lot", "Lot / Expiry"], ["dr-price", "Price"], ["dr-amount", "Amount"]],
   },
 };
+/** @type {any} */
 let pendingServerSave = null;
 let serverRevision = 0;
 function pendingSaveQueueKey() {
@@ -112,6 +145,7 @@ function pendingSaveQueueKey() {
   return `medlane-pending-save-queue:${location.host || "local"}:${userKey}`;
 }
 
+/** @type {Record<string, string[]>} */
 const frontendModuleRecordKeys = {
   dashboard: [],
   analytics: [],
@@ -514,10 +548,13 @@ function savePayloadForKeys(keys) {
 // on, so saving/retrying keeps working for the rest of the tab session even if disk storage is
 // slow or full. IndexedDB below is a pure write-behind backstop for recovering the queue after a
 // reload/crash, never something the live save path has to wait on.
+/** @type {any} */
 let pendingSaveQueueMemoryKey = null;
-let pendingSaveQueueMemory = null;
+/** @type {Record<string, any>} */
+let pendingSaveQueueMemory = /** @type {any} */ (null);
 // Which key's IndexedDB copy has already been loaded into pendingSaveQueueMemory, so
 // ensurePendingSaveQueueHydrated() below only does real work once per user per tab session.
+/** @type {any} */
 let pendingSaveQueueHydratedKey = null;
 
 const PENDING_SAVE_DB_NAME = "medlane-pending-save";
@@ -585,7 +622,7 @@ async function ensurePendingSaveQueueHydrated() {
   let stored = {};
   try {
     stored = await readPendingSaveQueueFromDb(key);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     console.warn("Could not read pending save queue from IndexedDB:", error.message);
   }
   if (!Object.keys(stored).length) {
@@ -652,6 +689,7 @@ function setGlobalSaveStatus(status, text, detail = "") {
 // write. activeSaveCount tracks that exact window so both the beforeunload guard and
 // a full-screen blocking overlay can cover it too.
 let activeSaveCount = 0;
+/** @type {any} */
 let saveGuardWatchdog = null;
 const SAVE_GUARD_TIMEOUT_MS = 15000;
 function updateSaveGuardOverlay() {
@@ -713,6 +751,7 @@ function inferredSaveKeys() {
   return keys;
 }
 
+/** @param {string[] | null} [keys] */
 function saveData(keys = null) {
   // Deliberately NOT wrapped in beginSaveOperation()/the blocking overlay — this is
   // a debounced, best-effort background sync used for a huge variety of low-stakes
@@ -805,7 +844,7 @@ function flushPendingSaveQueue() {
           const result = await MedlaneAPI.saveAppState({ [key]: value }, serverRevision);
           if (result?.revision) serverRevision = Number(result.revision);
           clearPendingSaveQueueKeys([key]);
-        } catch (innerError) {
+        } catch (/** @type {any} */ innerError) {
           if (isPermanentReject(innerError)) {
             console.warn(`Discarding queued "${key}" — server rejected it permanently:`, innerError.message);
             clearPendingSaveQueueKeys([key]);
@@ -851,7 +890,7 @@ async function persistRecords(records, recordKeys = {}) {
     clearPendingSaveQueueKeys(Object.keys(filtered));
     setGlobalSaveStatus("saved", "Saved");
     return result;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     mergePendingSaveQueue(savePayloadForKeys(Object.keys(filtered)));
     setGlobalSaveStatus("error", "Save failed", error.message);
     if (typeof toast === "function") toast(`Server save failed; queued for retry: ${error.message}`);
@@ -891,7 +930,7 @@ async function refreshItemsFromServer() {
 async function buildWithItemRefresh(buildFn) {
   try {
     return buildFn();
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     if (!/was not found in the Items masterlist/.test(error.message || "") || !(await refreshItemsFromServer())) throw error;
     return buildFn();
   }

@@ -28,6 +28,7 @@ async function mgmtFetch(env, path, init = {}) {
     headers: { authorization: `Bearer ${env.SUPABASE_ACCESS_TOKEN}`, "content-type": "application/json", ...(init.headers || {}) },
   });
   const text = await response.text();
+  /** @type {any} */
   let payload = null;
   try { payload = text ? JSON.parse(text) : null; } catch { /* non-JSON error body */ }
   if (!response.ok) throw new Error(`${response.status} ${(payload?.message || payload?.error || text || "").toString().slice(0, 160)}`);
@@ -41,7 +42,7 @@ export async function runSql(env, query) {
   let rows;
   try {
     rows = await mgmtFetch(env, "/database/query/read-only", { method: "POST", body });
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     if (!/^404/.test(error.message)) throw error;
     rows = await mgmtFetch(env, "/database/query", { method: "POST", body });
   }
@@ -77,7 +78,9 @@ async function sampleDb(env) {
 }
 
 function parsePrometheus(text) {
+  /** @type {Record<string, any>} */
   const acc = { cpuIdle: 0, cpuTotal: 0, memTotal: null, memAvail: null, ioSec: 0, readB: 0, writeB: 0, fsSize: null, fsAvail: null };
+  /** @type {boolean | null} */
   let fsFallback = null;
   for (const line of text.split("\n")) {
     if (!line || line[0] === "#") continue;
@@ -149,7 +152,7 @@ export async function collectSample(env) {
 
 // Extra "right now" lookups for the report body (top queries, table health, unused indexes).
 export async function collectLiveDetails(env) {
-  const run = async (label, sql) => { try { return { rows: await runSql(env, sql) }; } catch (error) { return { rows: [], error: `${label}: ${error.message}`.slice(0, 200) }; } };
+  const run = async (label, sql) => { try { return { rows: await runSql(env, sql) }; } catch (/** @type {any} */ error) { return { rows: [], error: `${label}: ${error.message}`.slice(0, 200) }; } };
   const [queries, tables, indexes] = await Promise.all([
     run("top queries", `select left(regexp_replace(query, '\\s+', ' ', 'g'), 150) as q, calls, round(total_exec_time::numeric) as total_ms, round(mean_exec_time::numeric, 2) as mean_ms, rows
       from pg_stat_statements s join pg_roles r on r.oid = s.userid
@@ -259,7 +262,7 @@ export function buildRecommendations({ points, prevPoints, days, details, errors
   const fmt = (n, d = 1) => (n === null || n === undefined ? "n/a" : Number(n).toFixed(d));
   const focus = groupStats(points, FOCUS_DOWS);
   const rest = groupStats(points, [0, 1, 2, 3, 4]);
-  const all = groupStats(points, [0, 1, 2, 3, 4, 5, 6]);
+  const all = /** @type {any} */ (groupStats(points, [0, 1, 2, 3, 4, 5, 6]));
   const maxConns = max(points.map((p) => p.maxConns));
 
   if (!points.length) {
@@ -271,7 +274,7 @@ export function buildRecommendations({ points, prevPoints, days, details, errors
   if (maxConns && all.peakConns / maxConns > 0.7) add("warn", "Connection usage is high", `Peak ${all.peakConns} of ${maxConns} connections (${fmt((all.peakConns / maxConns) * 100, 0)}%). Reuse connections, check for idle-in-transaction sessions, or upsize compute before a busy Friday/Saturday.`);
   else if (maxConns) add("good", "Connections have plenty of headroom", `Peak ${all.peakConns} of ${maxConns} (${fmt((all.peakConns / maxConns) * 100, 0)}%).`);
 
-  const idleTxPeak = max(points.map((p) => p.idleTx));
+  const idleTxPeak = /** @type {number} */ (max(points.map((p) => p.idleTx)));
   if (idleTxPeak >= 3) add("warn", "Sessions stuck 'idle in transaction'", `Up to ${idleTxPeak} at once. These hold locks and connections; look for code paths that open a transaction and do not commit.`);
 
   const cache = avg(points.map((p) => p.cacheHit));
@@ -398,7 +401,7 @@ export async function buildWeeklyReport({ samples, prevSamples, details, now = D
   const recs = buildRecommendations({ points, prevPoints, days, details, errors });
   const focus = groupStats(points, FOCUS_DOWS);
   const rest = groupStats(points, [0, 1, 2, 3, 4]);
-  const all = groupStats(points, [0, 1, 2, 3, 4, 5, 6]);
+  const all = /** @type {any} */ (groupStats(points, [0, 1, 2, 3, 4, 5, 6]));
   const maxConns = max(points.map((p) => p.maxConns));
   const latestDb = [...points].reverse().find((p) => p.dbBytes);
   const warnCount = recs.filter((r) => r.level === "warn").length;
@@ -450,6 +453,6 @@ export async function buildWeeklyReport({ samples, prevSamples, details, now = D
     `<p style="font-size:11px;color:#5b6b7a;margin-top:16px;">Connection and CPU figures are hourly snapshots, so very short spikes can be missed. Query statistics are totals since Supabase last reset them.</p>`,
   ].join("");
 
-  const range = days.length ? `${days[0].dayKey} → ${days.at(-1).dayKey}` : new Date(now).toISOString().slice(0, 10);
+  const range = days.length ? `${days[0].dayKey} → ${/** @type {any} */ (days.at(-1)).dayKey}` : new Date(now).toISOString().slice(0, 10);
   return { subject: `Medlane Weekly Supabase Performance — ${range}${warnCount ? ` (${warnCount} to review)` : " (healthy)"}`, bodyHtml, warnCount, sampleCount: samples.length, recommendationTitles: recs.filter((r) => r.level === "warn").map((r) => r.title) };
 }

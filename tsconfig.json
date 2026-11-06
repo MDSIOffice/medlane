@@ -13,6 +13,10 @@
     // remaining error count of each flag that is still off).
     "strict": false,
     "noImplicitAny": false,
+    "strictNullChecks": true,
+    "useUnknownInCatchVariables": true,
+    "strictPropertyInitialization": true,
+    "noImplicitReturns": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
     "strictBindCallApply": true,

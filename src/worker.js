@@ -1,3 +1,4 @@
+/** @typedef {{ content?: string, embeds?: any[], allowedMentions?: any, wait?: boolean }} DiscordOptions */
 import { DurableObject } from "cloudflare:workers";
 import { collectSample, collectLiveDetails, buildWeeklyReport, hasAccessToken } from "./perf-report.js";
 
@@ -168,7 +169,7 @@ async function supabaseFetch(env, path, init = {}) {
 async function supabaseFetchWithRetry(env, path, init) {
   try {
     return await supabaseFetchOnce(env, path, init);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     // Supabase occasionally rejects our service-role JWT for a moment when its clock and the
     // Worker's clock drift apart ("JWT issued at future" / "nbf" / "not active") — never a
     // real auth problem, just transient skew that clears itself within a second or two. Retry
@@ -206,7 +207,7 @@ async function notifyLiveClients(env, modules) {
   try {
     const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(appStateKey(env)));
     await stub.fetch("https://live-hub/notify", { method: "POST", body: JSON.stringify({ modules }) });
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     // Live push is best-effort; clients still catch up through their fallback poll.
     console.warn(JSON.stringify({ message: "Live notify failed", error: error.message }));
   }
@@ -225,7 +226,7 @@ async function loginThrottle(env, request, action) {
     const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(`login-throttle:${ip}`));
     const response = await stub.fetch(`https://live-hub/login-throttle/${action}`, { method: "POST" });
     return await response.json();
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     console.warn(JSON.stringify({ message: "Login throttle unavailable", error: error.message }));
     return { blocked: false, retryAfter: 0 };
   }
@@ -293,7 +294,7 @@ async function supabaseFetchOnceWithTotal(env, path, init = {}) {
 async function supabaseFetchWithTotal(env, path, init = {}) {
   try {
     return await supabaseFetchOnceWithTotal(env, path, init);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     if (!isTransientJwtClockSkew(error)) throw error;
     await sleep(1500);
     return supabaseFetchOnceWithTotal(env, path, init);
@@ -342,7 +343,7 @@ async function supabaseAuthAdminFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
   try {
     return await supabaseAuthAdminFetchOnce(env, path, init);
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     if (!isTransientJwtClockSkew(error)) throw error;
     await sleep(1500);
     return supabaseAuthAdminFetchOnce(env, path, init);
@@ -454,7 +455,7 @@ async function resendEmailRequest(env, body) {
   }
 }
 
-/** @returns {Promise<any>} */
+/** @param {any} env @param {{ to: any, subject: any, html: any, digestMessageId?: string | null }} options @returns {Promise<any>} */
 async function sendResendEmail(env, { to, subject, html, digestMessageId = null }) {
   // digestMessageId, when present, is the R2 key of the exact HTML this email carried — the
   // Audit Logs "View message" button in the app reads it back. Kept on both the sent and
@@ -495,7 +496,11 @@ async function readDigestMessageSnapshot(env, id) {
   return { html: await gunzipText(object), meta: object.customMetadata || {} };
 }
 
-/** @returns {Promise<any>} */
+/**
+ * @param {any} env
+ * @param {DiscordOptions} [options]
+ * @returns {Promise<any>}
+ */
 async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMentions = null } = {}) {
   const label = embeds[0]?.title || content.slice(0, 80) || "Discord message";
   if (!env.DISCORD_WEBHOOK_URL) {
@@ -526,7 +531,12 @@ async function sendDiscordWebhook(env, { content = "", embeds = [], allowedMenti
   }
 }
 
-/** @returns {Promise<any>} */
+/**
+ * @param {any} env
+ * @param {string | undefined} webhookUrl
+ * @param {DiscordOptions} [options]
+ * @returns {Promise<any>}
+ */
 async function sendDiscordWebhookUrl(env, webhookUrl, { content = "", embeds = [], allowedMentions = null, wait = false } = {}) {
   const label = embeds[0]?.title || content.slice(0, 80) || "Discord message";
   if (!webhookUrl) return { sent: false, provider: "discord", reason: "Webhook URL is not configured" };
@@ -545,7 +555,12 @@ async function sendDiscordWebhookUrl(env, webhookUrl, { content = "", embeds = [
   return { sent: true, provider: "discord", messageId: payload?.id || null };
 }
 
-/** @returns {Promise<any>} */
+/**
+ * @param {string | undefined} webhookUrl
+ * @param {string | null | undefined} messageId
+ * @param {DiscordOptions} [options]
+ * @returns {Promise<any>}
+ */
 async function editDiscordWebhookMessage(webhookUrl, messageId, { content = "", embeds = [], allowedMentions = null } = {}) {
   if (!webhookUrl || !messageId) return { edited: false, reason: "Webhook URL or message ID is missing" };
   const url = new URL(webhookUrl);
@@ -758,6 +773,7 @@ async function postRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
   if (posts.length) await Promise.allSettled(posts);
 }
 
+/** @returns {Promise<any[]>} */
 async function trackNewOccurrences(env, moduleName, currentIds) {
   const stateKey = appStateKey(env);
   const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=eq.state&select=data`);
@@ -900,7 +916,7 @@ async function createAppSession(env, request, userId) {
       body: JSON.stringify({ user_id: userId, device_name: deviceName(userAgent), browser: browserName(userAgent), ip_address: clientIp(request), user_agent: userAgent }),
     });
     return rows[0] || null;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     console.error(JSON.stringify({ message: "App session tracking failed", error: error.message }));
     return null;
   }
@@ -988,7 +1004,7 @@ async function markPasswordConfirmed(env, userId) {
       headers: { prefer: "return=minimal" },
       body: JSON.stringify({ password_confirmed_at: new Date().toISOString() }),
     });
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     console.error(JSON.stringify({ message: "Failed to mark password confirmed", error: error.message }));
   }
 }
@@ -1033,20 +1049,25 @@ function daysUntilIso(value) {
 
 async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   const canAuthorizeDiscount = ["Superadmin", "CEO", "Admin"].includes(profile?.role);
+  /** @type {Map<any, any> | null} */
   let inventoryByKey = null;
   // Mirrors clientCreditState() in ui-utils.js, which only gates the UI (canAuthorize there is
   // client-trusted). Lazily loaded and keyed by client name; projectedBalanceByClient accumulates
   // net across every new row in this same save so splitting one over-limit order into several
   // rows in one batch can't slip past the per-row check.
+  /** @type {Map<any, any> | null} */
   let creditLimitByClient = null;
+  /** @type {Map<any, any> | null} */
   let projectedBalanceByClient = null;
   // Lazily loaded set of archived client names. buildSale() (modules.js) already blocks a
   // skip-PO invoice against an archived client client-side, but that check is client-trusted —
   // this mirrors it server-side the same way the credit-limit check above does.
+  /** @type {Set<any> | null} */
   let archivedClientNames = null;
   // archivedClientNames and creditLimitByClient both come from the same clients table — share one
   // fetch instead of pulling the entire clients masterlist twice in the same save when a batch
   // needs both (e.g. a skip-PO invoice plus a discount-restricted row for a different client).
+  /** @type {Promise<any> | null} */
   let clientRowsPromise = null;
   const loadClientRows = () => (clientRowsPromise ||= supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.clients&select=data`));
 
@@ -1473,6 +1494,7 @@ function validateReceivingLines(po, submittedLines, items) {
     if (!branch) throw new Error(`Branch is required for ${code}`);
     const lot = String(submitted.lot || "").trim();
     const expiry = equipment ? "N/A" : String(submitted.expiry || "").trim();
+    /** @type {any} */
     let poLine = null;
     if (po) {
       poLine = matchReceivingPoLine(po, code, lot, allocated);
@@ -1665,6 +1687,7 @@ function enrichAuditLogEntry(entry, auditContext) {
   return { ...entry, device: auditContext.device, browser: auditContext.browser, ipAddress: auditContext.ipAddress, userAgent: auditContext.userAgent, serverCapturedAt: entry.serverCapturedAt || auditContext.serverCapturedAt };
 }
 
+/** @param {any} data @param {any} userId @param {any} stateKey @param {any} [allowedKeys] @param {any} [auditContext] */
 function recordsFromState(data, userId, stateKey, allowedKeys = persistedKeys, auditContext = null) {
   const rows = [];
   for (const key of allowedKeys) {
@@ -2113,7 +2136,7 @@ async function createBackup(env, backupType = "manual", actor = null) {
     });
     await sendDiscordWebhook(env, { embeds: [{ title: "Backup Completed", color: 0x22c55e, fields: [{ name: "Type", value: backupType, inline: true }, { name: "Records", value: String(records.length), inline: true }, { name: "Size", value: `${(bytes.byteLength / 1024 / 1024).toFixed(2)} MB`, inline: true }], timestamp: new Date().toISOString() }] }).catch((error) => console.error(JSON.stringify({ message: "Discord backup notice failed", error: error.message })));
     return inserted[0];
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     await releaseStorage(env, bytes.byteLength).catch(() => null);
     await env.DOCUMENTS_BUCKET.delete(objectKey).catch(() => null);
     await sendDiscordWebhook(env, { content: "Backup failed. Immediate review recommended.", embeds: [{ title: "Backup Failed", color: 0xef4b4f, description: String(error.message || error).slice(0, 500), fields: [{ name: "Type", value: backupType, inline: true }], timestamp: new Date().toISOString() }] }).catch(() => null);
@@ -2720,7 +2743,7 @@ async function checkSupabaseAppRecordsHealth(env) {
     // here means it isn't transient.
     await supabaseFetch(env, query);
     return { name: "Supabase app_records", ok: true };
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     return { name: "Supabase app_records", ok: false, error: error.message };
   }
 }
@@ -2730,7 +2753,7 @@ async function checkAssetPageHealth(env, path, name) {
   try {
     const response = await env.ASSETS.fetch(new Request(`https://medlane.local${path}`, { method: "GET" }));
     return { name, ok: response.ok, error: response.ok ? "" : `HTTP ${response.status}` };
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     return { name, ok: false, error: error.message };
   }
 }
@@ -2743,15 +2766,16 @@ const BACKUP_STALE_HOURS = 24 * 7;
 async function backupStatus(env) {
   const rows = await supabaseFetch(env, `/rest/v1/backup_runs?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=id,backup_type,mode,object_key,records_count,size_bytes,created_at&order=created_at.desc&limit=1`);
   const latest = rows[0] || null;
+  /** @type {number | null} */
   const ageHours = latest?.created_at ? (Date.now() - new Date(latest.created_at).getTime()) / 36e5 : null;
-  return { latest, ageHours, stale: !latest || ageHours > BACKUP_STALE_HOURS };
+  return { latest, ageHours, stale: !latest || /** @type {number} */ (ageHours) > BACKUP_STALE_HOURS };
 }
 
 async function checkBackupFreshnessHealth(env) {
   try {
     const status = await backupStatus(env);
-    return { name: "Backup freshness", ok: !status.stale, note: status.latest ? `Latest ${status.latest.backup_type} backup ${status.ageHours.toFixed(1)} hours ago` : "No successful backup recorded", error: status.stale ? `No successful backup in the last ${BACKUP_STALE_HOURS / 24} days` : "" };
-  } catch (error) {
+    return { name: "Backup freshness", ok: !status.stale, note: status.latest ? `Latest ${status.latest.backup_type} backup ${/** @type {number} */ (status.ageHours).toFixed(1)} hours ago` : "No successful backup recorded", error: status.stale ? `No successful backup in the last ${BACKUP_STALE_HOURS / 24} days` : "" };
+  } catch (/** @type {any} */ error) {
     return { name: "Backup freshness", ok: false, error: error.message };
   }
 }
@@ -2761,7 +2785,7 @@ async function timedHealthCheck(name, check) {
   try {
     const result = await check();
     return { name, ...result, durationMs: Date.now() - started };
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     return { name, ok: false, error: error.message, durationMs: Date.now() - started };
   }
 }
@@ -2872,7 +2896,7 @@ async function runPendingItemsMonitor(env) {
   const state = await loadDigestState(env, ["sales", "purchaseOrders", "inventoryPurchaseOrders", "pendingTransfers", "collectionContacts", "paymentRequests", "payables", "replenishments"]);
   const updatedAt = new Date().toLocaleString("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const fields = pendingSummaryFields(state);
-  const totalPending = fields.reduce((sum, field) => sum + Number(field.name.match(/\((\d+)\)/)?.[1] || 0), 0);
+  const totalPending = fields.reduce((sum, field) => sum + Number(/** @type {any} */ (field).name.match(/\((\d+)\)/)?.[1] || 0), 0);
   const description = totalPending
     ? `Items needing approval, receiving, collection follow-up, or action.\n🕒 **Latest update:** ${updatedAt} PHT\n📋 **${totalPending} pending item${totalPending === 1 ? "" : "s"}** across **${fields.length} categor${fields.length === 1 ? "y" : "ies"}**`
     : `✨ Nothing pending — all clear.\n🕒 **Latest update:** ${updatedAt} PHT`;
@@ -3045,7 +3069,7 @@ async function runOncePerPeriod(env, jobKey, periodKey, fn) {
     });
     await recordSystemLog(env, { action: "Automation job completed", module: "Automation", record: `${jobKey} (${periodKey})` }).catch(() => null);
     return result;
-  } catch (error) {
+  } catch (/** @type {any} */ error) {
     // Drop the in-flight lock so the next 5-minute tick within the same 18:00 hour retries
     // instead of waiting out the lock.
     await saveMonitoringState(env, stateKey, { attemptPeriod: null, attemptAt: null, lastAttemptAt: new Date().toISOString(), lastError: error.message }).catch(() => null);
@@ -3414,7 +3438,7 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
         periodKey: progress.periodKey, discordSent: true, sentEmails: [...progress.sentEmails], updatedAt: new Date().toISOString(),
       });
       claimed = true;
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       console.error(JSON.stringify({ message: "Digest Discord claim not persisted — skipping post this tick", periodLabel, error: error.message }));
     }
     if (!claimed) {
@@ -3479,7 +3503,7 @@ async function composeAndSendDigest(env, { periodLabel, auditSinceIso, auditLimi
       await sendResendEmail(env, { to: email, subject, html, digestMessageId: snapshotByBody.get(bodyHtml) });
       progress.sentEmails.add(emailKey);
       await saveDigestProgress(env, periodLabel, progress);
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       // Leave this recipient out of the ledger so the next retry picks them up; a single
       // failure must not stop the rest of the list.
       console.error(JSON.stringify({ message: "Digest email failed", email, error: error.message }));
@@ -3514,6 +3538,7 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   // These two "what's new since last digest" lookups are a nice-to-have, not core to the
   // digest — a failure here (e.g. a transient Supabase error) must never prevent the digest
   // embed itself from posting, so each is isolated with its own catch.
+  /** @type {any[]} */
   const newlyPaidPoIds = await trackNewOccurrences(env, "discordKnownPaidPOs", purchaseOrders.filter((po) => poFullyPaidServer(po, sales)).map((po) => po.id)).catch(async (error) => {
     await recordSystemLog(env, { action: "Discord digest tracking failed", module: "Discord", record: `discordKnownPaidPOs: ${error.message}` }).catch(() => null);
     return [];
@@ -3645,7 +3670,7 @@ async function runWeeklyPerfReport(env, { force = false, onlyTo = "" } = {}) {
       await sendResendEmail(env, { to: email, subject: report.subject, html, digestMessageId: messageId });
       sentTo.add(emailKey);
       if (!onlyTo) await saveMonitoringState(env, ledgerKey, { sent: [...sentTo] }).catch(() => null);
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       failed += 1;
       await recordSystemLog(env, { action: "Performance report email failed", module: "Email", record: `${email}: ${error.message}` }).catch(() => null);
     }
@@ -3803,7 +3828,7 @@ export default {
               await recordSystemLog(env, { action: "Password reset link generation failed", module: "Authentication", record: `${email}: ${recoveryPayload?._error || "no action_link returned"}` });
             }
           }
-        } catch (error) {
+        } catch (/** @type {any} */ error) {
           await recordSystemLog(env, { action: "Password reset request errored", module: "Authentication", record: `${email}: ${error.message}` }).catch(() => null);
         }
         return json({ ok: true });
@@ -4363,7 +4388,7 @@ export default {
             body: JSON.stringify([{ state_key: stateKey, module_name: "game-scores", record_key: authUser.id, data: entry, updated_by: authUser.id }]),
           });
           result = { ok: true, best, isNewBest, badge, skin, totalXp, level, leveledUp: level > prevLevel, xpToNextLevel: gameXpForLevel(level + 1) - totalXp };
-        } catch (scoreError) {
+        } catch (/** @type {any} */ scoreError) {
           // The score write failed after we claimed the token — release the claim so the
           // client's automatic retry can actually go through instead of hitting "already used".
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
@@ -4550,7 +4575,7 @@ export default {
           const storedStockByKey = new Map(saleScopedStock.map((entry) => [entry.record_key, entry.data || {}]));
           for (const row of saleStockRows) {
             const incoming = row.data || {};
-            if (!saleCodes.has(String(incoming.code || ""))) throw new Error("You do not have permission to edit inventory");
+            if (!(/** @type {Set<string>} */ (saleCodes)).has(String(incoming.code || ""))) throw new Error("You do not have permission to edit inventory");
             const prev = storedStockByKey.get(row.record_key);
             if (!prev) continue;
             const { qty: _prevQty, lot: _prevLot, ...prevRest } = prev;
@@ -5317,7 +5342,7 @@ export default {
         try {
           const result = await runBirthdayGreetings(env, { force: true });
           return json({ ok: true, ...result });
-        } catch (error) {
+        } catch (/** @type {any} */ error) {
           return json({ ok: false, error: error.message }, { status: 502 });
         }
       }
@@ -5420,7 +5445,7 @@ export default {
             headers: { prefer: "return=representation" },
             body: JSON.stringify({ bucket: env.R2_BUCKET_NAME || "medlane-documents", object_key: objectKey, file_name: file.name, mime_type: file.type || "application/octet-stream", size_bytes: file.size, record_type: recordType, record_id: recordId || null, uploaded_by: authUser.id }),
           });
-        } catch (error) {
+        } catch (/** @type {any} */ error) {
           await releaseStorage(env, file.size).catch(() => null);
           await env.DOCUMENTS_BUCKET.delete(objectKey).catch(() => null);
           throw error;
@@ -5455,7 +5480,7 @@ export default {
       }
 
       return env.ASSETS.fetch(request);
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
       const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
