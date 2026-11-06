@@ -156,15 +156,15 @@ function lineChart(entries) {
   const width = 720;
   const height = 260;
   const pad = 42;
-  const max = Math.max(...entries.map(([, value]) => value), 1);
+  const max = Math.max(...entries.map((/** @type {any[]} */ [, value]) => value), 1);
   const xStep = entries.length > 1 ? (width - pad * 2) / (entries.length - 1) : 0;
-  const points = entries.map(([, value], index) => {
+  const points = entries.map((/** @type {any[]} */ [, value], /** @type {any} */ index) => {
     const x = entries.length > 1 ? pad + index * xStep : width / 2;
     const y = height - pad - (value / max) * (height - pad * 2);
     return { x, y, value };
   });
   /** @type {Record<string, any>} */
-  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const line = points.map((/** @type {any} */ point) => `${point.x},${point.y}`).join(" ");
   const area = `${pad},${height - pad} ${line} ${points.at(-1).x},${height - pad}`;
   const gridlines = [0.25, 0.5, 0.75, 1].map((ratio) => {
     const y = height - pad - ratio * (height - pad * 2);
@@ -174,8 +174,8 @@ function lineChart(entries) {
     <defs><linearGradient id="salesTrendGradient" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3db3cd" stop-opacity="0.28"/><stop offset="1" stop-color="#3db3cd" stop-opacity="0"/></linearGradient></defs>
     ${gridlines}<line class="chart-axis" x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}"></line>
     <polygon class="chart-area" points="${area}"></polygon><polyline class="chart-line" points="${line}"></polyline>
-    ${points.map((point, index) => `<circle class="chart-point" cx="${point.x}" cy="${point.y}" r="7"><title>${monthLabel(entries[index][0])}: ${peso.format(point.value)}</title></circle>`).join("")}
-    ${entries.map(([label], index) => `<text class="chart-text" x="${points[index].x}" y="${height - 12}" text-anchor="middle">${escapeHtml(monthLabel(label))}</text>`).join("")}
+    ${points.map((/** @type {any} */ point, /** @type {any} */ index) => `<circle class="chart-point" cx="${point.x}" cy="${point.y}" r="7"><title>${monthLabel(entries[index][0])}: ${peso.format(point.value)}</title></circle>`).join("")}
+    ${entries.map((/** @type {any[]} */ [label], /** @type {any} */ index) => `<text class="chart-text" x="${points[index].x}" y="${height - 12}" text-anchor="middle">${escapeHtml(monthLabel(label))}</text>`).join("")}
   </svg>`;
 }
 
@@ -191,7 +191,7 @@ function multiSeriesChart(labels, series, options = {}) {
   const barSeries = series.filter((s) => s.type === "bar");
   const lineSeries = series.filter((s) => s.type !== "bar");
   const max = Math.max(...series.flatMap((s) => s.values), 1);
-  const kFmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(Math.round(n)));
+  const kFmt = (/** @type {any} */ n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(Math.round(n)));
   const ticks = [0, 0.25, 0.5, 0.75, 1];
   const longestTick = Math.max(...ticks.map((ratio) => kFmt(max * ratio).length));
   const padLeft = 16 + longestTick * 8;
@@ -204,8 +204,8 @@ function multiSeriesChart(labels, series, options = {}) {
   const barGap = 4;
   const groupWidth = Math.min(28 * groupCount + barGap * (groupCount - 1), slot * 0.7);
   const barWidth = Math.max(3, (groupWidth - barGap * (groupCount - 1)) / groupCount);
-  const xFor = (index) => padLeft + slot * (index + 0.5);
-  const yFor = (value) => height - padBottom - (value / max) * (height - padTop - padBottom);
+  const xFor = (/** @type {any} */ index) => padLeft + slot * (index + 0.5);
+  const yFor = (/** @type {any} */ value) => height - padBottom - (value / max) * (height - padTop - padBottom);
   const gridlines = ticks.map((ratio) => {
     const y = height - padBottom - ratio * (height - padTop - padBottom);
     return `<line class="chart-gridline" x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}"></line>` +
@@ -218,7 +218,7 @@ function multiSeriesChart(labels, series, options = {}) {
         return `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${s.gradient[0]}"/><stop offset="1" stop-color="${s.gradient[1]}"/></linearGradient>`;
       }).join("")}</defs>`
     : "";
-  const tip = (s, index) => `${escapeHtml(s.label)} — ${escapeHtml(String(labels[index]))}: ${s.format ? s.format(s.values[index] || 0) : s.values[index] || 0}`;
+  const tip = (/** @type {any} */ s, /** @type {any} */ index) => `${escapeHtml(s.label)} — ${escapeHtml(String(labels[index]))}: ${s.format ? s.format(s.values[index] || 0) : s.values[index] || 0}`;
   const bars = barSeries.map((s, si) => labels.map((_, index) => {
     const groupLeft = xFor(index) - groupWidth / 2;
     const x = groupLeft + si * (barWidth + barGap);
@@ -247,8 +247,8 @@ function multiSeriesChart(labels, series, options = {}) {
 /** @param {any} entries @param {any} [subTextFn] */
 function verticalBars(entries, subTextFn) {
   if (!entries.length) return `<p>No salesperson data available for this view.</p>`;
-  const max = Math.max(...entries.map(([, value]) => value), 1);
-  return entries.map(([label, value]) => `<div class="vertical-bar"><span class="vertical-value" title="${escapeHtml(peso.format(value))}">${escapeHtml(pesoCompact(value))}</span><div class="vertical-track"><span class="vertical-fill" style="height:${Math.max(6, Math.round((value / max) * 100))}%"></span></div><span class="vertical-label">${escapeHtml(label)}</span>${subTextFn ? `<span class="vertical-subvalue">${escapeHtml(subTextFn(label, value))}</span>` : ""}</div>`).join("");
+  const max = Math.max(...entries.map((/** @type {any[]} */ [, value]) => value), 1);
+  return entries.map((/** @type {any[]} */ [label, value]) => `<div class="vertical-bar"><span class="vertical-value" title="${escapeHtml(peso.format(value))}">${escapeHtml(pesoCompact(value))}</span><div class="vertical-track"><span class="vertical-fill" style="height:${Math.max(6, Math.round((value / max) * 100))}%"></span></div><span class="vertical-label">${escapeHtml(label)}</span>${subTextFn ? `<span class="vertical-subvalue">${escapeHtml(subTextFn(label, value))}</span>` : ""}</div>`).join("");
 }
 
 /** @param {string} text @param {Record<string, any>} [options] */
@@ -297,7 +297,7 @@ function isEquipmentItem(item) {
   return category === "equipment";
 }
 
-/** @param {PoLine} line */
+/** @param {{ qty: number, price: number }} line */
 function lineSubtotal(line) { return Math.max(0, line.qty * line.price); }
 /** @param {Sale} sale */
 function saleSummary(sale) { return (sale.lines || []).map((line) => `${line.item} (${line.qty} ${line.uom})`).join(", ") || `${sale.item} (${sale.qty || 0} ${sale.uom || "unit"})`; }
@@ -426,13 +426,13 @@ async function approvePaymentRequest(cvNo) {
   const invoiceIds = request.invoices?.length ? request.invoices : (request.invoice ? request.invoice.split(",").map((id) => id.trim()).filter(Boolean) : []);
   if (!invoiceIds.length) return toast("This payment request is not linked to an invoice.");
   if (request.requestStatus !== "Pending") return toast("This payment request has already been processed.");
-  const sales = /** @type {any[]} */ (invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean));
+  const sales = /** @type {any[]} */ (invoiceIds.map((/** @type {any} */ id) => findSaleByDocumentInput(id)).filter(Boolean));
   if (!sales.length) return toast("Linked invoice(s) not found.");
   // Requests created with the per-invoice itemized editor carry an explicit net amount for
   // each invoice (item.netAmount). Older requests only have one lump total, so fall back to
   // applying that sequentially, oldest invoice first — matches the payment behavior those
   // requests were originally created and approved under.
-  const perInvoiceItems = (request.items || []).filter((item) => item.invoice && item.netAmount != null);
+  const perInvoiceItems = (request.items || []).filter((/** @type {any} */ item) => item.invoice && item.netAmount != null);
   const hasPerInvoiceAmounts = perInvoiceItems.length > 0;
   const combinedBalance = sales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
   const requestedAmount = Number(request.total || request.amount || 0);
@@ -450,9 +450,11 @@ async function approvePaymentRequest(cvNo) {
   });
   if (!ok) return;
   const by = currentUser?.name || "System User";
+  /** @type {any[]} */
   const newPayments = [];
+  /** @type {any[]} */
   const touchedSales = [];
-  const applyPayment = (sale, applied) => {
+  const applyPayment = (/** @type {Sale} */ sale, /** @type {any} */ applied) => {
     if (applied <= 0) return;
     const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: "", chequeDate: request.chequeDate || "", transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo };
     data.payments.push(payment);
@@ -463,7 +465,7 @@ async function approvePaymentRequest(cvNo) {
     if (!touchedSales.includes(sale)) touchedSales.push(sale);
   };
   if (hasPerInvoiceAmounts) {
-    perInvoiceItems.forEach((item) => {
+    perInvoiceItems.forEach((/** @type {any} */ item) => {
       const sale = sales.find((entry) => (entry.documentNo || entry.id) === item.invoice);
       if (!sale) return;
       const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
@@ -550,7 +552,7 @@ function renderPaymentRequestDetail(cvNo) {
   if (!request) return toast("Payment request not found.");
   const events = paymentRequestHistory(request);
   const payment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
-  const depositHistory = payment?.statusHistory?.length ? payment.statusHistory.map((entry) => `<li>${escapeHtml(entry.date)} · ${escapeHtml(entry.status)} · ${escapeHtml(entry.user || "System User")}</li>`).join("") : `<li>No status history yet.</li>`;
+  const depositHistory = payment?.statusHistory?.length ? payment.statusHistory.map((/** @type {any} */ entry) => `<li>${escapeHtml(entry.date)} · ${escapeHtml(entry.status)} · ${escapeHtml(entry.user || "System User")}</li>`).join("") : `<li>No status history yet.</li>`;
   const isDepositFinal = payment?.collectionStatus === "Deposited" || request.requestStatus === "Cancelled";
   const depositActions = isDepositFinal
     ? `<p class="page-description">${request.requestStatus === "Cancelled" ? "This payment request was cancelled." : "Deposited — this payment is final and its status can no longer be changed."}</p>`
@@ -558,7 +560,7 @@ function renderPaymentRequestDetail(cvNo) {
   const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposition</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposition")}">${escapeHtml(payment.collectionStatus || "For Deposition")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
   const physicalCopySection = request.requestStatus === "Approved" ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Physical Copy</span><strong>Signed CV Voucher</strong><small>Upload a photo/scan of the physically signed and released voucher.</small></div></header>${attachedFilesHtml("paymentRequest", request.cvNo)}<div class="modal-actions"><button class="ghost-button" data-upload-copy="${escapeHtml(request.cvNo)}" type="button">Upload Physical Copy</button><input type="file" accept="image/*" class="physical-copy-input" data-record-type="paymentRequest" data-record-id="${escapeHtml(request.cvNo)}" data-rerender="payment-request-detail" hidden /></div></div>` : "";
   qs("#payment-request-detail-title").textContent = `${request.cvNo} · ${request.employee}`;
-  qs("#payment-request-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.employee || "-")}</p><h2>${escapeHtml(request.invoice ? `Linked to ${request.invoice}` : "CV Voucher")}</h2></div><span class="pill ${statusClass(request.requestStatus || request.status)}">${escapeHtml(request.requestStatus || request.status || "-")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(request.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(request.total || 0)}</strong></div><div class="report-preview-card"><small>Prepared By</small><strong>${escapeHtml(request.preparedBy || "-")}</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(request.approvedBy || "-")}</strong></div></div>${depositSection}${physicalCopySection}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Approved" ? "done" : "pending"}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  qs("#payment-request-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.employee || "-")}</p><h2>${escapeHtml(request.invoice ? `Linked to ${request.invoice}` : "CV Voucher")}</h2></div><span class="pill ${statusClass(request.requestStatus || request.status)}">${escapeHtml(request.requestStatus || request.status || "-")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(request.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(request.total || 0)}</strong></div><div class="report-preview-card"><small>Prepared By</small><strong>${escapeHtml(request.preparedBy || "-")}</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(request.approvedBy || "-")}</strong></div></div>${depositSection}${physicalCopySection}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((/** @type {any} */ event) => `<div class="event-item ${event.status === "Approved" ? "done" : "pending"}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
   showSection("payment-request-detail");
 }
 
@@ -714,7 +716,7 @@ function poLineStatus(po, line) {
 // the PO is locked — corrections then go through the invoice cancel/replace flow instead.
 /** @param {any} po */
 function poHasAnyServed(po) {
-  return (po?.lines || []).some((line) => poServedQty(/** @type {ClientPO} */ (po), line.code) > 0);
+  return (po?.lines || []).some((/** @type {any} */ line) => poServedQty(/** @type {ClientPO} */ (po), line.code) > 0);
 }
 /** @param {any} po */
 function poCanEdit(po) {
@@ -727,8 +729,8 @@ const PO_TERMINAL_STATUSES = Object.values(PO_COMPLETED_DOC_LABELS);
 
 /** @param {any} po */
 function poStatus(po) {
-  const pending = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0);
-  const served = (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).served, 0);
+  const pending = (po.lines || []).reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + poLineStatus(po, line).pending, 0);
+  const served = (po.lines || []).reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + poLineStatus(po, line).served, 0);
   // Epsilon tolerance so fractional line quantities (e.g. 0.1 + 0.2) that sum to a hair
   // above zero from floating-point drift don't leave a fully-served PO stuck as pending.
   if (pending <= 1e-9) return PO_COMPLETED_DOC_LABELS[po.completedType] || "Sales Invoice";
@@ -843,7 +845,7 @@ function syncInvoiceRowLot(input) {
   if (!expiryInput || expiryInput.type === "hidden" || isEquipmentItem(item)) return;
   // Match the lot the way people actually type it (case/space-insensitive), preferring the
   // selected branch but falling back to any branch — a lot's expiry is the same wherever it sits.
-  const sameLot = (entry) => (entry.code === item.code || entry.item === item.name) && String(entry.lot || "").trim().toLowerCase() === lot.toLowerCase();
+  const sameLot = (/** @type {any} */ entry) => (entry.code === item.code || entry.item === item.name) && String(entry.lot || "").trim().toLowerCase() === lot.toLowerCase();
   const stock = data.inventory.find((entry) => sameLot(entry) && (!branch || entry.branch === branch)) || data.inventory.find(sameLot);
   if (stock) {
     expiryInput.value = stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "";
@@ -866,7 +868,7 @@ function syncInvoiceRowItem(input, options = {}) {
   if (lotDatalist) lotDatalist.innerHTML = invoiceRowLotOptionsHtml(item, warehouse);
   // outerHTML replaces the element, so any reference captured before that point is detached —
   // re-query fresh each call instead of reusing one `stockHint` variable across both calls below.
-  const refreshStockHint = (lot) => {
+  const refreshStockHint = (/** @type {any} */ lot) => {
     const hint = qsIn(row, "[data-role='stock-hint']");
     if (hint) hint.outerHTML = invoiceRowStockHintHtml(item, warehouse, lot) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
   };
@@ -1176,7 +1178,7 @@ function ptElementBoxIn(el, referenceEl) {
   const refRect = ref.getBoundingClientRect();
   const scale = ptCanvasScale() || 1;
   const r = el.getBoundingClientRect();
-  const toIn = (px) => round3(px / (96 * scale));
+  const toIn = (/** @type {any} */ px) => round3(px / (96 * scale));
   return { left: toIn(r.left - refRect.left), top: toIn(r.top - refRect.top), width: toIn(r.width), right: toIn(refRect.right - r.right), height: toIn(r.height) };
 }
 
@@ -1219,7 +1221,7 @@ function buildPrintTemplateCanvas() {
   const def = PRINT_TEMPLATE_FIELDS[type];
   const lower = type.toLowerCase();
   const row = ptOverrides.row;
-  const rowStyleAttr = (index) => {
+  const rowStyleAttr = (/** @type {any} */ index) => {
     const parts = [`--row:${index}`];
     if (row) {
       const top = round3(Number(row.top || 0) + index * Number(row.spacing || 0));
@@ -1230,8 +1232,8 @@ function buildPrintTemplateCanvas() {
     }
     return ` style="${parts.join(";")}"`;
   };
-  const pointFieldsHtml = def.point.map(([key, label]) => `<span class="field ${key} pt-editable" data-pt-field="${key}" tabindex="0"${ptFieldStyleAttr(ptOverrides.fields[key])}>${escapeHtml(label)}</span>`).join("");
-  const rowColsHtml = def.rowCols.map(([key, label]) => `<span class="${key} pt-editable pt-row-col" data-pt-field="${key}" tabindex="0"${ptFieldStyleAttr(ptOverrides.fields[key])}>${escapeHtml(label)}</span>`).join("");
+  const pointFieldsHtml = def.point.map((/** @type {any[]} */ [key, label]) => `<span class="field ${key} pt-editable" data-pt-field="${key}" tabindex="0"${ptFieldStyleAttr(ptOverrides.fields[key])}>${escapeHtml(label)}</span>`).join("");
+  const rowColsHtml = def.rowCols.map((/** @type {any[]} */ [key, label]) => `<span class="${key} pt-editable pt-row-col" data-pt-field="${key}" tabindex="0"${ptFieldStyleAttr(ptOverrides.fields[key])}>${escapeHtml(label)}</span>`).join("");
   const row0Html = `<div class="${lower}-row pt-editable" data-pt-row-container="1" tabindex="0"${rowStyleAttr(0)}>${rowColsHtml}</div>`;
   const row1Html = `<div class="${lower}-row pt-editable pt-row-spacing-handle" data-pt-row-spacing="1" tabindex="0"${rowStyleAttr(1)}><span class="pt-row-spacing-label">Row 2 (drag for spacing)</span></div>`;
   qs("#print-template-canvas").innerHTML = `<section class="template-overlay template-${lower} pt-canvas-inner">${pointFieldsHtml}${row0Html}${row1Html}</section>`;
@@ -1591,7 +1593,7 @@ function renderStockReceipts() {
 
 /** @param {any} receipt */
 function stockReceiptLineRowsHtml(receipt) {
-  return (receipt.lines || []).map((line) => `<tr><td>${escapeHtml(line.item || line.code)}<small>${escapeHtml(line.code)}</small></td><td>${escapeHtml(line.branch || "-")}</td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${Number(line.qty || 0)}</td></tr>`).join("") || `<tr><td colspan="5">No lines recorded.</td></tr>`;
+  return (receipt.lines || []).map((/** @type {any} */ line) => `<tr><td>${escapeHtml(line.item || line.code)}<small>${escapeHtml(line.code)}</small></td><td>${escapeHtml(line.branch || "-")}</td><td>${escapeHtml(line.lot || "-")}</td><td>${escapeHtml(line.expiry || "N/A")}</td><td>${Number(line.qty || 0)}</td></tr>`).join("") || `<tr><td colspan="5">No lines recorded.</td></tr>`;
 }
 
 function renderStockReceiptHistory() {
@@ -1609,7 +1611,7 @@ function showStockReceiptDetail(id) {
   if (!receipt) return toast("Stock receipt not found.");
   const dialog = document.createElement("dialog");
   dialog.className = "modal audit-detail-modal transfer-detail-modal";
-  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Stock Receipt Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-stock-receipt-detail aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Order Number</small><strong>${escapeHtml(receipt.orderNumber || "-")}</strong></div><div class="report-preview-card"><small>Date Received</small><strong>${escapeHtml(receipt.dateReceived || "-")}</strong></div><div class="report-preview-card"><small>Source</small><strong>${escapeHtml(receipt.source || "-")}</strong></div><div class="report-preview-card"><small>Purchase Order</small><strong>${escapeHtml(receipt.poId || "Manual receive")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Branch</th><th>Lot</th><th>Expiry</th><th>Qty</th></tr></thead><tbody>${stockReceiptLineRowsHtml(receipt)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${(receipt.history || []).map((event) => `<div class="event-item ${/approved/i.test(event.status) ? "done" : /cancel/i.test(event.status) ? "blocked" : "pending"}"><span>${escapeHtml((event.status || "S")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("") || `<p>No history recorded yet.</p>`}</div></details>`;
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Stock Receipt Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-stock-receipt-detail aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Order Number</small><strong>${escapeHtml(receipt.orderNumber || "-")}</strong></div><div class="report-preview-card"><small>Date Received</small><strong>${escapeHtml(receipt.dateReceived || "-")}</strong></div><div class="report-preview-card"><small>Source</small><strong>${escapeHtml(receipt.source || "-")}</strong></div><div class="report-preview-card"><small>Purchase Order</small><strong>${escapeHtml(receipt.poId || "Manual receive")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Branch</th><th>Lot</th><th>Expiry</th><th>Qty</th></tr></thead><tbody>${stockReceiptLineRowsHtml(receipt)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${(receipt.history || []).map((/** @type {any} */ event) => `<div class="event-item ${/approved/i.test(event.status) ? "done" : /cancel/i.test(event.status) ? "blocked" : "pending"}"><span>${escapeHtml((event.status || "S")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("") || `<p>No history recorded yet.</p>`}</div></details>`;
   document.body.appendChild(dialog);
   qsIn(dialog, "[data-close-stock-receipt-detail]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
@@ -1634,7 +1636,7 @@ async function approveStockReceipt(index) {
   if (result.error) return toast(result.error.message || "Unable to approve this stock receipt.");
   replaceStockReceiptRecord(result.receipt);
   if (result.po) replacePoRecord(result.po);
-  (result.receipt.lines || []).forEach(({ branch, code, item, brand, lot, expiry, qty }) => {
+  (result.receipt.lines || []).forEach((/** @type {any} */ { branch, code, item, brand, lot, expiry, qty }) => {
     const existing = data.inventory.find((entry) => entry.code === code && entry.branch === branch && entry.lot === lot);
     if (existing) existing.qty = Number(existing.qty || 0) + Number(qty || 0);
     else data.inventory.push({ code, item, brand, branch, lot, serial: lot, expiry, qty, min: 10 });
@@ -1678,7 +1680,7 @@ async function cancelStockReceipt(index) {
 
 /** @param {any} receipt */
 function fillStockSheetFromReceipt(receipt) {
-  const bodyRows = (receipt.lines || []).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(line.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
+  const bodyRows = (receipt.lines || []).map((/** @type {any} */ line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(line.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
   qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
   if (qs("#stock-sheet-order-number")) qs("#stock-sheet-order-number").value = receipt.orderNumber || "";
@@ -1770,7 +1772,7 @@ function renderLogisticsDashboard() {
   const demoForLogistics = (data.inventoryDemoRequests || []).filter((request) => request.status === "For Logistics Approval");
   const stock = byBranch(data.inventory);
   const invAlerts = stock.filter((item) => ["Low Stock", "Critical", "Near Expiry", "For Disposal"].includes(inventoryStatus(item)));
-  const stat = (accent, icon, label, value, note) => `<article class="stat-card accent-${accent}"><span class="card-icon">${icon}</span><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`;
+  const stat = (/** @type {any} */ accent, /** @type {any} */ icon, /** @type {any} */ label, /** @type {any} */ value, /** @type {any} */ note) => `<article class="stat-card accent-${accent}"><span class="card-icon">${icon}</span><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`;
   qs("#logistics-stats").innerHTML = [
     stat("orange", "◌", "Pending PO Approval", pendingApproval.length, "Awaiting Superadmin"),
     stat("blue", "🚚", "POs In Transit", inTransit.length, "Approved → in transit"),
@@ -1844,7 +1846,7 @@ function renderDashboard() {
   const trendChart = qs("#dashboard-trend-chart");
   if (trendChart) {
     /** @type {Record<string, any>} */
-    const monthlyTrend = visibleSales.reduce((acc, sale) => {
+    const monthlyTrend = visibleSales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
       const month = sale.date.slice(0, 7);
       if (!acc[month]) acc[month] = { sales: 0, collections: 0, outstanding: 0 };
       acc[month].sales += sale.net;
@@ -1853,7 +1855,7 @@ function renderDashboard() {
       return acc;
     }, {});
     const trendMonths = Object.keys(monthlyTrend).sort((a, b) => a.localeCompare(b));
-    const renderTrend = (width) => multiSeriesChart(trendMonths.map(monthLabel), [
+    const renderTrend = (/** @type {any} */ width) => multiSeriesChart(trendMonths.map(monthLabel), [
           { label: "Monthly Sales", type: "bar", gradient: ["#3db3cd", "#006eb6"], values: trendMonths.map((m) => monthlyTrend[m].sales), format: (v) => peso.format(v) },
           { label: "Collections Received", type: "bar", gradient: ["#e07a38", "#a05320"], values: trendMonths.map((m) => monthlyTrend[m].collections), format: (v) => peso.format(v) },
         ], { width }) + graphNote("Monthly invoice net totals vs. payments received, grouped by invoice month within the selected date range.");
@@ -1876,7 +1878,7 @@ function renderDashboard() {
 /** @param {any} visibleSales */
 function dashboardReportRows(visibleSales) {
   const header = ["Document No.", "Type", "Client", "Area", "Salesperson", "Date", "Amount", "Paid", "Balance", "Status"];
-  const rows = visibleSales.map((sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.client, sale.area, sale.salesperson || "-", sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), statusForSale(sale)]);
+  const rows = visibleSales.map((/** @type {Sale} */ sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.client, sale.area, sale.salesperson || "-", sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), statusForSale(sale)]);
   return [header, ...rows];
 }
 
@@ -1891,12 +1893,12 @@ function exportDashboardCsv() {
 
 /** @param {any} visibleSales @param {any} dashboardRange */
 function dashboardReportHtml(visibleSales, dashboardRange) {
-  const totalSales = visibleSales.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const totalPaid = visibleSales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
-  const outstanding = visibleSales.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  const totalSales = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0);
+  const totalPaid = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.paid || 0), 0);
+  const outstanding = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
   const invAlerts = byBranch(data.inventory).filter((item) => ["Low Stock", "Critical", "Near Expiry", "For Disposal"].includes(inventoryStatus(item)));
-  const branches = platformAreas().map((branch) => ({ branch, amount: visibleSales.filter((s) => s.area === branch).reduce((sum, s) => sum + Number(s.net || 0), 0) })).filter((b) => b.amount > 0);
-  const rows = visibleSales.slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))).map((sale) => `<tr><td>${escapeHtml(sale.date)}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(sale.client)}</td><td>${escapeHtml(sale.area || "-")}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td><td>${escapeHtml(statusForSale(sale))}</td></tr>`).join("");
+  const branches = platformAreas().map((branch) => ({ branch, amount: visibleSales.filter((/** @type {any} */ s) => s.area === branch).reduce((/** @type {number} */ sum, /** @type {any} */ s) => sum + Number(s.net || 0), 0) })).filter((b) => b.amount > 0);
+  const rows = visibleSales.slice().sort((/** @type {any} */ a, /** @type {any} */ b) => String(a.date || "").localeCompare(String(b.date || ""))).map((/** @type {Sale} */ sale) => `<tr><td>${escapeHtml(sale.date)}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(sale.client)}</td><td>${escapeHtml(sale.area || "-")}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td><td>${escapeHtml(statusForSale(sale))}</td></tr>`).join("");
   return `<section class="payment-request-print">${printableBrandHeaderHtml("Dashboard Report")}<div class="pr-meta"><span>Period: <strong>${escapeHtml(dashboardRange.from || "…")} to ${escapeHtml(dashboardRange.to || "…")}</strong></span><span>Branch: <strong>${escapeHtml(data.branch === "all" ? "All Branches" : data.branch)}</strong></span><span>Invoices: <strong>${visibleSales.length}</strong></span></div><div class="pr-meta"><span>Total Sales: <strong>${peso.format(totalSales)}</strong></span><span>Collections: <strong>${peso.format(totalPaid)}</strong></span><span>Outstanding AR: <strong>${peso.format(outstanding)}</strong></span><span>Stock Alerts: <strong>${invAlerts.length}</strong></span></div>${branches.length ? `<table><thead><tr><th>Region</th><th>Sales</th></tr></thead><tbody>${branches.map((b) => `<tr><td>${escapeHtml(b.branch)}</td><td>${peso.format(b.amount)}</td></tr>`).join("")}</tbody></table>` : ""}<table><thead><tr><th>Date</th><th>Document</th><th>Client</th><th>Area</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No invoices in this view.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
 }
 
@@ -1955,7 +1957,7 @@ function renderAnalytics() {
   const totalSales = visibleSales.reduce((sum, sale) => sum + sale.net, 0);
   const totalPaid = visibleSales.reduce((sum, sale) => sum + sale.paid, 0);
   const collectionRate = totalSales ? Math.round((totalPaid / totalSales) * 100) : 0;
-  const monthlySales = visibleSales.reduce((acc, sale) => {
+  const monthlySales = visibleSales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
     const month = sale.date.slice(0, 7);
     acc[month] = (acc[month] || 0) + sale.net;
     return acc;
@@ -1983,14 +1985,15 @@ function renderAnalytics() {
   // Total sales credited the same way as the collections above — by the client's assigned
   // agent, not the invoice's own salesperson field — so the bar height reflects everything
   // invoiced to that agent's accounts, not just what's been deposited so far.
+  /** @type {Record<string, number>} */
   const salespersonTotalSales = {};
   visibleSales.forEach((sale) => {
     const agent = data.clients.find((client) => client.name === sale.client)?.salesperson;
     if (!salesAgentNames.has(/** @type {string} */ (agent))) return;
-    salespersonTotalSales[agent] = (salespersonTotalSales[agent] || 0) + Number(sale.net || 0);
+    salespersonTotalSales[/** @type {string} */ (agent)] = (salespersonTotalSales[/** @type {string} */ (agent)] || 0) + Number(sale.net || 0);
   });
   const salespersonSales = Object.entries(salespersonTotalSales).sort((a, b) => b[1] - a[1]);
-  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales, (agent) => `Deposited ${peso.format(salespersonCollections[agent] || 0)}`);
+  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales, (/** @type {any} */ agent) => `Deposited ${peso.format(salespersonCollections[agent] || 0)}`);
   const branchSales = Object.entries(sumBy(visibleSales, "area", (sale) => sale.net));
   qs("#analytics-branch-sales").innerHTML = barRows(branchSales, (value) => peso.format(value), ["", "green"]) + graphNote("Computed from invoice net totals grouped by client sales area.");
   const dealerClients = data.clients.filter((client) => client.dealer !== "Direct");
@@ -2001,7 +2004,7 @@ function renderAnalytics() {
   const dealerEnd = totalSales ? Math.round((directSales / totalSales) * 100) : 0;
   qs("#analytics-area-dealer").innerHTML = `<div class="donut" style="--paid:${dealerEnd}%; --partial:${dealerEnd}%; --end:100%;" data-label="${totalSales ? Math.round((dealerSales / totalSales) * 100) : 0}%\ndealer"></div><div class="legend"><span class="green">Direct ${peso.format(directSales)}</span><span class="red">Dealer ${peso.format(dealerSales)}</span></div>${graphNote("Computed from invoice net totals split by client account type: Direct vs Dealer.")}`;
   // "AR" entries are added purely to track receivable history, not actual sold items/brands.
-  const isTrackingOnlyAR = (value) => String(value || "").trim().toUpperCase() === "AR" || isBookkeepingOnlyLine(value, "");
+  const isTrackingOnlyAR = (/** @type {any} */ value) => String(value || "").trim().toUpperCase() === "AR" || isBookkeepingOnlyLine(value, "");
   const topBrands = Object.entries(sumBy(visibleSales.filter((sale) => !isTrackingOnlyAR(sale.brand)), "brand", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 5);
   qs("#analytics-top-brands").innerHTML = barRows(topBrands, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Computed from invoice line subtotals grouped by item brand.");
 
@@ -2029,8 +2032,8 @@ function renderAnalytics() {
     ...visibleExpenses.map((expense) => ({ label: expense.type || "Employee Expense", amount: Number(expense.amount || expense.total || 0), source: "Expense" })),
     ...visiblePayables.map((payable) => ({ label: payable.supplier ? `Payable: ${payable.supplier}` : "Supplier Payable", amount: Number(payable.amount || payable.total || 0), source: "Payable" })),
   ];
-  const expenseByClassification = Object.entries(combinedExpenses.reduce((acc, expense) => { acc[expense.label] = (acc[expense.label] || 0) + expense.amount; return acc; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  const expenseBySource = Object.entries(combinedExpenses.reduce((acc, expense) => { acc[expense.source] = (acc[expense.source] || 0) + expense.amount; return acc; }, {}));
+  const expenseByClassification = Object.entries(combinedExpenses.reduce((/** @type {Record<string, any>} */ acc, expense) => { acc[expense.label] = (acc[expense.label] || 0) + expense.amount; return acc; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const expenseBySource = Object.entries(combinedExpenses.reduce((/** @type {Record<string, any>} */ acc, expense) => { acc[expense.source] = (acc[expense.source] || 0) + expense.amount; return acc; }, {}));
   qs("#analytics-expense-classification").innerHTML = barRows(expenseByClassification, (value) => peso.format(value), ["orange", "red", "", "green"]) + graphNote("Computed from employee expenses plus supplier payables, grouped by expense type or supplier.");
   const totalExpenses = combinedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   qs("#analytics-revenue-expenses").innerHTML = barRows([["Revenue", totalSales], ...expenseBySource, ["Net", totalSales - totalExpenses]], (value) => peso.format(value), ["green", "orange", "red", ""]) + graphNote("Computed as invoice revenue compared with all business expenses: supplier payables plus employee expense requests.");
@@ -2063,7 +2066,7 @@ function renderAnalytics() {
 
 /** @param {any} visibleSales @param {any} visibleInventory @param {any} totalSales @param {any} totalPaid */
 function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, totalPaid) {
-  const monthlySales = Object.entries(visibleSales.reduce((acc, sale) => { acc[sale.date.slice(0, 7)] = (acc[sale.date.slice(0, 7)] || 0) + sale.net; return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
+  const monthlySales = Object.entries(visibleSales.reduce((/** @type {Record<string, any>} */ acc, /** @type {Sale} */ sale) => { acc[sale.date.slice(0, 7)] = (acc[sale.date.slice(0, 7)] || 0) + sale.net; return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
   const lastMonth = monthlySales.at(-1)?.[0] || fmtDate(today).slice(0, 7);
   const base = monthlySales.at(-1)?.[1] || totalSales || 1;
   const forecast = [...monthlySales, ...[1, 2, 3].map((step) => {
@@ -2072,13 +2075,13 @@ function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, total
     return [fmtDate(d).slice(0, 7), Math.round(base * (1 + step * 0.08))];
   })];
   qs("#growth-sales-forecast").innerHTML = lineChart(forecast) + graphNote("Projection starts from the latest monthly sales total and applies the configured growth step.");
-  qs("#growth-client-pipeline").innerHTML = barRows(Object.entries(sumBy(data.clients, "area", () => 1)).map(([area, count]) => [area, count + visibleSales.filter((sale) => sale.area === area).length]), (value) => `${value} accounts/orders`, ["", "green", "orange"]);
-  const demand = Object.entries(sumBy(visibleSales.filter((sale) => !isBookkeepingOnlyLine(sale.item)), "item", (sale) => sale.qty || (sale.lines || []).reduce((sum, line) => sum + Number(line.qty || 0), 0))).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  qs("#growth-client-pipeline").innerHTML = barRows(Object.entries(sumBy(data.clients, "area", () => 1)).map(([area, count]) => [area, count + visibleSales.filter((/** @type {Sale} */ sale) => sale.area === area).length]), (value) => `${value} accounts/orders`, ["", "green", "orange"]);
+  const demand = Object.entries(sumBy(visibleSales.filter((/** @type {Sale} */ sale) => !isBookkeepingOnlyLine(sale.item)), "item", (sale) => sale.qty || (sale.lines || []).reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + Number(line.qty || 0), 0))).sort((a, b) => b[1] - a[1]).slice(0, 5);
   qs("#growth-product-demand").innerHTML = verticalBars(demand.map(([label, value]) => [label, value * 4200])) + graphNote("Computed from sold item quantities and configured unit pricing. Accounts Receivable bookkeeping lines are excluded — they aren't real product sales.");
   const recoverable = Math.max(totalSales - totalPaid, 0);
   const recoveryRate = totalSales ? Math.round((recoverable / totalSales) * 100) : 0;
   qs("#growth-collection-potential").innerHTML = `<div class="donut" style="--paid:${Math.min(100, recoveryRate)}%; --partial:${Math.min(100, recoveryRate + 18)}%; --end:100%;" data-label="${recoveryRate}%\nAR upside"></div><div class="legend"><span class="orange">Recoverable ${peso.format(recoverable)}</span><span class="green">Collected ${peso.format(totalPaid)}</span></div>${graphNote("Computed from outstanding AR compared with collected payment totals.")}`;
-  const coverage = visibleInventory.map((item) => [item.item, Math.max(0, item.qty - item.min)]).sort((a, b) => a[1] - b[1]).slice(0, 5);
+  const coverage = visibleInventory.map((/** @type {any} */ item) => [item.item, Math.max(0, item.qty - item.min)]).sort((/** @type {any} */ a, /** @type {any} */ b) => a[1] - b[1]).slice(0, 5);
   qs("#growth-stock-coverage").innerHTML = barRows(coverage, (value) => `${value} over min`, ["red", "orange", "", "green"]);
   qs("#growth-recommendations").innerHTML = [
     "Prioritize near-expiry reagents in sales bundles before new procurement.",
@@ -2102,7 +2105,7 @@ function daysBetween(startValue, endValue) {
 
 /** @param {any} po */
 function poApprovalDays(po) {
-  const approvedEntry = (po.history || []).find((entry) => entry.status === "Approved");
+  const approvedEntry = (po.history || []).find((/** @type {any} */ entry) => entry.status === "Approved");
   if (!approvedEntry) return null;
   return daysBetween(po.date, approvedEntry.date);
 }
@@ -2143,8 +2146,8 @@ function catalogItemFor(inventoryRow) {
 
 /** @param {Record<string, any>} values */
 function averageOf(values) {
-  const clean = values.filter((value) => value !== null && Number.isFinite(value));
-  return clean.length ? Math.round(clean.reduce((sum, value) => sum + value, 0) / clean.length) : null;
+  const clean = values.filter((/** @type {any} */ value) => value !== null && Number.isFinite(value));
+  return clean.length ? Math.round(clean.reduce((/** @type {number} */ sum, /** @type {any} */ value) => sum + value, 0) / clean.length) : null;
 }
 
 function computeValueMetrics() {
@@ -2223,9 +2226,9 @@ async function renderValueAnalytics() {
     if (requestId !== valueAdoptionRequest) return;
     const hasLogAccess = Boolean(logsResult);
     const entries = logsResult?.entries || [];
-    const activeUsers = new Set(entries.filter((entry) => entry.user && entry.user !== "System").map((entry) => entry.user)).size;
+    const activeUsers = new Set(entries.filter((/** @type {any} */ entry) => entry.user && entry.user !== "System").map((/** @type {any} */ entry) => entry.user)).size;
     const actionsLabel = !hasLogAccess ? "Requires log access" : entries.length >= 200 ? "200+" : String(entries.length);
-    const weeklyBackups = (backupsResult?.backups || []).filter((row) => row.backup_type === "weekly");
+    const weeklyBackups = (backupsResult?.backups || []).filter((/** @type {any} */ row) => row.backup_type === "weekly");
     const lastWeeklyBackup = weeklyBackups[0];
     const uptimeNote = backupStatusResult?.stale === false ? "Current" : backupStatusResult ? "Overdue" : "Unknown";
     adoptionGrid.innerHTML = [
@@ -2314,7 +2317,7 @@ function renderMasterlists() {
   const itemsClassificationFilter = qs("#master-items-classification-filter")?.value || "";
   const suppliersClassificationFilter = qs("#master-suppliers-classification-filter")?.value || "";
   const suppliersStatusFilter = qs("#master-suppliers-status-filter")?.value || "";
-  const masterFilter = (record) => {
+  const masterFilter = (/** @type {any} */ record) => {
     if (!(showArchived ? isArchived(record) : !isArchived(record)) || !includesSearch(Object.values(record))) return false;
     if (data.masterTab === "items") {
       if (itemsBrandFilter && record.brand !== itemsBrandFilter) return false;
@@ -2327,7 +2330,7 @@ function renderMasterlists() {
     }
     return true;
   };
-  const rowActions = (type, index) => {
+  const rowActions = (/** @type {any} */ type, /** @type {any} */ index) => {
     if (showArchived) return canArchive ? `<button class="mini-button" data-master-restore="${type}" data-index="${index}">Restore</button>` : "Archived";
     const parts = [canEditModule("masterlists") ? `<button class="mini-button" data-master-edit="${type}" data-index="${index}">Edit</button>` : "Approval required"];
     if (canArchive) parts.push(`<button class="mini-button danger-button" data-master-archive="${type}" data-index="${index}">Archive</button>`);
@@ -2405,12 +2408,12 @@ function inventoryItemLabel(item) {
 
 /** @param {any} request */
 function demoRequestLineSummary(request) {
-  return (request.lines || []).map((line) => `${escapeHtml(line.type)}: ${escapeHtml(line.item || line.code || "Item")} (${Number(line.qty || 0)})${line.lot ? ` Lot ${escapeHtml(line.lot)}` : ""}${line.notes ? ` · ${escapeHtml(line.notes)}` : ""}${request.status === "To Sales" && Number(line.price) > 0 ? `<small>${peso.format(line.price)} each</small>` : ""}`).join("<br>") || "-";
+  return (request.lines || []).map((/** @type {any} */ line) => `${escapeHtml(line.type)}: ${escapeHtml(line.item || line.code || "Item")} (${Number(line.qty || 0)})${line.lot ? ` Lot ${escapeHtml(line.lot)}` : ""}${line.notes ? ` · ${escapeHtml(line.notes)}` : ""}${request.status === "To Sales" && Number(line.price) > 0 ? `<small>${peso.format(line.price)} each</small>` : ""}`).join("<br>") || "-";
 }
 
 /** @param {any} request */
 function demoSaleTotal(request) {
-  return (request.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0), 0);
+  return (request.lines || []).reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + Number(line.qty || 0) * Number(line.price || 0), 0);
 }
 
 /** @param {any} request */
@@ -2419,7 +2422,7 @@ function openDemoToSalesDialog(request) {
   const dialog = document.createElement("dialog");
   dialog.className = "modal";
   dialog.id = "demo-sales-modal";
-  const rows = (request.lines || []).map((line, index) => `<tr><td>${escapeHtml(line.item || line.code || "Item")}<small>${escapeHtml(line.type || "")}</small></td><td>${Number(line.qty || 0)}</td><td><input type="number" min="0" step="any" data-demo-price="${index}" value="${line.price ?? ""}" placeholder="0.00" required /></td></tr>`).join("");
+  const rows = (request.lines || []).map((/** @type {any} */ line, /** @type {any} */ index) => `<tr><td>${escapeHtml(line.item || line.code || "Item")}<small>${escapeHtml(line.type || "")}</small></td><td>${Number(line.qty || 0)}</td><td><input type="number" min="0" step="any" data-demo-price="${index}" value="${line.price ?? ""}" placeholder="0.00" required /></td></tr>`).join("");
   dialog.innerHTML = `<form id="demo-sales-form">
     <div class="modal-header"><div><p class="eyebrow">Convert to Sales</p><h2>${escapeHtml(request.id)} · ${escapeHtml(request.client || "")}</h2></div><button class="icon-button" type="button" data-close-demo-sales aria-label="Close">x</button></div>
     <div class="field"><label for="demo-sales-si">SI Number</label><input id="demo-sales-si" type="text" value="${escapeHtml(request.siNumber || "")}" placeholder="Sales invoice no." required /></div>
@@ -2492,7 +2495,7 @@ function demoRequestActions(request) {
 /** @param {any} request */
 function demoRequestHistoryCard(request) {
   const closedLabel = request.status === "To Sales" ? "Routed to Sales" : request.status;
-  return `<article class="panel" data-focus-record="${escapeHtml(request.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.demoDate || request.date || "-")}</p><h2>${escapeHtml(request.id)} · ${escapeHtml(closedLabel || "Demo")}</h2></div><span class="pill ${statusClass(request.status)}">${escapeHtml(request.status || "-")}</span></div><p><strong>Sales Agent:</strong> ${escapeHtml(request.salesAgent || request.requestedBy || "-")}</p><p><strong>Expected Return:</strong> ${escapeHtml(request.returnDate || "-")}</p>${request.status === "To Sales" ? `<p><strong>SI No.:</strong> ${escapeHtml(request.siNumber || "-")} · <strong>Amount:</strong> ${peso.format(request.saleAmount || 0)}</p>` : ""}<p><strong>Purpose:</strong> ${escapeHtml(request.purpose || "-")}</p><div class="table-card compact-table"><table><thead><tr><th>Type</th><th>Item</th><th>Qty</th><th>Lot / Notes</th></tr></thead><tbody>${(request.lines || []).map((line) => `<tr><td>${escapeHtml(line.type || "Item")}</td><td>${escapeHtml(line.item || line.code || "-")}<small>${escapeHtml(line.brand || "")}</small></td><td>${Number(line.qty || 0)}</td><td>${escapeHtml([line.lot, line.notes].filter(Boolean).join(" · ") || "-")}</td></tr>`).join("") || `<tr><td colspan="4">No itemized demo lines.</td></tr>`}</tbody></table></div></article>`;
+  return `<article class="panel" data-focus-record="${escapeHtml(request.id)}"><div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.demoDate || request.date || "-")}</p><h2>${escapeHtml(request.id)} · ${escapeHtml(closedLabel || "Demo")}</h2></div><span class="pill ${statusClass(request.status)}">${escapeHtml(request.status || "-")}</span></div><p><strong>Sales Agent:</strong> ${escapeHtml(request.salesAgent || request.requestedBy || "-")}</p><p><strong>Expected Return:</strong> ${escapeHtml(request.returnDate || "-")}</p>${request.status === "To Sales" ? `<p><strong>SI No.:</strong> ${escapeHtml(request.siNumber || "-")} · <strong>Amount:</strong> ${peso.format(request.saleAmount || 0)}</p>` : ""}<p><strong>Purpose:</strong> ${escapeHtml(request.purpose || "-")}</p><div class="table-card compact-table"><table><thead><tr><th>Type</th><th>Item</th><th>Qty</th><th>Lot / Notes</th></tr></thead><tbody>${(request.lines || []).map((/** @type {any} */ line) => `<tr><td>${escapeHtml(line.type || "Item")}</td><td>${escapeHtml(line.item || line.code || "-")}<small>${escapeHtml(line.brand || "")}</small></td><td>${Number(line.qty || 0)}</td><td>${escapeHtml([line.lot, line.notes].filter(Boolean).join(" · ") || "-")}</td></tr>`).join("") || `<tr><td colspan="4">No itemized demo lines.</td></tr>`}</tbody></table></div></article>`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2509,6 +2512,7 @@ const INVENTORY_STATUS_META = [
 const INVENTORY_STATUS_BY_NAME = Object.fromEntries(INVENTORY_STATUS_META.map((meta) => [meta.name, meta]));
 const INVENTORY_PAGE_SIZE = 25;
 const INVENTORY_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** @type {Record<string, string>} */
 const INVENTORY_TAB_LABELS = { stocks: "Stocks", receiving: "Receiving POs", receipts: "Pending receipts", completed: "Completed POs", transfers: "Transfers", demos: "Demo requests", rhist: "Receiving history", thist: "Transfer history" };
 /** @type {Record<string, any>} */
 const INVENTORY_ICONS = {
@@ -2577,8 +2581,8 @@ function syncInventorySavedPill(status, text) {
 /** @returns {any[]} */
 function inventoryFilteredRows() {
   const needle = inventorySearch.trim().toLowerCase();
-  const matchesBranch = (item) => inventoryBranchView === "all" || item.branch === inventoryBranchView;
-  const matchesSearch = (item) => !needle || [item.item, item.code, item.brand, item.lot, item.serial].join(" ").toLowerCase().includes(needle);
+  const matchesBranch = (/** @type {any} */ item) => inventoryBranchView === "all" || item.branch === inventoryBranchView;
+  const matchesSearch = (/** @type {any} */ item) => !needle || [item.item, item.code, item.brand, item.lot, item.serial].join(" ").toLowerCase().includes(needle);
   return data.inventory
     .filter(matchesBranch)
     .filter((item) => includesSearch(Object.entries(item).filter(([key]) => key !== "history").map(([, value]) => value)))
@@ -2588,9 +2592,9 @@ function inventoryFilteredRows() {
 /** @param {any} rows @returns {any[]} */
 function inventorySortRows(rows) {
   const { key, dir } = inventorySort;
-  const text = (value) => String(value || "").toLowerCase();
-  const value = (model) => key === "item" ? `${text(model.item.item)} ${text(model.lotText)}` : key === "lot" ? text(model.lotText) : key === "branch" ? text(model.item.branch) : key === "qty" ? Number(model.item.qty || 0) : model.expiry.days;
-  return rows.slice().sort((a, b) => {
+  const text = (/** @type {any} */ value) => String(value || "").toLowerCase();
+  const value = (/** @type {any} */ model) => key === "item" ? `${text(model.item.item)} ${text(model.lotText)}` : key === "lot" ? text(model.lotText) : key === "branch" ? text(model.item.branch) : key === "qty" ? Number(model.item.qty || 0) : model.expiry.days;
+  return rows.slice().sort((/** @type {any} */ a, /** @type {any} */ b) => {
     const x = value(a), y = value(b);
     if (key === "expiry") { // rows without an expiry always sort last, in either direction
       if (x === null && y === null) return 0;
@@ -2603,7 +2607,7 @@ function inventorySortRows(rows) {
 
 function inventoryCardsHtml() {
   const all = (data.inventory || []).map(inventoryRowModel);
-  const by = (key) => all.filter((model) => model.meta.key === key);
+  const by = (/** @type {any} */ key) => all.filter((model) => model.meta.key === key);
   const total = all.length;
   const legend = INVENTORY_STATUS_META.map((meta) => ({ ...meta, count: by(meta.key).length }));
   const health = `<section class="inv-card inv-kcard" aria-label="Stock health">
@@ -2612,20 +2616,20 @@ function inventoryCardsHtml() {
     <div class="inv-bar" aria-hidden="true">${legend.filter((m) => m.count).map((m) => `<span class="s-${m.key}" style="flex:${m.count} 1 0"></span>`).join("")}</div>
     <div class="inv-legend">${legend.map((m) => `<button class="inv-legend-row" type="button" data-inventory-filter="${m.key}"><span class="dot s-${m.key}"></span><span class="grow">${m.label}</span><b>${m.count}</b></button>`).join("")}</div>
   </section>`;
-  const alertCard = (title, key, unit, models, items, itemText, tone) => `<section class="inv-card inv-kcard" aria-label="${escapeHtml(title)}">
+  const alertCard = (/** @type {any} */ title, /** @type {any} */ key, /** @type {any} */ unit, /** @type {any} */ models, /** @type {any} */ items, /** @type {any} */ itemText, /** @type {any} */ tone) => `<section class="inv-card inv-kcard" aria-label="${escapeHtml(title)}">
     <div class="inv-klabel"><span class="inv-klabel-t"><span class="dot s-${key}"></span>${escapeHtml(title)}</span><button class="inv-link" type="button" data-inventory-filter="${key}">View all</button></div>
     <div class="inv-kcount"><span class="inv-kval">${models.length}</span><span class="inv-unit">${unit}</span></div>
-    <div class="inv-alist">${items.length ? items.map((model) => `<div><span class="inv-trunc" title="${escapeHtml(inventoryItemLabel(model.item))}">${escapeHtml(inventoryItemLabel(model.item))}</span><b class="${tone}">${escapeHtml(itemText(model))}</b></div>`).join("") : `<div class="inv-none">Nothing to show.</div>`}</div>
+    <div class="inv-alist">${items.length ? items.map((/** @type {any} */ model) => `<div><span class="inv-trunc" title="${escapeHtml(inventoryItemLabel(model.item))}">${escapeHtml(inventoryItemLabel(model.item))}</span><b class="${tone}">${escapeHtml(itemText(model))}</b></div>`).join("") : `<div class="inv-none">Nothing to show.</div>`}</div>
   </section>`;
   const lowCritical = all.filter((model) => ["low", "critical"].includes(model.meta.key));
   const near = by("near");
   const disposal = by("disposal");
-  const top = (list, sorter) => list.slice().sort(sorter).slice(0, 5);
+  const top = (/** @type {any} */ list, /** @type {any} */ sorter) => list.slice().sort(sorter).slice(0, 5);
   return [
     health,
-    alertCard("Low & critical", "critical", "records", lowCritical, top(lowCritical, (a, b) => b.short - a.short), (m) => `${m.short} short`, "t-critical"),
-    alertCard("Near expiry", "near", "lots", near, top(near, (a, b) => a.expiry.days - b.expiry.days), (m) => `${m.expiry.days} days`, "t-near"),
-    alertCard("For disposal", "disposal", "expired lots", disposal, top(disposal, (a, b) => b.expiry.days - a.expiry.days), (m) => `${Math.abs(m.expiry.days)}d expired`, "t-critical"),
+    alertCard("Low & critical", "critical", "records", lowCritical, top(lowCritical, (/** @type {any} */ a, /** @type {any} */ b) => b.short - a.short), (/** @type {any} */ m) => `${m.short} short`, "t-critical"),
+    alertCard("Near expiry", "near", "lots", near, top(near, (/** @type {any} */ a, /** @type {any} */ b) => a.expiry.days - b.expiry.days), (/** @type {any} */ m) => `${m.expiry.days} days`, "t-near"),
+    alertCard("For disposal", "disposal", "expired lots", disposal, top(disposal, (/** @type {any} */ a, /** @type {any} */ b) => b.expiry.days - a.expiry.days), (/** @type {any} */ m) => `${Math.abs(m.expiry.days)}d expired`, "t-critical"),
   ].join("");
 }
 
@@ -2649,7 +2653,7 @@ function renderInventoryDetail(models) {
   const reserved = typeof competingPurchaseOrdersForItem === "function" ? competingPurchaseOrdersForItem(item.code, item.branch).reduce((sum, entry) => sum + entry.pending, 0) : 0;
   const movements = (item.history || []).slice(0, 4);
   const movementHtml = movements.length
-    ? movements.map((entry) => `<li><time>${escapeHtml(entry.at || "")}</time><span>${escapeHtml(entry.by || "System User")}${(entry.changes || []).length ? ` — ${escapeHtml((entry.changes || []).map((change) => (typeof STOCK_EDIT_FIELD_LABELS !== "undefined" && STOCK_EDIT_FIELD_LABELS[change.field]) || change.field).join(", "))}` : ""}</span></li>`).join("")
+    ? movements.map((/** @type {any} */ entry) => `<li><time>${escapeHtml(entry.at || "")}</time><span>${escapeHtml(entry.by || "System User")}${(entry.changes || []).length ? ` — ${escapeHtml((entry.changes || []).map((/** @type {any} */ change) => (typeof STOCK_EDIT_FIELD_LABELS !== "undefined" && STOCK_EDIT_FIELD_LABELS[change.field]) || change.field).join(", "))}` : ""}</span></li>`).join("")
     : `<li class="inv-none">No recorded changes for this lot yet.</li>`;
   panel.hidden = false;
   panel.innerHTML = `<div class="inv-detail-head"><div><span class="inv-eyebrow">${escapeHtml(item.brand || "—")}</span><h3>${escapeHtml(item.item)}</h3>${inventoryStatusPill(model)}</div><button class="inv-icon-btn" type="button" data-inventory-close aria-label="Close details" title="Close">${inventoryIcon("close", 18)}</button></div>
@@ -2712,7 +2716,7 @@ function renderInventory() {
   if (search && document.activeElement !== search) search.value = inventorySearch;
   const compactButton = qs("#inventory-compact-toggle");
   if (compactButton) { compactButton.setAttribute("aria-pressed", String(inventoryCompactView)); compactButton.textContent = inventoryCompactView ? "Comfortable view" : "Compact view"; }
-  const sortHead = (key, label, extra = "") => {
+  const sortHead = (/** @type {any} */ key, /** @type {any} */ label, extra = "") => {
     const active = inventorySort.key === key;
     return `<th scope="col" class="${extra}" aria-sort="${active ? (inventorySort.dir === 1 ? "ascending" : "descending") : "none"}"><button type="button" data-inventory-sort="${key}">${label}${active ? (inventorySort.dir === 1 ? " ↑" : " ↓") : ""}</button></th>`;
   };
@@ -2740,7 +2744,7 @@ function renderInventory() {
   syncInventoryUrl();
 
   // ----- Other workflow tabs (unchanged tables) -----
-  const inventoryPoLineItems = (po) => itemizedSummary(po.lines?.map((line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
+  const inventoryPoLineItems = (/** @type {any} */ po) => itemizedSummary(po.lines?.map((/** @type {any} */ line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
   table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], receivingPurchaseOrders().reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
   renderStockReceipts();
   table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
@@ -2753,7 +2757,7 @@ function renderInventory() {
   // entry.date is a locale-formatted display string (not reliably sortable as a Date), but
   // entry.id embeds the real creation timestamp as `TH-<Date.now()>-<random>` — sort on that
   // instead so a server reload (which arrives oldest-first) still shows latest first here.
-  const transferHistoryTimestamp = (entry) => Number(String(entry.id || "").split("-")[1]) || new Date(entry.date).getTime() || 0;
+  const transferHistoryTimestamp = (/** @type {any} */ entry) => Number(String(entry.id || "").split("-")[1]) || new Date(entry.date).getTime() || 0;
   const sortedTransferHistory = [...data.transferHistory].sort((a, b) => transferHistoryTimestamp(b) - transferHistoryTimestamp(a));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], sortedTransferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
   const loadMoreInventoryPosButton = qs("#load-more-inventory-pos");
@@ -2802,6 +2806,7 @@ async function renderDashboardBackupStatus() {
 function renderInventoryWorkflowTabs() {
   const tabs = qs("#inventory-workflow-tabs");
   if (!tabs) return;
+  /** @type {Record<string, any>} */
   const counts = {
     stocks: (data.inventory || []).length,
     receiving: receivingPurchaseOrders().length,
@@ -2812,8 +2817,8 @@ function renderInventoryWorkflowTabs() {
   };
   if (!INVENTORY_TABS.includes(inventoryWorkflowTab)) inventoryWorkflowTab = "stocks";
   tabs.innerHTML = INVENTORY_TABS.map((tab) => {
-    const count = counts[tab];
-    return `<button class="inv-tab" type="button" role="tab" data-inventory-workflow="${tab}" aria-selected="${tab === inventoryWorkflowTab}" tabindex="${tab === inventoryWorkflowTab ? 0 : -1}">${INVENTORY_TAB_LABELS[tab]}${count === undefined ? "" : `<span class="inv-count${count > 0 ? " has" : ""}">${count}</span>`}</button>`;
+    const count = counts[/** @type {string} */ (tab)];
+    return `<button class="inv-tab" type="button" role="tab" data-inventory-workflow="${tab}" aria-selected="${tab === inventoryWorkflowTab}" tabindex="${tab === inventoryWorkflowTab ? 0 : -1}">${INVENTORY_TAB_LABELS[/** @type {string} */ (tab)]}${count === undefined ? "" : `<span class="inv-count${count > 0 ? " has" : ""}">${count}</span>`}</button>`;
   }).join("");
   qsa(".inventory-workflow-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.inventoryPanel === inventoryWorkflowTab));
 }
@@ -2835,11 +2840,11 @@ function transferLineComparisonRowsHtml(transfer) {
 /** @param {string} id */
 function showTransferTimeline(id) {
   const transfer = data.pendingTransfers.find((item) => item.id === id);
-  const events = data.transferHistory.filter((entry) => entry.transferId === id);
+  const events = data.transferHistory.filter((/** @type {any} */ entry) => entry.transferId === id);
   if (!transfer) return toast("Transfer not found.");
   const dialog = document.createElement("dialog");
   dialog.className = "modal audit-detail-modal transfer-detail-modal";
-  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Shipment Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-transfer-timeline aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Items</small><strong>${transfer.lines?.length || 0}</strong></div><div class="report-preview-card"><small>Route</small><strong>${escapeHtml(`${transfer.from} -> ${transfer.to}`)}</strong></div><div class="report-preview-card"><small>Requested By</small><strong>${escapeHtml(transfer.requestedBy || "-")}</strong></div><div class="report-preview-card"><small>Status</small><strong>${escapeHtml(transfer.status || "-")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Requested</th><th>Dispatched</th><th>Received</th></tr></thead><tbody>${transferLineComparisonRowsHtml(transfer)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${/receive|complete/i.test(event.action) ? "done" : /incomplete|cancel/i.test(event.action) ? "blocked" : "pending"}"><span>${escapeHtml((event.action || "T")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.action || "")}</strong><p>${escapeHtml(event.notes || "-")}</p><small>${escapeHtml(event.user || "-")}</small></div></div>`).join("") || `<p>No transfer history recorded yet.</p>`}</div></details>`;
+  dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Shipment Detail</p><h2>${escapeHtml(id)}</h2></div><button class="icon-button" type="button" data-close-transfer-timeline aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Items</small><strong>${transfer.lines?.length || 0}</strong></div><div class="report-preview-card"><small>Route</small><strong>${escapeHtml(`${transfer.from} -> ${transfer.to}`)}</strong></div><div class="report-preview-card"><small>Requested By</small><strong>${escapeHtml(transfer.requestedBy || "-")}</strong></div><div class="report-preview-card"><small>Status</small><strong>${escapeHtml(transfer.status || "-")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Requested</th><th>Dispatched</th><th>Received</th></tr></thead><tbody>${transferLineComparisonRowsHtml(transfer)}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((/** @type {any} */ event) => `<div class="event-item ${/receive|complete/i.test(event.action) ? "done" : /incomplete|cancel/i.test(event.action) ? "blocked" : "pending"}"><span>${escapeHtml((event.action || "T")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.action || "")}</strong><p>${escapeHtml(event.notes || "-")}</p><small>${escapeHtml(event.user || "-")}</small></div></div>`).join("") || `<p>No transfer history recorded yet.</p>`}</div></details>`;
   document.body.appendChild(dialog);
   qsIn(dialog, "[data-close-transfer-timeline]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
@@ -2955,7 +2960,7 @@ function showStockHistory(ref) {
   dialog.className = "modal audit-detail-modal stock-history-modal";
   dialog.id = "stock-history-modal";
   const body = entries.length
-    ? `<div class="event-timeline">${entries.map((entry) => `<div class="event-item done"><span>S</span><time>${escapeHtml(entry.at || "")}</time><div><strong>${escapeHtml(entry.by || "System User")}</strong>${(entry.changes || []).map((change) => `<p>${escapeHtml(STOCK_EDIT_FIELD_LABELS[change.field] || change.field)}: ${escapeHtml(String(change.from))} → ${escapeHtml(String(change.to))}</p>`).join("")}${entry.reason ? `<small>Reason: ${escapeHtml(entry.reason)}</small>` : ""}</div></div>`).join("")}</div>`
+    ? `<div class="event-timeline">${entries.map((/** @type {any} */ entry) => `<div class="event-item done"><span>S</span><time>${escapeHtml(entry.at || "")}</time><div><strong>${escapeHtml(entry.by || "System User")}</strong>${(entry.changes || []).map((/** @type {any} */ change) => `<p>${escapeHtml(STOCK_EDIT_FIELD_LABELS[change.field] || change.field)}: ${escapeHtml(String(change.from))} → ${escapeHtml(String(change.to))}</p>`).join("")}${entry.reason ? `<small>Reason: ${escapeHtml(entry.reason)}</small>` : ""}</div></div>`).join("")}</div>`
     : `<p>No changes recorded for this stock record yet.</p>`;
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Stock Change History</p><h2>${escapeHtml(row.item)}</h2><small>${escapeHtml(row.branch)} · ${escapeHtml(row.lot || row.serial || "-")}</small></div><button class="icon-button" type="button" data-close-stock-history aria-label="Close">x</button></div>${body}<div class="modal-actions"><button class="ghost-button" type="button" data-close-stock-history>Close</button></div>`;
   document.body.appendChild(dialog);
@@ -3076,7 +3081,7 @@ function syncDemoRequestLine(input) {
   if (!row || !typed) return;
   const match = data.items.find((entry) => (input.classList.contains("demo-line-code") ? entry.code : entry.name).toLowerCase() === typed);
   if (!match) return;
-  const setIfOther = (selector, value) => { const el = row.querySelector(selector); if (el && el !== input) el.value = value; };
+  const setIfOther = (/** @type {any} */ selector, /** @type {any} */ value) => { const el = row.querySelector(selector); if (el && el !== input) el.value = value; };
   setIfOther(".demo-line-code", match.code);
   setIfOther(".demo-line-item", match.name);
   setIfOther(".demo-line-brand", match.brand || "");
@@ -3141,7 +3146,7 @@ async function updateDemoRequestStatus(id, status, sale = null) {
     request.closedBy = user;
     if (status === "To Sales" && sale) {
       request.siNumber = sale.siNumber;
-      (request.lines || []).forEach((line, index) => { line.price = Number(sale.prices[index] || 0); });
+      (request.lines || []).forEach((/** @type {any} */ line, /** @type {any} */ index) => { line.price = Number(sale.prices[index] || 0); });
       request.saleAmount = demoSaleTotal(request);
     }
     notify("Demo Request", `${request.id} marked ${status}.`, "inventory", request.id);
@@ -3279,7 +3284,7 @@ function restoreStockSheetDraftIfMatching(poId, editingReceiptId) {
   if (qs("#stock-sheet-source")) qs("#stock-sheet-source").value = draft.meta?.source || "";
   const tbody = qs("#stock-sheet-table tbody");
   if (tbody && draft.rows?.length) {
-    tbody.innerHTML = draft.rows.map((row, index) => stockSheetRow(index)).join("");
+    tbody.innerHTML = draft.rows.map((/** @type {any} */ row, /** @type {any} */ index) => stockSheetRow(index)).join("");
     qsa("#stock-sheet-table tbody tr").forEach((tr, index) => {
       const row = draft.rows[index];
       if (!row) return;
@@ -3522,6 +3527,7 @@ async function confirmTransferDispatch() {
     const source = /** @type {StockRow} */ (data.inventory.find((entry) => entry.code === line.code && entry.branch === transfer.from && entry.lot === u.lot));
     if (!source || source.qty < u.qty) return toast(`Not enough stock for ${line.item} in lot ${u.lot}.`);
   }
+  /** @type {any[]} */
   const touchedInventory = [];
   updates.forEach((u) => {
     /** @type {Record<string, any>} */
@@ -3580,6 +3586,7 @@ async function confirmTransferReceive() {
   const rows = [...dialog.querySelectorAll(".transfer-review-row")];
   const updates = rows.map((row, i) => ({ index: i, qty: Number(qsIn(row, ".transfer-receive-qty").value || 0), lot: qsIn(row, ".transfer-receive-lot").value.trim(), expiry: qsIn(row, ".transfer-receive-expiry").value.trim() }));
   if (updates.some((u) => u.qty < 0 || (u.qty > 0 && !u.lot))) return toast("Enter a valid received quantity and lot for every item.");
+  /** @type {any[]} */
   const touchedInventory = [];
   updates.forEach((u) => {
     if (u.qty <= 0) return;
@@ -3663,7 +3670,7 @@ function renderSalesTargetPanel() {
 function populateSalesClientFilter(sales) {
   const list = qs("#sales-client-options");
   if (!list) return;
-  const clients = [...new Set(sales.map((s) => s.client).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
+  const clients = [...new Set(sales.map((/** @type {any} */ s) => s.client).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
   list.innerHTML = clients.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
 }
 
@@ -3712,10 +3719,10 @@ function renderSales() {
 function renderFinancialSummary(target, heroCards, groups) {
   qs(target).innerHTML = `
     <div class="sales-summary-hero">
-      ${heroCards.map((card) => `<article class="sales-summary-card ${card.tone || ""}"><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong><small>${escapeHtml(card.note || "")}</small></article>`).join("")}
+      ${heroCards.map((/** @type {any} */ card) => `<article class="sales-summary-card ${card.tone || ""}"><span>${escapeHtml(card.label)}</span><strong>${escapeHtml(card.value)}</strong><small>${escapeHtml(card.note || "")}</small></article>`).join("")}
     </div>
     <div class="sales-summary-groups">
-      ${groups.map((group) => `<article class="sales-summary-group"><h3>${escapeHtml(group.title)}</h3><div class="${group.kind === "pairs" ? "summary-pairs" : "summary-pills"}">${group.items.map((item) => `<span>${escapeHtml(item.label)} <strong>${escapeHtml(String(item.value))}</strong></span>`).join("")}</div></article>`).join("")}
+      ${groups.map((/** @type {any} */ group) => `<article class="sales-summary-group"><h3>${escapeHtml(group.title)}</h3><div class="${group.kind === "pairs" ? "summary-pairs" : "summary-pills"}">${group.items.map((/** @type {any} */ item) => `<span>${escapeHtml(item.label)} <strong>${escapeHtml(String(item.value))}</strong></span>`).join("")}</div></article>`).join("")}
     </div>`;
 }
 
@@ -3884,14 +3891,14 @@ function memoVisibleToCurrentUser(memo) {
 /** @param {any} memo */
 function memoAcknowledgedByCurrentUser(memo) {
   const email = String(currentUser?.email || "").trim().toLowerCase();
-  return (memo.acknowledgments || []).some((entry) => String(entry.email || "").trim().toLowerCase() === email);
+  return (memo.acknowledgments || []).some((/** @type {any} */ entry) => String(entry.email || "").trim().toLowerCase() === email);
 }
 
 /** @param {any} memo */
 function memoAudienceLabel(memo) {
   if (memo.audience === "all") return "ALL DEPARTMENTS";
   const roles = memo.audience || [];
-  return `${roles.map((role) => role.toUpperCase()).join(" AND ")} DEPARTMENT`;
+  return `${roles.map((/** @type {any} */ role) => role.toUpperCase()).join(" AND ")} DEPARTMENT`;
 }
 
 /** @param {any} memo */
@@ -3907,7 +3914,7 @@ function memoCardHtml(memo) {
   const acknowledgments = memo.acknowledgments || [];
   const total = memoRecipientCount(memo);
   const rosterHtml = canPostMemo()
-    ? `<details class="memo-ack-roster"><summary>${acknowledgments.length} of ${total} acknowledged</summary>${acknowledgments.length ? `<ul class="compact-list">${acknowledgments.map((entry) => `<li><span>${escapeHtml(entry.name)} · ${escapeHtml(entry.role)}</span><strong>${escapeHtml(entry.at)}</strong></li>`).join("")}</ul>` : `<p class="page-description">No one has acknowledged this memo yet.</p>`}</details>`
+    ? `<details class="memo-ack-roster"><summary>${acknowledgments.length} of ${total} acknowledged</summary>${acknowledgments.length ? `<ul class="compact-list">${acknowledgments.map((/** @type {any} */ entry) => `<li><span>${escapeHtml(entry.name)} · ${escapeHtml(entry.role)}</span><strong>${escapeHtml(entry.at)}</strong></li>`).join("")}</ul>` : `<p class="page-description">No one has acknowledged this memo yet.</p>`}</details>`
     : `<small class="field-help">${acknowledgments.length} acknowledged</small>`;
   const eventLine = memo.eventDate ? `<div class="memo-event-line"><strong>${escapeHtml(fmtDate(memo.eventDate))}${memo.eventTime ? ` · ${escapeHtml(memo.eventTime)}` : ""}</strong>${memo.place ? `<span>${escapeHtml(memo.place)}</span>` : ""}</div>` : "";
   const printButton = canPostMemo() ? `<button class="ghost-button" data-print-memo="${escapeHtml(memo.id)}" type="button">Print</button>` : "";
@@ -4061,8 +4068,8 @@ function renderInvoicing() {
   ensureUploadedFilesLoaded(renderInvoicing);
   renderPendingCreditInvoices();
   const rows = invoicingVisibleSales().reverse();
-  const deliveryControl = (s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
-  const actionCell = (s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
+  const deliveryControl = (/** @type {any} */ s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
+  const actionCell = (/** @type {any} */ s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
   qsa("#invoice-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.invoiceView === invoiceViewMode));
   qs("#invoice-table-view").hidden = invoiceViewMode !== "table";
   qs("#invoice-grid").hidden = invoiceViewMode !== "card";
@@ -4250,10 +4257,10 @@ function saleCollectionTimeline(sale) {
   if (sale.cancelledFrom) events.push({ date: sale.date, status: "Replacement", note: `Created as a replacement for ${sale.cancelledFrom}.`, by: sale.cancelledBy || "-" });
   if (sale.status === "Cancelled") events.push({ date: sale.cancelledAt || sale.date, status: "Cancelled", note: `${sale.cancelReason || "No reason given."}${sale.replacementId ? ` Replaced by ${sale.replacementId}.` : ""}`, by: sale.cancelledBy || "-" });
   data.payments.filter((payment) => payment.invoice === sale.documentNo || payment.invoice === sale.id).forEach((payment) => {
-    (payment.statusHistory || []).forEach((entry) => events.push({ date: entry.date, status: entry.status, note: `${payment.receiptNo} — ${peso.format(Number(payment.amount || 0))}${entry.status === "Posted Date" && payment.postedDate ? ` (claim ${payment.postedDate})` : ""}`, by: entry.user || "System User" }));
+    (payment.statusHistory || []).forEach((/** @type {any} */ entry) => events.push({ date: entry.date, status: entry.status, note: `${payment.receiptNo} — ${peso.format(Number(payment.amount || 0))}${entry.status === "Posted Date" && payment.postedDate ? ` (claim ${payment.postedDate})` : ""}`, by: entry.user || "System User" }));
   });
   data.paymentRequests.filter((request) => request.invoice === sale.documentNo || request.invoice === sale.id).forEach((request) => {
-    paymentRequestHistory(request).forEach((entry) => events.push({ date: entry.date, status: `Payment Received: ${entry.status}`, note: `${request.cvNo} — ${entry.note || "-"}`, by: entry.by || "-" }));
+    paymentRequestHistory(request).forEach((/** @type {any} */ entry) => events.push({ date: entry.date, status: `Payment Received: ${entry.status}`, note: `${request.cvNo} — ${entry.note || "-"}`, by: entry.by || "-" }));
   });
   return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
@@ -4341,7 +4348,7 @@ function renderCollections() {
   const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map((s) => {
     const payments = data.payments.filter((payment) => payment.invoice === s.id || payment.invoice === s.documentNo);
     const latest = payments.at(-1) || /** @type {Record<string, any>} */ ({});
-    const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
+    const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((/** @type {any} */ cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
     const status = latest.collectionStatus || "For Deposition";
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(/** @type {Payment} */ (latest), s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
@@ -4354,6 +4361,7 @@ function renderCollections() {
 }
 
 function renderCollectionsWorkflowTabs() {
+  /** @type {Record<string, any>} */
   const counts = {
     ledger: byBranch(data.sales, "area").filter((sale) => Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).length,
     requests: data.paymentRequests.filter((request) => !["Completed", "Cancelled"].includes(request.requestStatus || request.status)).length,
@@ -4467,7 +4475,7 @@ function syncPostedCollectionReminders() {
 
 /** @param {Record<string, any>} [row] */
 function parameterRowTemplate(row = {}) {
-  const level = (prefix) => `<td><input class="param-${prefix}-range" placeholder="Ref. Range" value="${escapeHtml(row[`${prefix}Range`] || "")}" /></td><td><input class="param-${prefix}-result" placeholder="Result" value="${escapeHtml(row[`${prefix}Result`] || "")}" /></td><td class="param-p-cell"><input class="param-${prefix}-p" type="checkbox" ${row[`${prefix}P`] ? "checked" : ""} /></td><td class="param-f-cell"><input class="param-${prefix}-f" type="checkbox" ${row[`${prefix}F`] ? "checked" : ""} /></td>`;
+  const level = (/** @type {any} */ prefix) => `<td><input class="param-${prefix}-range" placeholder="Ref. Range" value="${escapeHtml(row[`${prefix}Range`] || "")}" /></td><td><input class="param-${prefix}-result" placeholder="Result" value="${escapeHtml(row[`${prefix}Result`] || "")}" /></td><td class="param-p-cell"><input class="param-${prefix}-p" type="checkbox" ${row[`${prefix}P`] ? "checked" : ""} /></td><td class="param-f-cell"><input class="param-${prefix}-f" type="checkbox" ${row[`${prefix}F`] ? "checked" : ""} /></td>`;
   return `<tr class="parameter-row"><td><input class="param-name" placeholder="Parameter" value="${escapeHtml(row.parameter || "")}" /></td><td><input class="param-factor" placeholder="Factor" value="${escapeHtml(row.factor || "")}" /></td>${level("l1")}${level("l2")}${level("l3")}<td class="sheet-action-cell"><button class="icon-button danger-button remove-parameter-row" type="button" aria-label="Remove parameter" title="Remove parameter">×</button></td></tr>`;
 }
 
@@ -4570,7 +4578,7 @@ function collectPaymentRequestLines() {
 }
 /** @param {any} rows @param {any} netAmount */
 function paymentRequestNetAmountExceeded(rows, netAmount) {
-  return netAmount > 0 && rows.reduce((sum, row) => sum + Number(row.amount || 0), 0) > netAmount;
+  return netAmount > 0 && rows.reduce((/** @type {number} */ sum, /** @type {any} */ row) => sum + Number(row.amount || 0), 0) > netAmount;
 }
 
 const EXPENSE_CLASSIFICATION_OPTIONS = ["Accommodation", "Advertising & Marketing", "Bidding Expenses", "Delivery Fee", "Fixed Assets", "Freight/Importation", "Per Diem"];
@@ -4719,7 +4727,7 @@ function syncPaymentRequestTotal() {
 function paymentRequestHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
   const paymentDate = request.paymentType === "Bank Transfer" ? request.transferDate : request.chequeDate;
-  return `<section class="payment-request-print">${printableBrandHeaderHtml(request.cvNo)}<div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Collector: <strong>${escapeHtml(request.preparedBy)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Bank Transfer" ? "[x]" : "[ ]"} Bank Transfer</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${peso.format(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${withholdingMoney(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${withholdingMoney(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${peso.format(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>${escapeHtml(paymentRequestInstructions)}</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div><div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Account No.: ${escapeHtml(request.bankAccount || "-")}<br>Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml(paymentDate || "-")}<br>Name and Signature of approver:</div></footer>${printableFooterHtml()}</section>`;
+  return `<section class="payment-request-print">${printableBrandHeaderHtml(request.cvNo)}<div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Collector: <strong>${escapeHtml(request.preparedBy)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Bank Transfer" ? "[x]" : "[ ]"} Bank Transfer</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((/** @type {any} */ item, /** @type {any} */ index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${peso.format(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${withholdingMoney(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${withholdingMoney(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${peso.format(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>${escapeHtml(paymentRequestInstructions)}</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div><div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Account No.: ${escapeHtml(request.bankAccount || "-")}<br>Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml(paymentDate || "-")}<br>Name and Signature of approver:</div></footer>${printableFooterHtml()}</section>`;
 }
 /** @param {any} identifier */
 async function previewPaymentRequest(identifier) {
@@ -4744,10 +4752,10 @@ async function printTransferRequest(id) {
 
 function renderCollectionContactMap() {
   renderCollectionMapVisual();
-  const grouped = Object.entries(data.collectionContacts.reduce((acc, contact) => { acc[contact.area] ||= []; acc[contact.area].push(contact); return acc; }, {}));
-  qs("#collection-map-actions").innerHTML = grouped.map(([area, contacts], index) => `<details class="region-contact-group" ${index === 0 ? "open" : ""} data-focus-text="${escapeHtml(area)}"><summary><strong>${escapeHtml(area)}</strong><span>${contacts.length} client${contacts.length === 1 ? "" : "s"}</span></summary><div class="region-client-list">${contacts.map((contact) => `<details class="contact-action-card ${contactStatusClass(contact.status)}" data-focus-text="${escapeHtml(contact.client)} ${escapeHtml(contact.area)} ${escapeHtml(contact.status)}"><summary><div><strong>${escapeHtml(contact.client)}</strong><small>${escapeHtml(contact.lastContact || "Not contacted")} · ${escapeHtml(contact.employee || "Unassigned")}</small></div><span class="contact-status-badge ${contactStatusClass(contact.status)}">${escapeHtml(contactStatusLabel(contact.status))}</span></summary><p>${escapeHtml(contact.notes)}</p><div class="contact-control-group"><small>Channels used (select one or more)</small><div class="channel-buttons"><label class="channel-check ${contact.channels.includes("Call") ? "active" : ""}"><input type="checkbox" data-contact-channel="Call" data-contact-client="${escapeHtml(contact.client)}" ${contact.channels.includes("Call") ? "checked" : ""} /><span>☎</span>Call</label><label class="channel-check ${contact.channels.includes("Email") ? "active" : ""}"><input type="checkbox" data-contact-channel="Email" data-contact-client="${escapeHtml(contact.client)}" ${contact.channels.includes("Email") ? "checked" : ""} /><span>@</span>Email</label><label class="channel-check ${contact.channels.includes("Telephone") ? "active" : ""}"><input type="checkbox" data-contact-channel="Telephone" data-contact-client="${escapeHtml(contact.client)}" ${contact.channels.includes("Telephone") ? "checked" : ""} /><span>☎</span>Telephone</label></div></div><div class="contact-control-group"><small>Outcome</small><div class="contact-buttons"><button class="mini-button ${contact.status === "Answered" ? "active" : ""}" data-contact-status="Answered" data-contact-client="${escapeHtml(contact.client)}">Answered</button><button class="mini-button ${contact.status === "Unreached" ? "active" : ""}" data-contact-status="Unreached" data-contact-client="${escapeHtml(contact.client)}">Unreached</button><button class="mini-button ${contact.status === "No Response" ? "active" : ""}" data-contact-status="No Response" data-contact-client="${escapeHtml(contact.client)}">No Reply</button></div></div></details>`).join("")}</div></details>`).join("");
-  qs("#collection-map-actions").innerHTML = grouped.map(([area, contacts], index) => `<details class="region-contact-group" ${index === 0 ? "open" : ""} data-focus-text="${escapeHtml(area)}"><summary><strong>${escapeHtml(area)}</strong><span>${contacts.length} client${contacts.length === 1 ? "" : "s"}</span></summary><div class="region-client-list">${contacts.map((contact) => contactActionCard(contact)).join("")}</div></details>`).join("") || `<article class="panel"><p>No clients with unpaid invoice balances need follow-up.</p></article>`;
-  table("#collection-contact-history", ["Date", "Client", "Area", "Invoice", "Channel", "Status", "Employee", "Notes"], data.collectionContactHistory.map((item) => [item.date, item.client || item.area, item.area, item.invoice || "-", item.channels || "-", `<span class="pill ${statusClass(["Answered", "Cheque Available"].includes(item.status) ? "Paid" : item.status === "No Response" ? "Overdue" : "Near Due")}">${contactStatusLabel(item.status)}</span>`, item.employee, item.notes]));
+  const grouped = Object.entries(data.collectionContacts.reduce((/** @type {Record<string, any>} */ acc, contact) => { acc[contact.area] ||= []; acc[contact.area].push(contact); return acc; }, {}));
+  qs("#collection-map-actions").innerHTML = grouped.map(([area, contacts], index) => `<details class="region-contact-group" ${index === 0 ? "open" : ""} data-focus-text="${escapeHtml(area)}"><summary><strong>${escapeHtml(area)}</strong><span>${contacts.length} client${contacts.length === 1 ? "" : "s"}</span></summary><div class="region-client-list">${contacts.map((/** @type {CollectionContact} */ contact) => `<details class="contact-action-card ${contactStatusClass(contact.status)}" data-focus-text="${escapeHtml(contact.client)} ${escapeHtml(contact.area)} ${escapeHtml(contact.status)}"><summary><div><strong>${escapeHtml(contact.client)}</strong><small>${escapeHtml(contact.lastContact || "Not contacted")} · ${escapeHtml(contact.employee || "Unassigned")}</small></div><span class="contact-status-badge ${contactStatusClass(contact.status)}">${escapeHtml(contactStatusLabel(contact.status))}</span></summary><p>${escapeHtml(contact.notes)}</p><div class="contact-control-group"><small>Channels used (select one or more)</small><div class="channel-buttons"><label class="channel-check ${contact.channels.includes("Call") ? "active" : ""}"><input type="checkbox" data-contact-channel="Call" data-contact-client="${escapeHtml(contact.client)}" ${contact.channels.includes("Call") ? "checked" : ""} /><span>☎</span>Call</label><label class="channel-check ${contact.channels.includes("Email") ? "active" : ""}"><input type="checkbox" data-contact-channel="Email" data-contact-client="${escapeHtml(contact.client)}" ${contact.channels.includes("Email") ? "checked" : ""} /><span>@</span>Email</label><label class="channel-check ${contact.channels.includes("Telephone") ? "active" : ""}"><input type="checkbox" data-contact-channel="Telephone" data-contact-client="${escapeHtml(contact.client)}" ${contact.channels.includes("Telephone") ? "checked" : ""} /><span>☎</span>Telephone</label></div></div><div class="contact-control-group"><small>Outcome</small><div class="contact-buttons"><button class="mini-button ${contact.status === "Answered" ? "active" : ""}" data-contact-status="Answered" data-contact-client="${escapeHtml(contact.client)}">Answered</button><button class="mini-button ${contact.status === "Unreached" ? "active" : ""}" data-contact-status="Unreached" data-contact-client="${escapeHtml(contact.client)}">Unreached</button><button class="mini-button ${contact.status === "No Response" ? "active" : ""}" data-contact-status="No Response" data-contact-client="${escapeHtml(contact.client)}">No Reply</button></div></div></details>`).join("")}</div></details>`).join("");
+  qs("#collection-map-actions").innerHTML = grouped.map(([area, contacts], index) => `<details class="region-contact-group" ${index === 0 ? "open" : ""} data-focus-text="${escapeHtml(area)}"><summary><strong>${escapeHtml(area)}</strong><span>${contacts.length} client${contacts.length === 1 ? "" : "s"}</span></summary><div class="region-client-list">${contacts.map((/** @type {CollectionContact} */ contact) => contactActionCard(contact)).join("")}</div></details>`).join("") || `<article class="panel"><p>No clients with unpaid invoice balances need follow-up.</p></article>`;
+  table("#collection-contact-history", ["Date", "Client", "Area", "Invoice", "Channel", "Status", "Employee", "Notes"], data.collectionContactHistory.map((/** @type {any} */ item) => [item.date, item.client || item.area, item.area, item.invoice || "-", item.channels || "-", `<span class="pill ${statusClass(["Answered", "Cheque Available"].includes(item.status) ? "Paid" : item.status === "No Response" ? "Overdue" : "Near Due")}">${contactStatusLabel(item.status)}</span>`, item.employee, item.notes]));
 }
 
 /** @param {CollectionContact} contact */
@@ -4755,8 +4763,8 @@ function contactActionCard(contact) {
   const channels = contact.channels || [];
   const pendingInvoices = data.sales.filter((sale) => sale.client === contact.client && Number(sale.net || 0) - Number(sale.paid || 0) > 0);
   const invoiceList = `<details class="pending-invoice-list"><summary>Pending invoices (${pendingInvoices.length})</summary>${pendingInvoices.map((sale) => `<div><strong>${escapeHtml(sale.documentNo || sale.id)}</strong><span>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</span><small>Due ${fmtDate(addDays(sale.date, sale.terms))}</small></div>`).join("") || `<p>No unpaid invoices.</p>`}</details>`;
-  const channelButton = (channel, icon) => `<label class="channel-check ${channels.includes(channel) ? "active" : ""}"><input type="checkbox" data-contact-channel="${channel}" data-contact-client="${escapeHtml(contact.client)}" ${channels.includes(channel) ? "checked" : ""} /><span>${icon}</span>${channel}</label>`;
-  const statusButton = (status, label, tone = "") => `<button class="mini-button ${tone} ${contact.status === contactStatusFromLabel(status) ? "active" : ""}" data-contact-status="${escapeHtml(status)}" data-contact-client="${escapeHtml(contact.client)}">${escapeHtml(label)}</button>`;
+  const channelButton = (/** @type {any} */ channel, /** @type {any} */ icon) => `<label class="channel-check ${channels.includes(channel) ? "active" : ""}"><input type="checkbox" data-contact-channel="${channel}" data-contact-client="${escapeHtml(contact.client)}" ${channels.includes(channel) ? "checked" : ""} /><span>${icon}</span>${channel}</label>`;
+  const statusButton = (/** @type {any} */ status, /** @type {any} */ label, tone = "") => `<button class="mini-button ${tone} ${contact.status === contactStatusFromLabel(status) ? "active" : ""}" data-contact-status="${escapeHtml(status)}" data-contact-client="${escapeHtml(contact.client)}">${escapeHtml(label)}</button>`;
   const chequeNote = contact.status === "Cheque Available" && contact.chequeInvoice ? `<div class="contact-control-group cheque-invoice-note"><small>Cheque invoice</small><strong>${escapeHtml(contact.chequeInvoice)}</strong></div>` : "";
   return `<details class="contact-action-card ${contactStatusClass(contact.status)}" data-focus-record="${escapeHtml(contact.client || contact.area)}" data-focus-text="${escapeHtml(contact.client)} ${escapeHtml(contact.area)} ${escapeHtml(contact.status)}"><summary><div><strong>${escapeHtml(contact.client)}</strong><small>${escapeHtml(contact.lastContact || "Not contacted")} · ${escapeHtml(contact.employee || "Unassigned")}</small></div><span class="contact-status-badge ${contactStatusClass(contact.status)}">${escapeHtml(contactStatusLabel(contact.status))}</span></summary><p>${escapeHtml(contact.notes)}</p>${chequeNote}${invoiceList}<div class="contact-control-group"><small>Channels used (select one or more)</small><div class="channel-buttons">${channelButton("Call", "☎")}${channelButton("Email", "@")}${channelButton("Telephone", "☎")}</div></div><div class="contact-control-group"><small>Outcome</small><div class="contact-buttons">${statusButton("Answered", "Answered")}${statusButton("Unreached", "Unreached")}${statusButton("No Reply", "No Reply", "danger-button")}${statusButton("Cheque Available", "Cheque Available")}</div></div></details>`;
 }
@@ -4769,14 +4777,14 @@ function collectionContactsGeoJson() {
 }
 
 function collectionRegionSummaries() {
-  return Object.entries(data.collectionContacts.reduce((acc, contact) => { acc[contact.area] ||= []; acc[contact.area].push(contact); return acc; }, {})).map(([area, contacts]) => {
-    const coords = /** @type {any[]} */ (contacts.map((contact) => clientCoordinates[contact.client]).filter(Boolean));
+  return Object.entries(data.collectionContacts.reduce((/** @type {Record<string, any>} */ acc, contact) => { acc[contact.area] ||= []; acc[contact.area].push(contact); return acc; }, {})).map(([area, contacts]) => {
+    const coords = /** @type {any[]} */ (contacts.map((/** @type {CollectionContact} */ contact) => clientCoordinates[contact.client]).filter(Boolean));
     const lat = coords.length ? coords.reduce((sum, item) => sum + item[0], 0) / coords.length : 12.8797;
     const lng = coords.length ? coords.reduce((sum, item) => sum + item[1], 0) / coords.length : 121.7740;
-    const chequeReady = contacts.filter((contact) => contact.status === "Cheque Available").length;
-    const noReply = contacts.filter((contact) => contact.status === "No Response").length;
-    const answered = contacts.filter((contact) => contact.status === "Answered").length;
-    const status = chequeReady ? "Cheque Available" : noReply ? "No Response" : answered === contacts.length ? "Answered" : contacts.some((contact) => contact.status === "Unreached") ? "Unreached" : "Pending";
+    const chequeReady = contacts.filter((/** @type {CollectionContact} */ contact) => contact.status === "Cheque Available").length;
+    const noReply = contacts.filter((/** @type {CollectionContact} */ contact) => contact.status === "No Response").length;
+    const answered = contacts.filter((/** @type {CollectionContact} */ contact) => contact.status === "Answered").length;
+    const status = chequeReady ? "Cheque Available" : noReply ? "No Response" : answered === contacts.length ? "Answered" : contacts.some((/** @type {CollectionContact} */ contact) => contact.status === "Unreached") ? "Unreached" : "Pending";
     return { area, contacts, lat, lng, status };
   });
 }
@@ -4880,8 +4888,8 @@ function pathArea(points) {
 
 /** @param {any} points @param {number} [tolerance] */
 function simplifyProjectedPoints(points, tolerance = 12) {
-  const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-  return points.reduce((acc, point) => {
+  const distance = (/** @type {any} */ a, /** @type {any} */ b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  return points.reduce((/** @type {Record<string, any>} */ acc, /** @type {any} */ point) => {
     if (!acc.length || distance(acc[acc.length - 1], point) >= tolerance) acc.push(point);
     return acc;
   }, []);
@@ -4889,21 +4897,21 @@ function simplifyProjectedPoints(points, tolerance = 12) {
 
 /** @param {any} ring @param {any} bounds */
 function projectedRingPath(ring, bounds) {
-  const points = simplifyProjectedPoints(ring.map((point) => projectedPoint(point, bounds)));
-  if (new Set(points.map((point) => point.join(","))).size < 4 || pathArea(points) < 450) return "";
-  return `M${points.map((point) => point.join(" ")).join("L")}Z`;
+  const points = simplifyProjectedPoints(ring.map((/** @type {any} */ point) => projectedPoint(point, bounds)));
+  if (new Set(points.map((/** @type {any} */ point) => point.join(","))).size < 4 || pathArea(points) < 450) return "";
+  return `M${points.map((/** @type {any} */ point) => point.join(" ")).join("L")}Z`;
 }
 
 /** @param {any} feature @param {any} bounds */
 function projectedRegionPath(feature, bounds) {
   const polygons = feature.geometry.type === "Polygon" ? [feature.geometry.coordinates] : feature.geometry.coordinates;
-  return polygons.flatMap((polygon) => polygon.map((ring) => projectedRingPath(ring, bounds))).filter(Boolean).join(" ");
+  return polygons.flatMap((/** @type {any} */ polygon) => polygon.map((/** @type {any} */ ring) => projectedRingPath(ring, bounds))).filter(Boolean).join(" ");
 }
 
 /** @param {any} geoJson */
 function geoJsonBounds(geoJson) {
   const bounds = { minLon: Infinity, maxLon: -Infinity, minLat: Infinity, maxLat: -Infinity };
-  const scan = (coordinates) => {
+  const scan = (/** @type {any} */ coordinates) => {
     if (typeof coordinates[0] === "number") {
       bounds.minLon = Math.min(bounds.minLon, coordinates[0]);
       bounds.maxLon = Math.max(bounds.maxLon, coordinates[0]);
@@ -4913,7 +4921,7 @@ function geoJsonBounds(geoJson) {
     }
     coordinates.forEach(scan);
   };
-  geoJson.features.forEach((feature) => scan(feature.geometry.coordinates));
+  geoJson.features.forEach((/** @type {any} */ feature) => scan(feature.geometry.coordinates));
   return bounds;
 }
 
@@ -4941,7 +4949,7 @@ async function renderCollectionMapVisual() {
   try {
     const geoJson = /** @type {any} */ (await loadPhilippinesRegionsGeoJson());
     const bounds = geoJsonBounds(geoJson);
-    overlays = geoJson.features.map((feature) => {
+    overlays = geoJson.features.map((/** @type {any} */ feature) => {
       const regionName = geoRegionName(feature);
       const source = collectionRegionSource(regionName);
       const status = regionTrackingStatus(source);
@@ -5066,13 +5074,13 @@ async function renderLeafletCollectionMap() {
   try {
     const regionGeoJson = await loadPhilippinesRegionsGeoJson();
     collectionRegionLayer = L.geoJSON(regionGeoJson, {
-      style: (feature) => {
+      style: (/** @type {any} */ feature) => {
         const appRegion = normalizeRegionName(featureRegionName(feature));
         const status = regionTrackingStatus(appRegion);
         const color = regionStatusColor(status);
         return { color, weight: 1.8, opacity: 0.72, fillColor: color, fillOpacity: appRegion ? 0.22 : 0.08 };
       },
-      onEachFeature: (feature, layer) => {
+      onEachFeature: (/** @type {any} */ feature, /** @type {any} */ layer) => {
         const appRegion = normalizeRegionName(featureRegionName(feature));
         if (appRegion) layer.on("click", () => openContactRegion(appRegion));
       },
@@ -5082,8 +5090,8 @@ async function renderLeafletCollectionMap() {
   }
   if (collectionLeafletLayer) collectionLeafletLayer.remove();
   collectionLeafletLayer = L.geoJSON(collectionContactsGeoJson(), {
-    pointToLayer: (feature, latlng) => L.marker(latlng, { icon: L.divIcon({ className: `client-map-label ${contactStatusClass(feature.properties.status)}`, html: `<strong>${escapeHtml(feature.properties.client)}</strong><span>${escapeHtml(contactStatusLabel(feature.properties.status))}</span>`, iconSize: [156, 48], iconAnchor: [78, 24] }) }),
-    onEachFeature: (feature, layer) => {
+    pointToLayer: (/** @type {any} */ feature, /** @type {any} */ latlng) => L.marker(latlng, { icon: L.divIcon({ className: `client-map-label ${contactStatusClass(feature.properties.status)}`, html: `<strong>${escapeHtml(feature.properties.client)}</strong><span>${escapeHtml(contactStatusLabel(feature.properties.status))}</span>`, iconSize: [156, 48], iconAnchor: [78, 24] }) }),
+    onEachFeature: (/** @type {any} */ feature, /** @type {any} */ layer) => {
       const p = feature.properties;
       layer.bindPopup(`<strong>${escapeHtml(p.client)}</strong><br>${escapeHtml(p.area)}<br>${escapeHtml(contactStatusLabel(p.status))}<br>${escapeHtml((p.channels || []).join(" + ") || "No channel set")}`);
       layer.on("click", () => openContactRegion(p.area, p.client));
@@ -5169,20 +5177,20 @@ function renderReceivablesTracker() {
     visualCard("▦", "Current Tab", tabs.find(([key]) => key === arTrackerTab)?.[1] || "All", barRows(tabs.filter(([key]) => key !== "all").map(([, label, count]) => [label, count]), (value) => `${value} docs`, ["orange", "", "", "green", "red", "orange"]), "info", "Computed from invoice workflow status across PO, invoice, delivery, payment, and AR stages."),
     visualCard("₱", "Open AR", peso.format(openBalance), `<div class="big-number compact-big">${peso.format(openBalance)}</div><p>${rows.length} invoice${rows.length === 1 ? "" : "s"} in this view.</p>`, openBalance ? "warning" : "success", "Computed as invoice net amount minus paid amount for the filtered records."),
   ].join("");
-  const byClientReceivables = Object.entries(allRows.reduce((acc, sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
-    .map(([client, invoices]) => [client, invoices, invoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
+  const byClientReceivables = Object.entries(allRows.reduce((/** @type {Record<string, any>} */ acc, sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
+    .map(([client, invoices]) => [client, invoices, invoices.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
     .sort((a, b) => b[2] - a[2]);
   table("#client-receivables-table", ["Client", "Open Invoices", "Total Receivables", "Actions"], byClientReceivables.map(([client, invoices, total]) => [escapeHtml(client), invoices.length, peso.format(total), `<button class="mini-button" data-client-invoices="${escapeHtml(client)}">View</button>`]));
-  const regional = Object.entries(allRows.filter((sale) => Math.max(sale.net - sale.paid, 0) > 0).reduce((acc, sale) => { acc[sale.area] ||= []; acc[sale.area].push(sale); return acc; }, {}))
-    .map(([area, invoices]) => [area, invoices, invoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
+  const regional = Object.entries(allRows.filter((sale) => Math.max(sale.net - sale.paid, 0) > 0).reduce((/** @type {Record<string, any>} */ acc, sale) => { acc[sale.area] ||= []; acc[sale.area].push(sale); return acc; }, {}))
+    .map(([area, invoices]) => [area, invoices, invoices.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
     .sort((a, b) => b[2] - a[2]);
   qs("#regional-receivables-groups").innerHTML = regional.map(([area, invoices, regionBalance], index) => {
-    const byClientInArea = Object.entries(invoices.reduce((acc, sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
-      .map(([client, clientInvoices]) => [client, clientInvoices, clientInvoices.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
+    const byClientInArea = Object.entries(invoices.reduce((/** @type {Record<string, any>} */ acc, /** @type {Sale} */ sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
+      .map(([client, clientInvoices]) => [client, clientInvoices, clientInvoices.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
       .sort((a, b) => b[2] - a[2]);
-    const overdueClients = byClientInArea.filter(([, clientInvoices]) => clientInvoices.some((sale) => statusForSale(sale) === "Overdue")).length;
+    const overdueClients = byClientInArea.filter(([, clientInvoices]) => clientInvoices.some((/** @type {Sale} */ sale) => statusForSale(sale) === "Overdue")).length;
     return `<details class="region-contact-group" ${index === 0 ? "open" : ""} data-focus-text="${escapeHtml(area)}"><summary><strong>${escapeHtml(area)}</strong><span>${byClientInArea.length} client${byClientInArea.length === 1 ? "" : "s"} · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}${overdueClients ? ` · ${overdueClients} overdue` : ""}</span><span class="pill ${overdueClients ? "red" : "orange"}">${peso.format(regionBalance)} open</span></summary><div class="region-client-list region-client-chip-list">${byClientInArea.map(([client, clientInvoices, balance]) => {
-      const overdue = clientInvoices.some((sale) => statusForSale(sale) === "Overdue");
+      const overdue = clientInvoices.some((/** @type {Sale} */ sale) => statusForSale(sale) === "Overdue");
       return `<button type="button" class="region-client-chip ${overdue ? "overdue" : ""}" data-client-invoices="${escapeHtml(client)}" data-focus-text="${escapeHtml(`${client} ${area}`)}"><strong>${escapeHtml(client)}</strong><small>${clientInvoices.length} invoice${clientInvoices.length === 1 ? "" : "s"}${overdue ? " · overdue" : ""}</small><span class="pill ${overdue ? "red" : "orange"}">${peso.format(balance)}</span></button>`;
     }).join("")}</div></details>`;
   }).join("") || `<article class="panel"><p>No open regional receivables — everything is collected.</p></article>`;
@@ -5225,7 +5233,7 @@ function clientInvoicesFilteredSales(invoices) {
   const status = qs("#client-invoices-status-filter")?.value || "all";
   const from = qs("#client-invoices-from")?.value || "";
   const to = qs("#client-invoices-to")?.value || "";
-  return invoices.filter((sale) => {
+  return invoices.filter((/** @type {Sale} */ sale) => {
     // "All Open Invoices" is the receivables view, so a fully paid invoice drops out of it by
     // default once settled — pick the explicit "Paid" filter to look up settled invoices.
     if (status === "all" && paymentStatusForSale(sale) === "Paid") return false;
@@ -5288,12 +5296,12 @@ function renderClientInvoices() {
   qs("#client-invoices-title").textContent = `${client || "Client"} invoices`;
 
   const filtered = clientInvoicesFilteredSales(invoices).slice().reverse();
-  const filteredTotal = filtered.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const filteredBalance = filtered.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  const filteredTotal = filtered.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0);
+  const filteredBalance = filtered.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
   const totalEl = qs("#client-invoices-filtered-total");
   if (totalEl) totalEl.innerHTML = invoices.length ? `<strong>${filtered.length} invoice${filtered.length === 1 ? "" : "s"} in view · ${peso.format(filteredTotal)}</strong><small>Open balance in view: ${peso.format(filteredBalance)}</small>` : "";
 
-  qs("#client-invoices-grid").innerHTML = invoices.length ? `<article class="panel full-client-timeline"><div class="panel-header"><div><p class="eyebrow">Client Performance</p><h2>${escapeHtml(client)}</h2><p>${escapeHtml(clientRecord.address || "No address recorded")} · ${escapeHtml(clientRecord.contact || "No contact recorded")}</p></div><span class="pill ${statusClass(overdue.length ? "Overdue" : balance ? "Near Due" : "Paid")}">${escapeHtml(clientGrade)}</span></div><div class="report-preview-grid"><div class="report-preview-card"><small>Total invoices</small><strong>${invoices.length}</strong></div><div class="report-preview-card"><small>Pending invoices</small><strong>${pending.length}</strong></div><div class="report-preview-card"><small>Completed invoices</small><strong>${completed.length}</strong></div><div class="report-preview-card"><small>Overdue invoices</small><strong>${overdue.length}</strong></div><div class="report-preview-card"><small>Total sales</small><strong>${peso.format(total)}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(paid)}</strong></div><div class="report-preview-card"><small>AR balance</small><strong>${peso.format(balance)}</strong></div><div class="report-preview-card"><small>Average order</small><strong>${peso.format(avgOrder)}</strong></div><div class="report-preview-card"><small>Last purchase</small><strong>${escapeHtml(lastPurchase)}</strong></div><div class="report-preview-card"><small>Credit limit</small><strong>${peso.format(credit.limit)}</strong></div><div class="report-preview-card"><small>Credit used</small><strong>${peso.format(credit.used)}${credit.limit > 0 && credit.used > credit.limit ? ` <span class="credit-warning">Over limit</span>` : ""}</strong></div></div><div class="chart-bars">${barRows([["Collected", paid], ["Open AR", balance]], (value) => peso.format(value), ["green", "orange"])}${graphNote("Client health is computed from all SI/TS/DR invoices: pending, completed, overdue, collected amount, and open AR balance.")}</div><div class="modal-actions"><button class="primary-button" data-create-soa="${escapeHtml(client)}">Create SOA</button></div></article><article class="panel"><div class="panel-header"><div><p class="eyebrow">Filtered Invoices</p><h2>${filtered.length} of ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}</h2></div></div>${filtered.length ? filtered.map((sale) => trackerCard(sale, false)).join("") : `<p class="page-description">No invoices match the current filters.</p>`}</article>` : `<article class="panel"><p>No invoices found for this client.</p></article>`;
+  qs("#client-invoices-grid").innerHTML = invoices.length ? `<article class="panel full-client-timeline"><div class="panel-header"><div><p class="eyebrow">Client Performance</p><h2>${escapeHtml(client)}</h2><p>${escapeHtml(clientRecord.address || "No address recorded")} · ${escapeHtml(clientRecord.contact || "No contact recorded")}</p></div><span class="pill ${statusClass(overdue.length ? "Overdue" : balance ? "Near Due" : "Paid")}">${escapeHtml(clientGrade)}</span></div><div class="report-preview-grid"><div class="report-preview-card"><small>Total invoices</small><strong>${invoices.length}</strong></div><div class="report-preview-card"><small>Pending invoices</small><strong>${pending.length}</strong></div><div class="report-preview-card"><small>Completed invoices</small><strong>${completed.length}</strong></div><div class="report-preview-card"><small>Overdue invoices</small><strong>${overdue.length}</strong></div><div class="report-preview-card"><small>Total sales</small><strong>${peso.format(total)}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(paid)}</strong></div><div class="report-preview-card"><small>AR balance</small><strong>${peso.format(balance)}</strong></div><div class="report-preview-card"><small>Average order</small><strong>${peso.format(avgOrder)}</strong></div><div class="report-preview-card"><small>Last purchase</small><strong>${escapeHtml(lastPurchase)}</strong></div><div class="report-preview-card"><small>Credit limit</small><strong>${peso.format(credit.limit)}</strong></div><div class="report-preview-card"><small>Credit used</small><strong>${peso.format(credit.used)}${credit.limit > 0 && credit.used > credit.limit ? ` <span class="credit-warning">Over limit</span>` : ""}</strong></div></div><div class="chart-bars">${barRows([["Collected", paid], ["Open AR", balance]], (value) => peso.format(value), ["green", "orange"])}${graphNote("Client health is computed from all SI/TS/DR invoices: pending, completed, overdue, collected amount, and open AR balance.")}</div><div class="modal-actions"><button class="primary-button" data-create-soa="${escapeHtml(client)}">Create SOA</button></div></article><article class="panel"><div class="panel-header"><div><p class="eyebrow">Filtered Invoices</p><h2>${filtered.length} of ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}</h2></div></div>${filtered.length ? filtered.map((/** @type {Sale} */ sale) => trackerCard(sale, false)).join("") : `<p class="page-description">No invoices match the current filters.</p>`}</article>` : `<article class="panel"><p>No invoices found for this client.</p></article>`;
   renderClientHistoryTabs(client);
 }
 
@@ -5332,7 +5340,7 @@ function exportReplenishmentsCsv() {
 /** @param {any} filtered */
 function clientInvoicesExportRows(filtered) {
   const header = ["Document No.", "Type", "Date", "Amount", "Paid", "Balance", "Status", "Salesperson"];
-  const rows = filtered.map((sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), paymentStatusForSale(sale), sale.salesperson || "-"]);
+  const rows = filtered.map((/** @type {Sale} */ sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), paymentStatusForSale(sale), sale.salesperson || "-"]);
   return [header, ...rows];
 }
 
@@ -5340,7 +5348,7 @@ function exportClientInvoicesCsv() {
   const client = currentClientView || data.sales[0]?.client;
   if (!client) return toast("No client selected.");
   const invoices = data.sales.filter((sale) => sale.client === client);
-  const filtered = clientInvoicesFilteredSales(invoices).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const filtered = clientInvoicesFilteredSales(invoices).sort((/** @type {any} */ a, /** @type {any} */ b) => String(a.date || "").localeCompare(String(b.date || "")));
   if (!filtered.length) return toast("No invoices match the current filters.");
   downloadCsv(`${client.replace(/[^a-z0-9]+/gi, "-")}-invoices.csv`, clientInvoicesExportRows(filtered));
   log("Exported client invoice report (CSV)", "Client History", client, { save: false });
@@ -5351,10 +5359,10 @@ function clientInvoiceReportHtml(client, filtered) {
   const status = qs("#client-invoices-status-filter")?.value || "all";
   const from = qs("#client-invoices-from")?.value || "";
   const to = qs("#client-invoices-to")?.value || "";
-  const totalNet = filtered.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const totalPaid = filtered.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
+  const totalNet = filtered.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0);
+  const totalPaid = filtered.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.paid || 0), 0);
   const totalBalance = Math.max(totalNet - totalPaid, 0);
-  const rows = filtered.map((sale) => `<tr><td>${escapeHtml(sale.date)}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(invoiceTypeLabel(sale.type))}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td><td>${escapeHtml(paymentStatusForSale(sale))}</td></tr>`).join("");
+  const rows = filtered.map((/** @type {Sale} */ sale) => `<tr><td>${escapeHtml(sale.date)}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(invoiceTypeLabel(sale.type))}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td><td>${escapeHtml(paymentStatusForSale(sale))}</td></tr>`).join("");
   return `<section class="payment-request-print">${printableBrandHeaderHtml("Client Invoice Report")}<div class="pr-meta"><span>Client: <strong>${escapeHtml(client)}</strong></span><span>Status: <strong>${status === "all" ? "All Invoices" : escapeHtml(status)}</strong></span><span>Period: <strong>${escapeHtml(from || "…")} to ${escapeHtml(to || "…")}</strong></span></div><table><thead><tr><th>Date</th><th>Document</th><th>Type</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows || `<tr><td colspan="7">No invoices match the current filters.</td></tr>`}<tr><td colspan="3"><strong>Total</strong></td><td><strong>${peso.format(totalNet)}</strong></td><td><strong>${peso.format(totalPaid)}</strong></td><td><strong>${peso.format(totalBalance)}</strong></td><td></td></tr></tbody></table>${printableFooterHtml()}</section>`;
 }
 
@@ -5362,7 +5370,7 @@ function printClientInvoicesReport() {
   const client = currentClientView || data.sales[0]?.client;
   if (!client) return toast("No client selected.");
   const invoices = data.sales.filter((sale) => sale.client === client);
-  const filtered = clientInvoicesFilteredSales(invoices).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const filtered = clientInvoicesFilteredSales(invoices).sort((/** @type {any} */ a, /** @type {any} */ b) => String(a.date || "").localeCompare(String(b.date || "")));
   const dialog = qs("#payment-request-preview-modal");
   qs("#payment-request-preview-title").textContent = `Client Invoice Report — ${client}`;
   qs("#payment-request-preview-content").innerHTML = clientInvoiceReportHtml(client, filtered);
@@ -5378,7 +5386,7 @@ function soaHtml(client) {
   const postedDateInvoices = new Set(data.payments.filter((payment) => payment.collectionStatus === "Posted Date").map((payment) => saleForPayment(payment)).filter(Boolean));
   const invoices = data.sales.filter((sale) => sale.client === client && !postedDateInvoices.has(sale) && Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
   const totalBalance = invoices.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
-  const shortDate = (value) => {
+  const shortDate = (/** @type {any} */ value) => {
     const parsed = value instanceof Date ? value : new Date(`${value}T00:00:00`);
     if (Number.isNaN(parsed.getTime())) return "-";
     return `${parsed.getMonth() + 1}/${parsed.getDate()}/${parsed.getFullYear()}`;
@@ -5490,8 +5498,8 @@ function renderProductIssues() {
 function productIssueParameterSummaryHtml(report) {
   const rows = report.qcParameters?.length ? report.qcParameters : [];
   if (!rows.length) return "";
-  const cell = (row, prefix) => `<td>${escapeHtml(row[`${prefix}Range`] || "-")}</td><td>${escapeHtml(row[`${prefix}Result`] || "-")}</td><td>${row[`${prefix}P`] ? "✓" : ""}</td><td>${row[`${prefix}F`] ? "✓" : ""}</td>`;
-  return `<details class="full-event-details"><summary>Calibration / control parameter table</summary><div class="table-card compact-table"><table><thead><tr><th>Parameters</th><th>Calibrator Factor</th><th colspan="4">Level 1 · Lot ${escapeHtml(report.qcLevel1Lot || "-")}</th><th colspan="4">Level 2 · Lot ${escapeHtml(report.qcLevel2Lot || "-")}</th><th colspan="4">Level 3 · Lot ${escapeHtml(report.qcLevel3Lot || "-")}</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.parameter || "-")}</td><td>${escapeHtml(row.factor || "-")}</td>${cell(row, "l1")}${cell(row, "l2")}${cell(row, "l3")}</tr>`).join("")}</tbody></table></div></details>`;
+  const cell = (/** @type {any} */ row, /** @type {any} */ prefix) => `<td>${escapeHtml(row[`${prefix}Range`] || "-")}</td><td>${escapeHtml(row[`${prefix}Result`] || "-")}</td><td>${row[`${prefix}P`] ? "✓" : ""}</td><td>${row[`${prefix}F`] ? "✓" : ""}</td>`;
+  return `<details class="full-event-details"><summary>Calibration / control parameter table</summary><div class="table-card compact-table"><table><thead><tr><th>Parameters</th><th>Calibrator Factor</th><th colspan="4">Level 1 · Lot ${escapeHtml(report.qcLevel1Lot || "-")}</th><th colspan="4">Level 2 · Lot ${escapeHtml(report.qcLevel2Lot || "-")}</th><th colspan="4">Level 3 · Lot ${escapeHtml(report.qcLevel3Lot || "-")}</th></tr></thead><tbody>${rows.map((/** @type {any} */ row) => `<tr><td>${escapeHtml(row.parameter || "-")}</td><td>${escapeHtml(row.factor || "-")}</td>${cell(row, "l1")}${cell(row, "l2")}${cell(row, "l3")}</tr>`).join("")}</tbody></table></div></details>`;
 }
 
 /** @param {string} id */
@@ -5500,7 +5508,7 @@ function renderProductIssueDetail(id) {
   if (!report) return toast("Support report not found.");
   const events = productIssueHistory(report);
   qs("#product-issue-detail-title").textContent = `${report.id} · ${report.companyName}`;
-  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Currently With</small><strong>${escapeHtml(report.currentActor || report.originRole || "Sales")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Concerns / Inquiries:</strong> ${escapeHtml(report.concerns || "-")}</p><p><strong>Update / Actions Taken:</strong><br>${escapeHtml(report.actionsTaken || "-").replace(/\n/g, "<br>")}</p>${productIssueParameterSummaryHtml(report)}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${event.status === "Resolved" ? "done" : ["Pass to Engineering", "Pass to Product Specialist", "In Progress"].includes(event.status) ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  qs("#product-issue-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(report.companyName)}</p><h2>${escapeHtml(report.equipment || "Equipment")}${report.serialNo ? ` · ${escapeHtml(report.serialNo)}` : ""}</h2></div><span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Start Date</small><strong>${escapeHtml(report.startDate || "-")}</strong></div><div class="report-preview-card"><small>Turnaround</small><strong>${escapeHtml(productIssueTurnaroundLabel(report))}</strong></div><div class="report-preview-card"><small>Currently With</small><strong>${escapeHtml(report.currentActor || report.originRole || "Sales")}</strong></div><div class="report-preview-card"><small>Resolved By</small><strong>${escapeHtml(report.resolvedBy || "-")}</strong></div></div><p><strong>Contact:</strong> ${escapeHtml(report.contactPerson || "-")} · ${escapeHtml(report.address || "-")}</p><p><strong>Type of Support:</strong> ${escapeHtml(report.typeOfSupport || "-")}</p><p><strong>Topics Discussed:</strong> ${escapeHtml(report.topicsDiscussed || "-")}</p><p><strong>Concerns / Inquiries:</strong> ${escapeHtml(report.concerns || "-")}</p><p><strong>Update / Actions Taken:</strong><br>${escapeHtml(report.actionsTaken || "-").replace(/\n/g, "<br>")}</p>${productIssueParameterSummaryHtml(report)}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((/** @type {any} */ event) => `<div class="event-item ${event.status === "Resolved" ? "done" : ["Pass to Engineering", "Pass to Product Specialist", "In Progress"].includes(event.status) ? "pending" : "blocked"}"><span>${escapeHtml((event.status || "O")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
   showSection("product-issue-detail");
 }
 
@@ -5700,7 +5708,7 @@ function renderItemForecast() {
 /** @param {any} rows @param {any} monthLabels @param {any} allocationMonths */
 function itemForecastReportHtml(rows, monthLabels, allocationMonths) {
   const generatedAt = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
-  return `<section class="payment-request-print">${printableBrandHeaderHtml("Item Forecast")}<div class="pr-meta"><span>Allocation Window: <strong>+${allocationMonths} month${allocationMonths === 1 ? "" : "s"}</strong></span><span>Generated: <strong>${escapeHtml(generatedAt)}</strong></span><span>Items: <strong>${rows.length}</strong></span></div><table><thead><tr><th>Item Code</th><th>Item Name</th><th>Brand</th><th>${escapeHtml(monthLabels[0])} Sales</th><th>${escapeHtml(monthLabels[1])} Sales</th><th>${escapeHtml(monthLabels[2])} Sales</th><th>Avg Monthly (3mo)</th><th>Projected Demand</th><th>Current Stock</th><th>Stock (Las Piñas)</th><th>Stock (Naga)</th><th>Suggested Restock</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.item.code)}</td><td>${escapeHtml(row.item.name)}</td><td>${escapeHtml(row.item.brand || "-")}</td><td>${row.monthlyQty[0]}</td><td>${row.monthlyQty[1]}</td><td>${row.monthlyQty[2]}</td><td>${row.avgMonthlyQty.toFixed(1)}</td><td>${Math.round(row.projectedDemand)}</td><td>${row.currentStock}</td><td>${row.currentStockByBranch["Las Pinas"] || 0}</td><td>${row.currentStockByBranch["Naga"] || 0}</td><td>${row.suggestedRestock}</td></tr>`).join("") || `<tr><td colspan="12">No items to report for the current filters.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
+  return `<section class="payment-request-print">${printableBrandHeaderHtml("Item Forecast")}<div class="pr-meta"><span>Allocation Window: <strong>+${allocationMonths} month${allocationMonths === 1 ? "" : "s"}</strong></span><span>Generated: <strong>${escapeHtml(generatedAt)}</strong></span><span>Items: <strong>${rows.length}</strong></span></div><table><thead><tr><th>Item Code</th><th>Item Name</th><th>Brand</th><th>${escapeHtml(monthLabels[0])} Sales</th><th>${escapeHtml(monthLabels[1])} Sales</th><th>${escapeHtml(monthLabels[2])} Sales</th><th>Avg Monthly (3mo)</th><th>Projected Demand</th><th>Current Stock</th><th>Stock (Las Piñas)</th><th>Stock (Naga)</th><th>Suggested Restock</th></tr></thead><tbody>${rows.map((/** @type {any} */ row) => `<tr><td>${escapeHtml(row.item.code)}</td><td>${escapeHtml(row.item.name)}</td><td>${escapeHtml(row.item.brand || "-")}</td><td>${row.monthlyQty[0]}</td><td>${row.monthlyQty[1]}</td><td>${row.monthlyQty[2]}</td><td>${row.avgMonthlyQty.toFixed(1)}</td><td>${Math.round(row.projectedDemand)}</td><td>${row.currentStock}</td><td>${row.currentStockByBranch["Las Pinas"] || 0}</td><td>${row.currentStockByBranch["Naga"] || 0}</td><td>${row.suggestedRestock}</td></tr>`).join("") || `<tr><td colspan="12">No items to report for the current filters.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
 }
 
 function printItemForecast() {
@@ -5723,14 +5731,14 @@ function renderPurchaseHistory() {
   const container = qs("#purchase-history-groups");
   if (!container) return;
   /** @type {Record<string, any>} */
-  const byAgent = purchaseHistoryVisibleClients().reduce((acc, client) => {
+  const byAgent = purchaseHistoryVisibleClients().reduce((/** @type {Record<string, any>} */ acc, client) => {
     const agent = client.salesperson || "Unassigned";
     (acc[agent] ||= []).push(client);
     return acc;
   }, {});
   const agentNames = Object.keys(byAgent).sort((a, b) => Number(a === "Unassigned") - Number(b === "Unassigned") || a.localeCompare(b));
   container.innerHTML = agentNames.length ? agentNames.map((agent) => {
-    const agentClientStats = byAgent[agent].map((client) => {
+    const agentClientStats = byAgent[agent].map((/** @type {Client} */ client) => {
       const purchases = data.sales.filter((sale) => sale.client === client.name);
       const total = purchases.reduce((sum, sale) => sum + sale.net, 0);
       const last = purchases.map((sale) => sale.date).sort().at(-1) || "No purchase";
@@ -5738,12 +5746,12 @@ function renderPurchaseHistory() {
       const balance = purchases.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
       const credit = clientCreditState(client.name);
       return { client, purchases, total, last, items, balance, credit };
-    }).sort((a, b) => b.total - a.total);
-    const agentTotal = agentClientStats.reduce((sum, stat) => sum + stat.total, 0);
+    }).sort((/** @type {any} */ a, /** @type {any} */ b) => b.total - a.total);
+    const agentTotal = agentClientStats.reduce((/** @type {number} */ sum, /** @type {any} */ stat) => sum + stat.total, 0);
     const rowLimit = purchaseHistoryVisibleCounts[agent] || purchaseHistoryDefaultLimit(agent);
     const visibleStats = agentClientStats.slice(0, rowLimit);
     const remaining = agentClientStats.length - visibleStats.length;
-    const rows = visibleStats.map(({ client, purchases, total, last, items, balance, credit }) => `<tr data-focus-text="${escapeHtml(`${client.name} ${client.area || ""} ${items}`)}"><td data-label="Client"><button class="link-button dark" data-client-invoices="${escapeHtml(client.name)}">${escapeHtml(client.name)}</button></td><td data-label="Area">${escapeHtml(client.area || "-")}</td><td data-label="Orders">${purchases.length}</td><td data-label="Items Purchased">${escapeHtml(items)}</td><td data-label="Lifetime Value">${peso.format(total)}</td><td data-label="AR Balance">${peso.format(balance)}</td><td data-label="Credit Limit">${peso.format(credit.limit)}</td><td data-label="Credit Used">${peso.format(credit.used)}${credit.limit > 0 && credit.used > credit.limit ? ` <span class="credit-warning">Over limit</span>` : ""}</td><td data-label="Last Purchase">${escapeHtml(last)}</td></tr>`).join("");
+    const rows = visibleStats.map((/** @type {any} */ { client, purchases, total, last, items, balance, credit }) => `<tr data-focus-text="${escapeHtml(`${client.name} ${client.area || ""} ${items}`)}"><td data-label="Client"><button class="link-button dark" data-client-invoices="${escapeHtml(client.name)}">${escapeHtml(client.name)}</button></td><td data-label="Area">${escapeHtml(client.area || "-")}</td><td data-label="Orders">${purchases.length}</td><td data-label="Items Purchased">${escapeHtml(items)}</td><td data-label="Lifetime Value">${peso.format(total)}</td><td data-label="AR Balance">${peso.format(balance)}</td><td data-label="Credit Limit">${peso.format(credit.limit)}</td><td data-label="Credit Used">${peso.format(credit.used)}${credit.limit > 0 && credit.used > credit.limit ? ` <span class="credit-warning">Over limit</span>` : ""}</td><td data-label="Last Purchase">${escapeHtml(last)}</td></tr>`).join("");
     const viewMoreButton = remaining > 0 ? `<button class="ghost-button" data-purchase-history-more="${escapeHtml(agent)}" type="button">View More (${remaining} more)</button>` : "";
     return `<article class="panel purchase-history-agent"><div class="panel-header"><div><p class="eyebrow">Sales Agent</p><h2>${escapeHtml(agent)}</h2></div><span class="pill gray">${agentClientStats.length} client${agentClientStats.length === 1 ? "" : "s"} · ${peso.format(agentTotal)}</span></div><div class="table-card"><table><thead><tr><th>Client</th><th>Area</th><th>Orders</th><th>Items Purchased</th><th>Lifetime Value</th><th>AR Balance</th><th>Credit Limit</th><th>Credit Used</th><th>Last Purchase</th></tr></thead><tbody>${rows}</tbody></table></div>${viewMoreButton}</article>`;
   }).join("") : `<article class="panel"><p>No clients found.</p></article>`;
@@ -5807,9 +5815,9 @@ function detectImportKind(rows) {
 }
 
 /** @param {any} parts */
-function importAddress(parts) { return parts.map((part) => String(part || "").trim()).filter(Boolean).join(", "); }
+function importAddress(parts) { return parts.map((/** @type {any} */ part) => String(part || "").trim()).filter(Boolean).join(", "); }
 /** @param {any} parts */
-function importContact(parts) { return parts.map(([label, value]) => String(value || "").trim() ? `${label}: ${String(value).trim()}` : "").filter(Boolean).join(" / "); }
+function importContact(parts) { return parts.map((/** @type {any[]} */ [label, value]) => String(value || "").trim() ? `${label}: ${String(value).trim()}` : "").filter(Boolean).join(" / "); }
 /** @param {any} row @param {any} headers */
 function inferClientArea(row, headers) {
   const code = rowValue(headers, row, ["Code"]).trim().toUpperCase();
@@ -5844,7 +5852,7 @@ function validateClientsMasterlistRows(rows) {
   const seen = new Set();
   const seenCodes = new Set();
   const seenTins = new Set();
-  return rows.slice(1).map((row, index) => {
+  return rows.slice(1).map((/** @type {any} */ row, /** @type {any} */ index) => {
     const code = rowValue(headers, row, ["Code"]);
     const name = rowValue(headers, row, ["Name"]);
     const tin = normalizeMasterTin(rowValue(headers, row, ["TIN", "TIN No."]));
@@ -5880,7 +5888,7 @@ function validateSuppliersMasterlistRows(rows) {
   const seen = new Set();
   const seenCodes = new Set();
   const seenTins = new Set();
-  return rows.slice(1).map((row, index) => {
+  return rows.slice(1).map((/** @type {any} */ row, /** @type {any} */ index) => {
     const code = rowValue(headers, row, ["Code"]);
     const name = rowValue(headers, row, ["Name"]);
     const tin = normalizeMasterTin(rowValue(headers, row, ["Tin", "TIN"]));
@@ -5912,7 +5920,7 @@ function validateProductsMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
   const seenNames = new Set();
-  return rows.slice(1).map((row, index) => {
+  return rows.slice(1).map((/** @type {any} */ row, /** @type {any} */ index) => {
     const code = rowValue(headers, row, ["ITEM CODE", "Item Code"]);
     const name = rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]);
     const issues = [];
@@ -5939,7 +5947,7 @@ function buildImportedProduct(row, headers) {
 function validateSalesMigrationRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seenDocuments = new Set();
-  return rows.slice(1).map((row, index) => {
+  return rows.slice(1).map((/** @type {any} */ row, /** @type {any} */ index) => {
     const siNo = rowValue(headers, row, ["SI No."]);
     const tsDr = rowValue(headers, row, ["TS/DR"]);
     const documentNo = siNo || tsDr;
@@ -5985,7 +5993,7 @@ function buildMigratedSale(row, headers) {
 function validateCollectionsMigrationRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seenReceipts = new Set();
-  return rows.slice(1).map((row, index) => {
+  return rows.slice(1).map((/** @type {any} */ row, /** @type {any} */ index) => {
     const invoice = rowValue(headers, row, ["SI / TS / DR", "Document", "Invoice"]);
     const receiptNo = rowValue(headers, row, ["Receipt No."]) || `MIG-CR-${String(index + 1).padStart(4, "0")}`;
     const amount = importNumber(rowValue(headers, row, ["Amount Paid", "Amount"]));
@@ -6001,6 +6009,7 @@ function validateCollectionsMigrationRows(rows) {
   });
 }
 
+/** @returns {ImportCheckRow[]} */
 function validateImportRows() {
   const parsed = parseImportText();
   if (!parsed.length) return [];
@@ -6026,7 +6035,7 @@ function validateImportRows() {
   });
 }
 
-/** @returns {any[]} */
+/** @returns {ImportCheckRow[]} */
 function renderImportCheck() {
   const checked = validateImportRows();
   const ready = checked.filter((row) => row.status === "Ready");
@@ -6039,7 +6048,7 @@ function renderImportCheck() {
   return checked;
 }
 
-/** @param {any} checked */
+/** @param {ImportCheckRow[]} checked */
 function importCheckedRows(checked) {
   const ready = checked.filter((row) => row.status === "Ready");
   const kind = ready[0]?.kind || checked[0]?.kind || "clients";
@@ -6047,7 +6056,9 @@ function importCheckedRows(checked) {
     const parsed = parseImportText();
     const headers = parsed[0].map(normalizedImportHeader);
     if (kind === "clientsMasterlist") {
+      /** @type {any[]} */
       const recordKeys = [];
+      /** @type {any[]} */
       const clients = [];
       ready.forEach((item) => {
         const client = buildImportedClient(parsed[item.row - 1], headers);
@@ -6059,12 +6070,16 @@ function importCheckedRows(checked) {
       return { module: "Clients", records: ready.length, skipped: checked.length - ready.length, recordType: "clients", recordKeys, createdRecords: { clients } };
     }
     if (kind === "suppliersMasterlist") {
+      /** @type {any[]} */
       const recordKeys = [];
+      /** @type {any[]} */
       const suppliers = [];
       ready.forEach((item) => { const supplier = buildImportedSupplier(parsed[item.row - 1], headers); data.suppliers.push(supplier); suppliers.push(supplier); recordKeys.push(supplier.name); });
       return { module: "Suppliers/Vendors", records: ready.length, skipped: checked.length - ready.length, recordType: "suppliers", recordKeys, createdRecords: { suppliers } };
     }
+    /** @type {any[]} */
     const recordKeys = [];
+    /** @type {any[]} */
     const items = [];
     ready.forEach((item) => { const product = buildImportedProduct(parsed[item.row - 1], headers); data.items.push(product); items.push(product); recordKeys.push(product.code); });
     return { module: "Products/Services", records: ready.length, skipped: checked.length - ready.length, recordType: "items", recordKeys, createdRecords: { items } };
@@ -6073,6 +6088,7 @@ function importCheckedRows(checked) {
     const parsed = parseImportText();
     const headers = parsed[0].map(normalizedImportHeader);
     const clientsBefore = new Set(data.clients.map((client) => client.name));
+    /** @type {any[]} */
     const sales = [];
     ready.forEach((item) => { const sale = buildMigratedSale(parsed[item.row - 1], headers); data.sales.push(sale); sales.push(sale); });
     const newClients = data.clients.filter((client) => !clientsBefore.has(client.name));
@@ -6082,7 +6098,9 @@ function importCheckedRows(checked) {
     const parsed = parseImportText();
     const headers = parsed[0].map(normalizedImportHeader);
     let imported = 0;
+    /** @type {any[]} */
     const payments = [];
+    /** @type {any[]} */
     const sales = [];
     ready.forEach((item) => {
       const row = parsed[item.row - 1];
@@ -6098,7 +6116,9 @@ function importCheckedRows(checked) {
     });
     return { module: "Collections", records: imported, skipped: checked.length - ready.length, createdRecords: { payments, sales } };
   }
+  /** @type {any[]} */
   const recordKeys = [];
+  /** @type {any[]} */
   const clients = [];
   ready.forEach(({ name, area, address, contact, tin }) => {
     if (area && !platformAreas().some((item) => item.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
@@ -6114,17 +6134,18 @@ function importCheckedRows(checked) {
 function importRevertBlockers(recordType, key) {
   const needle = String(key || "").trim().toLowerCase();
   if (!needle) return [];
-  /** @type {Record<string, any>} */
+  /** @type {Record<string, string[]>} */
   const scopes = {
     clients: ["sales", "payments", "paymentRequests", "collectionContacts", "collectionContactHistory", "warranties", "productIssues"],
     suppliers: ["inventoryPurchaseOrders", "payables", "items"],
     items: ["inventory", "sales", "inventoryPurchaseOrders", "purchaseOrders"],
   };
   const modules = scopes[recordType] || [];
+  /** @type {any[]} */
   const blockers = [];
   modules.forEach((moduleKey) => {
     const records = data[moduleKey] || [];
-    const matches = records.filter((record) => JSON.stringify(record).toLowerCase().includes(needle));
+    const matches = records.filter((/** @type {any} */ record) => JSON.stringify(record).toLowerCase().includes(needle));
     if (matches.length) blockers.push(`${matches.length} record(s) in ${moduleKey}`);
   });
   return blockers;
@@ -6135,15 +6156,16 @@ async function revertImportBatch(index) {
   if (!canApproveMigrations()) return toast("Only Superadmin or CEO can revert a migration import.");
   const entry = data.imports[index];
   if (!entry || entry.reverted || !entry.recordType || !entry.recordKeys?.length) return toast("This import cannot be reverted.");
+  /** @type {any[]} */
   const blockedKeys = [];
-  entry.recordKeys.forEach((key) => {
+  entry.recordKeys.forEach((/** @type {any} */ key) => {
     const blockers = importRevertBlockers(entry.recordType, key);
     if (blockers.length) blockedKeys.push(`${key} (${blockers.join(", ")})`);
   });
   if (blockedKeys.length) return toast(`Cannot revert: these records are already in use — ${blockedKeys.slice(0, 3).join("; ")}${blockedKeys.length > 3 ? "…" : ""}`);
   const ok = await confirmDetailsModal({ eyebrow: "Confirm Revert", title: `Revert ${entry.module} import`, fields: [["File", entry.file], ["Records", entry.records], ["Imported", entry.date]], confirmLabel: "Revert Import", danger: true, note: "This permanently removes the records created by this import." });
   if (!ok) return;
-  const keySet = new Set(entry.recordKeys.map((value) => String(value).trim().toLowerCase()));
+  const keySet = new Set(entry.recordKeys.map((/** @type {any} */ value) => String(value).trim().toLowerCase()));
   if (entry.recordType === "clients") data.clients = data.clients.filter((client) => !keySet.has(String(client.name).trim().toLowerCase()));
   if (entry.recordType === "suppliers") data.suppliers = data.suppliers.filter((supplier) => !keySet.has(String(supplier.name).trim().toLowerCase()));
   if (entry.recordType === "items") data.items = data.items.filter((item) => !keySet.has(String(item.code).trim().toLowerCase()));
@@ -6264,7 +6286,7 @@ function bir2307DrawTinLastGroup(draw, group, y, font) {
   const digits = group.split("");
   const margin = 6;
   const lastDigitX = BIR_2307_TIN_LAST_GROUP_RIGHT - margin - BIR_2307_GLYPH_WIDTH;
-  digits.forEach((digit, index) => draw(digit, lastDigitX - (digits.length - 1 - index) * BIR_2307_TIN_DIGIT_PITCH, y, { font, size: BIR_2307_TIN_SIZE }));
+  digits.forEach((/** @type {any} */ digit, /** @type {any} */ index) => draw(digit, lastDigitX - (digits.length - 1 - index) * BIR_2307_TIN_DIGIT_PITCH, y, { font, size: BIR_2307_TIN_SIZE }));
 }
 /** @param {any} draw @param {any} tin @param {number} x @param {number} y @param {any} font */
 function bir2307DrawTin(draw, tin, x, y, font) {
@@ -6326,7 +6348,7 @@ async function generateBir2307Pdf(payable) {
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const mono = await pdfDoc.embedFont(StandardFonts.Courier);
   const black = rgb(0, 0, 0);
-  const draw = (text, x, y, options = {}) => { if (text) page.drawText(String(text), { x, y, size: options.size || 8, font: options.font || font, color: black }); };
+  const draw = (/** @type {any} */ text, /** @type {any} */ x, /** @type {any} */ y, /** @type {{ size?: number, font?: any }} */ options = {}) => { if (text) page.drawText(String(text), { x, y, size: options.size || 8, font: options.font || font, color: black }); };
 
   const { from, to, monthIndex } = bir2307QuarterRange(payable.date);
   bir2307DrawBoxedDigits(draw, bir2307MMDDYYYY(from), 151.3, 256.54, BIR_2307_PERIOD_Y, mono, BIR_2307_PERIOD_SIZE);
@@ -6399,6 +6421,7 @@ async function downloadBir2307(payableId) {
 }
 
 function renderPayablesWorkflowTabs() {
+  /** @type {Record<string, any>} */
   const counts = {
     requests: data.payables.filter((p) => p.requestStatus !== "Approved" && p.requestStatus !== "Cancelled").length,
     payment: data.payables.filter((p) => p.requestStatus === "Approved" && !p.paymentConfirmed).length,
@@ -6445,6 +6468,7 @@ function renderReplenishments() {
 
 function renderReplenishmentsWorkflowTabs() {
   const scoped = byBranch(data.replenishments, "office");
+  /** @type {Record<string, any>} */
   const counts = {
     requests: scoped.filter((r) => r.requestStatus !== "Approved" && r.requestStatus !== "Cancelled").length,
     payment: scoped.filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed).length,
@@ -6467,7 +6491,7 @@ function itemizedSummary(items = []) { return items.map((item) => `${escapeHtml(
 function showExpenseDetail(id) {
   const expense = data.replenishments.find((item) => item.id === id);
   if (!expense) return toast("Expense not found.");
-  const rows = (expense.items || []).map((item) => `<tr><td>${escapeHtml(item.particulars || item.item || "Expense")}</td><td>${Number(item.qty || 1)}</td><td>${escapeHtml(item.uom || "unit")}</td><td>${peso.format(item.amount || 0)}</td></tr>`).join("");
+  const rows = (expense.items || []).map((/** @type {any} */ item) => `<tr><td>${escapeHtml(item.particulars || item.item || "Expense")}</td><td>${Number(item.qty || 1)}</td><td>${escapeHtml(item.uom || "unit")}</td><td>${peso.format(item.amount || 0)}</td></tr>`).join("");
   const dialog = document.createElement("dialog");
   dialog.className = "modal audit-detail-modal";
   dialog.innerHTML = `<div class="modal-header"><div><p class="eyebrow">Itemized Expense</p><h2>${escapeHtml(expense.id)} · ${escapeHtml(expense.type || "Expense")}</h2></div><button class="icon-button" type="button" data-close-expense-detail aria-label="Close">x</button></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Requester</small><strong>${escapeHtml(expense.requester || "-")}</strong></div><div class="report-preview-card"><small>Employee</small><strong>${escapeHtml(expense.employeeName || "-")}</strong></div><div class="report-preview-card"><small>Office</small><strong>${escapeHtml(expense.office || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(expense.amount || 0)}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Particulars</th><th>Qty</th><th>UOM</th><th>Amount</th></tr></thead><tbody>${rows || `<tr><td colspan="4">No itemized expenses recorded.</td></tr>`}</tbody></table></div><p class="page-description"><strong>Status:</strong> ${escapeHtml(expense.requestStatus || expense.status || "-")} · <strong>Payment:</strong> ${expense.paymentConfirmed ? escapeHtml(`${expense.method || "Paid"} ${expense.bank || expense.cheque || ""}`) : "Not yet confirmed"}</p>`;
@@ -6776,7 +6800,7 @@ function reportDetailFilters() {
 
 /** @param {any} entries */
 function renderReportKpis(entries) {
-  qs("#report-detail-kpis").innerHTML = entries.map(([label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></div>`).join("");
+  qs("#report-detail-kpis").innerHTML = entries.map((/** @type {any[]} */ [label, value]) => `<div class="report-preview-card"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></div>`).join("");
 }
 
 /** @type {Record<string, any>} */
@@ -6826,7 +6850,7 @@ function renderSalesTerritoryReport() {
     ["Average Order Value", peso.format(sales.length ? totalSales / sales.length : 0)],
     ["Top Area", topArea ? `${topArea[0]} · ${peso.format(topArea[1])}` : "No data"],
   ]);
-  const monthly = Object.entries(sales.reduce((acc, sale) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.net || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
+  const monthly = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, sale) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.net || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
   qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly invoice net totals for the areas in this view.") : "";
   const byArea = Object.entries(sumBy(sales, "area", (sale) => sale.net)).sort((a, b) => b[1] - a[1]);
   qs("#report-detail-chart-primary").innerHTML = barRows(byArea, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Invoice net totals grouped by sales area (Sales role agents only).");
@@ -6842,7 +6866,7 @@ function renderSalesByAgentReport() {
   const sales = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, from, to)).map((sale) => ({ sale, agent: assignedSalesAgent(sale) })).filter(({ agent }) => agentNames.has(agent));
   setupReportDetailToolbar({ statusLabel: "Salesperson", statusOptions: [...agentNames].sort(), section: "sales", sectionLabel: "Sales" });
   const totalSales = sales.reduce((sum, { sale }) => sum + Number(sale.net || 0), 0);
-  const bySalesperson = Object.entries(sales.reduce((acc, { sale, agent }) => { acc[agent] = (acc[agent] || 0) + Number(sale.net || 0); return acc; }, {})).sort((a, b) => b[1] - a[1]);
+  const bySalesperson = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, { sale, agent }) => { acc[agent] = (acc[agent] || 0) + Number(sale.net || 0); return acc; }, {})).sort((a, b) => b[1] - a[1]);
   const topAgent = bySalesperson[0];
   renderReportKpis([
     ["Total Sales", peso.format(totalSales)],
@@ -6851,9 +6875,9 @@ function renderSalesByAgentReport() {
     ["Top Agent", topAgent ? `${topAgent[0]} · ${peso.format(topAgent[1])}` : "No data"],
   ]);
   qs("#report-detail-chart-primary").innerHTML = barRows(bySalesperson, (value) => pesoCompact(value), ["", "green", "orange", "red"]) + graphNote("Invoice net totals grouped by the client's assigned sales agent (Sales role only).");
-  const ordersBySalesperson = Object.entries(sales.reduce((acc, { agent }) => { acc[agent] = (acc[agent] || 0) + 1; return acc; }, {})).sort((a, b) => b[1] - a[1]);
+  const ordersBySalesperson = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, { agent }) => { acc[agent] = (acc[agent] || 0) + 1; return acc; }, {})).sort((a, b) => b[1] - a[1]);
   qs("#report-detail-chart-secondary").innerHTML = barRows(ordersBySalesperson, (value) => `${value} order${value === 1 ? "" : "s"}`, ["", "green", "orange", "red"]) + graphNote("Order count grouped by the client's assigned sales agent (Sales role only).");
-  const monthly = Object.entries(sales.reduce((acc, { sale }) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.net || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
+  const monthly = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, { sale }) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.net || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
   qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly invoice net totals for the agents in this view.") : "";
   const filtered = sales.filter(({ sale, agent }) => (!agentFilter || agent === agentFilter) && includesSearch(Object.values(sale)));
   table("#report-detail-table", ["Salesperson", "Area", "Client", "Document", "Items", "Amount"], filtered.map(({ sale, agent }) => ({ focus: sale.documentNo || sale.id, cells: [agent, sale.area || "-", sale.client, sale.documentNo || sale.id, saleSummary(sale), peso.format(sale.net)] })));
@@ -6873,9 +6897,9 @@ function renderCollectionsArReport() {
     ["Overdue Invoices", overdueCount.toLocaleString("en-PH")],
     ["Collection Rate", `${totalNet ? Math.round((totalCollected / totalNet) * 100) : 0}%`],
   ]);
-  const monthly = Object.entries(sales.reduce((acc, sale) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.paid || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
+  const monthly = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, sale) => { const month = sale.date.slice(0, 7); acc[month] = (acc[month] || 0) + Number(sale.paid || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
   qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly collected amount for the invoices in this view.") : "";
-  const byStatus = Object.entries(sales.reduce((acc, sale) => {
+  const byStatus = Object.entries(sales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
     const key = statusForSale(sale);
     acc[key] = (acc[key] || 0) + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
     return acc;
@@ -6958,15 +6982,15 @@ function renderSupplierPayablesReport() {
     ["Outstanding Balance", peso.format(totalBalance)],
     ["Pending Requests", pendingCount.toLocaleString("en-PH")],
   ]);
-  const monthly = Object.entries(payables.reduce((acc, p) => { const month = (p.date || "").slice(0, 7); if (month) acc[month] = (acc[month] || 0) + Number(p.amount || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
+  const monthly = Object.entries(payables.reduce((/** @type {Record<string, any>} */ acc, p) => { const month = (p.date || "").slice(0, 7); if (month) acc[month] = (acc[month] || 0) + Number(p.amount || 0); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
   qs("#report-detail-chart-trend").innerHTML = monthly.length ? lineChart(monthly) + graphNote("Monthly payable amount requested for the records in this view.") : "";
-  const bySupplier = Object.entries(payables.reduce((acc, p) => {
+  const bySupplier = Object.entries(payables.reduce((/** @type {Record<string, any>} */ acc, p) => {
     const balance = Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0);
     if (balance) acc[p.supplier] = (acc[p.supplier] || 0) + balance;
     return acc;
   }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10);
   qs("#report-detail-chart-primary").innerHTML = barRows(bySupplier, (value) => pesoCompact(value), ["red", "orange"]) + graphNote("Top 10 suppliers by outstanding balance.");
-  const byStatus = Object.entries(payables.reduce((acc, p) => {
+  const byStatus = Object.entries(payables.reduce((/** @type {Record<string, any>} */ acc, p) => {
     const key = p.requestStatus || p.status || "Unknown";
     acc[key] = (acc[key] || 0) + 1;
     return acc;
@@ -6997,6 +7021,7 @@ function renderServiceWarrantyReport() {
   table("#report-detail-table", ["Client", "Equipment", "Serial", "Install Date", "Warranty End", "Status"], filtered.map((w) => ({ focus: w.serial || w.client, cells: [w.client, w.equipment, w.serial || "-", w.installDate || "-", w.warrantyEnd || "-", `<span class="pill ${statusClass(w.status)}">${escapeHtml(w.status || "-")}</span>`] })));
 }
 
+/** @type {any[]} */
 let complianceAuditEntries = [];
 async function renderComplianceAuditReport() {
   setupReportDetailToolbar({ statusLabel: "Module", statusOptions: null, section: "logs", sectionLabel: "Audit Logs", dateFilter: false });
@@ -7037,8 +7062,8 @@ function renderComplianceAuditTable() {
 }
 /** @type {Record<string, any>} */
 const salesBreakdownDimensions = {
-  month: { title: "Sales by Month", body: "Monthly revenue trend with orders, average order value, and best month.", icon: "₱", groupLabel: "Month", topLabel: "Top Month", groupBy: (sale) => sale.date.slice(0, 7), formatGroup: monthLabel },
-  client: { title: "Sales per Client", body: "Revenue, order count, and average order value by client.", icon: "◆", groupLabel: "Client", topLabel: "Top Client", groupBy: (sale) => sale.client },
+  month: { title: "Sales by Month", body: "Monthly revenue trend with orders, average order value, and best month.", icon: "₱", groupLabel: "Month", topLabel: "Top Month", groupBy: (/** @type {Sale} */ sale) => sale.date.slice(0, 7), formatGroup: monthLabel },
+  client: { title: "Sales per Client", body: "Revenue, order count, and average order value by client.", icon: "◆", groupLabel: "Client", topLabel: "Top Client", groupBy: (/** @type {Sale} */ sale) => sale.client },
   brand: { title: "Sales per Brand", body: "Revenue by item brand, computed from invoice line items.", icon: "▤", groupLabel: "Brand", topLabel: "Top Brand", perLine: true, lineKey: "brand" },
   item: { title: "Sales per Item", body: "Revenue by individual item, computed from invoice line items.", icon: "◇", groupLabel: "Item", topLabel: "Top Item", perLine: true, lineKey: "item" },
   classification: { title: "Sales per Classification", body: "Revenue by item classification, computed from invoice line items.", icon: "●", groupLabel: "Classification", topLabel: "Top Classification", perLine: true, lineKey: "classification" },
@@ -7091,7 +7116,7 @@ function renderSalesBreakdownReport(dimension) {
       const seenGroups = new Set();
       salesBreakdownLines(sale).forEach((line) => {
         if (isBookkeepingOnlyLine(line.item, itemClassificationFor(line))) return;
-        const key = (dimension === "classification" ? itemClassificationFor(line) : line[config.lineKey]) || "Unassigned";
+        const key = (dimension === "classification" ? itemClassificationFor(line) : /** @type {Record<string, any>} */ (line)[config.lineKey]) || "Unassigned";
         groupTotals[key] = (groupTotals[key] || 0) + lineSubtotal(line);
         seenGroups.add(key);
       });
@@ -7107,7 +7132,7 @@ function renderSalesBreakdownReport(dimension) {
 
   const sortedEntries = Object.entries(groupTotals).sort((a, b) => b[1] - a[1]);
   const topEntry = sortedEntries[0];
-  const formatGroup = (key) => config.formatGroup ? config.formatGroup(key) : key;
+  const formatGroup = (/** @type {any} */ key) => config.formatGroup ? config.formatGroup(key) : key;
 
   qs("#sales-breakdown-title").textContent = config.title;
   qs("#sales-breakdown-kpis").innerHTML = [
@@ -7121,7 +7146,7 @@ function renderSalesBreakdownReport(dimension) {
   qs("#sales-breakdown-rank-chart").innerHTML = barRows(rankRows, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote(`Computed from invoice net totals grouped by ${config.groupLabel.toLowerCase()}, ranked by revenue, for the selected date range.`);
 
   /** @type {Record<string, any>} */
-  const monthlyTrend = sales.reduce((acc, sale) => {
+  const monthlyTrend = sales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
     const month = sale.date.slice(0, 7);
     acc[month] = (acc[month] || 0) + Number(sale.net || 0);
     return acc;
@@ -7161,15 +7186,16 @@ function getReconScope(range = getReconRange()) {
 
 /** @param {string} clientName @param {any} sales */
 function getScopedClientBalance(clientName, sales) {
-  return sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
+  return sales.filter((/** @type {Sale} */ sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
 }
 
 /** @param {any} [scope] */
 function getReconciliationFindings(scope = getReconScope()) {
+  /** @type {any[]} */
   const findings = [];
-  const docCounts = scope.sales.reduce((acc, sale) => { acc[sale.documentNo] = (acc[sale.documentNo] || 0) + 1; return acc; }, {});
+  const docCounts = scope.sales.reduce((/** @type {Record<string, any>} */ acc, /** @type {Sale} */ sale) => { acc[sale.documentNo] = (acc[sale.documentNo] || 0) + 1; return acc; }, {});
   Object.entries(docCounts).filter(([, count]) => count > 1).forEach(([documentNo]) => findings.push(["Duplicate Document", documentNo, "Manual SI/TS/DR number appears more than once", "High", "sales", documentNo]));
-  scope.sales.forEach((sale) => {
+  scope.sales.forEach((/** @type {Sale} */ sale) => {
     // DR (Delivery Receipt) documents are expected to carry 0 gross — they record a delivery,
     // not a billable amount — so a line-total/gross mismatch there is normal, not a data error.
     if (documentType(sale.type) === "DR") return;
@@ -7183,34 +7209,34 @@ function getReconciliationFindings(scope = getReconScope()) {
     const appliedPaymentsTotal = data.payments.filter((payment) => (payment.invoice === sale.documentNo || payment.invoice === sale.id) && payment.appliedToInvoice === true).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
     if (appliedPaymentsTotal - sale.paid > 1) findings.push(["Collection", sale.documentNo, `Approved payment(s) totaling ${peso.format(appliedPaymentsTotal)} marked applied but invoice paid is only ${peso.format(sale.paid)} — approval did not persist, needs manual correction`, "High", "collections", sale.documentNo]);
     if (sale.status === "Cancelled" && !sale.replacementId) findings.push(["Cancellation", sale.documentNo, "Cancelled document has no replacement link", "Medium", "invoicing", sale.documentNo]);
-    if (sale.replacementId && !scope.sales.some((entry) => entry.documentNo === sale.replacementId) && !data.sales.some((entry) => entry.documentNo === sale.replacementId)) findings.push(["Cancellation", sale.documentNo, `Replacement ${sale.replacementId} not found`, "High", "invoicing", sale.documentNo]);
-    (sale.lines || []).forEach((line) => {
+    if (sale.replacementId && !scope.sales.some((/** @type {any} */ entry) => entry.documentNo === sale.replacementId) && !data.sales.some((entry) => entry.documentNo === sale.replacementId)) findings.push(["Cancellation", sale.documentNo, `Replacement ${sale.replacementId} not found`, "High", "invoicing", sale.documentNo]);
+    (sale.lines || []).forEach((/** @type {any} */ line) => {
       if (!uomOptions.includes(line.uom)) findings.push(["UOM", sale.documentNo, `${line.item} uses unsupported UOM ${line.uom}`, "Medium", "sales", sale.documentNo]);
       if (!data.items.some((item) => item.code === line.code || item.name === line.item)) findings.push(["Item Link", sale.documentNo, `${line.item} is not in item masterlist`, "High", "masterlists", line.item]);
     });
   });
-  scope.payments.forEach((payment) => {
+  scope.payments.forEach((/** @type {Payment} */ payment) => {
     if (!data.sales.some((sale) => sale.id === payment.invoice || sale.documentNo === payment.invoice)) findings.push(["Payment Link", payment.invoice, "Payment does not match a sales document", "High", "collections", payment.invoice]);
     if (!payment.receiptNo) findings.push(["Collections", payment.invoice, "Missing receipt number", "High", "collections", payment.invoice]);
     if (payment.method === "Cheque" && (!payment.bank || !payment.chequeDate)) findings.push(["Collections", payment.invoice, "Cheque payment missing bank or cheque date", "High", "collections", payment.invoice]);
   });
   Object.entries(sumBy(scope.payments, "receiptNo", () => 1)).filter(([receiptNo, count]) => receiptNo && count > 1).forEach(([receiptNo]) => findings.push(["Collections", receiptNo, "Duplicate receipt number", "High", "collections", receiptNo]));
-  scope.clients.forEach((client) => {
+  scope.clients.forEach((/** @type {Client} */ client) => {
     const balance = getScopedClientBalance(client.name, scope.sales);
     if (client.creditLimit > 0 && balance > client.creditLimit) findings.push(["Credit Limit", client.name, `${peso.format(balance)} exceeds ${peso.format(client.creditLimit)} for selected dates`, "Medium", "masterlists", client.name]);
     requiredClientDocs.forEach((doc) => { if (!attachedFilesFor("client-doc", clientDocRecordId(client.name, doc)).length) findings.push(["Client Docs", client.name, `Missing ${doc}`, "Low", "masterlists", client.name]); });
   });
-  scope.transfers.filter((transfer) => transfer.status === "For Receiving").forEach((transfer) => findings.push(["Stock Transfer", transfer.id, "Pending receiving confirmation", "Medium", "inventory", transfer.id]));
+  scope.transfers.filter((/** @type {PendingTransfer} */ transfer) => transfer.status === "For Receiving").forEach((/** @type {PendingTransfer} */ transfer) => findings.push(["Stock Transfer", transfer.id, "Pending receiving confirmation", "Medium", "inventory", transfer.id]));
   return findings;
 }
 
 /** @param {any} findings @param {any} [scope] */
 function getReconciliationSuccesses(findings, scope = getReconScope()) {
-  const issueRecords = new Set(findings.map((row) => row[1]));
+  const issueRecords = new Set(findings.map((/** @type {any} */ row) => row[1]));
   return [
-    ...scope.sales.filter((sale) => !issueRecords.has(sale.documentNo)).slice(0, 6).map((sale) => ["Sales", sale.documentNo, "Gross, net, item links, and payment balance passed", "sales", sale.documentNo]),
-    ...scope.payments.filter((payment) => !issueRecords.has(payment.invoice) && !issueRecords.has(payment.receiptNo)).slice(0, 4).map((payment) => ["Collections", payment.receiptNo, "Receipt, method, and invoice link passed", "collections", payment.invoice]),
-    ...scope.clients.filter((client) => !issueRecords.has(client.name)).slice(0, 4).map((client) => ["Client", client.name, "Credit limit and required documents passed", "masterlists", client.name]),
+    ...scope.sales.filter((/** @type {Sale} */ sale) => !issueRecords.has(sale.documentNo)).slice(0, 6).map((/** @type {Sale} */ sale) => ["Sales", sale.documentNo, "Gross, net, item links, and payment balance passed", "sales", sale.documentNo]),
+    ...scope.payments.filter((/** @type {Payment} */ payment) => !issueRecords.has(payment.invoice) && !issueRecords.has(payment.receiptNo)).slice(0, 4).map((/** @type {Payment} */ payment) => ["Collections", payment.receiptNo, "Receipt, method, and invoice link passed", "collections", payment.invoice]),
+    ...scope.clients.filter((/** @type {Client} */ client) => !issueRecords.has(client.name)).slice(0, 4).map((/** @type {Client} */ client) => ["Client", client.name, "Credit limit and required documents passed", "masterlists", client.name]),
   ];
 }
 
@@ -7226,7 +7252,7 @@ function periodKey(dateValue, period) {
 }
 
 function renderReconciliationHistory() {
-  table("#reconciliation-history-table", ["Run Date", "Range", "Compare By", "Findings", "High", "Medium", "Low", "Pass Rate", "View"], data.reconHistory.slice(0, 10).map((run, index) => ({ focus: run.date, cells: [run.date, run.range, run.period, run.findings, run.high, run.medium, run.low, `${run.passRate}%`, `<button class="mini-button" data-recon-history="${index}">Load Run</button>`] })));
+  table("#reconciliation-history-table", ["Run Date", "Range", "Compare By", "Findings", "High", "Medium", "Low", "Pass Rate", "View"], data.reconHistory.slice(0, 10).map((/** @type {any} */ run, /** @type {any} */ index) => ({ focus: run.date, cells: [run.date, run.range, run.period, run.findings, run.high, run.medium, run.low, `${run.passRate}%`, `<button class="mini-button" data-recon-history="${index}">Load Run</button>`] })));
 }
 
 function renderReconciliationTabs() {
@@ -7250,9 +7276,9 @@ function applyReconciliationHistory(index) {
 
 /** @param {any} findings @param {any} passRate @param {any} scope */
 function recordReconciliationRun(findings, passRate, scope) {
-  const high = findings.filter((item) => item[3] === "High").length;
-  const medium = findings.filter((item) => item[3] === "Medium").length;
-  const low = findings.filter((item) => item[3] === "Low").length;
+  const high = findings.filter((/** @type {any} */ item) => item[3] === "High").length;
+  const medium = findings.filter((/** @type {any} */ item) => item[3] === "Medium").length;
+  const low = findings.filter((/** @type {any} */ item) => item[3] === "Low").length;
   const run = { id: `REC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), range: scope.range.label, period: qs("#recon-period")?.value || "month", findings: findings.length, high, medium, low, passRate };
   data.reconHistory.unshift(run);
   data.reconHistory = data.reconHistory.slice(0, 30);
@@ -7282,7 +7308,7 @@ function renderReconciliation() {
   qs("#reconciliation-description").innerHTML = `<div class="panel-header"><div><p class="eyebrow">How It Computes</p><h2>Comparison Preview and Record Checks</h2>${selectedRun ? `<p class="selected-history-note">Viewing saved run from ${escapeHtml(selectedRun.date)}: ${selectedRun.findings} findings, ${selectedRun.passRate}% pass rate.</p>` : ""}</div><span class="badge">${scope.range.label} · ${findings.length} to fix · ${successes.length} examples passed</span></div><div class="recon-visual-grid"><div><h3>Issue Severity</h3><div class="chart-bars">${barRows([["High", high], ["Medium", medium], ["Low", low], ["Passed", passed]], (value) => `${value} check${value === 1 ? "" : "s"}`, ["red", "orange", "", "green"])}</div></div><div><h3>What is compared</h3><ul class="compact-list"><li><span>Date scope</span><strong>sales by invoice date, payments by recorded/collected date</strong></li><li><span>Sales amount</span><strong>sum(qty x price) vs gross before discount/VAT</strong></li><li><span>Collections</span><strong>paid vs net, receipt uniqueness, cheque bank/date</strong></li><li><span>Client risk</span><strong>selected-date AR against credit limit plus required docs</strong></li></ul></div></div><details class="recon-correct-records"><summary><strong><i class="collapse-icon" aria-hidden="true">›</i> Correct Records Preview</strong><span>${successes.length} passed example${successes.length === 1 ? "" : "s"}</span></summary><div class="table-card compact-table"><table><tbody>${successes.slice(0, 8).map((row) => `<tr><td>${escapeHtml(row[0])}</td><td>${escapeHtml(row[1])}</td><td>${escapeHtml(row[2])}</td><td><button class="mini-button" data-go-section="${row[3]}" data-focus-record="${escapeHtml(row[4])}">View</button></td></tr>`).join("") || `<tr><td>No passing examples available for the selected dates.</td></tr>`}</tbody></table></div></details>`;
   const period = qs("#recon-period")?.value || "month";
   /** @type {Record<string, any>} */
-  const buckets = scope.sales.reduce((acc, sale) => {
+  const buckets = scope.sales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
     const key = periodKey(sale.date, period);
     acc[key] ||= { sales: 0, findings: 0 };
     acc[key].sales += 1;
@@ -7332,18 +7358,18 @@ async function renderBackup() {
     const [trackedResult, objectResult] = await Promise.allSettled([MedlaneAPI.listBackups(), MedlaneAPI.listBackupObjects()]);
     const backups = trackedResult.status === "fulfilled" ? trackedResult.value.backups || [] : [];
     const objects = objectResult.status === "fulfilled" ? objectResult.value.objects || [] : [];
-    const objectKeys = new Set(backups.map((backup) => backup.object_key).filter(Boolean));
-    const r2Only = objects.filter((object) => !objectKeys.has(object.key));
-    const totalBytes = [...backups.map((backup) => Number(backup.size_bytes || 0)), ...r2Only.map((object) => Number(object.size || 0))].reduce((sum, size) => sum + size, 0);
-    const latestObject = objects.sort((a, b) => new Date(b.uploaded || 0).getTime() - new Date(a.uploaded || 0).getTime())[0];
+    const objectKeys = new Set(backups.map((/** @type {any} */ backup) => backup.object_key).filter(Boolean));
+    const r2Only = objects.filter((/** @type {any} */ object) => !objectKeys.has(object.key));
+    const totalBytes = [...backups.map((/** @type {any} */ backup) => Number(backup.size_bytes || 0)), ...r2Only.map((/** @type {any} */ object) => Number(object.size || 0))].reduce((sum, size) => sum + size, 0);
+    const latestObject = objects.sort((/** @type {any} */ a, /** @type {any} */ b) => new Date(b.uploaded || 0).getTime() - new Date(a.uploaded || 0).getTime())[0];
     qs("#backup-summary-grid").innerHTML = [
       ["Backup Files", backups.length + r2Only.length, r2Only.length ? `${r2Only.length} recovered from R2 listing` : "Stored in R2"],
       ["Backup Storage", formatBytes(totalBytes), "Compressed JSON"],
       ["Latest Backup", backups[0] ? formatSessionDate(backups[0].created_at) : latestObject ? formatSessionDate(latestObject.uploaded) : "None", "Most recent recovery point"],
       ["Schedule", "3 cadences", "Weekly, monthly, yearly"],
     ].map(([title, value, note]) => `<article class="stat-card"><span>${escapeHtml(title)}</span><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(note)}</small></article>`).join("");
-    const trackedRows = backups.map((backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), backupRunLabel(backup.backup_type), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), "Metadata + R2 verified", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button><button class="mini-button danger-button" data-restore-backup-id="${escapeHtml(backup.id)}" data-restore-backup-created="${escapeHtml(formatSessionDate(backup.created_at))}" data-restore-backup-records="${escapeHtml(backup.records_count)}" data-restore-backup-size="${escapeHtml(formatBytes(backup.size_bytes))}" data-restore-backup-source="Metadata">Restore</button>`] }));
-    const objectRows = r2Only.map((object) => {
+    const trackedRows = backups.map((/** @type {any} */ backup) => ({ focus: backup.id, cells: [formatSessionDate(backup.created_at), backupRunLabel(backup.backup_type), `<span class="pill ${backup.backup_type === "manual" ? "purple" : "green"}">${escapeHtml(backup.backup_type)}</span>`, backup.mode, backup.records_count, formatBytes(backup.size_bytes), "Metadata + R2 verified", `<button class="mini-button" data-download-backup="${escapeHtml(backup.id)}">Download</button><button class="mini-button danger-button" data-restore-backup-id="${escapeHtml(backup.id)}" data-restore-backup-created="${escapeHtml(formatSessionDate(backup.created_at))}" data-restore-backup-records="${escapeHtml(backup.records_count)}" data-restore-backup-size="${escapeHtml(formatBytes(backup.size_bytes))}" data-restore-backup-source="Metadata">Restore</button>`] }));
+    const objectRows = r2Only.map((/** @type {any} */ object) => {
       const parts = String(object.key || "").split("/");
       const type = parts[2] || object.customMetadata?.backupType || "backup";
       return { focus: object.key, cells: [formatSessionDate(object.uploaded), backupRunLabel(type), `<span class="pill ${type === "manual" ? "purple" : "green"}">${escapeHtml(type)}</span>`, "compressed-full", object.customMetadata?.records || "-", formatBytes(object.size), "R2 object", `<button class="mini-button" data-download-backup-key="${escapeHtml(object.key)}">Download</button><button class="mini-button danger-button" data-restore-backup-key="${escapeHtml(object.key)}" data-restore-backup-created="${escapeHtml(formatSessionDate(object.uploaded))}" data-restore-backup-records="${escapeHtml(object.customMetadata?.records || "-")}" data-restore-backup-size="${escapeHtml(formatBytes(object.size))}" data-restore-backup-source="R2 object">Restore</button>`] };
@@ -7523,7 +7549,7 @@ const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "
 /** @param {any} entries */
 function visibleAuditLogEntries(entries) {
   const selectedModule = qs("#logs-module-filter")?.value || "all";
-  return selectedModule === "all" ? entries.filter((entry) => String(entry.module || "System").toLowerCase() !== "system") : entries;
+  return selectedModule === "all" ? entries.filter((/** @type {any} */ entry) => String(entry.module || "System").toLowerCase() !== "system") : entries;
 }
 function renderLogFilters() {
   const selectedRole = qs("#logs-role-filter")?.value || "all";
@@ -7715,14 +7741,14 @@ function renderCollectionsClientHistoryPanel() {
   const docs = new Set(invoices.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
   const payments = data.payments.filter((payment) => docs.has(payment.invoice)).slice().sort((a, b) => String(b.dateRecorded || "").localeCompare(String(a.dateRecorded || "")));
   const requests = data.paymentRequests.filter((request) => request.employee === client.name).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-  const followups = (data.collectionContactHistory || []).filter((entry) => entry.client === client.name);
+  const followups = (data.collectionContactHistory || []).filter((/** @type {any} */ entry) => entry.client === client.name);
   const paid = invoices.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
   const balance = invoices.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
   panel.innerHTML = `<article class="panel"><div class="panel-header"><div><p class="eyebrow">Client Collections History</p><h2>${escapeHtml(client.name)}</h2></div><span class="pill ${statusClass(balance ? "Overdue" : "Paid")}">${balance ? "Open AR" : "Cleared"}</span></div><div class="report-preview-grid"><div class="report-preview-card"><small>Invoices</small><strong>${invoices.length}</strong></div><div class="report-preview-card"><small>Collected</small><strong>${peso.format(paid)}</strong></div><div class="report-preview-card"><small>Open Balance</small><strong>${peso.format(balance)}</strong></div><div class="report-preview-card"><small>Payment Requests</small><strong>${requests.length}</strong></div><div class="report-preview-card"><small>Follow-ups Logged</small><strong>${followups.length}</strong></div></div></article><article class="panel"><h3>Invoices</h3><div class="table-card compact-table"><table id="collections-client-history-invoices"></table></div></article><article class="panel"><h3>Payments Received</h3><div class="table-card compact-table"><table id="collections-client-history-payments"></table></div></article><article class="panel"><h3>Payment Requests</h3><div class="table-card compact-table"><table id="collections-client-history-requests"></table></div></article><article class="panel"><h3>Follow-up History</h3><div class="table-card compact-table"><table id="collections-client-history-followups"></table></div></article>`;
   table("#collections-client-history-invoices", ["Document", "Type", "Date", "Net", "Paid", "Balance", "Status"], invoices.map((sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.date, peso.format(sale.net), peso.format(sale.paid), peso.format(Math.max(sale.net - sale.paid, 0)), statusForSale(sale)]));
   table("#collections-client-history-payments", ["Date", "Invoice", "Amount", "Method", "Receipt No", "Status"], payments.map((payment) => [payment.dateRecorded || "-", payment.invoice || "-", peso.format(Number(payment.amount || 0)), payment.method || "-", payment.receiptNo || "-", payment.collectionStatus || "-"]));
   table("#collections-client-history-requests", ["CR/PR No.", "Date", "Invoice", "Payment", "Total", "Status"], requests.map((request) => [request.cvNo, request.date, request.invoice || "-", request.paymentType, peso.format(Number(request.total || 0)), request.requestStatus || request.status || "-"]));
-  table("#collections-client-history-followups", ["Date", "Area", "Invoice", "Status", "Employee", "Notes"], followups.map((entry) => [entry.date, entry.area, entry.invoice || "-", entry.status, entry.employee, entry.notes || "-"]));
+  table("#collections-client-history-followups", ["Date", "Area", "Invoice", "Status", "Employee", "Notes"], followups.map((/** @type {any} */ entry) => [entry.date, entry.area, entry.invoice || "-", entry.status, entry.employee, entry.notes || "-"]));
 }
 function renderCollectionsHistoryTable() {
   table("#collections-history-table", ["Date", "User", "Role", "Action", "Details"], collectionsHistoryState.entries.map((l) => ({ focus: [l.record, l.action, l.user].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(l.user), formatLogCell(l.role), formatLogCell(l.action), formatLogRecord(l.record)] })));
@@ -8095,18 +8121,18 @@ function openModal(type, edit = null) {
   qs("#modal-submit").textContent = type === "paymentRequest" ? "Save & Preview" : "Save Record";
   qs("#modal-kicker").textContent = modalReadOnly ? "Read Only — Past Transaction" : isEditRecord ? "Admin Correction" : "Admin Input";
   const fields = config.fields;
-  qs("#modal-fields").innerHTML = fields.map(([name, label, kind = "text", options]) => {
+  qs("#modal-fields").innerHTML = fields.map((/** @type {any[]} */ [name, label, kind = "text", options]) => {
     const full = kind === "textarea" ? " full" : "";
     if (kind === "select") {
       const values = typeof options === "function" ? options() : options;
       const hasValues = values.length > 0;
-      const optionsHtml = hasValues ? values.map((value) => `<option>${escapeHtml(value)}</option>`).join("") : `<option value="">No ${label.toLowerCase()} available yet</option>`;
+      const optionsHtml = hasValues ? values.map((/** @type {any} */ value) => `<option>${escapeHtml(value)}</option>`).join("") : `<option value="">No ${label.toLowerCase()} available yet</option>`;
       return `<div class="field${full}"><label for="${name}">${label}</label><select id="${name}" name="${name}" ${hasValues ? "required" : ""}>${optionsHtml}</select></div>`;
     }
     if (kind === "tin") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="text" inputmode="numeric" placeholder="000-000-000-000" maxlength="15" pattern="\\d{3}-\\d{3}-\\d{3}-\\d{3}" title="Enter a 12-digit TIN as 000-000-000-000" data-tin-input /></div>`;
     if (kind === "datalist" || kind === "datalist-optional") {
       const values = typeof options === "function" ? options() : options;
-      return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" list="${name}-options" autocomplete="off" ${kind === "datalist" ? "required" : ""} /><datalist id="${name}-options">${values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist></div>`;
+      return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" list="${name}-options" autocomplete="off" ${kind === "datalist" ? "required" : ""} /><datalist id="${name}-options">${values.map((/** @type {any} */ value) => `<option value="${escapeHtml(value)}"></option>`).join("")}</datalist></div>`;
     }
     if (kind === "readonly") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" readonly required /></div>`;
     if (kind === "optional") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" /></div>`;
@@ -8120,7 +8146,7 @@ function openModal(type, edit = null) {
     if (kind === "benefit-checkboxes") return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${employeeBenefitOptions.map((benefit) => `<label class="ios-check-row compact-doc-check"><input name="benefitsSelected" type="checkbox" value="${escapeHtml(benefit)}" /><span></span><strong>${escapeHtml(benefit)}</strong></label>`).join("")}</div><input id="benefits" name="benefits" type="hidden" /></div>`;
     if (kind === "checkbox-group") {
       const values = typeof options === "function" ? options() : options;
-      return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${values.map((value) => `<label class="ios-check-row compact-doc-check"><input name="${name}Selected" type="checkbox" value="${escapeHtml(value)}" /><span></span><strong>${escapeHtml(value)}</strong></label>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /></div>`;
+      return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${values.map((/** @type {any} */ value) => `<label class="ios-check-row compact-doc-check"><input name="${name}Selected" type="checkbox" value="${escapeHtml(value)}" /><span></span><strong>${escapeHtml(value)}</strong></label>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /></div>`;
     }
     if (kind === "department-contacts") return `<div class="field full department-contacts-field"><label>${label}</label><p class="field-help">Format shown below is a guide, not required — leave any line blank if not applicable.</p><div class="department-contacts-grid">${clientContactDepartments.map(([key, deptLabel]) => `<fieldset class="department-contact-block"><legend>${escapeHtml(deptLabel)}</legend><div class="field"><label>Contact Person</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="person" /></div><div class="field"><label>Contact No.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="phone" /></div><div class="field"><label>E-mail Add.</label><input class="dept-contact-input" data-dept="${key}" data-dept-field="email" type="email" /></div></fieldset>`).join("")}</div><input id="${name}" name="${name}" type="hidden" /><input id="contactDepartments" name="contactDepartments" type="hidden" /></div>`;
     return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="${kind}" ${kind === "date" && name.toLowerCase().includes("expiry") ? `min="${fmtDate(today)}"` : ""} ${kind === "date" && name === "birthday" ? `max="${latestAllowedBirthday()}"` : ""} ${kind === "number" && name === "discount" ? `step="any"` : ""} ${(kind !== "date" && name !== "creditLimit") || name === "birthday" ? "required" : ""} /></div>`;
@@ -8322,7 +8348,7 @@ function syncInviteUserPermissions() {
     ["Support", ["product-issues"]],
     ["Finance", ["payables", "replenishments", "reconciliation", "reports", "imports"]],
   ]).map(([label, items]) => /** @type {[string, string[]]} */ ([label, items.filter((module) => modules.includes(module))])).filter(([, items]) => items.length);
-  const renderGroup = (name, items, inputName, defaults, _index) => `<details class="permission-feature-group"><summary><strong>${escapeHtml(name)}</strong><span>${items.filter((module) => defaults.has(module)).length}/${items.length} selected</span></summary><div>${items.map((module) => `<label class="ios-check-row compact-doc-check"><input name="${inputName}" type="checkbox" value="${escapeHtml(module)}" ${defaults.has(module) ? "checked" : ""} /><span></span><strong>${escapeHtml(module)}</strong></label>`).join("")}</div></details>`;
+  const renderGroup = (/** @type {any} */ name, /** @type {any} */ items, /** @type {any} */ inputName, /** @type {any} */ defaults, /** @type {any} */ _index) => `<details class="permission-feature-group"><summary><strong>${escapeHtml(name)}</strong><span>${items.filter((/** @type {any} */ module) => defaults.has(module)).length}/${items.length} selected</span></summary><div>${items.map((/** @type {any} */ module) => `<label class="ios-check-row compact-doc-check"><input name="${inputName}" type="checkbox" value="${escapeHtml(module)}" ${defaults.has(module) ? "checked" : ""} /><span></span><strong>${escapeHtml(module)}</strong></label>`).join("")}</div></details>`;
   panel.innerHTML = `<div class="invite-permission-grid"><section><h3>View Access</h3>${groups.map(([name, items], index) => renderGroup(name, items, "userViewModules", viewDefaults, index)).join("")}</section><section><h3>Edit Access</h3>${groups.map(([name, items], index) => renderGroup(name, items, "userEditModules", editDefaults, index)).join("")}</section></div>`;
 }
 
@@ -8408,11 +8434,11 @@ function masterlistDisplayLabel(record) {
 // short human reason string, or "" when the record is clear to archive.
 /** @param {any} type @param {any} record */
 function masterlistRecordOpenActivity(type, record) {
-  const openDemo = (predicate) => (data.inventoryDemoRequests || []).some((demo) => !["Returned", "To Sales", "Cancelled"].includes(demo.status) && predicate(demo));
-  const openPo = (predicate) => (data.purchaseOrders || []).some((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po)) && predicate(po));
-  const openInvPo = (predicate) => (data.inventoryPurchaseOrders || []).some((po) => !inventoryPoTerminalStatuses.includes(po.status) && predicate(po));
-  const openPayable = (predicate) => (data.payables || []).some((p) => !["Paid", "Cancelled"].includes(p.requestStatus || p.status) && !p.paymentConfirmed && predicate(p));
-  const openCollection = (predicate) => (data.paymentRequests || []).some((r) => !["Completed", "Cancelled"].includes(r.requestStatus || r.status) && predicate(r));
+  const openDemo = (/** @type {any} */ predicate) => (data.inventoryDemoRequests || []).some((demo) => !["Returned", "To Sales", "Cancelled"].includes(demo.status) && predicate(demo));
+  const openPo = (/** @type {any} */ predicate) => (data.purchaseOrders || []).some((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po)) && predicate(po));
+  const openInvPo = (/** @type {any} */ predicate) => (data.inventoryPurchaseOrders || []).some((po) => !inventoryPoTerminalStatuses.includes(po.status) && predicate(po));
+  const openPayable = (/** @type {any} */ predicate) => (data.payables || []).some((p) => !["Paid", "Cancelled"].includes(p.requestStatus || p.status) && !p.paymentConfirmed && predicate(p));
+  const openCollection = (/** @type {any} */ predicate) => (data.paymentRequests || []).some((r) => !["Completed", "Cancelled"].includes(r.requestStatus || r.status) && predicate(r));
   const reasons = [];
   if (type === "client") {
     const name = record.name;
@@ -8424,11 +8450,11 @@ function masterlistRecordOpenActivity(type, record) {
       reasons.push(`an existing purchase order (${ids.slice(0, 5).join(", ")}${ids.length > 5 ? `, +${ids.length - 5} more` : ""})`);
     }
     if ((data.sales || []).some((s) => s.client === name && s.status !== "Cancelled" && Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0.01)) reasons.push("an unpaid invoice");
-    if (openCollection((r) => r.employee === name)) reasons.push("an open collection");
-    if (openDemo((d) => d.client === name)) reasons.push("an active demo unit");
+    if (openCollection((/** @type {any} */ r) => r.employee === name)) reasons.push("an open collection");
+    if (openDemo((/** @type {any} */ d) => d.client === name)) reasons.push("an active demo unit");
   } else if (type === "item") {
     const code = record.code;
-    const onLines = (rec) => (rec.lines || []).some((l) => l.code === code);
+    const onLines = (/** @type {any} */ rec) => (rec.lines || []).some((/** @type {any} */ l) => l.code === code);
     if (openPo(onLines)) reasons.push("an unserved purchase order");
     if (openInvPo(onLines)) reasons.push("an open inventory purchase order");
     if ((data.inventory || []).some((inv) => inv.code === code && Number(inv.qty || 0) > 0)) reasons.push("stock on hand");
@@ -8436,16 +8462,16 @@ function masterlistRecordOpenActivity(type, record) {
     if (openDemo(onLines)) reasons.push("an active demo unit");
   } else if (type === "supplier") {
     const name = record.name;
-    if (openInvPo((po) => po.supplier === name)) reasons.push("an open inventory purchase order");
-    if (openPayable((p) => p.supplier === name)) reasons.push("an unpaid payable");
+    if (openInvPo((/** @type {any} */ po) => po.supplier === name)) reasons.push("an open inventory purchase order");
+    if (openPayable((/** @type {any} */ p) => p.supplier === name)) reasons.push("an unpaid payable");
   } else if (type === "employee") {
     const name = record.name;
     if ((data.replenishments || []).some((r) => (r.employeeName === name || r.requester === name) && !["Paid", "Completed", "Cancelled"].includes(r.requestStatus || r.status))) reasons.push("an open expense request");
-    if (openDemo((d) => d.salesAgent === name)) reasons.push("an active demo unit");
+    if (openDemo((/** @type {any} */ d) => d.salesAgent === name)) reasons.push("an active demo unit");
   } else if (type === "bank") {
     const name = record.name;
-    if (openCollection((r) => r.bank === name)) reasons.push("an open collection");
-    if (openPayable((p) => p.bank === name)) reasons.push("an unpaid cheque payable");
+    if (openCollection((/** @type {any} */ r) => r.bank === name)) reasons.push("an open collection");
+    if (openPayable((/** @type {any} */ p) => p.bank === name)) reasons.push("an unpaid cheque payable");
   }
   return reasons.length ? [...new Set(reasons)].join(", ") : "";
 }
@@ -8535,7 +8561,7 @@ function masterlistRecordKey(type, record) {
 
 /** @param {any} type */
 function masterlistModuleKey(type) {
-  return ({ client: "clients", item: "items", supplier: "suppliers", employee: "employees", bank: "banks" })[type] || "";
+  return (/** @type {Record<string, string>} */ ({ client: "clients", item: "items", supplier: "suppliers", employee: "employees", bank: "banks" }))[type] || "";
 }
 
 /** @param {any} type @param {Record<string, any>} values @param {number} [exceptIndex] */
@@ -8543,10 +8569,10 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
   // Archived records never block uniqueness — restoring one is guarded separately, and an
   // archived name/code/TIN should be free to reuse for a fresh active record. Names and codes are
   // compared normalized (case/space/punctuation-insensitive) so near-identical spellings collide.
-  const others = (list) => (list || []).filter((record, index) => index !== exceptIndex && !isArchived(record));
-  const sameName = (list, value) => { const key = normalizeMasterName(value); return Boolean(key) && others(list).some((record) => normalizeMasterName(record.name) === key); };
-  const sameCode = (list, value) => { const key = normalizeMasterCode(value); return Boolean(key) && others(list).some((record) => normalizeMasterCode(record.code) === key); };
-  const sameTin = (list, value) => { const key = normalizeMasterTin(value); return key.length === 12 && others(list).some((record) => normalizeMasterTin(record.tin) === key); };
+  const others = (/** @type {any} */ list) => (list || []).filter((/** @type {any} */ record, /** @type {any} */ index) => index !== exceptIndex && !isArchived(record));
+  const sameName = (/** @type {any} */ list, /** @type {any} */ value) => { const key = normalizeMasterName(value); return Boolean(key) && others(list).some((/** @type {any} */ record) => normalizeMasterName(record.name) === key); };
+  const sameCode = (/** @type {any} */ list, /** @type {any} */ value) => { const key = normalizeMasterCode(value); return Boolean(key) && others(list).some((/** @type {any} */ record) => normalizeMasterCode(record.code) === key); };
+  const sameTin = (/** @type {any} */ list, /** @type {any} */ value) => { const key = normalizeMasterTin(value); return key.length === 12 && others(list).some((/** @type {any} */ record) => normalizeMasterTin(record.tin) === key); };
   if (type === "client") {
     const tin = values.tin?.trim();
     if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
@@ -8677,7 +8703,7 @@ function purchaseOrdersTouchedBySales(sales = []) {
 // hard validation failure. Nothing has been mutated (stock, PO) when this is thrown: buildSale
 // checks credit before touching either.
 class CreditApprovalRequiredError extends Error {
-  constructor({ client, projected, limit }) {
+  constructor(/** @type {any} */ { client, projected, limit }) {
     super(`${client} would exceed its credit limit (${peso.format(projected)} / ${peso.format(limit)}).`);
     this.name = "CreditApprovalRequiredError";
     this.credit = { client, projected, limit };
@@ -8754,7 +8780,7 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
   if (discount > amount) throw new Error("Discount cannot exceed gross amount.");
   const totalSalesVatInclusive = amount - discount;
   const net = totalSalesVatInclusive;
-  const credit = skipPo ? { exceeded: false } : clientCreditState(client.name, net);
+  const credit = /** @type {any} */ (skipPo ? { exceeded: false } : clientCreditState(client.name, net));
   if (credit.exceeded && !canAuthorize) {
     if (allowCreditPending) throw new CreditApprovalRequiredError({ client: client.name, projected: credit.projected, limit: credit.limit });
     throw new Error("Credit limit exceeded. Needs Admin/CEO authorization.");

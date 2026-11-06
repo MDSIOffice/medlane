@@ -7,3 +7,4 @@ public/scripts/api-client.js
 public/scripts/state.js
 public/scripts/game.js
 public/scripts/ui-utils.js
+public/scripts/modules.js

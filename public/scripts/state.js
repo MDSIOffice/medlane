@@ -31,6 +31,7 @@ let currentPrintTemplateId = "default";
 /** @type {any} */
 let paymentRequestPreselectedInvoice = null;
 let paymentRequestRowUid = 0;
+/** @type {any[]} */
 let uploadedFilesCache = [];
 let uploadedFilesLoaded = false;
 /** @type {any} */
@@ -115,6 +116,7 @@ let ptSelectedField = null;
 /** @type {any} */
 let ptSelectedKind = null;
 let ptStepIn = 0.05;
+/** @type {Record<string, any>} */
 const PRINT_TEMPLATE_FIELDS = {
   SI: {
     point: [
@@ -181,6 +183,7 @@ const frontendModuleRecordKeys = {
 
 const philippinesRegionsGeoJsonUrl = "https://raw.githubusercontent.com/wmgeolab/geoBoundaries/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
 
+/** @type {Record<string, number[]>} */
 const clientCoordinates = {
   "IlocosCare Laboratory": [16.6159, 120.3209],
   "Cagayan Valley Diagnostics": [17.6132, 121.7270],
@@ -208,6 +211,7 @@ const accounts = {
 Object.values(accounts).forEach((account) => account.modules.push("memos"));
 if (currentUser?.role && accounts[currentUser.role] && !currentUser.id && !currentUser.customPermissions) currentUser = accounts[currentUser.role];
 
+/** @type {Record<string, string[]>} */
 const sectionMeta = {
   notifications: ["Notifications", "Review system alerts for credit limits, stock transfers, collections, and inventory risks."],
   "user-settings": ["User Settings", "View and update your profile, contact details, and session preferences."],
