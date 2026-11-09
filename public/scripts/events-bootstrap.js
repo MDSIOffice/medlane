@@ -1808,6 +1808,44 @@ qs("#csv-file-input").addEventListener("change", async (event) => {
   toast(`Loaded ${file.name}. Review the preview before importing.`);
 });
 qs("#csv-input").addEventListener("input", () => { lastImportFileName = null; });
+// Sample migration templates. Headers must keep matching detectImportKind() and the
+// rowValue() labels in modules.js, or a downloaded template won't be recognized.
+/** @type {Record<string, { file: string, rows: string[][] }>} */
+const IMPORT_TEMPLATES = {
+  clients: { file: "medlane-template-clients.csv", rows: [
+    ["Code", "Name", "Customer Type", "Sales Account", "Term", "Street", "City", "Province", "Country", "Zip Code", "TIN", "Mobile", "Landline", "Fax", "Email", "Website", "Contact Person", "Contact Role", "Bank Name", "Bank Account Number", "Status"],
+    ["NCR-0001", "Sample Diagnostics Center", "Direct", "Ana Cruz", "30", "123 Rizal Ave", "Quezon City", "Metro Manila", "Philippines", "1100", "123-456-789-000", "0917 000 0001", "(02) 8000 0001", "", "billing@example.com", "", "Juan Dela Cruz", "Purchasing Officer", "BDO", "001234567890", "Active"],
+    ["R5-0001", "Sample Heart Lab", "Dealer", "Mika Tan", "60", "45 Magsaysay Ave", "Naga City", "Camarines Sur", "Philippines", "4400", "222-333-444-000", "0918 000 0002", "", "", "lab@example.com", "", "Maria Santos", "Lab Manager", "", "", "Active"],
+  ] },
+  suppliers: { file: "medlane-template-suppliers-vendors.csv", rows: [
+    ["Code", "Name", "Classification", "TIN", "Address", "Country", "Mobile", "Landline", "Fax", "Email", "Website", "Contact Person", "Contact Role", "Status"],
+    ["SUP-0001", "Sample Reagents Trading", "Reagent", "333-444-555-000", "Unit 5, 88 Ayala Ave, Makati City", "Philippines", "0917 000 0003", "(02) 8000 0003", "", "sales@example.com", "", "Pedro Reyes", "Account Manager", "Active"],
+    ["SUP-0002", "Sample Medical Equipment Co.", "Equipment", "444-555-666-000", "1 Sample St, Singapore", "Singapore", "", "", "", "orders@example.com", "", "Lee Wong", "Sales Director", "Active"],
+  ] },
+  products: { file: "medlane-template-products-services.csv", rows: [
+    ["ITEM CODE", "ITEM DESCRIPTION", "ITEM CLASSIFICATION", "UOM"],
+    ["RGT-0001", "Sample Hematology Reagent", "Reagent", "kit"],
+    ["SUP-0001", "Sample Vacutainer Tubes", "Supply", "box"],
+    ["EQP-0001", "Sample Chemistry Analyzer", "Equipment", "unit"],
+    ["SVC-0001", "Sample Preventive Maintenance", "Service", "visit"],
+  ] },
+  sales: { file: "medlane-template-sales-opening-ar.csv", rows: [
+    ["Year", "Month", "Office", "Date", "Sales Rep", "Branch", "Area", "TS/DR", "SI No.", "TIN", "CLIENT", "Classification", "Brand", "PRODUCT", "Qty", "U/M", "Unit Price", "Amount", "Discount", "Total Price", "Invoice Amount", "LESS TPC", "Actual Sales", "12% VAT", "NET Sales", "CWT", "Remarks"],
+    ["2026", "July", "Las Pinas", "2026-07-15", "Ana Cruz", "Las Pinas", "Region IV-A", "", "SI-MIG-001", "123-456-789-000", "Sample Diagnostics Center", "Direct", "Sysmex", "Sample Hematology Reagent", "2", "kit", "4200", "8400", "0", "8400", "9408", "0", "8400", "1008", "9408", "0", "Opening AR"],
+    ["2026", "July", "Naga", "2026-07-16", "Mika Tan", "Naga", "Region V", "TS-MIG-002", "", "222-333-444-000", "Sample Heart Lab", "Direct", "BD", "Sample Vacutainer Tubes", "100", "box", "35", "3500", "0", "3500", "3500", "0", "3500", "0", "3500", "0", "Opening AR"],
+  ] },
+  collections: { file: "medlane-template-collections.csv", rows: [
+    ["SI / TS / DR", "Receipt No.", "Amount Paid", "Method", "Bank", "Reference", "Cheque Date", "Date of Collection"],
+    ["SI-MIG-001", "OR-MIG-0001", "5000", "Cheque", "BDO", "CHK-000123", "2026-08-01", "2026-08-03"],
+    ["TS-MIG-002", "OR-MIG-0002", "3500", "Bank Transfer", "BPI", "REF-778899", "", "2026-08-05"],
+  ] },
+};
+qsa("[data-import-template]").forEach((button) => button.addEventListener("click", () => {
+  const template = IMPORT_TEMPLATES[button.dataset.importTemplate || ""];
+  if (!template) return;
+  downloadCsv(template.file, template.rows);
+  toast(`Downloaded ${template.file}.`);
+}));
 qs("#check-import").addEventListener("click", () => { renderImportCheck(); toast("Import safety check completed."); });
 qs("#clear-import").addEventListener("click", () => { lastImportFileName = null; qs("#csv-file-input").value = ""; qs("#csv-input").value = ""; qs("#import-preview-summary").innerHTML = ""; table("#import-check-table", ["Row", "Client", "Area", "Status", "Safety Notes"], []); });
 qs("#run-import").addEventListener("click", async () => {

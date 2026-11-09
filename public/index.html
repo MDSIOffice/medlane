@@ -1084,7 +1084,18 @@
       <section class="section" id="imports">
         <div class="section-header"><div><p class="eyebrow">Excel / CSV Import</p><h2>Import spreadsheet records into Medlane OS</h2></div><button class="primary-button" id="import-sample">Load Sample</button></div>
         <article class="panel import-panel">
-          <p>Upload a masterlist CSV file for <strong>CLIENTS</strong>, <strong>SUPPLIERS / VENDORS</strong>, or <strong>PRODUCTS / SERVICES</strong> (or paste the data below). The preview detects the format, flags duplicates/missing fields, and imports only confirmed rows.</p>
+          <p>Upload a masterlist CSV file for <strong>CLIENTS</strong>, <strong>SUPPLIERS / VENDORS</strong>, or <strong>PRODUCTS / SERVICES</strong>, or a migration file for <strong>SALES (opening AR)</strong> or <strong>COLLECTIONS</strong> (or paste the data below). The preview detects the format, flags duplicates/missing fields, and imports only confirmed rows.</p>
+          <div class="import-templates">
+            <span class="import-templates-label">Download sample template</span>
+            <div class="import-templates-buttons">
+              <button class="ghost-button" type="button" data-import-template="clients">Clients</button>
+              <button class="ghost-button" type="button" data-import-template="suppliers">Suppliers / Vendors</button>
+              <button class="ghost-button" type="button" data-import-template="products">Products / Services</button>
+              <button class="ghost-button" type="button" data-import-template="sales">Sales (opening AR)</button>
+              <button class="ghost-button" type="button" data-import-template="collections">Collections</button>
+            </div>
+            <small>Keep the header row as-is; replace the example rows with your data. Import Sales before Collections — collections must match an existing SI / TS / DR.</small>
+          </div>
           <div class="field"><label for="csv-file-input">Upload CSV File</label><input id="csv-file-input" type="file" accept=".csv,text/csv" /></div>
           <textarea id="csv-input" placeholder="client,ABC Laboratory,Region IV-A,Address,Contact,123-456-789-000"></textarea>
           <div class="modal-actions"><button class="ghost-button" id="check-import" type="button">Preview Import</button></div>

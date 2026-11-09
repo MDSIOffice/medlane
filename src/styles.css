@@ -1318,6 +1318,10 @@ select, .search-input {
   background: var(--panel-solid);
   color: var(--ink);
 }
+.import-templates { display: grid; gap: 8px; border: 1px dashed var(--line); border-radius: 16px; background: var(--tint); padding: 12px 14px; }
+.import-templates-label { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.import-templates-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.import-templates small { color: var(--muted); }
 .import-preview-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .import-preview-summary article { border: 1px solid var(--line); border-radius: 16px; background: var(--tint); padding: 12px; }
 .import-preview-summary span { display: block; color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
