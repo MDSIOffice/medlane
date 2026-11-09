@@ -1829,6 +1829,13 @@ const IMPORT_TEMPLATES = {
     ["EQP-0001", "Sample Chemistry Analyzer", "Equipment", "unit"],
     ["SVC-0001", "Sample Preventive Maintenance", "Service", "visit"],
   ] },
+  // Branch is picked on the Import page (one per file), so the file itself stays 3 columns.
+  inventory: { file: "medlane-template-inventory-stock.csv", rows: [
+    ["Product", "Quantity", "Expiry Date"],
+    ["RGT-0001", "25", "2027-06-30"],
+    ["Sample Vacutainer Tubes", "100", "2027-12-31"],
+    ["EQP-0001", "2", ""],
+  ] },
   sales: { file: "medlane-template-sales-opening-ar.csv", rows: [
     ["Year", "Month", "Office", "Date", "Sales Rep", "Branch", "Area", "TS/DR", "SI No.", "TIN", "CLIENT", "Classification", "Brand", "PRODUCT", "Qty", "U/M", "Unit Price", "Amount", "Discount", "Total Price", "Invoice Amount", "LESS TPC", "Actual Sales", "12% VAT", "NET Sales", "CWT", "Remarks"],
     ["2026", "July", "Las Pinas", "2026-07-15", "Ana Cruz", "Las Pinas", "Region IV-A", "", "SI-MIG-001", "123-456-789-000", "Sample Diagnostics Center", "Direct", "Sysmex", "Sample Hematology Reagent", "2", "kit", "4200", "8400", "0", "8400", "9408", "0", "8400", "1008", "9408", "0", "Opening AR"],
@@ -1847,17 +1854,18 @@ qsa("[data-import-template]").forEach((button) => button.addEventListener("click
   toast(`Downloaded ${template.file}.`);
 }));
 qs("#check-import").addEventListener("click", () => { renderImportCheck(); toast("Import safety check completed."); });
-qs("#clear-import").addEventListener("click", () => { lastImportFileName = null; qs("#csv-file-input").value = ""; qs("#csv-input").value = ""; qs("#import-preview-summary").innerHTML = ""; table("#import-check-table", ["Row", "Client", "Area", "Status", "Safety Notes"], []); });
+qs("#import-branch")?.addEventListener("change", () => renderImportCheck());
+qs("#clear-import").addEventListener("click", () => { lastImportFileName = null; qs("#csv-file-input").value = ""; qs("#csv-input").value = ""; syncImportBranchField(false); qs("#import-preview-summary").innerHTML = ""; table("#import-check-table", ["Row", "Client", "Area", "Status", "Safety Notes"], []); });
 qs("#run-import").addEventListener("click", async () => {
   if (!canApproveMigrations()) return toast("Only Superadmin or CEO can approve a migration import.");
   const checked = renderImportCheck();
   const ready = checked.filter((row) => row.status === "Ready");
   if (!ready.length) return toast("No valid rows to import. Review the skipped-row warnings first.");
-  const moduleLabel = /** @type {Record<string, string>} */ ({ clientsMasterlist: "Clients", suppliersMasterlist: "Suppliers/Vendors", productsMasterlist: "Products/Services" })[ready[0]?.kind] || "Records";
+  const moduleLabel = /** @type {Record<string, string>} */ ({ clientsMasterlist: "Clients", suppliersMasterlist: "Suppliers/Vendors", productsMasterlist: "Products/Services", inventoryMigration: "Inventory stock" })[ready[0]?.kind] || "Records";
   const ok = await confirmDetailsModal({
     eyebrow: "Confirm Migration Import",
     title: `Import ${ready.length} ${moduleLabel} record(s)`,
-    fields: [["File", lastImportFileName || "Pasted CSV/TSV"], ["Ready rows", ready.length], ["Skipped rows", checked.length - ready.length]],
+    fields: [["File", lastImportFileName || "Pasted CSV/TSV"], ...(ready[0]?.kind === "inventoryMigration" ? [["Stock branch", qs("#import-branch")?.value || "-"]] : []), ["Ready rows", ready.length], ["Skipped rows", checked.length - ready.length]],
     confirmLabel: "Approve & Import",
     note: "This creates new live records. Review the preview table carefully before confirming.",
   });

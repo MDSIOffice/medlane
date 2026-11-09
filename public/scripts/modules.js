@@ -5819,6 +5819,7 @@ function detectImportKind(rows) {
   if (header.includes("classification") && header.includes("tin") && header.includes("contactperson") && !header.includes("customertype")) return "suppliersMasterlist";
   if (header.includes("client") && (header.includes("sino") || header.includes("tsdr") || header.includes("actualsales"))) return "salesMigration";
   if (header.includes("receiptno") && (header.includes("amountpaid") || header.includes("amount"))) return "collectionsMigration";
+  if ((header.includes("product") || header.includes("item") || header.includes("itemcode")) && (header.includes("quantity") || header.includes("qty")) && !header.includes("client")) return "inventoryMigration";
   return "clients";
 }
 
@@ -6020,6 +6021,80 @@ function validateCollectionsMigrationRows(rows) {
   });
 }
 
+// Strict expiry parsing for the inventory import. Blank → "N/A" (no expiry). Accepts YYYY-MM-DD,
+// M/D/YYYY (Philippine/Excel order) and month-name dates ("Jan 31, 2027"); anything else, or an
+// impossible date like 2027-02-30, is rejected rather than guessed.
+/** @param {unknown} raw @returns {{ ok: boolean, value: string }} */
+function importExpiry(raw) {
+  const text = String(raw || "").trim();
+  if (!text || /^(n\/?a|none|-)$/i.test(text)) return { ok: true, value: "N/A" };
+  /** @param {number} y @param {number} m @param {number} d */
+  const build = (y, m, d) => {
+    const date = new Date(Date.UTC(y, m - 1, d));
+    if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return { ok: false, value: text };
+    return { ok: true, value: `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` };
+  };
+  let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  if (match) return build(Number(match[1]), Number(match[2]), Number(match[3]));
+  match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+  if (match) return build(Number(match[3]), Number(match[1]), Number(match[2]));
+  if (/[a-z]/i.test(text) && /\d{4}/.test(text)) {
+    const parsed = new Date(`${text} 12:00`);
+    if (!Number.isNaN(parsed.getTime())) return build(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
+  }
+  return { ok: false, value: text };
+}
+
+/** @param {string[][]} rows @returns {ImportCheckRow[]} */
+function validateInventoryMigrationRows(rows) {
+  const headers = rows[0].map(normalizedImportHeader);
+  const branch = String(qs("#import-branch")?.value || "").trim();
+  const branchValid = platformBranches().includes(branch);
+  const existingKeys = new Set(data.inventory.map((entry, index) => String(saveRecordKeyFor("inventory", entry, index))));
+  const checked = rows.slice(1).map((row, index) => {
+    const product = rowValue(headers, row, ["Product", "Product Name", "Item", "Item Code", "Item Description"]).trim();
+    const qtyText = rowValue(headers, row, ["Quantity", "Qty"]).trim().replace(/,/g, "");
+    const lot = rowValue(headers, row, ["Lot No.", "Lot", "Lot Number"]).trim();
+    const expiry = importExpiry(rowValue(headers, row, ["Expiry Date", "Expiration Date", "Expiry", "Expiration"]));
+    const issues = [];
+    if (!branchValid) issues.push("Choose a stock branch above");
+    // Match by item code first, then by exact (normalized) name; archived items never count.
+    const codeKey = normalizeMasterCode(product);
+    const nameKey = normalizeMasterName(product);
+    const byCode = data.items.filter((item) => codeKey && normalizeMasterCode(item.code) === codeKey);
+    const byName = data.items.filter((item) => nameKey && normalizeMasterName(item.name) === nameKey);
+    const candidates = byCode.length ? byCode : byName;
+    const active = candidates.filter((item) => !isArchived(item));
+    const item = active.length === 1 ? active[0] : null;
+    if (!product) issues.push("Missing product");
+    else if (!candidates.length) issues.push("Product not in Products masterlist — add it there first");
+    else if (!active.length) issues.push("Product is archived in the masterlist");
+    else if (active.length > 1) issues.push("Name matches several products — use the item code");
+    if (!qtyText) issues.push("Missing quantity");
+    else if (!/^\d+(\.\d+)?$/.test(qtyText) || Number(qtyText) <= 0) issues.push("Quantity must be a number greater than zero");
+    if (!expiry.ok) issues.push("Invalid expiry date (use YYYY-MM-DD)");
+    else if (expiry.value !== "N/A" && daysUntil(expiry.value) < 0) issues.push("Expiry date has already passed");
+    if (item) {
+      // Same identity the server stores stock under (code | branch | lot): an existing row must be
+      // adjusted in Inventory → Stocks, not re-imported over.
+      const stockKey = String(saveRecordKeyFor("inventory", { code: item.code, branch, lot, serial: lot }));
+      if (branchValid && existingKeys.has(stockKey)) issues.push(`Already has stock in ${branch} — adjust it in Inventory → Stocks instead`);
+    }
+    return { row: index + 2, kind: "inventoryMigration", name: item ? `${item.code} · ${item.name}` : product, area: branchValid ? branch : "-", code: item?.code || "", qty: Number(qtyText) || 0, lot, expiry: expiry.value, issues };
+  });
+  // Each product may appear only once per file — even with different lots/expiries. Every row of a
+  // repeated product is blocked (not just the later ones), so nothing for it imports with a partial
+  // quantity until the file is fixed.
+  /** @type {Map<string, number[]>} */
+  const rowsByCode = new Map();
+  checked.forEach((entry) => { if (entry.code) { const key = normalizeMasterCode(entry.code); rowsByCode.set(key, [...(rowsByCode.get(key) || []), entry.row]); } });
+  return checked.map(({ issues, ...entry }) => {
+    const sameProduct = entry.code ? rowsByCode.get(normalizeMasterCode(entry.code)) || [] : [];
+    if (sameProduct.length > 1) issues.push(`Same product listed on rows ${sameProduct.join(", ")} — list each product only once (combine the quantities)`);
+    return { ...entry, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
+  });
+}
+
 /** @returns {ImportCheckRow[]} */
 function validateImportRows() {
   const parsed = parseImportText();
@@ -6030,6 +6105,7 @@ function validateImportRows() {
   if (kind === "productsMasterlist") return validateProductsMasterlistRows(parsed);
   if (kind === "salesMigration") return validateSalesMigrationRows(parsed);
   if (kind === "collectionsMigration") return validateCollectionsMigrationRows(parsed);
+  if (kind === "inventoryMigration") return validateInventoryMigrationRows(parsed);
   const allowedAreas = ["Region I", "Region II", "Region III", "Region IV-A", "NCR", "Region V", "Visayas Dealer", "Mindanao Dealer"];
   const seen = new Set();
   return parsed.map((cells, index) => {
@@ -6046,9 +6122,28 @@ function validateImportRows() {
   });
 }
 
+// The inventory import has no branch column (Product / Quantity / Expiry only), so the branch the
+// stock goes into is picked once for the whole file. Shown only while an inventory file is loaded.
+/** @param {boolean} show */
+function syncImportBranchField(show) {
+  const field = qs("#import-branch-field");
+  const select = qs("#import-branch");
+  if (!field || !select) return;
+  field.hidden = !show;
+  const branches = platformBranches();
+  const current = select.value;
+  const wanted = ["", ...branches].join("|");
+  if (select.dataset.options !== wanted) {
+    select.innerHTML = `<option value="">Choose branch…</option>${branches.map((branch) => `<option value="${escapeHtml(branch)}">${escapeHtml(branch)}</option>`).join("")}`;
+    select.dataset.options = wanted;
+    if (branches.includes(current)) select.value = current;
+  }
+}
+
 /** @returns {ImportCheckRow[]} */
 function renderImportCheck() {
   const checked = validateImportRows();
+  syncImportBranchField(checked.some((row) => row.kind === "inventoryMigration"));
   const ready = checked.filter((row) => row.status === "Ready");
   const blocked = checked.filter((row) => row.status !== "Ready");
   const duplicateWarnings = blocked.filter((row) => /duplicate/i.test(row.issues)).length;
@@ -6094,6 +6189,20 @@ function importCheckedRows(checked) {
     const items = [];
     ready.forEach((item) => { const product = buildImportedProduct(parsed[item.row - 1], headers); data.items.push(product); items.push(product); recordKeys.push(product.code); });
     return { module: "Products/Services", records: ready.length, skipped: checked.length - ready.length, recordType: "items", recordKeys, createdRecords: { items } };
+  }
+  if (kind === "inventoryMigration") {
+    const branch = String(qs("#import-branch")?.value || "").trim();
+    /** @type {StockRow[]} */
+    const stocks = [];
+    ready.forEach((row) => {
+      const item = data.items.find((entry) => entry.code === row.code);
+      if (!item) return;
+      const stock = /** @type {StockRow} */ ({ code: item.code, item: item.name, brand: item.brand, branch, lot: row.lot, serial: row.lot, expiry: row.expiry, qty: row.qty, min: 10, migrated: true, migrationSource: "Inventory import" });
+      data.inventory.push(stock);
+      stocks.push(stock);
+    });
+    // Not revertible: imported stock starts moving (invoices, transfers) right away.
+    return { module: "Inventory", records: stocks.length, skipped: checked.length - stocks.length, createdRecords: { inventory: stocks } };
   }
   if (kind === "salesMigration") {
     const parsed = parseImportText();

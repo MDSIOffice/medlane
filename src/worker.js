@@ -1143,6 +1143,42 @@ function assertSaleNotNegative(sale, label) {
   if (Number(sale.amount ?? 0) < 0 || Number(sale.net ?? 0) < 0) throw new Error(`Invoice ${label}: amount and net cannot be negative.`);
 }
 
+// Inventory migration import (Import page, "Inventory stock" CSV): a stock row created with
+// `migrated: true` must reference an active product already in the Items masterlist, carry a
+// positive quantity and a real (or "N/A") expiry, and come from someone who can run an import.
+// Only brand-new rows are checked — once a migrated row exists, later invoicing/transfers/stock
+// edits update it like any other stock row.
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
+async function assertMigratedStockAllowed(env, stateKey, profile, rows) {
+  const migrated = rows.filter((row) => row.module_name === "inventory" && row.data?.migrated === true);
+  if (!migrated.length) return;
+  const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(migrated.map((row) => row.record_key)))}&select=record_key`));
+  const existing = new Set(stored.map((entry) => entry.record_key));
+  const fresh = migrated.filter((row) => !existing.has(row.record_key));
+  if (!fresh.length) return;
+  const canImport = ["Superadmin", "CEO"].includes(profile.role) || Boolean(profile.customPermissions?.edit?.includes("imports"));
+  if (!canImport) throw new Error("Importing inventory stock requires Imports edit permission.");
+  const itemRows = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`));
+  const activeCodes = new Set(itemRows.filter((entry) => !entry.data?.archived).map((entry) => String(entry.data?.code || "").trim().toLowerCase()).filter(Boolean));
+  // One row per product per import: the same product twice (even as different lots) is refused.
+  /** @type {Set<string>} */
+  const seenCodes = new Set();
+  for (const row of fresh) {
+    const code = `${String(row.data?.code || "").trim().toLowerCase()}|${String(row.data?.branch || "").trim().toLowerCase()}`;
+    if (seenCodes.has(code)) throw new Error(`Stock ${row.data?.code || row.record_key}: the same product appears more than once in this import. List each product only once.`);
+    seenCodes.add(code);
+  }
+  for (const row of fresh) {
+    const stock = row.data || {};
+    const label = `${stock.code || stock.item || row.record_key}`;
+    if (!activeCodes.has(String(stock.code || "").trim().toLowerCase())) throw new Error(`Stock ${label}: product is not an active item in the Products masterlist. Import Products before inventory.`);
+    const qty = Number(stock.qty);
+    if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Stock ${label}: quantity must be greater than zero.`);
+    if (!stock.branch) throw new Error(`Stock ${label}: a stock branch is required.`);
+    if (stock.expiry && stock.expiry !== "N/A" && !/^\d{4}-\d{2}-\d{2}$/.test(String(stock.expiry))) throw new Error(`Stock ${label}: expiry must be a date (YYYY-MM-DD).`);
+  }
+}
+
 /** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow<IncomingSale>[]} newSaleRows */
 async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
   const canAuthorizeDiscount = ["Superadmin", "CEO", "Admin"].includes(profile?.role);
@@ -4576,6 +4612,7 @@ export default {
               assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
               assertSupportReportChangesAllowed(env, stateKey, profile, rows),
               assertCreditApprovalAllowed(env, stateKey, profile, rows),
+              assertMigratedStockAllowed(env, stateKey, profile, rows),
             ]);
 
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
@@ -4978,6 +5015,7 @@ export default {
           assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
               assertSupportReportChangesAllowed(env, stateKey, profile, rows),
           assertCreditApprovalAllowed(env, stateKey, profile, rows),
+          assertMigratedStockAllowed(env, stateKey, profile, rows),
         ]);
 
         if (saleScopedInventory) {
