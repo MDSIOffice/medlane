@@ -12,6 +12,7 @@ const EXPOSED = [
   "assertDemoRequestTransitionsAllowed", "assertSupportReportChangesAllowed", "assertPurchaseOrderClientsNotArchived",
   "demoRequestInitialStatus", "validateReceivingLines", "validRole", "roleModules", "ROLE_BLOCKED_MODULES",
   "boardMonitorsDue", "dailyDigestHours", "odometerReminderMessage", "assertSaveNotStale",
+  "createBackup", "restoreBackupObject", "persistedKeys",
 ];
 
 registerHooks({
