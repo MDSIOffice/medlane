@@ -1,12 +1,18 @@
 // @ts-check
 // Landing "delivery journey": a pinned, scroll-driven story. The truck holds still while the road,
 // skyline and content move past it, then the camera rises through clouds onto the Philippines map.
-// Without JS (or with reduced motion) the scenes stay as plain stacked content; see .lr-journey in styles.
+// Without JS the scenes stay as plain stacked content; see .lr-journey in styles.
+//
+// Reduced motion still gets the story: every movement here is driven by the visitor's own scroll
+// (nothing plays by itself), and Windows turns that preference on for anyone with "Animation
+// effects" off, which hid the whole journey from many office PCs. In that mode it is gentler
+// instead: no glide (the scene tracks the scrollbar exactly), no truck bob, and scenes cross-fade
+// rather than zoom.
 (() => {
   const root = document.getElementById("lr-journey");
   if (!root) return;
   if (!("IntersectionObserver" in window)) return;
-  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const reduceMotion = Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   /** @param {string} sel */
   const one = (sel) => /** @type {HTMLElement | null} */ (root.querySelector(sel));
@@ -115,7 +121,7 @@
     const spin = `${(px / 3).toFixed(1)}deg`;
     wheels.forEach((wheel) => { wheel.style.transform = `rotate(${spin})`; });
     if (truck) truck.style.transform = `translate3d(${lerp(-125, 0, ease(seg(p, 0, 0.05)))}%,0,0)`;
-    if (bob) bob.style.transform = `translateY(${(Math.sin(px / 34) * 1.3).toFixed(2)}px)`;
+    if (bob && !reduceMotion) bob.style.transform = `translateY(${(Math.sin(px / 34) * 1.3).toFixed(2)}px)`;
     if (chip) {
       const c = ease(seg(p, 0.05, 0.08));
       chip.style.opacity = c.toFixed(3);
@@ -169,7 +175,7 @@
 
   /** @param {number} p */
   function renderMap(p) {
-    if (map) map.style.transform = `scale(${lerp(1.3, 1, ease(seg(p, 0.73, 0.82))).toFixed(3)})`;
+    if (map && !reduceMotion) map.style.transform = `scale(${lerp(1.3, 1, ease(seg(p, 0.73, 0.82))).toFixed(3)})`;
     const r = ease(seg(p, 0.79, 0.975));
     route.style.strokeDashoffset = (routeLength * (1 - r)).toFixed(1);
     const at = r * routeLength;
@@ -201,11 +207,11 @@
   /** @param {number} p */
   function render(p) {
     setScene(roadScene, 1 - ease(seg(p, 0.32, 0.385)));
-    roadScene.style.transform = `scale(${lerp(1, 1.14, ease(seg(p, 0.32, 0.385))).toFixed(3)})`;
+    if (!reduceMotion) roadScene.style.transform = `scale(${lerp(1, 1.14, ease(seg(p, 0.32, 0.385))).toFixed(3)})`;
     const topIn = ease(seg(p, 0.345, 0.4));
     const topOut = ease(seg(p, 0.645, 0.72));
     setScene(topScene, topIn * (1 - topOut));
-    topScene.style.transform = `scale(${(lerp(1.12, 1, topIn) * lerp(1, 0.62, topOut)).toFixed(3)})`;
+    if (!reduceMotion) topScene.style.transform = `scale(${(lerp(1.12, 1, topIn) * lerp(1, 0.62, topOut)).toFixed(3)})`;
     setScene(mapScene, ease(seg(p, 0.725, 0.77)));
     if (p < 0.4) renderRoad(p);
     if (p > 0.33 && p < 0.74) renderTop(p);
@@ -227,7 +233,7 @@
     frame = 0;
     const target = readTarget();
     const delta = target - current;
-    current = Math.abs(delta) < 0.00015 ? target : current + delta * 0.14;
+    current = reduceMotion || Math.abs(delta) < 0.00015 ? target : current + delta * 0.14;
     render(current);
     if (visible && current !== target) frame = requestAnimationFrame(tick);
   };

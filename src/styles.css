@@ -215,9 +215,6 @@ body.app-route .landing-page { display: none !important; }
 .global-loading-bar.active { opacity: 1; }
 .global-loading-bar::before { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; background: linear-gradient(90deg, transparent, var(--blue), var(--blue-dark), var(--blue), transparent); animation: global-loading-sweep 1.1s ease-in-out infinite; }
 @keyframes global-loading-sweep { 0% { left: -40%; } 100% { left: 100%; } }
-@media (prefers-reduced-motion: reduce) {
-  .global-loading-bar::before { animation-duration: 2.2s; }
-}
 
 .loading-overlay {
   position: fixed;
@@ -2059,8 +2056,25 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .primary-button.confirm-button { background: var(--green); color: #fff; box-shadow: 0 10px 24px -10px color-mix(in srgb, var(--green) 60%, transparent); }
 .primary-button.confirm-button:hover, .primary-button.confirm-button:focus-visible { background: color-mix(in srgb, var(--green) 85%, #000); color: #fff; }
 
+/* Reduced motion means "no movement", not "no feedback". Windows turns this preference on for anyone
+   with Animation effects off (common on office PCs), so it must not freeze the app:
+   - movement (slides, zooms, parallax, keyframe loops) stops: keyframe animations jump straight to
+     their end state, and only non-moving properties are allowed to transition;
+   - fades and colour changes still animate, so hovers and reveals don't feel broken;
+   - progress indicators keep moving (slower) — a frozen spinner reads as a hung app. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important; /* not .01ms: the CSS minifier turns that into "NaNs" */
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-property: opacity, color, background-color, border-color, outline-color, box-shadow, fill, stroke, text-decoration-color !important;
+  }
+  .global-loading-bar::before { animation: global-loading-sweep 2.2s ease-in-out infinite !important; }
+  .loader-card span, .action-loading-orbit span, .primary-button.is-loading::before,
+  .save-status-indicator.saving .save-status-logo::before, .print-loading-spinner { animation: spin 1.6s linear infinite !important; }
+  .backup-progress.indeterminate span { animation: backupProgress 2.2s ease-in-out infinite !important; }
+  .skeleton-cell { animation: skeletonShimmer 2.2s ease-in-out infinite !important; }
 }
 
 @media print {
@@ -2473,9 +2487,6 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   input, select, textarea { font-size: 16px !important; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
-}
 
 .collection-detail-modal { width: min(1420px, calc(100vw - 24px)); }
 .collection-detail-modal .collection-detail-preview { width: 100%; max-width: none; }
@@ -2863,7 +2874,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .lr-node { width: 108px; font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lr-section { opacity: 1; transform: none; transition: none; }
+  .lr-section { transform: none; }
   .lr-bento figure:hover img { transform: none; }
   .lr-badge--green i, .lr-node-pulse { animation: none; }
 }
@@ -2968,7 +2979,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .lr-hero-left > *, .lr-hero-card { opacity: 1; }
   .lr-divider { transform: scaleX(1); transition: none; }
   .lr-card, .lr-loc-card, .lr-checklist li, .lr-metric, .lr-profile-photo, .lr-profile-text,
-  .lr-ops-left, .lr-ops-board, .lr-bento-main, .lr-bento-right { opacity: 1; transform: none; transition: none; }
+  .lr-ops-left, .lr-ops-board, .lr-bento-main, .lr-bento-right { transform: none; }
   .lr-hero.lr-parallax .lr-hero-orb, .lr-hero.lr-parallax .lr-particle-1, .lr-hero.lr-parallax .lr-particle-2 { transform: none; }
 }
 
@@ -3099,7 +3110,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .lr-hero h1 .lr-word { overflow: visible; padding: 0; margin: 0; }
   .lr-hero h1 .lr-word > span { transform: none; opacity: 1; animation: none; }
   .lr-head h2 { clip-path: none; transition: none; }
-  .lr-kicker { transform: none; opacity: 1; transition: none; }
+  .lr-kicker { transform: none; }
   .lr-hero-card.lr-tilt-ready { transform: none; }
   .lr-hero-aurora { transform: none; }
   .lr-bento figure img { transform: scale(1.02); }

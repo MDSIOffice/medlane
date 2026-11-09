@@ -25,8 +25,9 @@
   }
 
   // ---- Count-up metrics when the profile section scrolls into view ----
+  // Runs under reduced motion too: changing digits in place isn't movement.
   const counters = $$("[data-count]");
-  if (counters.length && "IntersectionObserver" in window && !reduceMotion) {
+  if (counters.length && "IntersectionObserver" in window) {
     const countObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
