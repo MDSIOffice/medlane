@@ -588,6 +588,18 @@ let pendingSaveQueueMemory = /** @type {any} */ (null);
 // ensurePendingSaveQueueHydrated() below only does real work once per user per tab session.
 /** @type {any} */
 let pendingSaveQueueHydratedKey = null;
+// Per-module stamp for each queued snapshot: queuedAt = client time it was queued (drives the
+// 12-hour expiry), basedOn = server time the data it was built from was loaded (compared against
+// the server's data-reset marker). Kept beside the queue, never inside it, because every reader
+// treats each queue key as a module name to save.
+/** @typedef {{ queuedAt: number, basedOn: string | null }} PendingSaveMeta */
+/** @type {Record<string, PendingSaveMeta>} */
+let pendingSaveQueueMeta = {};
+// Matches the server's 12-hour app-session limit: anything queued longer ago belongs to a login
+// that has already ended, so replaying it would push a snapshot nobody is watching over newer data.
+const PENDING_SAVE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+/** @param {string} key */
+function pendingSaveMetaDbKey(key) { return `${key}::meta`; }
 
 const PENDING_SAVE_DB_NAME = "medlane-pending-save";
 const PENDING_SAVE_DB_STORE = "queue";
@@ -602,7 +614,7 @@ function openPendingSaveDb() {
   });
 }
 
-/** @param {string} key */
+/** @param {string} key @returns {Promise<Record<string, unknown>>} */
 function readPendingSaveQueueFromDb(key) {
   return openPendingSaveDb().then((db) => new Promise((resolve, reject) => {
     const getRequest = db.transaction(PENDING_SAVE_DB_STORE, "readonly").objectStore(PENDING_SAVE_DB_STORE).get(key);
@@ -613,12 +625,12 @@ function readPendingSaveQueueFromDb(key) {
 
 // Fire-and-forget: the caller (writePendingSaveQueue) has already updated pendingSaveQueueMemory
 // synchronously, so nothing downstream waits on this resolving or needs to handle its failure.
-/** @param {string} key @param {Record<string, any>} cleaned */
-function writePendingSaveQueueToDb(key, cleaned) {
+/** @param {string} key @param {Record<string, any>} cleaned @param {Record<string, PendingSaveMeta>} [meta] */
+function writePendingSaveQueueToDb(key, cleaned, meta = {}) {
   openPendingSaveDb().then((db) => {
     const store = db.transaction(PENDING_SAVE_DB_STORE, "readwrite").objectStore(PENDING_SAVE_DB_STORE);
-    if (Object.keys(cleaned).length) store.put(cleaned, key);
-    else store.delete(key);
+    if (Object.keys(cleaned).length) { store.put(cleaned, key); store.put(meta, pendingSaveMetaDbKey(key)); }
+    else { store.delete(key); store.delete(pendingSaveMetaDbKey(key)); }
   }).catch((error) => {
     console.warn("Could not persist pending save queue to IndexedDB (disk full or storage unavailable?) — staying queued in memory for this session:", error.message);
   });
@@ -629,6 +641,7 @@ function readPendingSaveQueue() {
   if (pendingSaveQueueMemoryKey !== key) {
     pendingSaveQueueMemoryKey = key;
     pendingSaveQueueMemory = {};
+    pendingSaveQueueMeta = {};
   }
   return pendingSaveQueueMemory;
 }
@@ -637,14 +650,64 @@ function readPendingSaveQueue() {
 function writePendingSaveQueue(payload) {
   const key = pendingSaveQueueKey();
   const cleaned = Object.fromEntries(Object.entries(payload || /** @type {Record<string, any>} */ ({})).filter(([, value]) => value !== undefined));
+  if (pendingSaveQueueMemoryKey !== key) pendingSaveQueueMeta = {};
+  // Keep stamps only for modules still queued; a module that somehow has none is stamped now.
+  /** @type {Record<string, PendingSaveMeta>} */
+  const meta = {};
+  Object.keys(cleaned).forEach((module) => { meta[module] = pendingSaveQueueMeta[module] || newPendingSaveMeta(); });
   pendingSaveQueueMemoryKey = key;
   pendingSaveQueueMemory = cleaned;
-  writePendingSaveQueueToDb(key, cleaned);
+  pendingSaveQueueMeta = meta;
+  writePendingSaveQueueToDb(key, cleaned, meta);
+}
+
+/** @returns {PendingSaveMeta} */
+function newPendingSaveMeta() {
+  return { queuedAt: Date.now(), basedOn: MedlaneAPI?.dataLoadedAt?.() || null };
 }
 
 /** @param {Record<string, any>} payload */
 function mergePendingSaveQueue(payload) {
-  writePendingSaveQueue({ ...readPendingSaveQueue(), ...(payload || /** @type {Record<string, any>} */ ({})) });
+  const incoming = payload || /** @type {Record<string, any>} */ ({});
+  const current = readPendingSaveQueue();
+  // Each module in this payload is a fresh snapshot of the current in-memory data, so re-stamp it.
+  Object.keys(incoming).forEach((module) => { pendingSaveQueueMeta[module] = newPendingSaveMeta(); });
+  writePendingSaveQueue({ ...current, ...incoming });
+}
+
+// The data generation a save of these queued modules is built on: the oldest `basedOn` among them,
+// so one stale module can't ride along inside an otherwise-fresh save.
+/** @param {string[]} keys @returns {string | null} */
+function pendingSaveBasedOn(keys) {
+  const stamps = keys.map((key) => pendingSaveQueueMeta[key]?.basedOn).filter((value) => value && Number.isFinite(Date.parse(String(value))));
+  if (!stamps.length) return MedlaneAPI?.dataLoadedAt?.() || null;
+  return /** @type {string} */ (stamps.reduce((oldest, value) => (Date.parse(String(value)) < Date.parse(String(oldest)) ? value : oldest)));
+}
+
+// Drops queued snapshots that must never be replayed: unstamped ones (queued by a build before
+// stamps existed — their age and origin are unknown), ones older than PENDING_SAVE_MAX_AGE_MS, and
+// ones built on data loaded before the server's last data reset (wipe or backup restore). Run at
+// login / session restore, after the queue is hydrated and before it is applied or flushed.
+/** @param {string | null | undefined} resetAt @returns {string[]} the discarded module keys */
+function prunePendingSaveQueue(resetAt) {
+  const pending = readPendingSaveQueue();
+  const resetMs = resetAt ? Date.parse(resetAt) : NaN;
+  const now = Date.now();
+  const dropped = Object.keys(pending).filter((module) => {
+    const meta = pendingSaveQueueMeta[module];
+    if (!meta || !Number.isFinite(meta.queuedAt)) return true;
+    if (now - meta.queuedAt > PENDING_SAVE_MAX_AGE_MS) return true;
+    if (Number.isFinite(resetMs)) {
+      const basedOnMs = meta.basedOn ? Date.parse(meta.basedOn) : NaN;
+      if (!Number.isFinite(basedOnMs) || basedOnMs < resetMs) return true;
+    }
+    return false;
+  });
+  if (dropped.length) {
+    console.warn(`Discarded stale unsent changes for: ${dropped.join(", ")}`);
+    clearPendingSaveQueueKeys(dropped);
+  }
+  return dropped;
 }
 
 // Awaited once, at login and at session-restore (before applyPendingSaveQueueToLocal() needs
@@ -655,9 +718,13 @@ async function ensurePendingSaveQueueHydrated() {
   const key = pendingSaveQueueKey();
   if (pendingSaveQueueHydratedKey === key) return;
   pendingSaveQueueHydratedKey = key;
+  /** @type {Record<string, unknown>} */
   let stored = {};
+  /** @type {Record<string, PendingSaveMeta>} */
+  let storedMeta = {};
   try {
     stored = await readPendingSaveQueueFromDb(key);
+    storedMeta = /** @type {Record<string, PendingSaveMeta>} */ (await readPendingSaveQueueFromDb(pendingSaveMetaDbKey(key)));
   } catch (/** @type {any} */ error) {
     console.warn("Could not read pending save queue from IndexedDB:", error.message);
   }
@@ -674,9 +741,13 @@ async function ensurePendingSaveQueueHydrated() {
   }
   // Don't clobber anything a user already queued (via writePendingSaveQueue) while this was
   // in flight — merge on top of it rather than overwriting.
-  pendingSaveQueueMemory = { ...stored, ...(pendingSaveQueueMemoryKey === key ? pendingSaveQueueMemory : {}) };
+  const sameKey = pendingSaveQueueMemoryKey === key;
+  pendingSaveQueueMemory = { ...stored, ...(sameKey ? pendingSaveQueueMemory : {}) };
+  // Stored snapshots keep their stored stamps (a legacy one has none, and prunePendingSaveQueue
+  // discards it); anything queued during hydration keeps its in-memory stamp.
+  pendingSaveQueueMeta = { ...storedMeta, ...(sameKey ? pendingSaveQueueMeta : {}) };
   pendingSaveQueueMemoryKey = key;
-  if (Object.keys(stored).length) writePendingSaveQueueToDb(key, pendingSaveQueueMemory);
+  if (Object.keys(stored).length) writePendingSaveQueueToDb(key, pendingSaveQueueMemory, pendingSaveQueueMeta);
 }
 
 // A queued module snapshot only reflects state as of whenever it was queued. If a
@@ -814,7 +885,7 @@ function saveData(keys = null) {
       return;
     }
     const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
-    MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
+    MedlaneAPI.saveAppState(queuedPayload, serverRevision, pendingSaveBasedOn(Object.keys(queuedPayload))).then((result) => {
       if (result?.revision) {
         serverRevision = Number(result.revision);
       }
@@ -826,8 +897,10 @@ function saveData(keys = null) {
         if (latest?.data) {
           serverRevision = Number(latest.revision || 0);
           data = normalizeData({ ...emptyProductionData(), ...latest.data });
+          // A stale snapshot (built before a data reset) can never succeed — don't keep retrying it.
+          if (error.message.includes("STALE_SNAPSHOT")) writePendingSaveQueue({});
           if (typeof renderAll === "function") renderAll();
-          if (typeof toast === "function") toast("Another user saved first. Reloaded latest server data.");
+          if (typeof toast === "function") toast(error.message.includes("STALE_SNAPSHOT") ? "The system data was reset since this page loaded. Reloaded the latest data — please redo your last change." : "Another user saved first. Reloaded latest server data.");
           setGlobalSaveStatus("saved", "Reloaded");
           return;
         }
@@ -848,7 +921,7 @@ function flushPendingSaveQueue() {
   clearTimeout(pendingServerSave);
   setGlobalSaveStatus("saving", "Saving pending changes...");
   const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
-  MedlaneAPI.saveAppState(queuedPayload, serverRevision).then((result) => {
+  MedlaneAPI.saveAppState(queuedPayload, serverRevision, pendingSaveBasedOn(Object.keys(queuedPayload))).then((result) => {
     if (result?.revision) serverRevision = Number(result.revision);
     writePendingSaveQueue({});
     setGlobalSaveStatus("saved", "Saved");
@@ -881,7 +954,7 @@ function flushPendingSaveQueue() {
       let transient = false;
       for (const [key, value] of Object.entries(queuedPayload)) {
         try {
-          const result = await MedlaneAPI.saveAppState({ [key]: value }, serverRevision);
+          const result = await MedlaneAPI.saveAppState({ [key]: value }, serverRevision, pendingSaveBasedOn([key]));
           if (result?.revision) serverRevision = Number(result.revision);
           clearPendingSaveQueueKeys([key]);
         } catch (/** @type {any} */ innerError) {
@@ -932,6 +1005,20 @@ async function persistRecords(records, recordKeys = {}) {
     setGlobalSaveStatus("saved", "Saved");
     return result;
   } catch (/** @type {any} */ error) {
+    // Built on data from before a data reset/restore: queueing it would only replay the stale
+    // snapshot later. Adopt the server's current data instead and ask the user to redo the change.
+    if (/STALE_SNAPSHOT/.test(error.message || "")) {
+      const latest = await MedlaneAPI.loadAppState().catch(() => null);
+      if (latest?.data) {
+        serverRevision = Number(latest.revision || 0);
+        data = normalizeData({ ...emptyProductionData(), ...latest.data });
+        writePendingSaveQueue({});
+        if (typeof renderAll === "function") renderAll();
+      }
+      setGlobalSaveStatus("error", "Not saved", error.message);
+      if (typeof toast === "function") toast("The system data was reset since this page loaded. Reloaded the latest data — please redo this change.");
+      return { ok: false, queued: false, error: error.message };
+    }
     mergePendingSaveQueue(savePayloadForKeys(Object.keys(filtered)));
     setGlobalSaveStatus("error", "Save failed", error.message);
     if (typeof toast === "function") toast(`Server save failed; queued for retry: ${error.message}`);

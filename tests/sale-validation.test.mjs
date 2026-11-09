@@ -250,5 +250,6 @@ describe("genuine invoices still pass", () => {
   test("skip-PO invoice with an authorized discount", async () => { roomy(); await run(as("Admin"), built({ noPo: true, discount: 20, net: 180 })); });
   test("amounts sent as numeric strings", async () => { roomy(); await run(as("Accounting"), built({ amount: "200", net: "200.00" })); });
   test("migrated row with its own net formula", async () => { roomy(); await run(as("Admin", ["imports"]), built({ migrated: true, amount: 200, net: 224 })); });
-  test("migrated row for a client new in this same import", async () => { roomy(); await run(as("Admin", ["imports"]), built({ migrated: true, client: "Brand New Lab" })); });
+  // Opening-AR migration requires the Clients masterlist import first — no placeholder clients.
+  test("migrated row for a client not yet in the masterlist is refused", async () => { roomy(); await assert.rejects(run(as("Admin", ["imports"]), built({ migrated: true, client: "Brand New Lab" })), /not in the Clients masterlist/); });
 });

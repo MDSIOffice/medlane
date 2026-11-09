@@ -5968,6 +5968,8 @@ function validateSalesMigrationRows(rows) {
     if (documentNo && documentExists(documentNo)) issues.push("Duplicate existing document");
     if (documentNo && seenDocuments.has(String(documentNo).trim().toLowerCase())) issues.push("Duplicate input document");
     if (!client) issues.push("Missing client");
+    // Strict ordering: the Clients masterlist must be imported first (the server enforces the same).
+    else if (!data.clients.some((entry) => normalizeMasterName(entry.name) === normalizeMasterName(client))) issues.push("Client not in Clients masterlist — import Clients first or fix the name");
     if (!product) issues.push("Missing product");
     if (amount < 0) issues.push("Invalid amount");
     if (documentNo) seenDocuments.add(String(documentNo).trim().toLowerCase());
@@ -5993,7 +5995,8 @@ function buildMigratedSale(row, headers) {
   const net = type === "DR" ? 0 : importNumber(rowValue(headers, row, ["NET Sales", "Actual Sales", "Invoice Amount", "Total Price"])) || Math.max(amount - discount + tax, 0);
   const item = data.items.find((entry) => entry.name.toLowerCase() === product.toLowerCase() || entry.code.toLowerCase() === product.toLowerCase());
   const client = data.clients.find((entry) => normalizeMasterName(entry.name) === normalizeMasterName(clientName));
-  if (!client) data.clients.push({ name: clientName, area, dealer: rowValue(headers, row, ["Classification"]) || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]), terms: 30, address: rowValue(headers, row, ["Office", "Branch"]), contact: "Migrated record", tin: rowValue(headers, row, ["TIN"]), creditLimit: 150000, docs: "Migrated", migrated: true });
+  // No placeholder clients: validateSalesMigrationRows() blocks any row whose client isn't already
+  // in the masterlist, so `client` is always found here and the invoice takes its real terms.
   if (area && !platformAreas().some((entry) => entry.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
   return { id: documentNo, documentNo, po: `MIG-${documentNo}`, client: client?.name || clientName, area, dealer: rowValue(headers, row, ["Classification"]) || client?.dealer || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]) || "Migrated", type, date: importDate(rowValue(headers, row, ["Date"]), rowValue(headers, row, ["Year"]), rowValue(headers, row, ["Month"])), item: product, brand, qty, uom, amount, discount, discountReason: discount ? "Migrated discount" : "", tax, net, terms: Number(client?.terms || 30), paid: 0, status: "Active", migrated: true, migrationSource: "Sales/Collections import", migrationRemarks: rowValue(headers, row, ["Remarks"]), lines: [{ item: product, code: item?.code || `MIG-${documentNo}`.slice(0, 24), brand, qty, uom, price, lot: "Migrated", expiry: "N/A", terms: Number(client?.terms || 30) }] };
 }
@@ -6095,12 +6098,10 @@ function importCheckedRows(checked) {
   if (kind === "salesMigration") {
     const parsed = parseImportText();
     const headers = parsed[0].map(normalizedImportHeader);
-    const clientsBefore = new Set(data.clients.map((client) => client.name));
     /** @type {any[]} */
     const sales = [];
     ready.forEach((item) => { const sale = buildMigratedSale(parsed[item.row - 1], headers); data.sales.push(sale); sales.push(sale); });
-    const newClients = data.clients.filter((client) => !clientsBefore.has(client.name));
-    return { module: "Sales/Collections", records: ready.length, skipped: checked.length - ready.length, createdRecords: { sales, clients: newClients } };
+    return { module: "Sales/Collections", records: ready.length, skipped: checked.length - ready.length, createdRecords: { sales } };
   }
   if (kind === "collectionsMigration") {
     const parsed = parseImportText();

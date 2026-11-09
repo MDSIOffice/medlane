@@ -21,7 +21,8 @@ interface ThemeResponse extends OkResponse { theme: string }
 
 // ---- App data ----
 interface ModulePageInfo { hasMore: boolean; cursor: string | null; loading?: boolean }
-interface AppStateResponse { data: RawData; revision: number; changesCursor: string; pagination: Record<string, ModulePageInfo> }
+/** loadedAt: server time the data was read (stamped onto later saves as `basedOn`). resetAt: last data-reset marker, or null. */
+interface AppStateResponse { data: RawData; revision: number; changesCursor: string; pagination: Record<string, ModulePageInfo>; loadedAt?: string; resetAt?: string | null }
 interface SaveResponse extends OkResponse { savedRecords: number; revision: number }
 /** One changed record. The module decides its shape, so readers have to narrow `data`. */
 interface ChangedRow { module: string; key: string; data: Record<string, unknown> }

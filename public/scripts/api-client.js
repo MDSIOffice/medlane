@@ -235,10 +235,15 @@ const MedlaneAPI = (() => {
 
   /** @type {string | null} */
   let changesCursor = null;
+  // Server time the in-memory data was last loaded at. Every save sends it as `basedOn` so the
+  // server can refuse saves built on data from before a reset/restore (see assertSaveNotStale).
+  /** @type {string | null} */
+  let dataLoadedAt = null;
   /** @returns {Promise<AppStateResponse>} */
   async function loadAppState() {
     const payload = /** @type {AppStateResponse} */ (await request("/api/modules/state"));
     if (payload?.changesCursor) changesCursor = payload.changesCursor;
+    if (payload?.loadedAt) dataLoadedAt = payload.loadedAt;
     return payload;
   }
 
@@ -278,17 +283,17 @@ const MedlaneAPI = (() => {
     return request("/api/auth/me");
   }
 
-  /** @param {Record<string, any>} nextData @param {number | null} revision @returns {Promise<SaveResponse>} */
-  async function saveAppState(nextData, revision) {
+  /** @param {Record<string, any>} nextData @param {number | null} revision @param {string | null} [basedOn] @returns {Promise<SaveResponse>} */
+  async function saveAppState(nextData, revision, basedOn = dataLoadedAt) {
     // The server does several sequential Supabase round-trips per save (before-state fetch,
     // event-module diff fetch, validation checks, then the upsert) — under load or a cold
     // Supabase connection that chain can outrun the default 30s. Matches uploadFile's timeout.
-    return withTransientRetry(() => request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision }), timeoutMs: 120000 }));
+    return withTransientRetry(() => request("/api/modules/state", { method: "PUT", body: JSON.stringify({ data: nextData, revision, basedOn }), timeoutMs: 120000 }));
   }
 
   /** @param {Record<string, any[]>} records @param {Record<string, any>} [recordKeys] @returns {Promise<SaveResponse>} */
   async function saveRecords(records, recordKeys = {}) {
-    return withTransientRetry(() => request("/api/modules/records", { method: "POST", body: JSON.stringify({ records, recordKeys }) }));
+    return withTransientRetry(() => request("/api/modules/records", { method: "POST", body: JSON.stringify({ records, recordKeys, basedOn: dataLoadedAt }) }));
   }
 
   /** @param {File | Blob} file @param {Record<string, any>} [metadata] @returns {Promise<FileUploadResponse>} */
@@ -694,5 +699,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
+  return { session, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();

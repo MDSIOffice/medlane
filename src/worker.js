@@ -1227,6 +1227,14 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
     // `migrated` skips the stock and amount checks below, and the client sets it, so it's limited to
     // the people who can actually run an import.
     if (sale.migrated && !canImport) throw new Error(`Invoice ${sale.documentNo || row.record_key}: saving a migrated invoice requires Imports edit permission.`);
+    // Opening-AR migration must run after the Clients masterlist import: a migrated invoice may only
+    // reference a client already on file (exact masterlist name). Auto-creating bare placeholder
+    // clients from sales rows used to give them default 30-day terms (wrong aging) and then block
+    // the real Clients import as "duplicate existing client".
+    if (sale.migrated) {
+      const clientRows = await loadClientRows();
+      if (!clientRows.some((clientRow) => clientRow.data?.name === sale.client)) throw new Error(`Invoice ${sale.documentNo || row.record_key}: client "${sale.client || ""}" is not in the Clients masterlist. Import Clients before migrating sales.`);
+    }
     // A skip-PO invoice (buildSale's skipPo path) has no PO behind it, so it's the one invoice
     // shape where the client field is a brand-new, unanchored relationship — check it before the
     // `continue` below skips the rest of this row's validation along with it.
@@ -2399,6 +2407,9 @@ async function restoreBackupObject(env, key, actorId, auditContext) {
       body: JSON.stringify(records.slice(index, index + chunkSize)),
     });
   }
+  // A restore replaces live data wholesale: any client still holding (or queueing) pre-restore
+  // data must not be able to push it back over the restored records.
+  await markDataReset(env, stateKey, actorId);
   await writeAuditTrace(env, stateKey, { actor: actorId || "System User", role: "Superadmin", action: "Restored backup object", module: "Backup", record: `${key} · ${records.length} records upserted · pre-restore safety backup ${preRestoreBackup.object_key}` }, actorId, auditContext);
   return { restoredRecords: records.length, objectKey: key, backupCreatedAt: payload.createdAt || null, preRestoreBackupKey: preRestoreBackup.object_key };
 }
@@ -2487,7 +2498,42 @@ const digestStateModules = ["inventory", "sales", "clients", "warranties", "inve
 const GAME_MODULES = ["game-sessions", "game-scores"];
 // App-state blob exclusions: the game modules plus `logs` (fetched on its own paged endpoint).
 const PERF_MODULE = "perf-snapshots";
-const NON_STATE_MODULES = ["logs", PERF_MODULE, ...GAME_MODULES];
+// Data-reset marker: one row (record_key "marker", data { resetAt: ISO }) bumped whenever the
+// live data is replaced wholesale — a backup restore here, or a manual maintenance wipe in SQL.
+// Clients stamp every save with the server time their data was loaded at (`basedOn`); a save based
+// on data loaded before the last reset is a stale snapshot (e.g. an unsent offline queue from
+// before a wipe) and is refused, so it can't quietly re-upload records that were removed.
+const RESET_MARKER_MODULE = "system-reset";
+const NON_STATE_MODULES = ["logs", PERF_MODULE, RESET_MARKER_MODULE, ...GAME_MODULES];
+
+/** @param {WorkerEnv} env @param {string} stateKey @returns {Promise<string | null>} */
+async function dataResetAt(env, stateKey) {
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${RESET_MARKER_MODULE}&record_key=eq.marker&select=data`);
+  const resetAt = rows[0]?.data?.resetAt;
+  return resetAt && Number.isFinite(Date.parse(resetAt)) ? new Date(resetAt).toISOString() : null;
+}
+
+/** @param {WorkerEnv} env @param {string} stateKey @param {string | null} actorId */
+async function markDataReset(env, stateKey, actorId) {
+  const resetAt = new Date().toISOString();
+  await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+    method: "POST",
+    headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify([{ state_key: stateKey, module_name: RESET_MARKER_MODULE, record_key: "marker", data: { resetAt }, updated_by: actorId || null }]),
+  });
+  return resetAt;
+}
+
+// Refuses a save whose data was loaded before the last data reset. `basedOn` absent means an older
+// cached client build — allowed, since those reload onto the new build via the app-version watch.
+/** @param {WorkerEnv} env @param {string} stateKey @param {unknown} basedOn */
+async function assertSaveNotStale(env, stateKey, basedOn) {
+  if (!basedOn) return;
+  const basedOnMs = Date.parse(String(basedOn));
+  if (!Number.isFinite(basedOnMs)) return;
+  const resetAt = await dataResetAt(env, stateKey);
+  if (resetAt && basedOnMs < Date.parse(resetAt)) throw new Error(`APP_STATE_CONFLICT: STALE_SNAPSHOT — this save is based on data loaded before the system data was reset (${resetAt}). Reload and redo the change.`);
+}
 // Session tokens older than this are past every use (30-min expiry) and are swept.
 const GAME_SESSION_TTL_MS = 3 * 60 * 60 * 1000;
 
@@ -4397,7 +4443,12 @@ export default {
           // is never part of app state; `game-scores` is served by /api/game/*) — excluding
           // them here keeps this load, which every client runs, from paging through
           // thousands of dead session rows.
-          const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+          // loadedAt is taken before the read, so it never postdates the data it describes.
+          const loadedAt = new Date().toISOString();
+          const [rows, resetAt] = await Promise.all([
+            supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`),
+            dataResetAt(env, stateKey),
+          ]);
           // Ship only what's still open/pending plus the most recent PAGINATED_MODULE_PAGE_SIZE
           // for the modules whose history only ever grows — older closed records are fetched on
           // demand via /api/modules/page. changesCursor is derived from the FULL row set (not the
@@ -4405,11 +4456,12 @@ export default {
           const { rows: trimmedRows, pagination } = trimPaginatedModuleRows(rows);
           // `changesCursor` seeds the client's live-update poll (/api/modules/changes). It's the
           // database's own latest updated_at, so Worker/DB clock skew can't open a gap.
-          return json({ data: stateFromRecords(filterRecordsForProfile(trimmedRows, profile, "view")), revision: Date.now(), changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString(), pagination });
+          return json({ data: stateFromRecords(filterRecordsForProfile(trimmedRows, profile, "view")), revision: Date.now(), changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString(), pagination, loadedAt, resetAt });
         }
         if (request.method === "PUT") {
           requireWriteAccess(profile);
-          const { data } = await request.json();
+          const { data, basedOn } = await request.json();
+          await assertSaveNotStale(env, stateKey, basedOn);
           const keys = writableKeys(profile);
           if (!keys.length) throw new Error("You do not have permission to edit production data");
           // Only replace modules the client actually included in this save. A key
@@ -4830,6 +4882,7 @@ export default {
         requireWriteAccess(profile);
         const stateKey = appStateKey(env);
         const body = await request.json().catch(() => ({}));
+        await assertSaveNotStale(env, stateKey, body.basedOn);
         const records = body.records && typeof body.records === "object" ? body.records : {};
         const recordKeys = body.recordKeys && typeof body.recordKeys === "object" ? body.recordKeys : {};
         const allowedKeys = new Set(writableKeys(profile));

@@ -2024,6 +2024,8 @@ qs("#login-form").addEventListener("submit", async (event) => {
     serverRevision = Number(serverState.revision || 0);
     data = normalizeData({ ...emptyProductionData(), ...serverState.data });
     await ensurePendingSaveQueueHydrated();
+    const discarded = prunePendingSaveQueue(serverState.resetAt);
+    if (discarded.length) toast(`Discarded old unsent changes (${discarded.join(", ")}) — they were made before the latest data reset or more than 12 hours ago.`);
     applyPendingSaveQueueToLocal();
     await syncBackendUsers();
     flushPendingSaveQueue();
@@ -2471,6 +2473,8 @@ async function hydrateAuthenticatedSession() {
   data = normalizeData({ ...emptyProductionData(), ...serverState.data });
   modulePagination = serverState.pagination || /** @type {Record<string, any>} */ ({});
   await ensurePendingSaveQueueHydrated();
+  const discarded = prunePendingSaveQueue(serverState.resetAt);
+  if (discarded.length) toast(`Discarded old unsent changes (${discarded.join(", ")}) — they were made before the latest data reset or more than 12 hours ago.`);
   applyPendingSaveQueueToLocal();
   await syncBackendUsers();
   flushPendingSaveQueue();

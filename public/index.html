@@ -1094,7 +1094,7 @@
               <button class="ghost-button" type="button" data-import-template="sales">Sales (opening AR)</button>
               <button class="ghost-button" type="button" data-import-template="collections">Collections</button>
             </div>
-            <small>Keep the header row as-is; replace the example rows with your data. Import Sales before Collections — collections must match an existing SI / TS / DR.</small>
+            <small>Keep the header row as-is; replace the example rows with your data. Import in order: Clients → Suppliers → Products → Sales → Collections. Sales rows are blocked unless the client is already in the Clients masterlist, and collections must match an existing SI / TS / DR.</small>
           </div>
           <div class="field"><label for="csv-file-input">Upload CSV File</label><input id="csv-file-input" type="file" accept=".csv,text/csv" /></div>
           <textarea id="csv-input" placeholder="client,ABC Laboratory,Region IV-A,Address,Contact,123-456-789-000"></textarea>
