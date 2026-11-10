@@ -5845,7 +5845,10 @@ function inferClientArea(row, headers) {
   if (match) {
     const number = Number(match[1]);
     if (number === 4) return match[2] === "B" ? "MIMAROPA" : "Region IV-A";
-    if (number === 6) return "Visayas Dealer";
+    // Visayas regions (VI Western, VII Central, VIII Eastern) are grouped as one dealer area.
+    if (number >= 6 && number <= 8) return "Visayas Dealer";
+    // Mindanao regions (IX–XIII) are likewise grouped as one dealer area.
+    if (number >= 9 && number <= 13) return "Mindanao Dealer";
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"][number];
     if (roman) return `Region ${roman}`;
   }
@@ -9000,8 +9003,11 @@ async function restoreMasterlistRecord(type, index) {
   if (!record) return toast("Record not found.");
   if (!isArchived(record)) return toast("This record is not archived.");
   const label = masterlistDisplayLabel(record);
-  const identityKey = masterlistRecordKey(type, record).toLowerCase();
-  if (activeRecords(list).some((other) => other !== record && masterlistRecordKey(type, other).toLowerCase() === identityKey)) {
+  // Identity (who may not coexist) is not the storage key: clients are unique by name even
+  // though they are stored by code.
+  const identityOf = (/** @type {{ name?: string }} */ entry) => (type === "client" ? String(entry?.name || "") : masterlistRecordKey(type, entry)).toLowerCase();
+  const identityKey = identityOf(record);
+  if (activeRecords(list).some((other) => other !== record && identityOf(other) === identityKey)) {
     return toast(`An active ${type} with the same identity already exists — rename it first, then restore.`);
   }
   if (!(await confirmFinalSave(`Restore this ${type}?`, `${label} will reappear in active lists and be selectable in new transactions.`))) return;
@@ -9044,7 +9050,11 @@ function toggleReplenishmentEmployeeField() {
 function masterlistRecordKey(type, record) {
   // Suppliers (like items) key on code first — the same key saveRecordKeyFor() stores them under —
   // since two suppliers may share a name with different codes.
-  if (type === "item" || type === "supplier") return String(record?.code || record?.name || "");
+  if (type === "item") return String(record?.code || record?.name || "");
+  // Clients and suppliers must use the exact key they are stored under (saveRecordKeyFor(): code
+  // first, then name). Keying an edit/archive by name while the row is stored by code wrote a
+  // second copy of the record on every edit.
+  if (type === "client" || type === "supplier") return String(saveRecordKeyFor(masterlistModuleKey(type), record) || record?.name || "");
   if (type === "employee") return String(record?.email || record?.name || "");
   return String(record?.name || record?.code || record?.email || "");
 }
