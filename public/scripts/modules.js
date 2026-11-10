@@ -675,7 +675,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
   const preferredBranch = selectedInvoiceBranch;
   const stock = item ? data.inventory.find((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === preferredBranch) || /** @type {Partial<StockRow>} */ ({}) : /** @type {Partial<StockRow>} */ ({});
   const lotTracked = itemStockLotTracked(item, preferredBranch);
-  const selectedUom = line.uom || item?.uom || "unit";
+  const selectedUom = normalizeUom(line.uom || item?.uom) || "unit";
   const uid = ++invoiceRowUid;
   return `<div class="invoice-line-row">
     <div class="invoice-line-fields">
@@ -684,7 +684,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <input class="invoice-source-branch-input" type="hidden" value="${escapeHtml(selectedInvoiceBranch)}" />
       <div class="field brand-field"><label>Brand</label><input class="invoice-brand-input" value="${escapeHtml(line.brand || item?.brand || "")}" readonly /></div>
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="0" step="any" value="${line.qty ? Number(line.qty) : ""}" required /></div>
-      <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${uomOptions.map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
+      <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${(uomOptions.includes(selectedUom) ? uomOptions : [...uomOptions, selectedUom]).map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" step="any" value="${line.price || ""}" required /></div>
       ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label>${lotTracked ? `<input class="invoice-lot-input" name="invoice-lot-${uid}" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist>` : `<input class="invoice-lot-input" name="invoice-lot-${uid}" autocomplete="off" value="${escapeHtml(line.lot || "")}" placeholder="No lot on file — enter it here to record it" />`}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" data-expiry-lot="${escapeHtml(line.lot || stock.lot || "")}" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" step="any" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
@@ -890,7 +890,7 @@ function syncInvoiceRowItem(input, options = {}) {
   // Skip when re-syncing a line whose unit was already set on purpose (e.g. carried over
   // from the source purchase order line, which can legitimately differ from the item's
   // default uom — a "box" PO line shouldn't get silently reset back to "piece").
-  if (!options.preserveUom) qsIn(row, ".invoice-uom-input").value = item.uom || "unit";
+  if (!options.preserveUom) qsIn(row, ".invoice-uom-input").value = normalizeUom(item.uom) || "unit";
   const expiryField = qsIn(row, ".expiry-field");
   const expiryInput = qsIn(row, ".invoice-expiry-input");
   const equipment = isEquipmentItem(item);
@@ -5977,7 +5977,7 @@ function validateProductsMasterlistRows(rows) {
 /** @param {any} row @param {any} headers */
 function buildImportedProduct(row, headers) {
   const classification = rowValue(headers, row, ["ITEM CLASSIFICATION", "Item Classification"]);
-  return { code: rowValue(headers, row, ["ITEM CODE", "Item Code"]).trim(), name: rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]).trim(), brand: "Medlane", source: "Supplier", supplier: "", category: importedCategory(classification), classification, uom: rowValue(headers, row, ["UOM"]) || "unit", terms: 30, cost: 0, price: 0, lot: "", expiry: "", migrated: true };
+  return { code: rowValue(headers, row, ["ITEM CODE", "Item Code"]).trim(), name: rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]).trim(), brand: "Medlane", source: "Supplier", supplier: "", category: importedCategory(classification), classification, uom: normalizeUom(rowValue(headers, row, ["UOM"])) || "unit", terms: 30, cost: 0, price: 0, lot: "", expiry: "", migrated: true };
 }
 /** @param {any} rows */
 function validateSalesMigrationRows(rows) {
@@ -7695,7 +7695,7 @@ function getReconciliationFindings(scope = getReconScope()) {
     if (sale.status === "Cancelled" && !sale.replacementId) findings.push(["Cancellation", sale.documentNo, "Cancelled document has no replacement link", "Medium", "invoicing", sale.documentNo]);
     if (sale.replacementId && !scope.sales.some((/** @type {any} */ entry) => entry.documentNo === sale.replacementId) && !data.sales.some((entry) => entry.documentNo === sale.replacementId)) findings.push(["Cancellation", sale.documentNo, `Replacement ${sale.replacementId} not found`, "High", "invoicing", sale.documentNo]);
     (sale.lines || []).forEach((/** @type {any} */ line) => {
-      if (!uomOptions.includes(line.uom)) findings.push(["UOM", sale.documentNo, `${line.item} uses unsupported UOM ${line.uom}`, "Medium", "sales", sale.documentNo]);
+      if (!uomOptions.includes(normalizeUom(line.uom))) findings.push(["UOM", sale.documentNo, `${line.item} uses unsupported UOM ${line.uom}`, "Medium", "sales", sale.documentNo]);
       if (!data.items.some((item) => item.code === line.code || item.name === line.item)) findings.push(["Item Link", sale.documentNo, `${line.item} is not in item masterlist`, "High", "masterlists", line.item]);
     });
   });

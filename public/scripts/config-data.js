@@ -14,7 +14,17 @@ function pesoCompact(value) {
   return peso.format(amount);
 }
 const today = new Date();
-const uomOptions = ["box", "kit", "piece", "vial", "gallon", "bottle", "set", "unit"];
+const uomOptions = ["box", "kit", "piece", "vial", "gallon", "bottle", "set", "unit", "pack", "roll"];
+/** Spellings seen in imported masterlists, mapped onto the canonical uomOptions values. */
+const uomAliases = /** @type {Record<string, string>} */ ({ btl: "bottle", bot: "bottle", pc: "piece", pcs: "piece", pce: "piece", pk: "pack", pck: "pack", gal: "gallon", kits: "kit", boxes: "box", vials: "vial", sets: "set", units: "unit", packs: "pack", rolls: "roll", bottles: "bottle", pieces: "piece" });
+/** @param {unknown} value Normalizes a UOM to its uomOptions spelling; unknown units pass through trimmed. */
+function normalizeUom(value) {
+  const text = String(value ?? "").trim();
+  const key = text.toLowerCase().replace(/\.$/, "");
+  if (!key) return "";
+  if (uomOptions.includes(key)) return key;
+  return uomAliases[key] || text;
+}
 const supplierClassificationOptions = ["ACCOMMODATION", "BIDDING", "FREIGHT FEE", "FUEL", "GOVERNMENT BENEFITS", "IMPORTATION", "INSURANCE", "LEGAL AND PROFESSIONAL FEES", "LICENSES AND PERMIT", "LOCAL PURCHASES", "OFFICE EXPENSE", "OFFICE SUPPLIES", "OTHERS - INSURANCE", "PARKING FEE", "PER DIEM", "PETTY CASH", "REPAIR AND MAINTENANCE", "REPRESENTATION", "SPONSORSHIP", "TOLL FEE", "TRANSPORTATION", "UTILITIES", "WAREHOUSE EXPENSE"];
 const productClassificationOptions = ["Accessories", "Consumables", "Equipment", "Reagents and Diagnostic kit", "Spare parts", "Supplies", "Tools"];
 const requiredSecurityApprovals = ["Discount approval", "Credit-limit override", "Cancelled invoice replacement", "Cheque collection review", "Stock transfer receiving"];

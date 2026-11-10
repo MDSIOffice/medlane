@@ -443,7 +443,7 @@ function normalizeData(next) {
     const accountType = client.dealer === "Dealer" || client.dealer?.includes("Dealer") ? "Dealer" : "Direct";
     return { salesperson: client.salesperson || "Unassigned", terms: Number(client.terms || 30), creditLimit: [180000, 120000, 210000, 160000][index] || 150000, withholdingTax: Boolean(client.withholdingTax), expandedWithholdingTax: Boolean(client.expandedWithholdingTax), docs: client.docs || "Mayor's Permit, 2303, SEC or DTI, FDALTO, GAIA", ...clientWithoutTerms, dealer: accountType };
   });
-  next.items = next.items.map((item) => ({ brand: item.brand || item.supplier || "Medlane", uom: item.uom || "unit", ...item }));
+  next.items = next.items.map((item) => ({ brand: item.brand || item.supplier || "Medlane", ...item, uom: normalizeUom(item.uom) || "unit" }));
   next.suppliers = next.suppliers.map((supplier) => ({ brand: supplier.brand || "Multiple", ...supplier }));
   next.employees = next.employees.map((employee, index) => {
     const salary = Number(String(employee.salary || "").replace(/[^0-9.-]/g, ""));
