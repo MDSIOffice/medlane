@@ -5816,7 +5816,8 @@ function importDate(value, year, month) {
 function detectImportKind(rows) {
   const header = rows[0]?.map(normalizedImportHeader) || [];
   if (header.includes("itemcode") && header.includes("itemdescription")) return "productsMasterlist";
-  if (header.includes("customertype") && header.includes("salesaccount") && header.includes("term")) return "clientsMasterlist";
+  // Sales Account is optional: clients imported without one show as "Unassigned".
+  if (header.includes("customertype") && header.includes("term")) return "clientsMasterlist";
   if (header.includes("classification") && header.includes("tin") && header.includes("contactperson") && !header.includes("customertype")) return "suppliersMasterlist";
   if (header.includes("client") && (header.includes("sino") || header.includes("tsdr") || header.includes("actualsales"))) return "salesMigration";
   if (header.includes("receiptno") && (header.includes("amountpaid") || header.includes("amount"))) return "collectionsMigration";
@@ -5844,6 +5845,7 @@ function inferClientArea(row, headers) {
   if (match) {
     const number = Number(match[1]);
     if (number === 4) return match[2] === "B" ? "MIMAROPA" : "Region IV-A";
+    if (number === 6) return "Visayas Dealer";
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"][number];
     if (roman) return `Region ${roman}`;
   }

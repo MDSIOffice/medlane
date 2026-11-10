@@ -1,8 +1,8 @@
-" ""Code""",Name,Customer Type,Tin,Term,Street,City,Province,Country,Zip Code,Mobile,Landline,Fax,Email,Website,Contact Person,Contact Role,Status
+Code,Name,Customer Type,Tin,Term,Street,City,Province,Country,Zip Code,Mobile,Landline,Fax,Email,Website,Contact Person,Contact Role,Status
  CAR_01,ALOHA ENTERPRISES,Dealer,000000000000,30,"Metrobaguio Laboratories, 146 Kisad Rd, Baguio, 2600 Benguet",,,,,,,,,,,,Active
  CAR_02,"METROBAGUIO LABORATORIES, INC.",Direct,000000000000,30,"146 Kisad Rd, Baguio, Benguet",,,,,,,,,,,,Active
  CAR_03,NOTRE DAME DE CHARTRES HOSPITAL,Direct,000000000000,30,"25 GEN LUNA ROAD, BAGUIO CITY",,,,,,,,,,,,Active
- NCR_01,AMERICAN BIO-CLINICAL LABORATORIES INTERNATIONAL,Direct,004671999001,30,"Richville Corporate Tower, Madrigal Business Park Real Street, Muntinlupa City",,,,,9334354888,Ms. Joycee Ichinose,,purchasing@abclab.com.ph,,,,Active
+ NCR_01,AMERICAN BIO-CLINICAL LABORATORIES INTERNATIONAL,Direct,004671999001,30,"Richville Corporate Tower, Madrigal Business Park Real Street, Muntinlupa City",,,,,9334354888,,,purchasing@abclab.com.ph,,Ms. Joycee Ichinose,,Active
  NCR_02,ARCIAGA MEDICAL CLINIC,Direct,000000000000,30,"Bayanan, Muntinlupa City",,,,,9998812670,,,arciagamed@gmail.com,,ELIE FERNANDEZ,,Active
  NCR_03,ASIA PRIMERA KIMIKA INC,Dealer,000000000000,30,"Unit 303, Alabang Business Tower, Madrigal Business Park, 1216 Acacia Ave, Muntinlupa",,,,,,,,,,,,Active
  NCR_04,ASPRIME INTERNATIONAL INC.,Dealer,000000000000,30,"Level 26-A Rufino Pacific Tower 6784, Ayala Avenue, Corner V.A. Rufino St, Makati City",,,,,,,,,,,,Active
@@ -18,7 +18,7 @@
  NCR_14,GENSENS DIAGNOSTIC CLINIC INC.,Direct,000000000000,30,"4th Floor, Elements Quezon Avenue Building, 560 Quezon Ave, Quezon City",,,,,,,,,,,,Active
  NCR_16,LAS PINAS DOCTORS HOSPITAL,Direct,000000000000,30,"8009 CAA Rd, Pulanglupa II, Las PiÔøΩas City",,,,,,,,,,,,Active
  NCR_17,MAVESON ENTERPRISE,Dealer,205009749000,30,"DANSALAN ST., SYCAMORE TOWER, MANDALUYONG CITY",,,,,0927-427-7766,,,acctgfinance.maveson@gmail.com,,Ms. Maya,,Active
- NCR_19,MEDFAST MEDICAL SUPPLIES,Dealer,000000000000,30,3FLOOR SOLEDAD BLDG..216 A.BONIFACIO AVE. TANONG MARIKINA CITY,,,,,0917-153-3213,,,jar.medequip@gmail.com,,jar.medequip@gmail.com,,Active
+ NCR_19,MEDFAST MEDICAL SUPPLIES,Dealer,000000000000,30,3FLOOR SOLEDAD BLDG..216 A.BONIFACIO AVE. TANONG MARIKINA CITY,,,,,0917-153-3213,,,jar.medequip@gmail.com,,,,Active
  NCR_21,MEDICUS DIAGNOSTIC CENTER,Direct,000000000000,30,"UNIT F BPI BLDG 177 DONA SOLEDAD AVE., DON BOSCO BETTERLIVING, PARANAQUE",,,,,,,,,,,,Active
  NCR_22,MERALCO-CORPORATE WELLNESS CENTER,Direct,000101528000,30,"LOPEZ BDLG., ORTIGAS AVENUE, UGONG, PASIG CITY 1600",,,,,,,,,,,,Active
  NCR_23,"METRO NORTH MEDICAL CENTER AND HOSPITAL, INC.",Direct,007861586000,30,"1001 MINDANAO AVENUE, BRGY. BAHAY TORO, QUEZON CITY",,,,,,,,,,,,Active
@@ -121,9 +121,7 @@
  R4_54,SAN DIEGO DE ALCALA GENERAL HOSPITAL,Direct,170858270000,30,AGUINALDO COR TANADA ST. BRGY. SAN DIEGO GUMACA QUEZON,,,,,9338537578,,,,,vurginio hilario/acctg,,Active
  R4_56,ST. ANNE GENERAL HOSPITAL INC.,Direct,004164183000,30,"OLD MANILA S ROAD, LUCENA CITY, QUEZON",,,,,0922 898 5922,,,saghiofficial@yahoo.com.ph,,,,Active
  R4_57,TAGKAWAYAN DIAGNOSTIC LABORATORY,Direct,000000000000,30,"Eleazar St., Brgy. Poblacion, Tagkawayan, Quezon",,,,,0961 467 8524,,,tagkawayanlaboratory@gmail.com,,,,Active
- R4_58,TAYABAS ANALYST DIAGNOSTIC LABORATORY,Direct,131471340000,30,2 P SILANG ST BRGY SAN ROQUE ZONE 2 TAYABAS QUEZON,,,,,"0928-355-8050
-042-793-2216 local 208",,,"tchi_csr@yahoo.com
-atchi598@gmail.com",,,,Active
+ R4_58,TAYABAS ANALYST DIAGNOSTIC LABORATORY,Direct,131471340000,30,2 P SILANG ST BRGY SAN ROQUE ZONE 2 TAYABAS QUEZON,,,,,"0928-355-8050 / 042-793-2216 local 208",,,"tchi_csr@yahoo.com / atchi598@gmail.com",,,,Active
  R4_59,TAYABAS COMMUNITY HOSPITAL INC.,Direct,000640590000,30,NATIONAL ROAD BRGY WAKAS TAYABAS QUEZON,,,,,,,,,,,,Active
  R4_60,THE GENERICS PHARMACY - TAGKAWAYAN,Dealer,000000000000,30,"TAGKAWAYAN, QUEZON",,,,,0943-464-7648,,,tiffanyjayde2021@gmail.com,,Ms. Cherry,,Active
  R4_61,TRIPTORS DIAGNOSTIC CENTRE,Direct,126816993000,30,"DONA AURORA BLVB COR CAPISTRANO SUBD GULANG-GULANG, LUCENA CITY",,,,,,,,rizza.cruz@triptors.org / mark.deinla@triptors.org,,,,Active
@@ -229,5 +227,5 @@ atchi598@gmail.com",,,,Active
  R5_98,VILLANUEVA-TANCHULING MATERNITY AND GENERAL HOSPITAL,Direct,000000000000,30,"SAN JOSE, IRIGA CITY, CAMARINES SUR",,,,,,,,,,,,Active
  R5_99,VIZCONN DIAGNOSTIC LABORATORY,Direct,943963270001,30,Vinzon St. Legazpi City Alba,,,,,0966 855 5823,,,,,,,Active
  R6_01,BIOSPECTRA MARKETING,Dealer,191-761-192-000,30,2F MC BLDG JALANDONI EXT MANDURRIAO ILOILO CITY,,,,,0917-887-7043,033-3331447,,biospectrapharmacist@gmail.com,,,,Active
- R6_02,"ALTAMEDICA, INC.",Dealer,000-000-036-000,30,"2ND FLR. MASONIC TEMPLE BLDG., PLAZA LIBERTAD, J.M. BASA ST., ILOILO CITY",,,,,0938-262-1208,Ms. Jeanen Pearl G. Muya,,altapurchasing@gmail.com,,,,Active
+ R6_02,"ALTAMEDICA, INC.",Dealer,000-000-036-000,30,"2ND FLR. MASONIC TEMPLE BLDG., PLAZA LIBERTAD, J.M. BASA ST., ILOILO CITY",,,,,0938-262-1208,,,altapurchasing@gmail.com,,Ms. Jeanen Pearl G. Muya,,Active
  R7_01,NORTHCARE DIAGNOSTICS,Direct,000-000-000-000,30,CEDAVILLE RESIDENCES KALUBIHAN TALAMBAN CEBU CITY,,,,,,,,,,,,Active
