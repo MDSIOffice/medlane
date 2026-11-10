@@ -1404,7 +1404,8 @@ const MASTERLIST_UNIQUE_FIELDS = {
 };
 const masterName = (/** @type {any} */ value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 const masterCode = (/** @type {any} */ value) => String(value ?? "").toLowerCase().replace(/\s+/g, "");
-const masterTin = (/** @type {any} */ value) => String(value ?? "").replace(/\D/g, "");
+// An all-zero TIN is a "no TIN on file" placeholder, so it never counts as a duplicate.
+const masterTin = (/** @type {any} */ value) => { const digits = String(value ?? "").replace(/\D/g, ""); return /^0+$/.test(digits) ? "" : digits; };
 
 /** @param {any} data @param {any} spec */
 function masterlistIdentity(data, spec) {

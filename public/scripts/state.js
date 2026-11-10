@@ -1075,7 +1075,8 @@ function normalizeMasterName(value) { return String(value ?? "").toLowerCase().r
 /** @param {any} value */
 function normalizeMasterCode(value) { return String(value ?? "").toLowerCase().replace(/\s+/g, ""); }
 /** @param {any} value */
-function normalizeMasterTin(value) { return String(value ?? "").replace(/\D/g, ""); }
+// An all-zero TIN is a "no TIN on file" placeholder (matches the server guard), so it never counts as a duplicate.
+function normalizeMasterTin(value) { const digits = String(value ?? "").replace(/\D/g, ""); return /^0+$/.test(digits) ? "" : digits; }
 /** @param {any} record */
 function isArchived(record) { return Boolean(record && record.archived); }
 /** @template T @param {T[] | null | undefined} list @returns {T[]} */
