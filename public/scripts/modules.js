@@ -5977,7 +5977,7 @@ function validateProductsMasterlistRows(rows) {
 /** @param {any} row @param {any} headers */
 function buildImportedProduct(row, headers) {
   const classification = rowValue(headers, row, ["ITEM CLASSIFICATION", "Item Classification"]);
-  return { code: rowValue(headers, row, ["ITEM CODE", "Item Code"]).trim(), name: rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]).trim(), brand: "Medlane", source: "Supplier", supplier: "", category: importedCategory(classification), classification, uom: normalizeUom(rowValue(headers, row, ["UOM"])) || "unit", terms: 30, cost: 0, price: 0, lot: "", expiry: "", migrated: true };
+  return { code: rowValue(headers, row, ["ITEM CODE", "Item Code"]).trim(), name: rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]).trim(), brand: rowValue(headers, row, ["BRAND", "Brand"]).trim() || "Medlane", source: "Supplier", supplier: "", category: importedCategory(classification), classification, uom: normalizeUom(rowValue(headers, row, ["UOM"])) || "unit", terms: 30, cost: 0, price: 0, lot: "", expiry: "", migrated: true };
 }
 /** @param {any} rows */
 function validateSalesMigrationRows(rows) {
