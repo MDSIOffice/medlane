@@ -5905,12 +5905,15 @@ function validateSuppliersMasterlistRows(rows) {
     const key = normalizeMasterName(name);
     if (!name.trim()) issues.push("Missing supplier/vendor name");
     const codeKey = normalizeMasterCode(code);
-    if (key && data.suppliers.some((supplier) => normalizeMasterName(supplier.name) === key || (codeKey && normalizeMasterCode(supplier.code) === codeKey))) issues.push("Duplicate existing supplier/code");
+    // A shared name is fine when both records carry their own code (e.g. two branches of one
+    // vendor); the name only identifies a supplier when one side has no code to tell them apart.
+    if (codeKey && data.suppliers.some((supplier) => normalizeMasterCode(supplier.code) === codeKey)) issues.push("Duplicate existing supplier code");
+    else if (key && data.suppliers.some((supplier) => normalizeMasterName(supplier.name) === key && (!codeKey || !normalizeMasterCode(supplier.code)))) issues.push("Duplicate existing supplier name (no code to tell them apart)");
     if (tin.length === 12 && data.suppliers.some((supplier) => normalizeMasterTin(supplier.tin) === tin)) issues.push("Duplicate existing supplier TIN");
-    if (key && seen.has(key)) issues.push("Duplicate input supplier");
+    if (key && !codeKey && seen.has(key)) issues.push("Duplicate input supplier (no code to tell them apart)");
     if (codeKey && seenCodes.has(codeKey)) issues.push("Duplicate input supplier code");
     if (tin.length === 12 && seenTins.has(tin)) issues.push("Duplicate input supplier TIN");
-    if (key) seen.add(key);
+    if (key && !codeKey) seen.add(key);
     if (codeKey) seenCodes.add(codeKey);
     if (tin.length === 12) seenTins.add(tin);
     return { row: index + 2, kind: "suppliersMasterlist", code, name, area: rowValue(headers, row, ["Classification"]), status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
@@ -5938,11 +5941,12 @@ function validateProductsMasterlistRows(rows) {
     if (!code.trim()) issues.push("Missing item code");
     if (!name.trim()) issues.push("Missing item description");
     if (key && data.items.some((item) => normalizeMasterCode(item.code) === key)) issues.push("Duplicate existing item code");
-    if (nameKey && data.items.some((item) => normalizeMasterName(item.name) === nameKey)) issues.push("Duplicate existing item name");
+    // A shared name is fine across different item codes; only a code-less existing item clashes by name.
+    if (nameKey && data.items.some((item) => normalizeMasterName(item.name) === nameKey && !normalizeMasterCode(item.code))) issues.push("Duplicate existing item name (no code to tell them apart)");
     if (key && seen.has(key)) issues.push("Duplicate input item code");
-    if (nameKey && seenNames.has(nameKey)) issues.push("Duplicate input item name");
+    if (nameKey && !key && seenNames.has(nameKey)) issues.push("Duplicate input item name");
     if (key) seen.add(key);
-    if (nameKey) seenNames.add(nameKey);
+    if (nameKey && !key) seenNames.add(nameKey);
     return { row: index + 2, kind: "productsMasterlist", code, name, area: importedCategory(rowValue(headers, row, ["ITEM CLASSIFICATION", "Item Classification"])), status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
@@ -6180,8 +6184,10 @@ function importCheckedRows(checked) {
       const recordKeys = [];
       /** @type {any[]} */
       const suppliers = [];
-      ready.forEach((item) => { const supplier = buildImportedSupplier(parsed[item.row - 1], headers); data.suppliers.push(supplier); suppliers.push(supplier); recordKeys.push(supplier.name); });
-      return { module: "Suppliers/Vendors", records: ready.length, skipped: checked.length - ready.length, recordType: "suppliers", recordKeys, createdRecords: { suppliers } };
+      /** @type {string[]} */
+      const recordCodes = [];
+      ready.forEach((item) => { const supplier = buildImportedSupplier(parsed[item.row - 1], headers); data.suppliers.push(supplier); suppliers.push(supplier); recordKeys.push(supplier.name); recordCodes.push(supplier.code || ""); });
+      return { module: "Suppliers/Vendors", records: ready.length, skipped: checked.length - ready.length, recordType: "suppliers", recordKeys, recordCodes, createdRecords: { suppliers } };
     }
     /** @type {any[]} */
     const recordKeys = [];
@@ -6285,7 +6291,11 @@ async function revertImportBatch(index) {
   if (!ok) return;
   const keySet = new Set(entry.recordKeys.map((/** @type {any} */ value) => String(value).trim().toLowerCase()));
   if (entry.recordType === "clients") data.clients = data.clients.filter((client) => !keySet.has(String(client.name).trim().toLowerCase()));
-  if (entry.recordType === "suppliers") data.suppliers = data.suppliers.filter((supplier) => !keySet.has(String(supplier.name).trim().toLowerCase()));
+  if (entry.recordType === "suppliers") {
+    // Suppliers may share a name across codes, so remove exactly the imported (name, code) pairs.
+    const pairs = Array.isArray(entry.recordCodes) && entry.recordCodes.length === entry.recordKeys.length ? new Set(entry.recordKeys.map((/** @type {string} */ name, /** @type {number} */ i) => `${String(name).trim().toLowerCase()}|${normalizeMasterCode(entry.recordCodes[i])}`)) : null;
+    data.suppliers = data.suppliers.filter((supplier) => pairs ? !pairs.has(`${String(supplier.name).trim().toLowerCase()}|${normalizeMasterCode(supplier.code)}`) : !keySet.has(String(supplier.name).trim().toLowerCase()));
+  }
   if (entry.recordType === "items") data.items = data.items.filter((item) => !keySet.has(String(item.code).trim().toLowerCase()));
   entry.reverted = true;
   entry.revertedAt = fmtDate(today);
@@ -9012,7 +9022,9 @@ function toggleReplenishmentEmployeeField() {
 
 /** @param {any} type @param {any} record */
 function masterlistRecordKey(type, record) {
-  if (type === "item") return String(record?.code || record?.name || "");
+  // Suppliers (like items) key on code first — the same key saveRecordKeyFor() stores them under —
+  // since two suppliers may share a name with different codes.
+  if (type === "item" || type === "supplier") return String(record?.code || record?.name || "");
   if (type === "employee") return String(record?.email || record?.name || "");
   return String(record?.name || record?.code || record?.email || "");
 }
@@ -9030,6 +9042,9 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
   const others = (/** @type {any} */ list) => (list || []).filter((/** @type {any} */ record, /** @type {any} */ index) => index !== exceptIndex && !isArchived(record));
   const sameName = (/** @type {any} */ list, /** @type {any} */ value) => { const key = normalizeMasterName(value); return Boolean(key) && others(list).some((/** @type {any} */ record) => normalizeMasterName(record.name) === key); };
   const sameCode = (/** @type {any} */ list, /** @type {any} */ value) => { const key = normalizeMasterCode(value); return Boolean(key) && others(list).some((/** @type {any} */ record) => normalizeMasterCode(record.code) === key); };
+  // Suppliers/items may share a name when both carry their own code; the name only clashes when
+  // one side has no code to tell them apart (matches the import check and the server guard).
+  const sameNameUncoded = (/** @type {{ name?: string, code?: string }[]} */ list, /** @type {string} */ value, /** @type {string | undefined} */ code) => { const key = normalizeMasterName(value); const codeKey = normalizeMasterCode(code); return Boolean(key) && others(list).some((/** @type {{ name?: string, code?: string }} */ record) => normalizeMasterName(record.name) === key && (!codeKey || !normalizeMasterCode(record.code))); };
   const sameTin = (/** @type {any} */ list, /** @type {any} */ value) => { const key = normalizeMasterTin(value); return key.length === 12 && others(list).some((/** @type {any} */ record) => normalizeMasterTin(record.tin) === key); };
   if (type === "client") {
     const tin = values.tin?.trim();
@@ -9042,14 +9057,14 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
   if (type === "supplier") {
     const tin = values.tin?.trim();
     if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
-    if (sameName(data.suppliers, values.name)) throw new Error("Duplicate supplier name detected.");
+    if (sameNameUncoded(data.suppliers, values.name, values.code)) throw new Error("Duplicate supplier name detected — give it a unique code to keep both.");
     if (values.code && sameCode(data.suppliers, values.code)) throw new Error("Duplicate supplier code detected.");
     if (tin && sameTin(data.suppliers, tin)) throw new Error("Duplicate supplier TIN detected.");
     if (!values.zip?.trim()) throw new Error("ZIP Code is required.");
   }
   if (type === "item") {
     if (sameCode(data.items, values.code)) throw new Error("Duplicate item code detected.");
-    if (sameName(data.items, values.name)) throw new Error("Duplicate item name detected.");
+    if (sameNameUncoded(data.items, values.name, values.code)) throw new Error("Duplicate item name detected — give it a unique code to keep both.");
   }
   if (type === "bank" && sameName(data.banks, values.name)) throw new Error("Duplicate bank name detected.");
   if (type === "employee") {

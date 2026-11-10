@@ -1396,8 +1396,9 @@ async function assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) {
 /** @type {Record<string, any>} */
 const MASTERLIST_UNIQUE_FIELDS = {
   clients: { name: "name", code: "code", tin: "tin", label: "client" },
-  suppliers: { name: "name", code: "code", tin: "tin", label: "supplier" },
-  items: { name: "name", code: "code", label: "item" },
+  // nameNeedsNoCode: a shared name is allowed when both records have their own code.
+  suppliers: { name: "name", code: "code", tin: "tin", label: "supplier", nameNeedsNoCode: true },
+  items: { name: "name", code: "code", label: "item", nameNeedsNoCode: true },
   banks: { name: "name", label: "bank" },
   employees: { name: "name", label: "employee" },
 };
@@ -1438,7 +1439,7 @@ async function assertMasterlistUnique(env, stateKey, rows, { replaceModules = fa
       for (const field of ["name", "code", "tin"]) {
         if (!id[field]) continue;
         if (prevId && prevId[field] === id[field]) continue;
-        const clash = active.find((/** @type {any} */ other) => other.key !== row.record_key && other.id[field] === id[field]);
+        const clash = active.find((/** @type {any} */ other) => other.key !== row.record_key && other.id[field] === id[field] && !(field === "name" && spec.nameNeedsNoCode && id.code && other.id.code));
         if (clash) throw new Error(`Duplicate ${spec.label} ${field === "tin" ? "TIN" : field} detected: "${row.data?.[spec[field]]}" already exists.`);
       }
     }
