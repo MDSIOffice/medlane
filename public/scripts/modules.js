@@ -4945,7 +4945,8 @@ function clientMapPosition(area, index) {
     "Visayas Dealer": { x: 290, y: 650, cols: 1 },
     "Mindanao Dealer": { x: 382, y: 820, cols: 1 },
   };
-  const slot = slots[area] || { x: 28, y: 22, cols: 1 };
+  // Individual Visayas/Mindanao regions (Region VI–XIII) sit in their island group's slot.
+  const slot = slots[area] || slots[collectionRegionSource(area)] || { x: 28, y: 22, cols: 1 };
   const col = index % slot.cols;
   const row = Math.floor(index / slot.cols);
   return [slot.x + col * 198, slot.y + row * 54];
@@ -5833,16 +5834,33 @@ function inferClientArea(row, headers) {
   const province = rowValue(headers, row, ["Province"]);
   const city = rowValue(headers, row, ["City"]);
   const street = rowValue(headers, row, ["Street"]);
-  const text = `${code} ${province} ${city} ${street}`.toLowerCase();
-  if (code.startsWith("NCR") || text.includes("manila") || text.includes("muntinlupa") || text.includes("quezon city")) return "NCR";
-  if (code.startsWith("CAR") || text.includes("baguio") || text.includes("benguet")) return "CAR";
-  if (code.startsWith("R1") || code.startsWith("REG1") || text.includes("ilocos") || text.includes("la union") || text.includes("pangasinan")) return "Region I";
-  if (code.startsWith("R2") || code.startsWith("REG2") || text.includes("cagayan") || text.includes("tuguegarao")) return "Region II";
-  if (code.startsWith("R3") || code.startsWith("REG3") || text.includes("pampanga") || text.includes("bulacan")) return "Region III";
-  if (code.startsWith("R4") || code.startsWith("REG4") || text.includes("laguna") || text.includes("cavite") || text.includes("batangas") || text.includes("rizal")) return "Region IV-A";
-  if (code.startsWith("R5") || code.startsWith("REG5") || text.includes("naga") || text.includes("bicol") || text.includes("camarines")) return "Region V";
-  if (text.includes("cebu") || text.includes("visayas")) return "Visayas Dealer";
-  if (text.includes("davao") || text.includes("mindanao")) return "Mindanao Dealer";
+  // "Cagayan de Oro" is Region X, not Cagayan province (Region II) — drop it before the text checks.
+  const text = `${province} ${city} ${street}`.toLowerCase().replace(/cagayan\s+de\s+oro/g, "cdo");
+  if (code.startsWith("NCR")) return "NCR";
+  if (code.startsWith("CAR")) return "CAR";
+  // Read the whole region number from codes like R1_01, R10_01, R4A_01, REG5-02, so R10/R11/R13
+  // are regions 10/11/13 — not Region I because they happen to start with "R1".
+  const match = code.match(/^R(?:EG)?(\d{1,2})(A|B)?(?![0-9])/);
+  if (match) {
+    const number = Number(match[1]);
+    if (number === 4) return match[2] === "B" ? "MIMAROPA" : "Region IV-A";
+    const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"][number];
+    if (roman) return `Region ${roman}`;
+  }
+  // No usable code: fall back to the address.
+  if (text.includes("manila") || text.includes("muntinlupa") || text.includes("quezon city")) return "NCR";
+  if (text.includes("baguio") || text.includes("benguet")) return "CAR";
+  if (text.includes("ilocos") || text.includes("la union") || text.includes("pangasinan")) return "Region I";
+  if (text.includes("cagayan") || text.includes("tuguegarao")) return "Region II";
+  if (text.includes("pampanga") || text.includes("bulacan")) return "Region III";
+  if (text.includes("laguna") || text.includes("cavite") || text.includes("batangas") || text.includes("rizal")) return "Region IV-A";
+  if (text.includes("naga") || text.includes("bicol") || text.includes("camarines")) return "Region V";
+  if (text.includes("iloilo") || text.includes("bacolod")) return "Region VI";
+  if (text.includes("cebu")) return "Region VII";
+  if (text.includes("cdo") || text.includes("misamis")) return "Region X";
+  if (text.includes("davao")) return "Region XI";
+  if (text.includes("visayas")) return "Visayas Dealer";
+  if (text.includes("mindanao")) return "Mindanao Dealer";
   return "Unassigned Area";
 }
 /** @param {any} value */

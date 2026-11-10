@@ -214,7 +214,9 @@ function arTrackerTabs(sales) {
 }
 /** @param {string} area */
 function warehouseForArea(area) {
-  return ["Region I", "Region II", "Region III", "Region IV-A", "Visayas Dealer", "Mindanao Dealer"].includes(area) ? "Las Pinas" : "Naga";
+  // Region VI–XIII are the individual Visayas/Mindanao regions (client codes R6…R13); they ship
+  // from the same warehouse as the Visayas/Mindanao Dealer areas.
+  return ["Region I", "Region II", "Region III", "Region IV-A", "Visayas Dealer", "Mindanao Dealer", "Region VI", "Region VII", "Region VIII", "Region IX", "Region X", "Region XI", "Region XII", "Region XIII"].includes(area) ? "Las Pinas" : "Naga";
 }
 /** @param {string} dateValue @param {string} [from] @param {string} [to] */
 function dateInRange(dateValue, from = "", to = "") {
