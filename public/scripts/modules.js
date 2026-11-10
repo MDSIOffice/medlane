@@ -6107,17 +6107,19 @@ function validateInventoryMigrationRows(rows) {
       const stockKey = String(saveRecordKeyFor("inventory", { code: item.code, branch, lot, serial: lot }));
       if (branchValid && existingKeys.has(stockKey)) issues.push(`Already has stock in ${branch} — adjust it in Inventory → Stocks instead`);
     }
-    return { row: index + 2, kind: "inventoryMigration", name: item ? `${item.code} · ${item.name}` : product, area: branchValid ? branch : "-", code: item?.code || "", qty: Number(qtyText) || 0, lot, expiry: expiry.value, issues };
+    return { row: index + 2, kind: "inventoryMigration", name: `${item ? `${item.code} · ${item.name}` : product}${lot ? ` · Lot ${lot}` : ""}`, area: branchValid ? branch : "-", code: item?.code || "", qty: Number(qtyText) || 0, lot, expiry: expiry.value, issues };
   });
-  // Each product may appear only once per file — even with different lots/expiries. Every row of a
-  // repeated product is blocked (not just the later ones), so nothing for it imports with a partial
-  // quantity until the file is fixed.
+  // Each product + lot pair may appear only once per file (stock is stored per code | branch | lot,
+  // so different lots of one product are separate rows). Every row of a repeated pair is blocked
+  // (not just the later ones), so nothing for it imports with a partial quantity until fixed.
+  /** @param {{ code: string, lot: string }} entry */
+  const lotKey = (entry) => `${normalizeMasterCode(entry.code)}|${String(entry.lot || "").trim().toLowerCase()}`;
   /** @type {Map<string, number[]>} */
-  const rowsByCode = new Map();
-  checked.forEach((entry) => { if (entry.code) { const key = normalizeMasterCode(entry.code); rowsByCode.set(key, [...(rowsByCode.get(key) || []), entry.row]); } });
+  const rowsByLot = new Map();
+  checked.forEach((entry) => { if (entry.code) { const key = lotKey(entry); rowsByLot.set(key, [...(rowsByLot.get(key) || []), entry.row]); } });
   return checked.map(({ issues, ...entry }) => {
-    const sameProduct = entry.code ? rowsByCode.get(normalizeMasterCode(entry.code)) || [] : [];
-    if (sameProduct.length > 1) issues.push(`Same product listed on rows ${sameProduct.join(", ")} — list each product only once (combine the quantities)`);
+    const sameLot = entry.code ? rowsByLot.get(lotKey(entry)) || [] : [];
+    if (sameLot.length > 1) issues.push(`Same product${entry.lot ? ` and lot ${entry.lot}` : " with no lot"} listed on rows ${sameLot.join(", ")} — list each product/lot only once (combine the quantities)`);
     return { ...entry, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
@@ -6149,7 +6151,7 @@ function validateImportRows() {
   });
 }
 
-// The inventory import has no branch column (Product / Quantity / Expiry only), so the branch the
+// The inventory import has no branch column (Product / Lot No. / Quantity / Expiry only), so the branch the
 // stock goes into is picked once for the whole file. Shown only while an inventory file is loaded.
 /** @param {boolean} show */
 function syncImportBranchField(show) {

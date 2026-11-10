@@ -1830,12 +1830,14 @@ const IMPORT_TEMPLATES = {
     ["EQP-0001", "Sample Chemistry Analyzer", "Sample Instruments", "Equipment", "unit"],
     ["SVC-0001", "Sample Preventive Maintenance", "", "Service", "visit"],
   ] },
-  // Branch is picked on the Import page (one per file), so the file itself stays 3 columns.
+  // Branch is picked on the Import page (one per file), so the file has no branch column.
+  // Lot No. is optional; the same product may repeat once per distinct lot.
   inventory: { file: "medlane-template-inventory-stock.csv", rows: [
-    ["Product", "Quantity", "Expiry Date"],
-    ["RGT-0001", "25", "2027-06-30"],
-    ["Sample Vacutainer Tubes", "100", "2027-12-31"],
-    ["EQP-0001", "2", ""],
+    ["Product", "Lot No.", "Quantity", "Expiry Date"],
+    ["RGT-0001", "HT-27-001", "25", "2027-06-30"],
+    ["RGT-0001", "HT-27-002", "10", "2027-09-30"],
+    ["Sample Vacutainer Tubes", "VT-1001", "100", "2027-12-31"],
+    ["EQP-0001", "", "2", ""],
   ] },
   sales: { file: "medlane-template-sales-opening-ar.csv", rows: [
     ["Year", "Month", "Office", "Date", "Sales Rep", "Branch", "Area", "TS/DR", "SI No.", "TIN", "CLIENT", "Classification", "Brand", "PRODUCT", "Qty", "U/M", "Unit Price", "Amount", "Discount", "Total Price", "Invoice Amount", "LESS TPC", "Actual Sales", "12% VAT", "NET Sales", "CWT", "Remarks"],
