@@ -6080,10 +6080,22 @@ function importExpiry(raw) {
     if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return { ok: false, value: text };
     return { ok: true, value: `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` };
   };
-  let match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  // ISO, optionally with a time part a spreadsheet export may append ("2028-07-26 00:00:00").
+  let match = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T][\d:.]+)?$/.exec(text);
   if (match) return build(Number(match[1]), Number(match[2]), Number(match[3]));
-  match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
-  if (match) return build(Number(match[3]), Number(match[1]), Number(match[2]));
+  // Year-month only ("2028-12"): expiry is taken as the last day of that month.
+  match = /^(\d{4})-(\d{1,2})$/.exec(text);
+  if (match) { const y = Number(match[1]); const m = Number(match[2]); return m >= 1 && m <= 12 ? build(y, m, new Date(Date.UTC(y, m, 0)).getUTCDate()) : { ok: false, value: text }; }
+  // Slash/dash/dot dates are read day-first (DD/MM/YYYY), the Philippine convention that Excel and
+  // Numbers write on this team's machines. Only when the second number can't be a month is it read
+  // month-first (MM/DD/YYYY). Two-digit years are 20YY.
+  match = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/.exec(text);
+  if (match) {
+    const first = Number(match[1]);
+    const second = Number(match[2]);
+    const year = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]);
+    return second > 12 && first <= 12 ? build(year, first, second) : build(year, second, first);
+  }
   if (/[a-z]/i.test(text) && /\d{4}/.test(text)) {
     const parsed = new Date(`${text} 12:00`);
     if (!Number.isNaN(parsed.getTime())) return build(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
@@ -6118,7 +6130,7 @@ function validateInventoryMigrationRows(rows) {
     else if (active.length > 1) issues.push("Name matches several products — use the item code");
     if (!qtyText) issues.push("Missing quantity");
     else if (!/^\d+(\.\d+)?$/.test(qtyText) || Number(qtyText) <= 0) issues.push("Quantity must be a number greater than zero");
-    if (!expiry.ok) issues.push("Invalid expiry date (use YYYY-MM-DD)");
+    if (!expiry.ok) issues.push("Invalid expiry date (use YYYY-MM-DD or DD/MM/YYYY)");
     else if (expiry.value !== "N/A" && daysUntil(expiry.value) < 0) issues.push("Expiry date has already passed");
     if (item) {
       // Same identity the server stores stock under (code | branch | lot): an existing row must be
