@@ -90,6 +90,14 @@ let currentSalesBreakdownDimension = null;
 let clientInvoicesReturnSection = "receivables-tracker";
 /** @type {any} */
 let editingPoId = null;
+// The invoice being cancelled while its Cancel & Replace modal is open. It still reads as active
+// until the save, but must not count against its own PO's pending qty or the client's credit,
+// or the replacement can never be raised against the same PO.
+/** @type {string | null} */
+let cancelReplaceSaleId = null;
+// Set while the maker edits an expense request that an approver returned to them.
+/** @type {string | null} */
+let editingExpenseId = null;
 let userStatusFilter = "all";
 /** @type {any} */
 let invoiceViewMode = "table";
@@ -471,7 +479,11 @@ function normalizeData(next) {
   next.paymentRequests = next.paymentRequests.map(normalizePaymentRequestWithholding);
   next.payables = withStableFallbackIds(next.payables, "PAY").map((payable) => normalizePayableWithholding({ id: payable.id, requestStatus: payable.requestStatus || (payable.status === "Cancelled" ? "Cancelled" : payable.status === "Approved" ? "Approved" : "For Approval"), paymentConfirmed: Boolean(payable.paymentConfirmed), items: payable.items || [{ particulars: payable.item || "Payable", qty: Number(payable.qty || 1), uom: payable.uom || "unit", amount: Number(payable.amount || 0) }], method: payable.method || (payable.cheque ? "Cheque" : "Cash"), bank: payable.bank || "", cheque: payable.cheque || "", chequeDate: payable.chequeDate || "", uom: payable.uom || "unit", qty: Number(payable.qty || 1), ...payable }));
   next.replenishments = withStableFallbackIds(next.replenishments, "REP").map((expense) => ({ id: expense.id, requestStatus: expense.requestStatus || (["Approved", "Approved by HR"].includes(expense.status) ? "Approved" : expense.status === "Cancelled" ? "Cancelled" : "For Approval"), paymentConfirmed: Boolean(expense.paymentConfirmed), method: expense.method || "Cash", bank: expense.bank || "", cheque: expense.cheque || "", chequeDate: expense.chequeDate || "", items: expense.items || [{ particulars: expense.file || expense.type || "Expense", amount: Number(expense.amount || 0) }], ...expense }));
-  next.payments = next.payments.map((payment) => ({ receiptNo: payment.receiptNo || payment.reference || "Manual", tag: payment.tag || (String(payment.invoice).startsWith("TS") ? "TS-PR" : "SI-CR"), dateRecorded: payment.dateRecorded || fmtDate(today), bank: payment.bank || "", chequeDate: payment.chequeDate || "", collectionStatus: payment.collectionStatus || "For Deposition", postedDate: payment.postedDate || "", cheques: payment.cheques || [], statusHistory: payment.statusHistory || [{ date: payment.dateRecorded || fmtDate(today), status: payment.collectionStatus || "For Deposition", user: payment.client || "Imported" }], ...payment }));
+  next.payments = next.payments.map((payment) => ({ receiptNo: payment.receiptNo || payment.reference || "Manual", tag: payment.tag || (String(payment.invoice).startsWith("TS") ? "TS-PR" : "SI-CR"), dateRecorded: payment.dateRecorded || fmtDate(today), bank: payment.bank || "", chequeDate: payment.chequeDate || "", collectionStatus: payment.collectionStatus || "For Deposit", postedDate: payment.postedDate || "", cheques: payment.cheques || [], statusHistory: payment.statusHistory || [{ date: payment.dateRecorded || fmtDate(today), status: payment.collectionStatus || "For Deposit", user: payment.client || "Imported" }], ...payment }));
+  // "For Deposition" was renamed "For Deposit"; payments saved before the rename still carry the old label.
+  next.payments = next.payments.map((payment) => payment.collectionStatus === "For Deposition" || payment.statusHistory?.some((/** @type {any} */ entry) => entry.status === "For Deposition")
+    ? { ...payment, collectionStatus: payment.collectionStatus === "For Deposition" ? "For Deposit" : payment.collectionStatus, statusHistory: (payment.statusHistory || []).map((/** @type {any} */ entry) => entry.status === "For Deposition" ? { ...entry, status: "For Deposit" } : entry) }
+    : payment);
   next.purchaseOrders = next.purchaseOrders.map((po) => {
     const client = next.clients.find((item) => item.name === po.client);
     const lines = (po.lines || []).map((/** @type {any} */ line) => {

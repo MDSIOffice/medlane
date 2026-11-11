@@ -352,6 +352,22 @@ function findItemForSheetRow(row, changedInput = null, allowPartial = false) {
 }
 /** @param {any} type */
 function collectionTagForType(type) { return type === "TS" ? "TS-PR" : ["DR", "DRS"].includes(type) ? "DR-CR" : "SI-CR"; }
+// A Bounced payment has exactly one way forward — a Superadmin redeposits it (optionally with a
+// corrected cheque number), which puts it back to For Deposit. Deposited/Posted Date are hidden
+// until then so a bounced cheque can't be marked Deposited without being redeposited first.
+/** @param {Payment} payment @param {string} buttonClass */
+function collectionStatusButtonsHtml(payment, buttonClass) {
+  const receiptNo = escapeHtml(payment.receiptNo);
+  if (payment.collectionStatus === "Bounced") {
+    return canRedepositCollections()
+      ? `<button class="${buttonClass}" data-collection-redeposit="${receiptNo}">Redeposit</button>`
+      : `<small>Bounced — awaiting Superadmin redeposit</small>`;
+  }
+  return `<button class="${buttonClass}" data-collection-status="${receiptNo}:Deposited">Deposited</button><button class="${buttonClass} danger-button" data-collection-status="${receiptNo}:Bounced">Bounced</button><button class="${buttonClass}" data-collection-status="${receiptNo}:Posted Date">Posted Date</button>`;
+}
+
+function canRedepositCollections() { return currentUser?.role === "Superadmin"; }
+
 /** @param {any} request */
 function paymentRequestHistory(request) {
   return request.history?.length ? request.history : [{ date: request.date, status: request.requestStatus || request.status || "Prepared", note: "Payment request created.", by: request.preparedBy }];
@@ -367,7 +383,7 @@ function paymentRequestActionsCell(request) {
   const isCancellable = request.requestStatus === "Pending";
   const cancelBtn = isCancellable && canApprovePaymentRequests() ? `<button class="mini-button danger-button" data-payment-request-cancel="${escapeHtml(request.cvNo)}">Cancel</button>` : "";
   const statusActions = request.requestStatus === "Approved" && linkedPayment && !isDepositFinal
-    ? `<button class="mini-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Deposited">Deposited</button><button class="mini-button danger-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Bounced">Bounced</button><button class="mini-button" data-collection-status="${escapeHtml(linkedPayment.receiptNo)}:Posted Date">Posted Date</button>`
+    ? collectionStatusButtonsHtml(linkedPayment, "mini-button")
     : "";
   const timelineBtn = `<button class="mini-button" data-payment-request-timeline="${escapeHtml(request.cvNo)}">View Timeline</button>`;
   const printBtn = `<button class="mini-button" data-payment-request-preview="${escapeHtml(request.cvNo)}">Preview / Print</button>`;
@@ -461,9 +477,9 @@ async function approvePaymentRequest(cvNo) {
   const touchedSales = [];
   const applyPayment = (/** @type {Sale} */ sale, /** @type {any} */ applied) => {
     if (applied <= 0) return;
-    const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: "", chequeDate: request.chequeDate || "", transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposition", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposition"), paymentRequestCvNo: request.cvNo };
+    const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: "", chequeDate: request.chequeDate || "", transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposit", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposit"), paymentRequestCvNo: request.cvNo };
     data.payments.push(payment);
-    // Applied as soon as it's posted (queued for deposition), not gated on deposit confirmation,
+    // Applied as soon as it's posted (queued for deposit), not gated on deposit confirmation,
     // so the receivable balance reflects partial payments right away. Bounced reverses it back.
     applyCollectionPayment(payment);
     newPayments.push(payment);
@@ -492,15 +508,15 @@ async function approvePaymentRequest(cvNo) {
   request.approvedBy = by;
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
-  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposition across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updated now; it reverses only if the deposit later bounces.`, by });
+  request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Approved", note: `Approved by ${by}. ${isFull ? "Full" : "Partial"} payment of ${peso.format(requestedAmount)} queued for deposit across ${sales.length} invoice(s)${hasPerInvoiceAmounts ? ", per specified invoice amount" : ", oldest first"}. Invoice paid amount updated now; it reverses only if the deposit later bounces.`, by });
   const saveResult = await persistRecords({ paymentRequests: [request], payments: newPayments, sales: touchedSales });
   if (!saveResult?.ok) return;
-  log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposition (${isFull ? "Full" : "Partial"})`, { save: false });
+  log("Approved payment request", "Collections", `${request.cvNo}: ${peso.format(requestedAmount)} queued for deposit (${isFull ? "Full" : "Partial"})`, { save: false });
   notify("Payment Received", `${request.cvNo} approved — pending bank deposit.`, "collections", request.cvNo);
   if (request.createdByUser) notify("Payment Received", `Your payment request ${request.cvNo} was approved.`, "notifications", request.cvNo, null, request.createdByUser);
   saveData(["notifications"]);
   renderAll();
-  toast(`${request.cvNo} approved and queued for deposition.`);
+  toast(`${request.cvNo} approved and queued for deposit.`);
 }
 
 /** @param {string} cvNo */
@@ -561,8 +577,8 @@ function renderPaymentRequestDetail(cvNo) {
   const isDepositFinal = payment?.collectionStatus === "Deposited" || request.requestStatus === "Cancelled";
   const depositActions = isDepositFinal
     ? `<p class="page-description">${request.requestStatus === "Cancelled" ? "This payment request was cancelled." : "Deposited — this payment is final and its status can no longer be changed."}</p>`
-    : `<div class="modal-actions collection-status-actions"><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Deposited">Deposited</button><button class="ghost-button danger-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Bounced">Bounced</button><button class="ghost-button" data-collection-status="${escapeHtml(payment?.receiptNo)}:Posted Date">Posted Date</button></div>`;
-  const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposition</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposition")}">${escapeHtml(payment.collectionStatus || "For Deposition")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
+    : payment ? `<div class="modal-actions collection-status-actions">${collectionStatusButtonsHtml(payment, "ghost-button")}</div>` : "";
+  const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposit</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposit")}">${escapeHtml(payment.collectionStatus || "For Deposit")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
   const physicalCopySection = request.requestStatus === "Approved" ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Physical Copy</span><strong>Signed CV Voucher</strong><small>Upload a photo/scan of the physically signed and released voucher.</small></div></header>${attachedFilesHtml("paymentRequest", request.cvNo)}<div class="modal-actions"><button class="ghost-button" data-upload-copy="${escapeHtml(request.cvNo)}" type="button">Upload Physical Copy</button><input type="file" accept="image/*" class="physical-copy-input" data-record-type="paymentRequest" data-record-id="${escapeHtml(request.cvNo)}" data-rerender="payment-request-detail" hidden /></div></div>` : "";
   qs("#payment-request-detail-title").textContent = `${request.cvNo} · ${request.employee}`;
   qs("#payment-request-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.employee || "-")}</p><h2>${escapeHtml(request.invoice ? `Linked to ${request.invoice}` : "CV Voucher")}</h2></div><span class="pill ${statusClass(request.requestStatus || request.status)}">${escapeHtml(request.requestStatus || request.status || "-")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(request.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(request.total || 0)}</strong></div><div class="report-preview-card"><small>Prepared By</small><strong>${escapeHtml(request.preparedBy || "-")}</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(request.approvedBy || "-")}</strong></div></div>${depositSection}${physicalCopySection}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((/** @type {any} */ event) => `<div class="event-item ${event.status === "Approved" ? "done" : "pending"}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
@@ -598,10 +614,34 @@ function findSaleByDocumentInput(value) {
     || data.sales.find((item) => (item.id || "").toLowerCase().startsWith(query) || (item.documentNo || "").toLowerCase().startsWith(query));
 }
 
+// Lots an invoice line can draw from: on hand at the branch, not expired, earliest expiry first.
+// While a Cancel & Replace is open, the invoice being cancelled gives its stock back on save, so its
+// lots count with that quantity added — otherwise reusing the same lot would show nothing to pick.
 /** @param {any} item @param {string} branch */
-function invoiceRowLotOptionsHtml(item, branch) {
-  if (!item) return "";
-  return data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0).map((entry) => `<option value="${escapeHtml(entry.lot)}">${escapeHtml(entry.branch)} · Exp ${escapeHtml(entry.expiry || "N/A")} · Qty ${entry.qty}</option>`).join("");
+function invoiceSelectableLots(item, branch) {
+  if (!item) return [];
+  const cancelling = cancelReplaceSaleId ? data.sales.find((sale) => sale.id === cancelReplaceSaleId && !sale.noPo) : null;
+  const returnedQty = (/** @type {StockRow} */ entry) => (cancelling?.lines || []).filter((line) => line.code === entry.code && (line.sourceBranch || line.branch) === entry.branch && line.lot === entry.lot).reduce((sum, line) => sum + Number(line.qty || 0), 0);
+  return data.inventory
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.lot && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
+    .map((entry) => ({ lot: entry.lot, expiry: entry.expiry || "N/A", qty: Number(entry.qty || 0) + returnedQty(entry) }))
+    .filter((entry) => entry.qty > 0)
+    .sort((a, b) => daysUntil(hasNoExpiry(a.expiry) ? "2099-12-31" : a.expiry) - daysUntil(hasNoExpiry(b.expiry) ? "2099-12-31" : b.expiry));
+}
+
+// The lot is picked from a dropdown of what is actually in stock (expiry fills itself in). Only an
+// item with no lot on file at the branch keeps a free-text box, so a lot can be recorded for it.
+/** @param {any} item @param {string} branch @param {string} lot */
+function invoiceLotControlHtml(item, branch, lot) {
+  const uid = ++invoiceRowUid;
+  const equipment = isEquipmentItem(item);
+  const label = `<label>${equipment ? "Serial/Lot No." : "Lot No."}</label>`;
+  const current = String(lot || "").trim();
+  if (!itemStockLotTracked(item, branch)) return `${label}<input class="invoice-lot-input" name="invoice-lot-${uid}" autocomplete="off" value="${escapeHtml(current)}" placeholder="No lot on file — enter it here to record it" />`;
+  const lots = invoiceSelectableLots(item, branch);
+  const missing = current && !lots.some((entry) => entry.lot === current) ? `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)} · not in stock here</option>` : "";
+  const options = lots.map((entry) => `<option value="${escapeHtml(entry.lot)}"${entry.lot === current ? " selected" : ""}>${escapeHtml(entry.lot)} · Exp ${escapeHtml(entry.expiry)} · Qty ${entry.qty}</option>`).join("");
+  return `${label}<select class="invoice-lot-input" name="invoice-lot-${uid}" required><option value="">${lots.length ? "Select lot" : "No lot in stock"}</option>${missing}${options}</select>`;
 }
 
 // Exact code+branch+lot+qty match first. If that misses and there's an untracked (no lot
@@ -686,7 +726,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="0" step="any" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${(uomOptions.includes(selectedUom) ? uomOptions : [...uomOptions, selectedUom]).map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" step="any" value="${line.price || ""}" required /></div>
-      ${requireLot ? `<div class="field lot-field"><label>${equipment ? "Serial/Lot No." : "Lot No."}</label>${lotTracked ? `<input class="invoice-lot-input" name="invoice-lot-${uid}" list="invoice-lot-options-${uid}" autocomplete="off" value="${escapeHtml(line.lot || stock.lot || "")}" placeholder="${equipment ? "Serial or lot number" : "Lot number"}" required /><datalist id="invoice-lot-options-${uid}">${invoiceRowLotOptionsHtml(item, preferredBranch)}</datalist>` : `<input class="invoice-lot-input" name="invoice-lot-${uid}" autocomplete="off" value="${escapeHtml(line.lot || "")}" placeholder="No lot on file — enter it here to record it" />`}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" data-expiry-lot="${escapeHtml(line.lot || stock.lot || "")}" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
+      ${requireLot ? `<div class="field lot-field">${invoiceLotControlHtml(item, preferredBranch, lotTracked ? line.lot || stock.lot || "" : line.lot || "")}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" data-expiry-lot="${escapeHtml(line.lot || stock.lot || "")}" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"}${lotTracked ? " readonly" : ""} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" step="any" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
     </div>
     <button class="icon-button remove-invoice-line" type="button" aria-label="Remove item" title="Remove item">×</button>
@@ -704,7 +744,7 @@ function findClientByName(value) {
 /** @param {any} po @param {string} code */
 function poServedQty(po, code) {
   return data.sales
-    .filter((sale) => sale.po === po.id && sale.status !== "Cancelled")
+    .filter((sale) => sale.po === po.id && sale.status !== "Cancelled" && sale.id !== cancelReplaceSaleId)
     .flatMap((sale) => sale.lines || [])
     .filter((line) => line.code === code)
     .reduce((sum, line) => sum + Number(line.qty || 0), 0);
@@ -869,8 +909,6 @@ function syncInvoiceRowItem(input, options = {}) {
   const row = closestEl(input, ".invoice-line-row");
   const item = findItemByCodeOrName(input.value);
   const warehouse = qs("#sourceBranch")?.value || qsIn(row, ".invoice-source-branch-input")?.value || inventoryBranchTab || platformBranches()[0];
-  const lotDatalist = qsIn(row, "datalist[id^='invoice-lot-options-']");
-  if (lotDatalist) lotDatalist.innerHTML = invoiceRowLotOptionsHtml(item, warehouse);
   // outerHTML replaces the element, so any reference captured before that point is detached —
   // re-query fresh each call instead of reusing one `stockHint` variable across both calls below.
   const refreshStockHint = (/** @type {any} */ lot) => {
@@ -878,11 +916,13 @@ function syncInvoiceRowItem(input, options = {}) {
     if (hint) hint.outerHTML = invoiceRowStockHintHtml(item, warehouse, lot) || `<small class="invoice-stock-hint" data-role="stock-hint"></small>`;
   };
   if (!item) { refreshStockHint(""); return; }
-  const lotInput = qsIn(row, ".invoice-lot-input");
-  if (lotInput && lotInput.type !== "hidden") {
-    const lotTracked = itemStockLotTracked(item, warehouse);
-    lotInput.required = lotTracked;
-    lotInput.placeholder = lotTracked ? (isEquipmentItem(item) ? "Serial or lot number" : "Lot number") : "No lot on file — enter it here to record it";
+  const lotField = qsIn(row, ".lot-field");
+  const lotTracked = itemStockLotTracked(item, warehouse);
+  // Rebuilt for the new item/branch: the lot list (or free-text box) depends on what's in stock.
+  if (lotField) {
+    lotField.innerHTML = invoiceLotControlHtml(item, warehouse, "");
+    const expiryInput = qsIn(row, ".invoice-expiry-input");
+    if (expiryInput) expiryInput.readOnly = lotTracked;
   }
   qsIn(row, ".invoice-brand-input").value = item.brand || "";
   const codeInput = qsIn(row, ".invoice-code-input");
@@ -1071,7 +1111,7 @@ function renderSettingsTutorial() {
       ["Banks", "Stores bank accounts used for collections and final payments.", "Add banks before cheque, bank deposit, or bank transfer posting.", "If a payment method needs a bank, select from this masterlist."],
     ] },
     { title: "Inventory", role: "Logistics; Admin/Superadmin approval", submodules: [
-      ["Stock By Branch", "Shows current available stock by branch, lot, expiry, quantity, and status.", "Filter by branch/status before confirming item availability.", "If an item is For Disposal, do not use it for invoice fulfillment."],
+      ["Stock By Branch", "Shows current available stock by branch, lot, expiry, quantity, and status.", "Filter by branch/status before confirming item availability.", "If an item is Expired, do not use it for invoice fulfillment."],
       ["Inventory Purchase Order", "Creates supplier POs for restocking inventory.", "Enter supplier, PO date, itemized lines, lot, expiry, price, and discount.", "Use when purchasing reagents/supplies from suppliers; it does not deduct stock."],
       ["Receive Stock", "Adds received supplier stock into branch inventory.", "Admin/Superadmin approves direct receiving; select Inventory PO to autofill rows.", "Use after delivered supplier items arrive and lot/expiry are confirmed."],
       ["Stock Transfer", "Moves stock between physical branches.", "Logistics creates transfer requests; Admin/Superadmin dispatches/approves; receiving confirms quantity.", "Use when invoicing from Las Pinas but stock is only in Naga."],
@@ -1097,7 +1137,7 @@ function renderSettingsTutorial() {
     { title: "Collections", role: "Accounting/Admin/Superadmin", submodules: [
       ["Record Payment", "Posts payment against SI/TS/DR.", "Type document number, select method, enter receipt and amount.", "Use for cash, cheque, multiple cheques, bank deposit, or bank transfer."],
       ["Multiple Cheques", "Tracks several cheque references under one collection.", "Add cheque rows with reference number, cheque date, and amount.", "Use when one client pays one invoice using multiple cheques."],
-      ["Collection Status", "Tracks bank handling status.", "Set For Deposition, Deposited, Bounced, or Posted Date.", "Use Posted Date when a cheque can be claimed on a future date."],
+      ["Collection Status", "Tracks bank handling status.", "Set For Deposit, Deposited, Bounced, or Posted Date.", "Use Posted Date when a cheque can be claimed on a future date."],
       ["Payment Received", "Creates printable CV/payment received forms.", "Add employee/vendor, collector, CV number, items, deductions, and preview/print.", "Use for internal reimbursement, supplier fees, or priority payments received."],
       ["Follow-up Map", "Tracks weekly client collection contact status.", "Open client area, choose channels, then select outcome.", "When marking Cheque Available, enter the invoice number for traceability."],
       ["Follow-up History", "Shows all client contact outcomes.", "Click Follow-up History to open the full modal.", "Use to see who contacted the client, when, through what channel, and the result."],
@@ -1776,7 +1816,7 @@ function renderLogisticsDashboard() {
   const openTransfers = (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status));
   const demoForLogistics = (data.inventoryDemoRequests || []).filter((request) => request.status === "For Logistics Approval");
   const stock = byBranch(data.inventory);
-  const invAlerts = stock.filter((item) => ["Low Stock", "Critical", "Near Expiry", "For Disposal"].includes(inventoryStatus(item)));
+  const invAlerts = stock.filter((item) => ["Low Stock", "Critical", "Near Expiry", "Expired"].includes(inventoryStatus(item)));
   const stat = (/** @type {any} */ accent, /** @type {any} */ icon, /** @type {any} */ label, /** @type {any} */ value, /** @type {any} */ note) => `<article class="stat-card accent-${accent}"><span class="card-icon">${icon}</span><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`;
   qs("#logistics-stats").innerHTML = [
     stat("orange", "◌", "Pending PO Approval", pendingApproval.length, "Awaiting Superadmin"),
@@ -1785,7 +1825,7 @@ function renderLogisticsDashboard() {
     stat("red", "!", "Stock Alerts", invAlerts.length, "Low / expiring lots"),
   ].join("");
   table("#logistics-po-table", ["PO", "Supplier", "Branch", "Date", "Lines", "Status"], openPos.slice().reverse().slice(0, 12).map((po) => ({ focus: po.id, cells: [po.id, po.supplier || "-", po.branch || "-", po.date || "-", String((po.lines || []).length), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(poHasPendingReceipt(po) ? "Receipt Pending Approval" : po.status)}</span>`] })));
-  qs("#logistics-stock-health").innerHTML = barRows(["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((status) => [status, stock.filter((item) => inventoryStatus(item) === status).length]), (value) => `${value} lot${value === 1 ? "" : "s"}`, ["green", "orange", "orange", "red", "red"]);
+  qs("#logistics-stock-health").innerHTML = barRows(["Available", "Near Expiry", "Low Stock", "Critical", "Expired"].map((status) => [status, stock.filter((item) => inventoryStatus(item) === status).length]), (value) => `${value} lot${value === 1 ? "" : "s"}`, ["green", "orange", "orange", "red", "red"]);
   const expiring = stock.filter((item) => item.expiry && item.expiry !== "N/A" && Number(item.qty || 0) > 0).sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, 8);
   qs("#logistics-expiry-list").innerHTML = expiring.map((item) => `<li><span>${escapeHtml(item.item)}<small>Lot ${escapeHtml(item.lot || "-")} · ${escapeHtml(item.branch)} · ${Number(item.qty || 0)} on hand</small></span><strong>${daysUntil(item.expiry) < 0 ? "Expired" : `${daysUntil(item.expiry)} days`}</strong></li>`).join("") || `<li><span>No dated lots on hand</span><strong>—</strong></li>`;
   const alerts = [
@@ -1793,7 +1833,7 @@ function renderLogisticsDashboard() {
     ...forReceiving.map((po) => ({ color: "orange", title: `PO ${po.status.toLowerCase()}`, text: `${po.id} from ${po.supplier || "supplier"} is ready to receive.`, section: "inventory", record: po.id })),
     ...demoForLogistics.map((request) => ({ color: "orange", title: "Demo consumables need your approval", text: `${request.id} for ${request.client}.`, section: "inventory", record: request.id })),
     ...openTransfers.map((transfer) => ({ color: transfer.status === "For Receiving" ? "orange" : "green", title: `Transfer ${String(transfer.status || "open").toLowerCase()}`, text: `${transfer.id}: ${transfer.from} → ${transfer.to}.`, section: "inventory", record: transfer.id })),
-    ...invAlerts.filter((item) => ["Critical", "For Disposal"].includes(inventoryStatus(item))).map((item) => ({ color: "red", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot })),
+    ...invAlerts.filter((item) => ["Critical", "Expired"].includes(inventoryStatus(item))).map((item) => ({ color: "red", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot })),
   ].slice(0, 8);
   qs("#urgent-count").textContent = `${alerts.length} to action`;
   qs("#alerts-list").innerHTML = alerts.map((a) => `<div class="alert-item clickable" data-go-section="${a.section}" data-focus-record="${escapeHtml(a.record || "")}"><span class="alert-dot ${a.color}"></span><div><strong>${escapeHtml(a.title)}</strong><span>${escapeHtml(a.text)}</span></div></div>`).join("") || `<p class="page-description">Nothing needs action right now.</p>`;
@@ -1815,7 +1855,7 @@ function renderDashboard() {
   const totalSales = visibleSales.reduce((sum, sale) => sum + sale.net, 0);
   const totalPaid = visibleSales.reduce((sum, sale) => sum + sale.paid, 0);
   const outstanding = visibleSales.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-  const invAlerts = byBranch(data.inventory).filter((item) => ["Low Stock", "Critical", "Near Expiry", "For Disposal"].includes(inventoryStatus(item)));
+  const invAlerts = byBranch(data.inventory).filter((item) => ["Low Stock", "Critical", "Near Expiry", "Expired"].includes(inventoryStatus(item)));
   qs("#sales-total").textContent = peso.format(totalSales);
   qs("#collection-total").textContent = peso.format(totalPaid);
   qs("#outstanding-total").textContent = peso.format(outstanding);
@@ -1824,7 +1864,7 @@ function renderDashboard() {
   const transferAlerts = data.pendingTransfers.filter((transfer) => transfer.status === "For Receiving").map((transfer) => ({ color: "orange", title: "Stock transfer for receiving", text: `${transfer.id}: ${transfer.qty} ${transfer.item} from ${transfer.from} to ${transfer.to}.`, section: "inventory", record: transfer.id }));
   const chequeAvailableAlerts = data.collectionContacts.filter((contact) => contact.status === "Cheque Available").map((contact) => ({ color: "green", title: "Cheque available", text: `${contact.client} has a cheque ready${contact.chequeInvoice ? ` for ${contact.chequeInvoice}` : ""}.`, section: "collections", record: contact.client }));
   const salesAlerts = visibleSales.filter((sale) => ["Overdue", "Near Due"].includes(statusForSale(sale))).map((sale) => ({ color: statusForSale(sale) === "Overdue" ? "red" : "orange", title: `${statusForSale(sale)} invoice`, text: `${sale.id} for ${sale.client} has ${peso.format(sale.net - sale.paid)} balance.`, section: "receivables-tracker", record: sale.id }));
-  const stockAlerts = invAlerts.map((item) => ({ color: ["Critical", "For Disposal"].includes(inventoryStatus(item)) ? "red" : "orange", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot }));
+  const stockAlerts = invAlerts.map((item) => ({ color: ["Critical", "Expired"].includes(inventoryStatus(item)) ? "red" : "orange", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot }));
   const backupAlert = data.backupStatus?.stale ? [{ color: "red", title: "Backup overdue", text: "No successful backup has been recorded in the last 7 days.", section: "backup", record: data.backupStatus?.latest?.id || "backup" }] : [];
   const alerts = [...backupAlert, ...chequeAvailableAlerts, ...salesAlerts, ...stockAlerts, ...creditAlerts, ...transferAlerts].slice(0, 8);
   qs("#urgent-count").textContent = `${alerts.length} urgent${dashboardRange.from || dashboardRange.to ? " in range" : ""}`;
@@ -1835,7 +1875,7 @@ function renderDashboard() {
   const duplicateClientNames = data.clients.length - new Set(data.clients.map((client) => String(client.name || "").trim().toLowerCase()).filter(Boolean)).size;
   const duplicateItemCodes = data.items.length - new Set(data.items.map((item) => String(item.code || "").trim().toLowerCase()).filter(Boolean)).size;
   const duplicateReceipts = data.payments.length - new Set(data.payments.map((payment) => String(payment.receiptNo || "").trim().toLowerCase()).filter(Boolean)).size;
-  const pendingDeposit = data.payments.filter((payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
+  const pendingDeposit = data.payments.filter((payment) => ["For Deposit", "Posted Date"].includes(payment.collectionStatus)).length;
   const bounced = data.payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
   qs("#health-list").innerHTML = [
     [`${data.clients.length} client records`, duplicateClientNames ? `${duplicateClientNames} duplicate name risk` : "Names OK"],
@@ -1901,7 +1941,7 @@ function dashboardReportHtml(visibleSales, dashboardRange) {
   const totalSales = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0);
   const totalPaid = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.paid || 0), 0);
   const outstanding = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
-  const invAlerts = byBranch(data.inventory).filter((item) => ["Low Stock", "Critical", "Near Expiry", "For Disposal"].includes(inventoryStatus(item)));
+  const invAlerts = byBranch(data.inventory).filter((item) => ["Low Stock", "Critical", "Near Expiry", "Expired"].includes(inventoryStatus(item)));
   const branches = platformAreas().map((branch) => ({ branch, amount: visibleSales.filter((/** @type {any} */ s) => s.area === branch).reduce((/** @type {number} */ sum, /** @type {any} */ s) => sum + Number(s.net || 0), 0) })).filter((b) => b.amount > 0);
   const rows = visibleSales.slice().sort((/** @type {any} */ a, /** @type {any} */ b) => String(a.date || "").localeCompare(String(b.date || ""))).map((/** @type {Sale} */ sale) => `<tr><td>${escapeHtml(sale.date)}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(sale.client)}</td><td>${escapeHtml(sale.area || "-")}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td><td>${escapeHtml(statusForSale(sale))}</td></tr>`).join("");
   return `<section class="payment-request-print">${printableBrandHeaderHtml("Dashboard Report")}<div class="pr-meta"><span>Period: <strong>${escapeHtml(dashboardRange.from || "…")} to ${escapeHtml(dashboardRange.to || "…")}</strong></span><span>Branch: <strong>${escapeHtml(data.branch === "all" ? "All Branches" : data.branch)}</strong></span><span>Invoices: <strong>${visibleSales.length}</strong></span></div><div class="pr-meta"><span>Total Sales: <strong>${peso.format(totalSales)}</strong></span><span>Collections: <strong>${peso.format(totalPaid)}</strong></span><span>Outstanding AR: <strong>${peso.format(outstanding)}</strong></span><span>Stock Alerts: <strong>${invAlerts.length}</strong></span></div>${branches.length ? `<table><thead><tr><th>Region</th><th>Sales</th></tr></thead><tbody>${branches.map((b) => `<tr><td>${escapeHtml(b.branch)}</td><td>${peso.format(b.amount)}</td></tr>`).join("")}</tbody></table>` : ""}<table><thead><tr><th>Date</th><th>Document</th><th>Client</th><th>Area</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No invoices in this view.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
@@ -1976,7 +2016,7 @@ function renderAnalytics() {
   // not the invoice's own salesperson field (set to whoever created the invoice, which can drift
   // from the client's actual owner). Who approved the payment request is irrelevant — Superadmin/CEO
   // approval is a segregation-of-duties step, not an attribution signal. Only counts once the money
-  // is actually confirmed collected (collectionStatus === "Deposited"); pending For Deposition/Posted
+  // is actually confirmed collected (collectionStatus === "Deposited"); pending For Deposit/Posted
   // Date and reversed Bounced/Cancelled payments don't count yet.
   const visibleDocs = new Set(visibleSales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
   const depositedPayments = data.payments.filter((payment) => payment.collectionStatus === "Deposited" && visibleDocs.has(payment.invoice));
@@ -2029,8 +2069,8 @@ function renderAnalytics() {
   const collectedEnd = totalSales ? Math.round((totalPaid / totalSales) * 100) : 0;
   qs("#analytics-collection-pie").innerHTML = `<div class="donut" style="--paid:${collectedEnd}%; --partial:${collectedEnd}%; --end:100%;" data-label="${collectionRate}%\ncollected"></div><div class="legend"><span class="green">Collected ${peso.format(totalPaid)}</span><span class="red">Uncollected ${peso.format(uncollected)}</span></div>${graphNote("Computed from invoice paid amount versus remaining receivable balance in the selected branch view.")}`;
 
-  const stockCounts = ["Available", "Near Expiry", "Low Stock", "Critical", "For Disposal"].map((status) => [status, visibleInventory.filter((item) => inventoryStatus(item) === status).length]);
-  qs("#analytics-stock-health").innerHTML = barRows(stockCounts, (value) => `${value} records`, ["green", "orange", "red", "red", "red"]) + graphNote("Computed from inventory records using quantity vs minimum and expiry date rules. Expired lots are marked for disposal.");
+  const stockCounts = ["Available", "Near Expiry", "Low Stock", "Critical", "Expired"].map((status) => [status, visibleInventory.filter((item) => inventoryStatus(item) === status).length]);
+  qs("#analytics-stock-health").innerHTML = barRows(stockCounts, (value) => `${value} records`, ["green", "orange", "red", "red", "red"]) + graphNote("Computed from inventory records using quantity vs minimum and expiry date rules. Lots past their expiry date are marked Expired; anything expiring within 6 months is Near Expiry.");
   const visibleExpenses = byBranch(data.replenishments, "office");
   const visiblePayables = data.payables || [];
   const combinedExpenses = [
@@ -2053,13 +2093,13 @@ function renderAnalytics() {
   const overdue = visibleSales.filter((sale) => statusForSale(sale) === "Overdue");
   const lowStock = visibleInventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
   const nearExpiry = visibleInventory.filter((item) => inventoryStatus(item) === "Near Expiry");
-  const forDisposal = visibleInventory.filter((item) => inventoryStatus(item) === "For Disposal");
+  const forDisposal = visibleInventory.filter((item) => inventoryStatus(item) === "Expired");
   const openIssues = data.productIssues.filter((report) => report.status === "Open").length;
   const topClient = Object.entries(sumBy(visibleSales, "client", (sale) => sale.net)).sort((a, b) => b[1] - a[1])[0];
   const insights = [
     overdue.length ? `${overdue.length} overdue invoice/s need collection follow-up.` : "No overdue invoices in the selected view.",
     lowStock.length ? `${lowStock.length} inventory record/s are low or critical. Reorder or transfer stock.` : "No low or critical stock records in the selected view.",
-    forDisposal.length ? `${forDisposal.length} expired inventory lot/s are for disposal and blocked from invoicing.` : nearExpiry.length ? `${nearExpiry.length} reagent/item record/s are near expiry. Prioritize selling or replacement.` : "No near-expiry stock in the selected view.",
+    forDisposal.length ? `${forDisposal.length} expired inventory lot/s are Expired and blocked from invoicing.` : nearExpiry.length ? `${nearExpiry.length} reagent/item record/s are near expiry. Prioritize selling or replacement.` : "No near-expiry stock in the selected view.",
     openIssues ? `${openIssues} open support report/s need action.` : "No open support reports.",
     totalExpenses ? `Total business expenses include payables plus employee expenses: ${peso.format(totalExpenses)}.` : "No payables or expense requests recorded.",
     topClient ? `Top client by sales: ${topClient[0]} at ${peso.format(topClient[1])}.` : "No sales data available.",
@@ -2512,7 +2552,7 @@ const INVENTORY_STATUS_META = [
   { key: "near", name: "Near Expiry", label: "Near expiry" },
   { key: "low", name: "Low Stock", label: "Low stock" },
   { key: "critical", name: "Critical", label: "Critical" },
-  { key: "disposal", name: "For Disposal", label: "For disposal" },
+  { key: "disposal", name: "Expired", label: "Expired" },
 ];
 const INVENTORY_STATUS_BY_NAME = Object.fromEntries(INVENTORY_STATUS_META.map((meta) => [meta.name, meta]));
 const INVENTORY_PAGE_SIZE = 25;
@@ -2634,7 +2674,7 @@ function inventoryCardsHtml() {
     health,
     alertCard("Low & critical", "critical", "records", lowCritical, top(lowCritical, (/** @type {any} */ a, /** @type {any} */ b) => b.short - a.short), (/** @type {any} */ m) => `${m.short} short`, "t-critical"),
     alertCard("Near expiry", "near", "lots", near, top(near, (/** @type {any} */ a, /** @type {any} */ b) => a.expiry.days - b.expiry.days), (/** @type {any} */ m) => `${m.expiry.days} days`, "t-near"),
-    alertCard("For disposal", "disposal", "expired lots", disposal, top(disposal, (/** @type {any} */ a, /** @type {any} */ b) => b.expiry.days - a.expiry.days), (/** @type {any} */ m) => `${Math.abs(m.expiry.days)}d expired`, "t-critical"),
+    alertCard("Expired", "disposal", "expired lots", disposal, top(disposal, (/** @type {any} */ a, /** @type {any} */ b) => b.expiry.days - a.expiry.days), (/** @type {any} */ m) => `${Math.abs(m.expiry.days)}d expired`, "t-critical"),
   ].join("");
 }
 
@@ -2990,6 +3030,12 @@ function stockSheetRow(index) {
   return `<tr><td><select class="stock-branch">${branchOptions(inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" /></td><td><input class="stock-lot" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" /></td><td><input class="stock-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
+// An inventory PO can be received into every branch on one receipt: each receipt line picks its
+// own branch. Keep in sync with ALL_RECEIVING_BRANCHES in worker.js.
+const ALL_RECEIVING_BRANCHES = "All Branches";
+/** @param {any} po */
+function poDefaultReceivingBranch(po) { return po?.branch && po.branch !== ALL_RECEIVING_BRANCHES ? po.branch : inventoryBranchTab; }
+
 function receivablePurchaseOrders() { return (data.inventoryPurchaseOrders || []).filter((po) => ["For Receiving", "Partially Received"].includes(po.status)); }
 
 function resetStockSheetMeta() {
@@ -3015,7 +3061,7 @@ function fillStockSheetFromInventoryPo(poId) {
   if (!po) return renderStockSheet();
   if (qs("#stock-sheet-order-number") && !qs("#stock-sheet-order-number").value.trim()) qs("#stock-sheet-order-number").value = po.id;
   const remainingLines = /** @type {PoLine[]} */ (po.lines).filter((line) => Number(line.qty || 0) - Number(line.receivedQty || 0) > 0);
-  const bodyRows = (remainingLines.length ? remainingLines : /** @type {PoLine[]} */ (po.lines)).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(po.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
+  const bodyRows = (remainingLines.length ? remainingLines : /** @type {PoLine[]} */ (po.lines)).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(poDefaultReceivingBranch(po))}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
   qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
   qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
 }
@@ -3692,7 +3738,7 @@ function renderSales() {
   qs("#near-expiry-sales-alert").innerHTML = nearExpiry.length
     ? `<button class="near-expiry-banner-button" type="button" data-go-section="inventory" data-focus-record="${escapeHtml(firstNearExpiry.lot)}"><span class="feature-icon">!</span><div><strong>Near-expiry sales alert</strong><small>${nearExpiry.map((item) => `${item.item} (${item.branch}, ${item.expiry})`).join(" · ")}</small></div></button>`
     : `<span class="feature-icon">✓</span><div><strong>No near-expiry sales alert</strong><small>All selected branch inventory is outside the near-expiry window.</small></div>`;
-  table("#sales-table", ["Document", "Client", "Area", "Sales Person", "Date", "Total Due", "Terms", "Source", "Status", "Actions"], rows.map((s) => ({ focus: s.documentNo || s.id, attrs: { "data-sale-row": s.id }, cells: [`<span class="invoice-type-badge type-${escapeHtml(documentType(s.type))}"><span>${invoiceTypeIcon(s.type)}</span>${escapeHtml(s.documentNo || s.id)}</span>`, s.client, s.area, s.salesperson, s.date, peso.format(s.net), `${s.terms} days`, s.migrated ? `<span class="pill warning">Migrated</span>` : `<span class="pill success">Native</span>`, `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`, `<div class="inline-actions"><button class="mini-button sticky-view" data-sale-detail="${s.id}">View</button><button class="mini-button" data-sale-timeline="${s.id}">View Timeline</button></div>`] })));
+  table("#sales-table", ["Document", "Client", "Area", "Sales Person", "Date", "Total Due", "Terms", "Source", "Status", "Actions"], rows.map((s) => ({ focus: s.documentNo || s.id, attrs: { "data-sale-row": s.id }, cells: [`<span class="invoice-type-badge type-${escapeHtml(documentType(s.type))}"><span>${invoiceTypeIcon(s.type)}</span>${escapeHtml(s.documentNo || s.id)}</span>`, s.client, s.area, s.salesperson, s.date, peso.format(s.net), `${s.terms} days`, s.migrated ? `<span class="pill warning">Migrated</span>` : `<span class="pill success" title="Manually inputted by ${escapeHtml(s.createdBy || s.salesperson || "Unknown user")}">Manual</span>`, `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`, `<div class="inline-actions"><button class="mini-button sticky-view" data-sale-detail="${s.id}">View</button><button class="mini-button" data-sale-timeline="${s.id}">View Timeline</button></div>`] })));
   const totalSales = rows.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
   const totalCollected = rows.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
   const outstanding = rows.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
@@ -4333,17 +4379,17 @@ function renderCollections() {
   const dueBuckets = ["Paid", "Partially Paid", "Near Due", "Overdue", "Unpaid"].map((status) => [status, visibleSales.filter((sale) => statusForSale(sale) === status).length]);
   const methodMix = Object.entries(sumBy(visiblePayments, "method", (payment) => Number(payment.amount || 0))).filter(([, amount]) => amount > 0);
   const depositedAmount = visiblePayments.filter((payment) => payment.collectionStatus === "Deposited").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const forDepositionAmount = visiblePayments.filter((payment) => payment.collectionStatus === "For Deposition").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const forDepositAmount = visiblePayments.filter((payment) => payment.collectionStatus === "For Deposit").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const bouncedCount = visiblePayments.filter((payment) => payment.collectionStatus === "Bounced").length;
   const postedCount = visiblePayments.filter((payment) => payment.collectionStatus === "Posted Date").length;
   const largestPayment = visiblePayments.reduce((max, payment) => Math.max(max, Number(payment.amount || 0)), 0);
   const averagePayment = visiblePayments.length ? Math.round(visiblePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) / visiblePayments.length) : 0;
   renderFinancialSummary("#collections-summary-grid", [
     { tone: "primary", label: "Total displayed collections", value: peso.format(visiblePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)), note: `${visiblePayments.length} receipt${visiblePayments.length === 1 ? "" : "s"} in this view` },
-    { tone: "success", label: "Deposited", value: peso.format(depositedAmount), note: `${forDepositionAmount ? `${peso.format(forDepositionAmount)} for deposition` : "No pending deposit amount"}` },
+    { tone: "success", label: "Deposited", value: peso.format(depositedAmount), note: `${forDepositAmount ? `${peso.format(forDepositAmount)} for deposit` : "No pending deposit amount"}` },
     { tone: "warning", label: "Open receivables", value: peso.format(totalDue), note: `${visibleSales.filter((sale) => statusForSale(sale) === "Overdue").length} overdue invoice${visibleSales.filter((sale) => statusForSale(sale) === "Overdue").length === 1 ? "" : "s"}` },
   ], [
-    { title: "Collection Status", items: [{ label: "For Deposition", value: visiblePayments.filter((payment) => payment.collectionStatus === "For Deposition").length }, { label: "Deposited", value: visiblePayments.filter((payment) => payment.collectionStatus === "Deposited").length }, { label: "Bounced", value: bouncedCount }] },
+    { title: "Collection Status", items: [{ label: "For Deposit", value: visiblePayments.filter((payment) => payment.collectionStatus === "For Deposit").length }, { label: "Deposited", value: visiblePayments.filter((payment) => payment.collectionStatus === "Deposited").length }, { label: "Bounced", value: bouncedCount }] },
     { title: "Receipt Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averagePayment) }, { label: "Largest", value: peso.format(largestPayment) }] },
     { title: "Traceability", kind: "pairs", items: [{ label: "Posted Date", value: postedCount }, { label: "Cheque Ready", value: data.collectionContacts.filter((contact) => contact.status === "Cheque Available").length }] },
   ]);
@@ -4357,7 +4403,7 @@ function renderCollections() {
     const payments = data.payments.filter((payment) => payment.invoice === s.id || payment.invoice === s.documentNo);
     const latest = payments.at(-1) || /** @type {Record<string, any>} */ ({});
     const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((/** @type {any} */ cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
-    const status = latest.collectionStatus || "For Deposition";
+    const status = latest.collectionStatus || "For Deposit";
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(/** @type {Payment} */ (latest), s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
   table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Collection Status", "Actions", "Balance", "AR Status"], rows);
@@ -4416,6 +4462,7 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
   const payments = data.payments.filter((entry) => entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo);
   if (!payments.length) return toast("Collection not found.");
   if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited and can no longer be changed.");
+  if (payments.some((payment) => payment.collectionStatus === "Bounced")) return toast("This payment bounced — a Superadmin must Redeposit it first.");
   const postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payments[0].postedDate || fmtDate(today)) || "" : "";
   if (!(await confirmFinalSave(`Mark ${receiptNo} as ${status}?`))) return;
   payments.forEach((payment) => {
@@ -4453,6 +4500,58 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
   renderAll();
   if (payments[0].paymentRequestCvNo && document.body.dataset.activeSection === "payment-request-detail") renderPaymentRequestDetail(payments[0].paymentRequestCvNo);
   toast(`${receiptNo} marked ${status}.`);
+}
+
+/** @param {string} currentCheque @returns {Promise<string | null>} */
+function promptRedepositCheque(currentCheque) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "modal invite-confirm-modal";
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Redeposit</p><h2>Redeposit bounced payment</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div><p class="page-description">The payment goes back to For Deposit and the invoice's paid amount is applied again. Change the cheque number if the client issued a replacement cheque.</p><div class="field full"><label for="redeposit-cheque">Cheque No.</label><input id="redeposit-cheque" autocomplete="off" value="${escapeHtml(currentCheque)}" /></div><div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Go Back</button><button class="primary-button confirm-button" value="confirm">Redeposit</button></div></form>`;
+    document.body.appendChild(dialog);
+    dialog.addEventListener("close", () => {
+      const value = /** @type {HTMLInputElement | null} */ (dialog.querySelector("#redeposit-cheque"))?.value.trim() || "";
+      dialog.remove();
+      resolve(dialog.returnValue === "confirm" ? value : null);
+    });
+    dialog.showModal();
+  });
+}
+
+/** @param {string} receiptNo */
+async function redepositCollectionPayment(receiptNo) {
+  if (!canRedepositCollections()) return toast("Only Superadmin can redeposit a bounced payment.");
+  const payments = data.payments.filter((entry) => entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo);
+  if (!payments.length) return toast("Collection not found.");
+  if (!payments.every((payment) => payment.collectionStatus === "Bounced")) return toast("Only a Bounced payment can be redeposited.");
+  const request = data.paymentRequests.find((entry) => entry.cvNo === (payments[0].paymentRequestCvNo || receiptNo));
+  const previousCheque = String(request?.cheque || payments[0].reference || "");
+  const cheque = await promptRedepositCheque(previousCheque);
+  if (cheque === null) return;
+  const by = currentUser?.name || "System User";
+  const chequeNote = cheque && cheque !== previousCheque ? ` Cheque No. changed from ${previousCheque || "-"} to ${cheque}.` : "";
+  payments.forEach((payment) => {
+    // Bounced reversed the invoice's paid amount — redepositing applies it again, the same as approval did.
+    applyCollectionPayment(payment);
+    payment.collectionStatus = "For Deposit";
+    payment.postedDate = "";
+    if (cheque) payment.reference = cheque;
+    payment.statusHistory ||= [];
+    payment.statusHistory.push(...collectionStatusHistory(`Redeposited — For Deposit${cheque ? ` (Cheque ${cheque})` : ""}`));
+  });
+  if (request) {
+    if (cheque) request.cheque = cheque;
+    request.history = paymentRequestHistory(request);
+    request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Redeposited", note: `Redeposited by ${by}; back to For Deposit and the invoice paid amount re-applied.${chequeNote}`, by });
+  }
+  const affectedSales = [...new Map(/** @type {Sale[]} */ (payments.map((payment) => saleForPayment(payment)).filter(Boolean)).map((sale) => [sale.documentNo || sale.id, sale])).values()];
+  const saveResult = await persistRecords({ payments, paymentRequests: request ? [request] : [], sales: affectedSales });
+  if (!saveResult?.ok) return;
+  log("Redeposited bounced collection", "Collections", `${receiptNo}${chequeNote}`, { save: false });
+  saveData(["notifications"]);
+  renderAll();
+  if (payments[0].paymentRequestCvNo && document.body.dataset.activeSection === "payment-request-detail") renderPaymentRequestDetail(payments[0].paymentRequestCvNo);
+  toast(`${receiptNo} redeposited — now For Deposit.`);
 }
 
 function syncCollectionContactsForBalances() {
@@ -5613,6 +5712,16 @@ function addMonthsToDate(date, months) {
 function itemForecastMonthKeys() { return [2, 1, 0].map((offset) => fmtDate(addMonthsToDate(today, -offset)).slice(0, 7)); }
 function itemForecastMonthLabels() { return [2, 1, 0].map((offset) => addMonthsToDate(today, -offset).toLocaleString("en-US", { month: "short", timeZone: "Asia/Manila" })); }
 
+// The Item box offers "code", "name" and "code · name" — any of them (or part of one) matches.
+/** @param {unknown} code @param {unknown} name @param {unknown} query */
+function forecastItemMatchesQuery(code, name, query) {
+  const wanted = String(query || "").trim().toLowerCase();
+  if (!wanted) return true;
+  const itemCode = String(code || "").toLowerCase();
+  const itemName = String(name || "").toLowerCase();
+  return itemCode.includes(wanted) || itemName.includes(wanted) || `${itemCode} · ${itemName}`.includes(wanted);
+}
+
 /** @param {any} allocationMonths */
 function itemForecastRows(allocationMonths) {
   const fromDate = fmtDate(addMonthsToDate(today, -3));
@@ -5631,13 +5740,7 @@ function itemForecastRows(allocationMonths) {
       const client = data.clients.find((entry) => entry.name === sale.client) || /** @type {any} */ ({});
       if (forecastFilters.brand && (line.brand || item.brand || sale.brand) !== forecastFilters.brand) return;
       if (forecastFilters.client && sale.client !== forecastFilters.client) return;
-      if (forecastFilters.item) {
-        const itemQuery = String(forecastFilters.item).trim().toLowerCase();
-        const itemCode = String(line.code || item.code || "").toLowerCase();
-        const itemName = String(line.item || item.name || "").toLowerCase();
-        const itemLabel = `${itemCode} · ${itemName}`;
-        if (!itemCode.includes(itemQuery) && !itemName.includes(itemQuery) && !itemLabel.includes(itemQuery)) return;
-      }
+      if (forecastFilters.item && !forecastItemMatchesQuery(line.code || item.code, line.item || item.name, forecastFilters.item)) return;
       if (forecastFilters.division && (sale.division || client.division || sale.area || client.area || "") !== forecastFilters.division) return;
       if (forecastFilters.region && (sale.area || client.area || "") !== forecastFilters.region) return;
       if (forecastFilters.classification && (item.classification || item.category || "") !== forecastFilters.classification) return;
@@ -5657,7 +5760,14 @@ function itemForecastRows(allocationMonths) {
     stockByCodeBranch[stock.code] ||= {};
     stockByCodeBranch[stock.code][stock.branch] = (stockByCodeBranch[stock.code][stock.branch] || 0) + Number(stock.qty || 0);
   });
-  return data.items.filter((item) => qtyByCode[item.code] || stockByCode[item.code]).map((item) => {
+  // The filters above only narrowed the sales totals; the item list itself has to honour them
+  // too, or every stocked item stays listed whatever is picked. Client/division/region describe
+  // who bought it, so with any of those set only items with matching sales are listed.
+  const salesScoped = Boolean(forecastFilters.client || forecastFilters.division || forecastFilters.region);
+  const itemPasses = (/** @type {any} */ item) => (!forecastFilters.brand || item.brand === forecastFilters.brand)
+    && (!forecastFilters.item || forecastItemMatchesQuery(item.code, item.name, forecastFilters.item))
+    && (!forecastFilters.classification || (item.classification || item.category || "") === forecastFilters.classification);
+  return data.items.filter((item) => itemPasses(item) && (salesScoped ? qtyByCode[item.code] : qtyByCode[item.code] || stockByCode[item.code])).map((item) => {
     const totalQty = qtyByCode[item.code] || 0;
     const avgMonthlyQty = totalQty / 3;
     const monthlyQty = monthKeys.map((key) => Math.round(monthlyQtyByCode[item.code]?.[key] || 0));
@@ -6734,7 +6844,53 @@ function canApproveFinancialRequest(type) {
 // rendered and when its button is clicked, so an index baked into the button can silently
 // point at a different record by the time it's read back.
 /** @param {any} type @param {string} id */
-function requestActions(type, id) { return `<div class="inline-actions"><button class="mini-button" data-request-preview="${type}:${escapeHtml(id)}">Print</button>${canApproveFinancialRequest(type) ? `<button class="mini-button" data-request-approve="${type}:${escapeHtml(id)}">Approve</button>` : `<small>Awaiting ${type === "payable" ? "Superadmin/CEO" : "approver"}</small>`}<button class="mini-button danger-button" data-request-cancel="${type}:${escapeHtml(id)}">Cancel</button></div>`; }
+function requestActions(type, id) {
+  const key = `${type}:${escapeHtml(id)}`;
+  const printBtn = `<button class="mini-button" data-request-preview="${key}">Print</button>`;
+  const record = /** @type {Replenishment | undefined} */ (requestRecord(type, id));
+  // Returned: back with the maker, who edits and resubmits it. Nobody approves it in this state.
+  if (type === "expense" && record?.requestStatus === "Returned") {
+    const isMaker = Boolean(record.createdByUser) && record.createdByUser === currentUser?.email;
+    return `<div class="inline-actions">${printBtn}${isMaker ? `<button class="mini-button" data-request-resubmit="${key}">Edit &amp; Resubmit</button>` : `<small>Returned to ${escapeHtml(record.requester || "requester")}</small>`}<button class="mini-button danger-button" data-request-cancel="${key}">Cancel</button></div>`;
+  }
+  const canApprove = canApproveFinancialRequest(type);
+  const approveBtn = canApprove ? `<button class="mini-button" data-request-approve="${key}">Approve</button>` : `<small>Awaiting ${type === "payable" ? "Superadmin/CEO" : "approver"}</small>`;
+  const returnBtn = type === "expense" && canApprove ? `<button class="mini-button" data-request-return="${key}">Return</button>` : "";
+  return `<div class="inline-actions">${printBtn}${approveBtn}${returnBtn}<button class="mini-button danger-button" data-request-cancel="${key}">Cancel</button></div>`;
+}
+
+/** @param {string} id */
+async function returnExpenseRequest(id) {
+  const record = /** @type {Replenishment | undefined} */ (requestRecord("expense", id));
+  if (!record) return;
+  if (!canApproveFinancialRequest("expense")) return toast("Only an expense approver can return a request.");
+  if (["Approved", "Cancelled", "Returned"].includes(record.requestStatus)) return toast(`${record.id} is already ${record.requestStatus}.`);
+  const { ok, reason } = await confirmDetailsModal({ eyebrow: "Return to Requester", title: `Return ${record.id}`, fields: financialRequestDetailFields(record, "expense"), note: "The request goes back to the person who made it. They can edit it and resubmit it for approval.", confirmLabel: "Return Request", collectReason: true, reasonLabel: "What needs to be changed" });
+  if (!ok) return;
+  if (!reason) return toast("Say what needs to be changed before returning the request.");
+  const by = currentUser?.name || "System User";
+  record.requestStatus = "Returned"; record.status = "Returned"; record.returnedBy = by; record.returnedAt = fmtDate(today); record.returnReason = reason;
+  record.history = [...(record.history || []), { date: poHistoryTimestamp(), status: "Returned", note: `Returned by ${by}: ${reason}`, by }];
+  const saveResult = await persistRecords({ replenishments: [record] });
+  if (!saveResult?.ok) return;
+  log("Returned expense request", "Expenses", `${record.id}: ${reason}`, { save: false });
+  if (record.createdByUser) notify("Expense", `Your expense ${record.id} was returned for changes: ${reason}`, "notifications", record.id, null, record.createdByUser);
+  saveData(["notifications"]); renderAll(); toast(`${record.id} returned to the requester.`);
+}
+
+/** @param {string} id */
+function openExpenseForResubmit(id) {
+  const record = /** @type {Replenishment | undefined} */ (requestRecord("expense", id));
+  if (!record || record.requestStatus !== "Returned") return toast("Only a returned expense request can be edited.");
+  if (!record.createdByUser || record.createdByUser !== currentUser?.email) return toast("Only the person who made this request can edit it.");
+  openModal("replenishment", { record });
+  // openModal treats a passed record as a masterlist correction; this is a resubmit instead.
+  editContext = null;
+  editingExpenseId = record.id;
+  qs("#modal-title").textContent = `Edit ${record.id}`;
+  qs("#modal-kicker").textContent = record.returnReason ? `Returned: ${record.returnReason}` : "Returned for changes";
+  qs("#modal-submit").textContent = "Resubmit for Approval";
+}
 
 /** @param {any} type @param {string} id */
 function paymentConfirmActions(type, id) { return `<div class="inline-actions"><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cash">Cash</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Bank Transfer">Bank</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cheque">Cheque</button></div>`; }
@@ -7172,7 +7328,7 @@ function reportHubPreviews() {
   const canSee = (/** @type {string} */ key) => reportDataVisible(operationalReports[key].dataKey);
   const attention = /** @type {{ report: string, tone: string, count: number, label: string, detail: string }[]} */ ([
     canSee("collections-ar") && overdue.length ? { report: "collections-ar", tone: "red", count: overdue.length, label: `overdue invoice${overdue.length === 1 ? "" : "s"}`, detail: pesoCompact(overdueBalance) } : null,
-    canSee("reagent-expiry") && expiryBuckets[0].value ? { report: "reagent-expiry", tone: "red", count: expiryBuckets[0].value, label: `expired stock record${expiryBuckets[0].value === 1 ? "" : "s"}`, detail: "for disposal" } : null,
+    canSee("reagent-expiry") && expiryBuckets[0].value ? { report: "reagent-expiry", tone: "red", count: expiryBuckets[0].value, label: `expired stock record${expiryBuckets[0].value === 1 ? "" : "s"}`, detail: "expired" } : null,
     canSee("supplier-payables") && pendingPayables ? { report: "supplier-payables", tone: "orange", count: pendingPayables, label: `payable${pendingPayables === 1 ? "" : "s"} awaiting approval`, detail: "" } : null,
     canSee("service-warranty") && expiringWarranties ? { report: "service-warranty", tone: "orange", count: expiringWarranties, label: `warrant${expiringWarranties === 1 ? "y" : "ies"} expiring soon`, detail: "" } : null,
     canSee("client-documents") && clientsWithGaps ? { report: "client-documents", tone: "orange", count: clientsWithGaps, label: `client${clientsWithGaps === 1 ? "" : "s"} missing documents`, detail: "" } : null,
@@ -7433,13 +7589,13 @@ function renderReagentExpiryReport() {
   const inventory = byBranch(data.inventory);
   setupReportDetailToolbar({ statusLabel: "Status", statusOptions: [...new Set(inventory.map(inventoryStatus))], section: "inventory", sectionLabel: "Inventory", dateFilter: false });
   const atRisk = inventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
-  const disposal = inventory.filter((item) => inventoryStatus(item) === "For Disposal");
+  const disposal = inventory.filter((item) => inventoryStatus(item) === "Expired");
   const expiringSoon = inventory.filter((item) => item.expiry !== "N/A" && daysUntil(item.expiry) >= 0 && daysUntil(item.expiry) <= 90);
   renderReportKpis([
     ["Total Stock Records", inventory.length.toLocaleString("en-PH")],
     ["Low/Critical Stock", atRisk.length.toLocaleString("en-PH"), { tone: "orange" }],
     ["Expiring Within 90 Days", expiringSoon.length.toLocaleString("en-PH"), { tone: "orange" }],
-    ["Expired / For Disposal", disposal.length.toLocaleString("en-PH"), { tone: "red" }],
+    ["Expired", disposal.length.toLocaleString("en-PH"), { tone: "red" }],
   ]);
   setReportChart("#report-detail-chart-summary", { title: "Time until expiry, all stock records", kind: "stack", html: reportStack(reportExpiryBuckets(inventory)) });
   const nextToExpire = inventory.filter((item) => item.expiry !== "N/A" && daysUntil(item.expiry) >= 0).sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, 8).map((item) => ({ title: item.item, sub: [item.lot && `Lot ${item.lot}`, item.branch, `Qty ${item.qty}`].filter(Boolean).join(" · "), days: daysUntil(item.expiry) }));
@@ -8633,7 +8789,7 @@ const modalConfigs = {
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["preparedBy", "Collector", "datalist", () => activeEmployees().map((employee) => employee.name)], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
-  inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => platformBranches()], ["date", "PO Date", "date"]] },
+  inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => [ALL_RECEIVING_BRANCHES, ...platformBranches()]], ["date", "PO Date", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => activeClients().map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
   productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
@@ -8643,6 +8799,8 @@ const modalConfigs = {
 /** @param {any} type @param {any} [edit] */
 function openModal(type, edit = null) {
   modalType = type;
+  editingExpenseId = null;
+  cancelReplaceSaleId = type === "cancelReplace" ? edit?.oldInvoice || null : null;
   modalReadOnly = Boolean(edit?.readOnly);
   editContext = edit?.record && !modalReadOnly ? edit : null;
   const config = modalConfigs[type];
@@ -8726,7 +8884,7 @@ function openModal(type, edit = null) {
     }
   }
   if (["payable", "replenishment"].includes(type)) {
-    qs("#modal-fields").insertAdjacentHTML("beforeend", renderFinancialRequestEditor());
+    qs("#modal-fields").insertAdjacentHTML("beforeend", renderFinancialRequestEditor(edit?.record?.items?.length ? edit.record.items : [{}]));
     syncFinancialRequestTotal();
     if (!edit) qs("#date").value = fmtDate(today);
   }
@@ -9160,7 +9318,7 @@ function buildInventoryPurchaseOrder(values) {
   const supplier = data.suppliers.find((entry) => entry.name === values.supplier);
   if (!supplier) throw new Error("Supplier is required.");
   const branch = values.branch;
-  if (!branch || !platformBranches().includes(branch)) throw new Error("Receiving branch is required.");
+  if (!branch || (branch !== ALL_RECEIVING_BRANCHES && !platformBranches().includes(branch))) throw new Error("Receiving branch is required.");
   const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false }).map((line) => ({ ...line, receivedQty: 0 }));
   if (!lines.length) throw new Error("At least one inventory PO line is required.");
   const by = currentUser?.name || "System User";
@@ -9346,7 +9504,7 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
   }
   const primaryLine = lines[0];
   const terms = Number(client.terms || 30);
-  return { id: documentNo, documentNo, vatCode: values.vatCode || "VAT", po: skipPo ? "" : (values.po || `PO-${documentNo}`), noPo: skipPo || undefined, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "System User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", net, terms, paid: 0, status: "Active", deliveryStatus: "Pending", cancelledFrom: replacementOf };
+  return { id: documentNo, documentNo, vatCode: values.vatCode || "VAT", po: skipPo ? "" : (values.po || `PO-${documentNo}`), noPo: skipPo || undefined, client: values.client, area: client.area, dealer: client.dealer, salesperson: currentUser?.name || "System User", createdBy: currentUser?.name || "System User", type: values.type, sourceBranch: values.sourceBranch, date: values.date || fmtDate(today), item: primaryLine.item, brand: primaryLine.brand, qty: lines.reduce((sum, line) => sum + line.qty, 0), uom: primaryLine.uom, lines, amount, discount, discountReason: values.discountReason || "", net, terms, paid: 0, status: "Active", deliveryStatus: "Pending", cancelledFrom: replacementOf };
 }
 
 function toggleInvoiceSkipPoField() {

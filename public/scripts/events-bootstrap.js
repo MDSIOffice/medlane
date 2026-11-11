@@ -369,6 +369,24 @@ async function submitModal(event) {
     if (items.some((item) => !EXPENSE_CLASSIFICATION_OPTIONS.includes(item.classification))) return toast("Select a classification (from the list) for every expense item.");
     if (["Per Diem", "Revolving Fund"].includes(values.type) && !String(values.employeeName || "").trim()) return toast("Employee Name is required for Per Diem or Revolving Fund expenses.");
     if (!["Per Diem", "Revolving Fund"].includes(values.type)) values.employeeName = "";
+    if (editingExpenseId) {
+      const existing = data.replenishments.find((entry) => entry.id === editingExpenseId);
+      if (!existing || existing.requestStatus !== "Returned") return toast("This expense request is no longer waiting for your changes.");
+      if (!(await confirmFinalSave(`Resubmit ${existing.id} for approval?`))) return;
+      const by = currentUser?.name || "System User";
+      Object.assign(existing, values, { items, amount, status: "For Approval", requestStatus: "For Approval", resubmittedAt: fmtDate(today), history: [...(existing.history || []), { date: poHistoryTimestamp(), status: "For Approval", note: `Edited and resubmitted by ${by}.`, by }] });
+      const saveResult = await persistRecords({ replenishments: [existing] });
+      if (!saveResult?.ok) return;
+      log("Resubmitted expense request", "Expenses", existing.id, { save: false });
+      notify("Expense", `${existing.id} was edited and resubmitted for approval.`, "replenishments", existing.id);
+      saveData(["notifications"]);
+      editingExpenseId = null;
+      qs("#demo-modal").close();
+      form.reset();
+      renderAll();
+      toast(`${existing.id} resubmitted for approval.`);
+      return;
+    }
     const replenishment = { id: `REP-${String(data.replenishments.length + 1).padStart(3, "0")}`, ...values, items, amount, status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, method: "", bank: "", cheque: "", chequeDate: "", createdByUser: currentUser?.email || "" };
     if (!(await confirmFinalSave("Save this expense/replenishment?"))) return;
     data.replenishments.push(replenishment);
@@ -470,6 +488,10 @@ document.body.addEventListener("click", (event) => {
   if (requestPreview) { const [type, id] = /** @type {string} */ (requestPreview.dataset.requestPreview).split(":"); return previewFinancialRequest(type, id); }
   const requestApprove = closestEl(event.target, "[data-request-approve]");
   if (requestApprove) { const [type, id] = /** @type {string} */ (requestApprove.dataset.requestApprove).split(":"); return approveFinancialRequest(type, id); }
+  const requestReturn = closestEl(event.target, "[data-request-return]");
+  if (requestReturn) return returnExpenseRequest(/** @type {string} */ (requestReturn.dataset.requestReturn).split(":").slice(1).join(":"));
+  const requestResubmit = closestEl(event.target, "[data-request-resubmit]");
+  if (requestResubmit) return openExpenseForResubmit(/** @type {string} */ (requestResubmit.dataset.requestResubmit).split(":").slice(1).join(":"));
   const requestCancel = closestEl(event.target, "[data-request-cancel]");
   if (requestCancel) { const [type, id] = /** @type {string} */ (requestCancel.dataset.requestCancel).split(":"); return cancelFinancialRequest(type, id); }
   const creditApprove = closestEl(event.target, "[data-credit-approve]");
@@ -494,6 +516,8 @@ document.body.addEventListener("click", (event) => {
   if (confirmPayment) { const [type, id, method] = /** @type {string} */ (confirmPayment.dataset.confirmPayment).split(":"); return confirmFinancialPayment(type, id, method); }
   const makePaymentRequest = closestEl(event.target, "[data-make-payment-request]");
   if (makePaymentRequest) return openPaymentRequestForInvoice(/** @type {string} */ (makePaymentRequest.dataset.makePaymentRequest));
+  const collectionRedeposit = closestEl(event.target, "[data-collection-redeposit]");
+  if (collectionRedeposit) return redepositCollectionPayment(/** @type {string} */ (collectionRedeposit.dataset.collectionRedeposit));
   const collectionStatus = closestEl(event.target, "[data-collection-status]");
   if (collectionStatus) { const [receiptNo, status] = /** @type {string} */ (collectionStatus.dataset.collectionStatus).split(":"); return updateCollectionPaymentStatus(receiptNo, status); }
   const addressButton = closestEl(event.target, "[data-edit-branch-address]");
@@ -1279,6 +1303,7 @@ qs("#collections-client-search-clear")?.addEventListener("click", () => {
   if (input) input.value = "";
   renderCollectionsClientHistoryPanel();
 });
+qs("#demo-modal").addEventListener("close", () => { cancelReplaceSaleId = null; editingExpenseId = null; });
 qs("#invoice-grid").addEventListener("click", (event) => {
   const printButton = closestEl(event.target, "[data-print-invoice]");
   const detailButton = closestEl(event.target, "[data-sale-detail]");

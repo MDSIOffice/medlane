@@ -93,6 +93,7 @@ interface SaleLine extends PoLine {
 interface Sale {
   id: string;
   documentNo: string;
+  createdBy?: string;
   type: string;
   client: string;
   area: string;
@@ -172,6 +173,7 @@ interface PaymentRequest {
   expandedWithholdingTax?: boolean | number;
   bank?: string;
   bankAccount?: string;
+  cheque?: string;
   chequeDate?: string;
   transferDate?: string;
   preparedBy?: string;
@@ -320,6 +322,11 @@ interface Replenishment {
   approvedAt?: string;
   approvedBy?: string;
   paymentConfirmed?: boolean;
+  returnedBy?: string;
+  returnedAt?: string;
+  returnReason?: string;
+  resubmittedAt?: string;
+  history?: PoHistoryEntry[];
 }
 interface CollectionContact { client: string; area: string; status: string; [extra: string]: any }
 interface PendingTransfer { id: string; status: string; code?: string; lot?: string; from?: string; to?: string; lines: any[]; [extra: string]: any }
@@ -415,7 +422,7 @@ type StoredRow<T = Record<string, unknown>> = Pick<AppRecordRow<T>, "record_key"
 interface IncomingSaleLine { item?: string; code?: string; qty?: unknown; price?: unknown; sourceBranch?: string; branch?: string; lot?: string; expiry?: string }
 interface IncomingSale extends IncomingSaleLine {
   documentNo?: string; client?: string; type?: string;
-  amount?: unknown; net?: unknown; discount?: unknown;
+  amount?: unknown; net?: unknown; discount?: unknown; paid?: unknown; status?: string;
   migrated?: boolean; noPo?: boolean;
   lines?: IncomingSaleLine[];
 }

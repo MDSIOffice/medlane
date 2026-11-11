@@ -99,19 +99,28 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 /** @param {Record<string, any>} item */
+// Expiry comes first: a lot expiring within 6 calendar months is "Near Expiry" even when its
+// quantity is also low, so it is never hidden behind a Low Stock/Critical label.
 function inventoryStatus(item) {
-  if (item.expiry !== "N/A" && daysUntil(item.expiry) < 0) return "For Disposal";
+  const hasExpiry = Boolean(item.expiry) && item.expiry !== "N/A";
+  if (hasExpiry && daysUntil(item.expiry) < 0) return "Expired";
+  if (hasExpiry && expiresWithinMonths(item.expiry, 6)) return "Near Expiry";
   if (item.qty <= Math.ceil(item.min * 0.5)) return "Critical";
   if (item.qty < item.min) return "Low Stock";
-  if (item.expiry !== "N/A" && daysUntil(item.expiry) <= 183) return "Near Expiry";
   return "Available";
+}
+/** @param {string} expiry @param {number} months */
+function expiresWithinMonths(expiry, months) {
+  const limit = new Date(today);
+  limit.setMonth(limit.getMonth() + months);
+  return String(expiry).slice(0, 10) <= fmtDate(limit);
 }
 /** @param {string} status */
 function statusClass(status) {
   const value = String(status).toLowerCase();
   if (value.includes("paid") && !value.includes("unpaid") && !value.includes("partial")) return "green";
-  if (value.includes("partial") || value.includes("near") || value.includes("approval") || value.includes("pending") || value.includes("delivered") || value.includes("incomplete")) return "orange";
-  if (value.includes("overdue") || value.includes("critical") || value.includes("low") || value.includes("unpaid") || value.includes("cancelled") || value.includes("disposal")) return "red";
+  if (value.includes("partial") || value.includes("near") || value.includes("approval") || value.includes("pending") || value.includes("delivered") || value.includes("incomplete") || value.includes("returned")) return "orange";
+  if (value.includes("overdue") || value.includes("critical") || value.includes("low") || value.includes("unpaid") || value.includes("cancelled") || value.includes("disposal") || value.includes("expired")) return "red";
   if (value.includes("si") || value.includes("admin")) return "purple";
   return "gray";
 }
@@ -146,7 +155,7 @@ function contactStatusFromLabel(status) {
 }
 /** @param {string} clientName */
 function clientBalance(clientName) {
-  return data.sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
+  return data.sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled" && sale.id !== cancelReplaceSaleId).reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
 }
 /** @param {string} clientName @param {number} [pendingAmount] */
 function clientCreditState(clientName, pendingAmount = 0) {
@@ -280,13 +289,13 @@ function syncGeneratedNotifications() {
   const warrantyExpired = data.warranties.filter((item) => daysUntil(item.warrantyEnd) < 0 || String(item.status).toLowerCase().includes("expired"));
   const warrantySoon = data.warranties.filter((item) => daysUntil(item.warrantyEnd) >= 0 && daysUntil(item.warrantyEnd) <= 180);
   const bouncedCheques = data.payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
-  const forDepositCheques = data.payments.filter((payment) => ["Cheque", "Multiple Cheques"].includes(payment.method) && ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
+  const forDepositCheques = data.payments.filter((payment) => ["Cheque", "Multiple Cheques"].includes(payment.method) && ["For Deposit", "Posted Date"].includes(payment.collectionStatus));
   const blockedImports = data.imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status));
   const latestRecon = data.reconHistory[0];
 
   if (facts.lowStock.length) add("inventory-low-stock", "Low Stock", `${facts.lowStock.length} inventory lot${facts.lowStock.length === 1 ? "" : "s"} are low or critical.`, "inventory", facts.lowStock.map((item) => item.lot || item.code).join("|"));
   if (facts.nearExpiry.length) add("inventory-near-expiry", "Near Expiry", `${facts.nearExpiry.length} inventory lot${facts.nearExpiry.length === 1 ? "" : "s"} should be sold or transferred using FEFO.`, "inventory", facts.nearExpiry.map((item) => item.lot || item.code).join("|"));
-  if (expiredStock.length) add("inventory-expired", "For Disposal", `${expiredStock.length} expired inventory lot${expiredStock.length === 1 ? "" : "s"} need disposal review.`, "inventory", expiredStock.map((item) => item.lot || item.code).join("|"));
+  if (expiredStock.length) add("inventory-expired", "Expired", `${expiredStock.length} expired inventory lot${expiredStock.length === 1 ? "" : "s"} need disposal review.`, "inventory", expiredStock.map((item) => item.lot || item.code).join("|"));
   if (facts.pendingTransfers.length) add("inventory-transfer-receiving", "Transfer Receiving", `${facts.pendingTransfers.length} stock transfer${facts.pendingTransfers.length === 1 ? "" : "s"} need receiving confirmation.`, "inventory", facts.pendingTransfers.map((item) => item.id).join("|"));
   if (receivingPurchaseOrders.length) add("inventory-po-receiving", "PO Receiving", `${receivingPurchaseOrders.length} inventory purchase order${receivingPurchaseOrders.length === 1 ? "" : "s"} are waiting for receiving.`, "inventory", receivingPurchaseOrders.map((po) => po.id).join("|"));
   if (openPurchaseOrders.length) add("sales-pending-po", "Pending PO", `${openPurchaseOrders.length} client purchase order${openPurchaseOrders.length === 1 ? "" : "s"} still need invoicing or completion.`, "purchase-orders", openPurchaseOrders.map((po) => po.id).join("|"));

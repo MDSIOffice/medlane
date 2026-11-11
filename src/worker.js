@@ -806,7 +806,7 @@ async function postRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
           { name: "Client", value: webhookText(record.client), inline: true },
           { name: "Amount", value: money(record.amount), inline: true },
           { name: "Invoice", value: webhookText(record.invoice), inline: true },
-          { name: "Status", value: webhookText(record.collectionStatus || "For Deposition"), inline: true },
+          { name: "Status", value: webhookText(record.collectionStatus || "For Deposit"), inline: true },
         ], `Collection recorded ${record.receiptNo || key}`);
       } else if (statusChanged("collectionStatus")) {
         push(`Collection Marked ${record.collectionStatus || "Updated"}`, /bounce/i.test(record.collectionStatus || "") ? 0xef4b4f : 0x1d6fa5, [
@@ -1180,9 +1180,23 @@ async function assertMigratedStockAllowed(env, stateKey, profile, rows) {
   }
 }
 
-/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow<IncomingSale>[]} newSaleRows */
-async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
+// Cancel & Replace saves the cancelled original and its replacement in one batch. The stored
+// inventory still has the original's stock deducted and the stored balance still includes it, so
+// without crediting both back here a replacement that reuses the same lot (or the client's
+// headroom) is refused. Only an original that is active in storage and Cancelled in this batch counts.
+/** @param {WorkerEnv} env @param {string} stateKey @param {AppRecordRow<IncomingSale>[]} incomingSaleRows @param {AppRecordRow<IncomingSale>[]} newSaleRows */
+async function salesCancelledInBatch(env, stateKey, incomingSaleRows, newSaleRows) {
+  const candidates = incomingSaleRows.filter((row) => !newSaleRows.includes(row) && String(row.data?.status || "").toLowerCase() === "cancelled");
+  if (!candidates.length) return [];
+  /** @type {StoredRow<IncomingSale>[]} */
+  const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.sales&record_key=in.${encodeURIComponent(postgrestIn(candidates.map((row) => row.record_key)))}&select=data`);
+  return stored.map((row) => row.data || {}).filter((sale) => String(sale.status || "").toLowerCase() !== "cancelled");
+}
+
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow<IncomingSale>[]} newSaleRows @param {AppRecordRow<IncomingSale>[]} [incomingSaleRows] */
+async function validateNewSaleRows(env, stateKey, profile, newSaleRows, incomingSaleRows = []) {
   const canAuthorizeDiscount = ["Superadmin", "CEO", "Admin"].includes(profile?.role);
+  const cancelledInBatch = await salesCancelledInBatch(env, stateKey, incomingSaleRows, newSaleRows);
   /** @type {Map<string, number> | null} */
   let inventoryByKey = null;
   // Mirrors clientCreditState() in ui-utils.js, which only gates the UI (canAuthorize there is
@@ -1245,7 +1259,8 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
           method: "POST",
           body: JSON.stringify({ p_state_key: stateKey, p_client: sale.client }),
         });
-        projectedBalanceByClient.set(sale.client, Number(balanceRow?.balance ?? 0));
+        const freed = cancelledInBatch.filter((cancelled) => cancelled.client === sale.client).reduce((/** @type {number} */ sum, cancelled) => sum + Math.max(Number(cancelled.net ?? cancelled.amount ?? 0) - Number(cancelled.paid || 0), 0), 0);
+        projectedBalanceByClient.set(sale.client, Math.max(Number(balanceRow?.balance ?? 0) - freed, 0));
       }
       // Floored at zero, as client_sales_balance does, so a negative migrated row can't lower the balance.
       const net = Math.max(Number(sale.net ?? sale.amount ?? 0), 0);
@@ -1342,6 +1357,14 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows) {
       for (const invRow of invRows) {
         const item = invRow.data || {};
         inventoryByKey.set(saleStockLookupKey(item.code, item.branch, item.lot), Number(item.qty || 0));
+      }
+      // Mirrors restoreCancelledStock() (modules.js): a skip-PO or migrated original never took stock.
+      for (const cancelled of cancelledInBatch) {
+        if (cancelled.noPo || cancelled.migrated) continue;
+        for (const line of saleLinesOf(cancelled)) {
+          const key = saleStockLookupKey(line.code, line.sourceBranch || line.branch, line.lot);
+          if (inventoryByKey.has(key)) inventoryByKey.set(key, /** @type {number} */ (inventoryByKey.get(key)) + Math.max(Number(line.qty || 0), 0));
+        }
       }
     }
     for (const line of lines) {
@@ -1619,6 +1642,19 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
     }
   }
 
+  // A bounced collection can only be moved on (redeposited) by a Superadmin — the client offers
+  // that as the one action on a Bounced payment, but the plain record save would otherwise let
+  // any collections user flip it straight back to For Deposit/Deposited.
+  if (role !== "Superadmin") {
+    const paymentCandidates = rows.filter((row) => row.module_name === "payments" && lower(row.data?.collectionStatus) !== "bounced");
+    if (paymentCandidates.length) {
+      const stored = await fetchStored("payments", paymentCandidates);
+      for (const row of paymentCandidates) {
+        if (lower(stored.get(row.record_key)?.collectionStatus) === "bounced") throw new Error("Only Superadmin can redeposit a bounced payment");
+      }
+    }
+  }
+
   // Inventory purchase orders: approval is Superadmin-only (requirePoApprover) — CEO included.
   if (role !== "Superadmin") {
     const poCandidates = rows.filter((row) => row.module_name === "inventoryPurchaseOrders" && lower(row.data?.status) === "approved");
@@ -1680,6 +1716,9 @@ function matchReceivingPoLine(po, code, lot, allocated) {
   return open.find((entry) => entry.lot && entry.lot === lot) || open.find((entry) => !entry.lot) || open[0] || null;
 }
 
+// Keep in sync with ALL_RECEIVING_BRANCHES in modules.js.
+const ALL_RECEIVING_BRANCHES = "All Branches";
+
 /** @param {InventoryPO | null | undefined} po @param {ReceivingLineInput[]} submittedLines @param {MasterItem[]} items */
 function validateReceivingLines(po, submittedLines, items) {
   if (!Array.isArray(submittedLines) || !submittedLines.length) throw new Error("No receiving lines provided");
@@ -1693,8 +1732,9 @@ function validateReceivingLines(po, submittedLines, items) {
     const equipment = isEquipmentItem(item);
     const qty = Number(submitted.qty || 0);
     if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Invalid quantity for ${code}`);
-    const branch = String(submitted.branch || po?.branch || "").trim();
-    if (!branch) throw new Error(`Branch is required for ${code}`);
+    // A PO raised for "All Branches" has no single branch to fall back on — each line names its own.
+    const branch = String(submitted.branch || (po?.branch === ALL_RECEIVING_BRANCHES ? "" : po?.branch) || "").trim();
+    if (!branch || branch === ALL_RECEIVING_BRANCHES) throw new Error(`Choose a receiving branch for ${code}`);
     const lot = String(submitted.lot || "").trim();
     const expiry = equipment ? "N/A" : String(submitted.expiry || "").trim();
     /** @type {PoLine | null} */
@@ -2063,13 +2103,21 @@ function saleStatus(sale) {
   return "Unpaid";
 }
 
+// Mirrors expiresWithinMonths() in ui-utils.js: 6 calendar months from today (Manila date).
+/** @param {string} expiry */
+function expiresWithinSixMonths(expiry) {
+  const [year, month, day] = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).split("-").map(Number);
+  const limit = new Date(Date.UTC(year, month - 1 + 6, day)).toISOString().slice(0, 10);
+  return String(expiry).slice(0, 10) <= limit;
+}
+
 /** @param {any} item */
 function inventoryState(item) {
   const expiry = item.expiry && item.expiry !== "N/A" ? new Date(item.expiry).getTime() : null;
-  if (expiry && expiry < Date.now()) return "For Disposal";
+  if (expiry && expiry < Date.now()) return "Expired";
+  if (expiry && expiresWithinSixMonths(item.expiry)) return "Near Expiry";
   if (Number(item.qty || 0) <= Math.ceil(Number(item.min || 0) * 0.5)) return "Critical";
   if (Number(item.qty || 0) < Number(item.min || 0)) return "Low Stock";
-  if (expiry && expiry - Date.now() <= 183 * 86400000) return "Near Expiry";
   return "Available";
 }
 
@@ -2484,10 +2532,10 @@ function digestDaysUntil(dateStr) {
 /** @param {any} item */
 function digestInventoryStatus(item) {
   const min = Number(item.min || 0);
-  if (item.expiry && item.expiry !== "N/A" && digestDaysUntil(item.expiry) < 0) return "For Disposal";
+  if (item.expiry && item.expiry !== "N/A" && digestDaysUntil(item.expiry) < 0) return "Expired";
+  if (item.expiry && item.expiry !== "N/A" && expiresWithinSixMonths(item.expiry)) return "Near Expiry";
   if (item.qty <= Math.ceil(min * 0.5)) return "Critical";
   if (item.qty < min) return "Low Stock";
-  if (item.expiry && item.expiry !== "N/A" && digestDaysUntil(item.expiry) <= 183) return "Near Expiry";
   return "Available";
 }
 
@@ -2803,7 +2851,7 @@ function computeBusinessMetrics(state) {
   const totalCollected = sales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.paid || 0), 0);
   const totalExpenses = [...payables, ...replenishments].reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0);
   const overdueCount = sales.filter((/** @type {Sale} */ sale) => digestSaleStatus(sale) === "Overdue").length;
-  const pendingDeposit = payments.filter((/** @type {Payment} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length;
+  const pendingDeposit = payments.filter((/** @type {Payment} */ payment) => ["For Deposit", "For Deposit", "Posted Date"].includes(payment.collectionStatus)).length;
   const bounced = payments.filter((/** @type {Payment} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
   const lowStock = inventory.filter((/** @type {any} */ item) => ["Low Stock", "Critical"].includes(digestInventoryStatus(item))).length;
   const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || "")).length;
@@ -2906,7 +2954,7 @@ function dashboardAnalyticsFields(state, monthKey) {
   const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
   return [
     { name: "💰 Sales", value: [`**Invoices this month:** ${monthSales.length}`, `**Month invoiced:** ${money(totalSales)}`, `**Open AR total:** ${money(openReceivables)}`].join("\n"), inline: true },
-    { name: "🏦 Collections", value: [`**Collected this month:** ${money(totalCollected)}`, `**Deposits pending:** ${payments.filter((/** @type {Payment} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus)).length}`, `**Overdue invoices:** ${overdue.length}`].join("\n"), inline: true },
+    { name: "🏦 Collections", value: [`**Collected this month:** ${money(totalCollected)}`, `**Deposits pending:** ${payments.filter((/** @type {Payment} */ payment) => ["For Deposit", "For Deposit", "Posted Date"].includes(payment.collectionStatus)).length}`, `**Overdue invoices:** ${overdue.length}`].join("\n"), inline: true },
     { name: "📦 Operations", value: [`**Low / critical stock:** ${lowStock.length}`, `**Business expenses this month:** ${monthPayables.length + monthExpenses.length}`, `**Expense amount:** ${money(monthExpenseTotal)}`].join("\n"), inline: true },
     { name: "⚠️ Attention", value: [`**Payables/expenses pending:** ${pendingPayables.length + pendingExpenses.length}`, `**Active demo requests:** ${activeDemos.length}`, `**Bounced payments:** ${payments.filter((/** @type {Payment} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length}`].join("\n"), inline: true },
   ];
@@ -2919,7 +2967,7 @@ function dashboardAnalyticsFields(state, monthKey) {
 // scoped to their own channel instead of mixed into the general digest.
 /** @param {any} inventory */
 function inventoryStatusFields(inventory) {
-  const disposal = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "For Disposal").sort((/** @type {any} */ a, /** @type {any} */ b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
+  const disposal = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "Expired").sort((/** @type {any} */ a, /** @type {any} */ b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
   const critical = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "Critical").sort((/** @type {any} */ a, /** @type {any} */ b) => Number(a.qty || 0) - Number(b.qty || 0));
   const lowStock = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "Low Stock").sort((/** @type {any} */ a, /** @type {any} */ b) => Number(a.qty || 0) - Number(b.qty || 0));
   const nearExpiry = inventory.filter((/** @type {any} */ item) => digestInventoryStatus(item) === "Near Expiry").sort((/** @type {any} */ a, /** @type {any} */ b) => digestDaysUntil(a.expiry) - digestDaysUntil(b.expiry));
@@ -2948,7 +2996,7 @@ function inventoryStatusFields(inventory) {
   };
 
   const fields = [
-    field("⛔", "For Disposal (Expired)", disposal),
+    field("⛔", "Expired", disposal),
     field("🔴", "Critical Stock", critical),
     field("🟠", "Low Stock", lowStock),
     field("⏳", "Near-Expiry Stock", nearExpiry),
@@ -3949,7 +3997,7 @@ async function sendDiscordDigest(env, { periodLabel, state, sections, businessSu
   const demoRequests = state.inventoryDemoRequests || [];
 
   const bouncedCheques = payments.filter((/** @type {Payment} */ payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
-  const pendingDeposits = payments.filter((/** @type {Payment} */ payment) => ["For Deposition", "Posted Date"].includes(payment.collectionStatus));
+  const pendingDeposits = payments.filter((/** @type {Payment} */ payment) => ["For Deposit", "For Deposit", "Posted Date"].includes(payment.collectionStatus));
   const largeSales = sales.filter((/** @type {Sale} */ sale) => sale.status !== "Cancelled" && Number(sale.net || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(sale.date) >= new Date(auditSinceIso));
   const largePayments = payments.filter((/** @type {Payment} */ payment) => Number(payment.amount || 0) >= LARGE_TRANSACTION_THRESHOLD && new Date(payment.dateRecorded || payment.dateCollected || 0) >= new Date(auditSinceIso));
   const blockedImports = imports.filter((/** @type {any} */ item) => /blocked|invalid|skipped|no valid/i.test(item.status || ""));
@@ -4611,7 +4659,7 @@ export default {
               ? rows.filter((row) => row.module_name === "sales" && !(beforeKeysByModule.sales || new Set()).has(row.record_key))
               : [];
             await Promise.all([
-              newSaleRows.length ? validateNewSaleRows(env, stateKey, profile, newSaleRows) : null,
+              newSaleRows.length ? validateNewSaleRows(env, stateKey, profile, newSaleRows, rows.filter((row) => row.module_name === "sales")) : null,
               poRows.length ? assertPurchaseOrderClientsNotArchived(env, stateKey, poRows) : null,
               assertMasterlistUnique(env, stateKey, rows, { replaceModules: true }),
               assertFinancialApprovalAllowed(env, stateKey, profile, rows),
@@ -5072,7 +5120,7 @@ export default {
         if (incomingSaleRows.length) {
           const existingSaleKeys = new Set(existingSaleRows.map((/** @type {any} */ row) => row.record_key));
           const newSaleRows = incomingSaleRows.filter((row) => !existingSaleKeys.has(row.record_key));
-          if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows);
+          if (newSaleRows.length) await validateNewSaleRows(env, stateKey, profile, newSaleRows, incomingSaleRows);
         }
 
         if (checkPoEditLock) {
