@@ -1794,7 +1794,7 @@ async function forceLogoutSession(sessionId) {
 let lastImportFileName = null;
 qs("#import-sample").addEventListener("click", () => {
   lastImportFileName = null;
-  qs("#csv-input").value = "Year\tMonth\tOffice\tDate\tSales Rep\tBranch\tArea\tTS/DR\tSI No.\tCLIENT\tDiscount\tInvoice Amount\tLESS TPC\tCWT\tRemarks\n2026\tJuly\tLas Pinas\t2026-07-15\tAna Cruz\tLas Pinas\tRegion IV-A\t\tSI-MIG-001\tPrimeCare Diagnostics\t0\t9408\t0\t0\tOpening AR\n2026\tJuly\tNaga\t2026-07-16\tMika Tan\tNaga\tRegion V\tTS-MIG-002\t\tBicol Heart Lab\t0\t3500\t0\t0\tOpening AR";
+  qs("#csv-input").value = "Year\tMonth\tOffice\tDate\tBranch\tArea\tTS/DR\tSI No.\tCLIENT\tDiscount\tInvoice Amount\tLESS TPC\tCWT\tRemarks\n2026\tJuly\tLas Pinas\t2026-07-15\tLas Pinas\tRegion IV-A\t\tSI-MIG-001\tPrimeCare Diagnostics\t0\t9408\t0\t0\tOpening AR\n2026\tJuly\tNaga\t2026-07-16\tNaga\tRegion V\tTS-MIG-002\t\tBicol Heart Lab\t0\t3500\t0\t0\tOpening AR";
   renderImportCheck();
 });
 qs("#csv-file-input").addEventListener("change", async (event) => {
@@ -1842,9 +1842,9 @@ const IMPORT_TEMPLATES = {
   // Opening AR carries balances only (no product/qty/price columns): each row becomes one
   // "Accounts Receivable" bookkeeping line, which product/item reports already exclude.
   sales: { file: "medlane-template-sales-opening-ar.csv", rows: [
-    ["Year", "Month", "Office", "Date", "Sales Rep", "Branch", "Area", "TS/DR", "SI No.", "CLIENT", "Discount", "Invoice Amount", "LESS TPC", "CWT", "Remarks"],
-    ["2026", "July", "Las Pinas", "2026-07-15", "Ana Cruz", "Las Pinas", "Region IV-A", "", "SI-MIG-001", "Sample Diagnostics Center", "0", "9408", "0", "0", "Opening AR"],
-    ["2026", "July", "Naga", "2026-07-16", "Mika Tan", "Naga", "Region V", "TS-MIG-002", "", "Sample Heart Lab", "0", "3500", "0", "0", "Opening AR"],
+    ["Year", "Month", "Office", "Date", "Branch", "Area", "TS/DR", "SI No.", "CLIENT", "Discount", "Invoice Amount", "LESS TPC", "CWT", "Remarks"],
+    ["2026", "July", "Las Pinas", "2026-07-15", "Las Pinas", "Region IV-A", "", "SI-MIG-001", "Sample Diagnostics Center", "0", "9408", "0", "0", "Opening AR"],
+    ["2026", "July", "Naga", "2026-07-16", "Naga", "Region V", "TS-MIG-002", "", "Sample Heart Lab", "0", "3500", "0", "0", "Opening AR"],
   ] },
   collections: { file: "medlane-template-collections.csv", rows: [
     ["SI / TS / DR", "Receipt No.", "Amount Paid", "Method", "Bank", "Reference", "Cheque Date", "Date of Collection"],
