@@ -1098,7 +1098,7 @@
             <small>Keep the header row as-is; replace the example rows with your data. Import in order: Clients → Suppliers → Products → Inventory → Sales → Collections. Inventory rows are blocked unless the product is already in the Products masterlist, sales rows unless the client is already in the Clients masterlist, and collections must match an existing SI / TS / DR.</small>
           </div>
           <div class="field"><label for="csv-file-input">Upload CSV File</label><input id="csv-file-input" type="file" accept=".csv,text/csv" /></div>
-          <div class="field" id="import-branch-field" hidden><label for="import-branch">Stock branch for this inventory file</label><select id="import-branch"><option value="">Choose branch…</option></select></div>
+          <div class="field" id="import-branch-field" hidden><label for="import-branch">Stock branch for rows with no Branch</label><select id="import-branch"><option value="">Choose branch…</option></select></div>
           <textarea id="csv-input" placeholder="client,ABC Laboratory,Region IV-A,Address,Contact,123-456-789-000"></textarea>
           <div class="modal-actions"><button class="ghost-button" id="check-import" type="button">Preview Import</button></div>
           <div class="import-preview-summary" id="import-preview-summary" aria-live="polite"></div>

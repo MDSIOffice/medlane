@@ -1830,14 +1830,15 @@ const IMPORT_TEMPLATES = {
     ["EQP-0001", "Sample Chemistry Analyzer", "Sample Instruments", "Equipment", "unit"],
     ["SVC-0001", "Sample Preventive Maintenance", "", "Service", "visit"],
   ] },
-  // Branch is picked on the Import page (one per file), so the file has no branch column.
-  // Lot No. is optional; the same product may repeat once per distinct lot.
+  // Branch is per row; a blank Branch cell falls back to the branch picked on the Import page.
+  // Lot No. is optional; the same product may repeat once per distinct lot per branch.
   inventory: { file: "medlane-template-inventory-stock.csv", rows: [
-    ["Product", "Lot No.", "Quantity", "Expiry Date"],
-    ["RGT-0001", "HT-27-001", "25", "2027-06-30"],
-    ["RGT-0001", "HT-27-002", "10", "2027-09-30"],
-    ["Sample Vacutainer Tubes", "VT-1001", "100", "2027-12-31"],
-    ["EQP-0001", "", "2", ""],
+    ["Branch", "Product", "Lot No.", "Quantity", "Expiry Date"],
+    ["Las Pinas", "RGT-0001", "HT-27-001", "25", "2027-06-30"],
+    ["Las Pinas", "RGT-0001", "HT-27-002", "10", "2027-09-30"],
+    ["Naga", "RGT-0001", "HT-27-001", "5", "2027-06-30"],
+    ["Naga", "Sample Vacutainer Tubes", "VT-1001", "100", "2027-12-31"],
+    ["Las Pinas", "EQP-0001", "", "2", ""],
   ] },
   // Opening AR carries balances only (no product/qty/price columns): each row becomes one
   // "Accounts Receivable" bookkeeping line, which product/item reports already exclude.
@@ -1870,7 +1871,7 @@ qs("#run-import").addEventListener("click", async () => {
   const ok = await confirmDetailsModal({
     eyebrow: "Confirm Migration Import",
     title: `Import ${ready.length} ${moduleLabel} record(s)`,
-    fields: [["File", lastImportFileName || "Pasted CSV/TSV"], ...(ready[0]?.kind === "inventoryMigration" ? [["Stock branch", qs("#import-branch")?.value || "-"]] : []), ["Ready rows", ready.length], ["Skipped rows", checked.length - ready.length]],
+    fields: [["File", lastImportFileName || "Pasted CSV/TSV"], ...(ready[0]?.kind === "inventoryMigration" ? [["Stock branch", [...new Set(ready.map((row) => row.branch))].map((branch) => `${branch} (${ready.filter((row) => row.branch === branch).length})`).join(", ") || "-"]] : []), ["Ready rows", ready.length], ["Skipped rows", checked.length - ready.length]],
     confirmLabel: "Approve & Import",
     note: "This creates new live records. Review the preview table carefully before confirming.",
   });

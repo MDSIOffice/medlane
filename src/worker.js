@@ -1160,12 +1160,13 @@ async function assertMigratedStockAllowed(env, stateKey, profile, rows) {
   if (!canImport) throw new Error("Importing inventory stock requires Imports edit permission.");
   const itemRows = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.items&select=data`));
   const activeCodes = new Set(itemRows.filter((entry) => !entry.data?.archived).map((entry) => String(entry.data?.code || "").trim().toLowerCase()).filter(Boolean));
-  // One row per product per import: the same product twice (even as different lots) is refused.
+  // One row per product + branch + lot per import (stock is stored per code | branch | lot, so
+  // different lots of one product are separate rows); a repeated triple is refused.
   /** @type {Set<string>} */
   const seenCodes = new Set();
   for (const row of fresh) {
-    const code = `${String(row.data?.code || "").trim().toLowerCase()}|${String(row.data?.branch || "").trim().toLowerCase()}`;
-    if (seenCodes.has(code)) throw new Error(`Stock ${row.data?.code || row.record_key}: the same product appears more than once in this import. List each product only once.`);
+    const code = [row.data?.code, row.data?.branch, row.data?.lot].map((part) => String(part || "").trim().toLowerCase()).join("|");
+    if (seenCodes.has(code)) throw new Error(`Stock ${row.data?.code || row.record_key}: the same product and lot appears more than once for this branch in this import. List each product/lot only once per branch.`);
     seenCodes.add(code);
   }
   for (const row of fresh) {

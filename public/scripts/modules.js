@@ -6106,8 +6106,10 @@ function importExpiry(raw) {
 /** @param {string[][]} rows @returns {ImportCheckRow[]} */
 function validateInventoryMigrationRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
-  const branch = String(qs("#import-branch")?.value || "").trim();
-  const branchValid = platformBranches().includes(branch);
+  // Branch comes from the file's optional Branch column, row by row; a blank cell (or a file with no
+  // Branch column) falls back to the branch picked in the dropdown above the preview.
+  const fallbackBranch = String(qs("#import-branch")?.value || "").trim();
+  const branches = platformBranches();
   const existingKeys = new Set(data.inventory.map((entry, index) => String(saveRecordKeyFor("inventory", entry, index))));
   const checked = rows.slice(1).map((row, index) => {
     const product = rowValue(headers, row, ["Product", "Product Name", "Item", "Item Code", "Item Description"]).trim();
@@ -6115,7 +6117,13 @@ function validateInventoryMigrationRows(rows) {
     const lot = rowValue(headers, row, ["Lot No.", "Lot", "Lot Number"]).trim();
     const expiry = importExpiry(rowValue(headers, row, ["Expiry Date", "Expiration Date", "Expiry", "Expiration"]));
     const issues = [];
-    if (!branchValid) issues.push("Choose a stock branch above");
+    const branchCell = rowValue(headers, row, ["Branch", "Stock Branch", "Warehouse"]).trim();
+    // Case/space/accent-insensitive, so "las piñas" or "LAS PINAS" both match "Las Pinas".
+    const branchKey = (/** @type {string} */ value) => normalizeMasterName(value.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+    const branch = branchCell ? branches.find((entry) => branchKey(entry) === branchKey(branchCell)) || "" : fallbackBranch;
+    const branchValid = branches.includes(branch);
+    if (branchCell && !branchValid) issues.push(`Unknown branch "${branchCell}" — use ${branches.join(" or ")}`);
+    else if (!branchValid) issues.push("No branch — fill the Branch column or choose a stock branch above");
     // Match by item code first, then by exact (normalized) name; archived items never count.
     const codeKey = normalizeMasterCode(product);
     const nameKey = normalizeMasterName(product);
@@ -6138,19 +6146,19 @@ function validateInventoryMigrationRows(rows) {
       const stockKey = String(saveRecordKeyFor("inventory", { code: item.code, branch, lot, serial: lot }));
       if (branchValid && existingKeys.has(stockKey)) issues.push(`Already has stock in ${branch} — adjust it in Inventory → Stocks instead`);
     }
-    return { row: index + 2, kind: "inventoryMigration", name: `${item ? `${item.code} · ${item.name}` : product}${lot ? ` · Lot ${lot}` : ""}`, area: branchValid ? branch : "-", code: item?.code || "", qty: Number(qtyText) || 0, lot, expiry: expiry.value, issues };
+    return { row: index + 2, kind: "inventoryMigration", name: `${item ? `${item.code} · ${item.name}` : product}${lot ? ` · Lot ${lot}` : ""}`, area: branchValid ? branch : "-", branch: branchValid ? branch : "", usesFallbackBranch: !branchCell, code: item?.code || "", qty: Number(qtyText) || 0, lot, expiry: expiry.value, issues };
   });
-  // Each product + lot pair may appear only once per file (stock is stored per code | branch | lot,
-  // so different lots of one product are separate rows). Every row of a repeated pair is blocked
-  // (not just the later ones), so nothing for it imports with a partial quantity until fixed.
-  /** @param {{ code: string, lot: string }} entry */
-  const lotKey = (entry) => `${normalizeMasterCode(entry.code)}|${String(entry.lot || "").trim().toLowerCase()}`;
+  // Each product + lot may appear only once per branch in a file (stock is stored per
+  // code | branch | lot, so different lots or branches are separate rows). Every row of a repeated
+  // triple is blocked (not just the later ones), so nothing imports with a partial quantity.
+  /** @param {{ code: string, lot: string, branch: string }} entry */
+  const lotKey = (entry) => `${normalizeMasterCode(entry.code)}|${normalizeMasterName(entry.branch)}|${String(entry.lot || "").trim().toLowerCase()}`;
   /** @type {Map<string, number[]>} */
   const rowsByLot = new Map();
   checked.forEach((entry) => { if (entry.code) { const key = lotKey(entry); rowsByLot.set(key, [...(rowsByLot.get(key) || []), entry.row]); } });
   return checked.map(({ issues, ...entry }) => {
     const sameLot = entry.code ? rowsByLot.get(lotKey(entry)) || [] : [];
-    if (sameLot.length > 1) issues.push(`Same product${entry.lot ? ` and lot ${entry.lot}` : " with no lot"} listed on rows ${sameLot.join(", ")} — list each product/lot only once (combine the quantities)`);
+    if (sameLot.length > 1) issues.push(`Same product${entry.lot ? ` and lot ${entry.lot}` : " with no lot"}${entry.branch ? ` in ${entry.branch}` : ""} listed on rows ${sameLot.join(", ")} — list each product/lot only once per branch (combine the quantities)`);
     return { ...entry, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
@@ -6182,8 +6190,8 @@ function validateImportRows() {
   });
 }
 
-// The inventory import has no branch column (Product / Lot No. / Quantity / Expiry only), so the branch the
-// stock goes into is picked once for the whole file. Shown only while an inventory file is loaded.
+// Fallback stock branch for inventory rows whose Branch cell is blank (or files with no Branch
+// column). Shown only while an inventory file has such rows.
 /** @param {boolean} show */
 function syncImportBranchField(show) {
   const field = qs("#import-branch-field");
@@ -6203,7 +6211,8 @@ function syncImportBranchField(show) {
 /** @returns {ImportCheckRow[]} */
 function renderImportCheck() {
   const checked = validateImportRows();
-  syncImportBranchField(checked.some((row) => row.kind === "inventoryMigration"));
+  // The dropdown is only needed while some inventory row has no Branch of its own.
+  syncImportBranchField(checked.some((row) => row.kind === "inventoryMigration" && row.usesFallbackBranch));
   const ready = checked.filter((row) => row.status === "Ready");
   const blocked = checked.filter((row) => row.status !== "Ready");
   const duplicateWarnings = blocked.filter((row) => /duplicate/i.test(row.issues)).length;
@@ -6253,13 +6262,12 @@ function importCheckedRows(checked) {
     return { module: "Products/Services", records: ready.length, skipped: checked.length - ready.length, recordType: "items", recordKeys, createdRecords: { items } };
   }
   if (kind === "inventoryMigration") {
-    const branch = String(qs("#import-branch")?.value || "").trim();
     /** @type {StockRow[]} */
     const stocks = [];
     ready.forEach((row) => {
       const item = data.items.find((entry) => entry.code === row.code);
       if (!item) return;
-      const stock = /** @type {StockRow} */ ({ code: item.code, item: item.name, brand: item.brand, branch, lot: row.lot, serial: row.lot, expiry: row.expiry, qty: row.qty, min: 10, migrated: true, migrationSource: "Inventory import" });
+      const stock = /** @type {StockRow} */ ({ code: item.code, item: item.name, brand: item.brand, branch: row.branch, lot: row.lot, serial: row.lot, expiry: row.expiry, qty: row.qty, min: 10, migrated: true, migrationSource: "Inventory import" });
       data.inventory.push(stock);
       stocks.push(stock);
     });

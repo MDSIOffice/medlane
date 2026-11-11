@@ -40,8 +40,11 @@ describe("inventory migration import", () => {
   test("one bad row refuses the whole save", async () => {
     await assert.rejects(run(as("Superadmin"), stock(), stock({ code: "NOPE-9", lot: "B" })), /not an active item/);
   });
-  test("the same product twice in one import is refused, even as different lots", async () => {
-    await assert.rejects(run(as("Superadmin"), stock({ lot: "A" }), stock({ code: "rgt-1", lot: "B", expiry: "2028-01-31" })), /more than once/);
+  test("the same product as different lots in one import is allowed", async () => {
+    await run(as("Superadmin"), stock({ lot: "A" }), stock({ code: "rgt-1", lot: "B", expiry: "2028-01-31" }));
+  });
+  test("the same product and lot twice for one branch in one import is refused", async () => {
+    await assert.rejects(run(as("Superadmin"), stock({ lot: "A" }), stock({ code: "rgt-1", lot: "a", qty: 2 })), /more than once/);
   });
   test("the same product for two different branches in one save is allowed", async () => {
     await run(as("Superadmin"), stock(), stock({ branch: "Naga" }));
