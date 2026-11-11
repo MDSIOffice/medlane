@@ -1823,7 +1823,7 @@ const IMPORT_TEMPLATES = {
     ["SUP-0002", "Sample Medical Equipment Co.", "Equipment", "444-555-666-000", "1 Sample St, Singapore", "Singapore", "", "", "", "orders@example.com", "", "Lee Wong", "Sales Director", "Active"],
   ] },
   products: { file: "medlane-template-products-services.csv", rows: [
-    // BRAND is optional — a blank cell (or a file without the column) imports as "Medlane".
+    // BRAND and ITEM CODE are optional — a blank brand stays blank; a blank code gets a NOCODE-#### placeholder.
     ["ITEM CODE", "ITEM DESCRIPTION", "BRAND", "ITEM CLASSIFICATION", "UOM"],
     ["RGT-0001", "Sample Hematology Reagent", "Sample Diagnostics", "Reagent", "kit"],
     ["SUP-0001", "Sample Vacutainer Tubes", "Sample Medical", "Supply", "box"],

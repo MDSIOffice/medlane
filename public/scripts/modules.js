@@ -5895,10 +5895,10 @@ function validateClientsMasterlistRows(rows) {
     const codeKey = normalizeMasterCode(code);
     // Archived clients count too on import: re-adding one would silently shadow it.
     if (key && data.clients.some((client) => normalizeMasterName(client.name) === key || (codeKey && normalizeMasterCode(client.code) === codeKey))) issues.push("Duplicate existing client/code");
-    if (tin.length === 12 && data.clients.some((client) => normalizeMasterTin(client.tin) === tin)) issues.push("Duplicate existing client TIN");
+    if (isUniqueClientTin(tin) && data.clients.some((client) => normalizeMasterTin(client.tin) === tin)) issues.push("Duplicate existing client TIN");
     if (key && seen.has(key)) issues.push("Duplicate input client");
     if (codeKey && seenCodes.has(codeKey)) issues.push("Duplicate input client code");
-    if (tin.length === 12 && seenTins.has(tin)) issues.push("Duplicate input client TIN");
+    if (isUniqueClientTin(tin) && seenTins.has(tin)) issues.push("Duplicate input client TIN");
     if (key) seen.add(key);
     if (codeKey) seenCodes.add(codeKey);
     if (tin.length === 12) seenTins.add(tin);
@@ -5955,29 +5955,45 @@ function validateProductsMasterlistRows(rows) {
   const headers = rows[0].map(normalizedImportHeader);
   const seen = new Set();
   const seenNames = new Set();
+  // ITEM CODE is optional. Stock, receiving and the server all key products by code, so a row
+  // without one is given a unique placeholder (NOCODE-0001, …) instead of importing code-less;
+  // it's assigned here so the preview shows the exact code that will be saved.
+  const takenCodes = new Set([...data.items.map((item) => normalizeMasterCode(item.code)), ...rows.slice(1).map((/** @type {any} */ row) => normalizeMasterCode(rowValue(headers, row, ["ITEM CODE", "Item Code"])))].filter(Boolean));
+  let nextPlaceholder = 1;
+  const placeholderCode = () => {
+    let candidate = "";
+    do candidate = `NOCODE-${String(nextPlaceholder++).padStart(4, "0")}`; while (takenCodes.has(normalizeMasterCode(candidate)));
+    takenCodes.add(normalizeMasterCode(candidate));
+    return candidate;
+  };
   return rows.slice(1).map((/** @type {any} */ row, /** @type {any} */ index) => {
-    const code = rowValue(headers, row, ["ITEM CODE", "Item Code"]);
+    const rawCode = rowValue(headers, row, ["ITEM CODE", "Item Code"]).trim();
     const name = rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]);
     const issues = [];
-    const key = normalizeMasterCode(code);
+    const key = normalizeMasterCode(rawCode);
     const nameKey = normalizeMasterName(name);
-    if (!code.trim()) issues.push("Missing item code");
     if (!name.trim()) issues.push("Missing item description");
     if (key && data.items.some((item) => normalizeMasterCode(item.code) === key)) issues.push("Duplicate existing item code");
-    // A shared name is fine across different item codes; only a code-less existing item clashes by name.
-    if (nameKey && data.items.some((item) => normalizeMasterName(item.name) === nameKey && !normalizeMasterCode(item.code))) issues.push("Duplicate existing item name (no code to tell them apart)");
+    // A shared name is fine across different item codes. A row with no code of its own can only be
+    // told apart by name, so it clashes with any existing item of that name; otherwise only a
+    // code-less existing item clashes by name.
+    if (nameKey && data.items.some((item) => normalizeMasterName(item.name) === nameKey && (!key || !normalizeMasterCode(item.code)))) issues.push(key ? "Duplicate existing item name (no code to tell them apart)" : "An item with this name already exists — give this row its own item code");
     if (key && seen.has(key)) issues.push("Duplicate input item code");
     if (nameKey && !key && seenNames.has(nameKey)) issues.push("Duplicate input item name");
     if (key) seen.add(key);
     if (nameKey && !key) seenNames.add(nameKey);
-    return { row: index + 2, kind: "productsMasterlist", code, name, area: importedCategory(rowValue(headers, row, ["ITEM CLASSIFICATION", "Item Classification"])), status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
+    const code = key || issues.length ? rawCode : placeholderCode();
+    const note = !key && !issues.length ? `Safe to import — no item code, will be saved as ${code}` : "Safe to import";
+    return { row: index + 2, kind: "productsMasterlist", code, name, area: importedCategory(rowValue(headers, row, ["ITEM CLASSIFICATION", "Item Classification"])), status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || note };
   });
 }
 
-/** @param {any} row @param {any} headers */
-function buildImportedProduct(row, headers) {
+// `code` is the validated row's code, which carries the placeholder for rows without an ITEM CODE.
+// BRAND stays blank when the cell is empty (no "Medlane" default).
+/** @param {any} row @param {any} headers @param {string} [code] */
+function buildImportedProduct(row, headers, code) {
   const classification = rowValue(headers, row, ["ITEM CLASSIFICATION", "Item Classification"]);
-  return { code: rowValue(headers, row, ["ITEM CODE", "Item Code"]).trim(), name: rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]).trim(), brand: rowValue(headers, row, ["BRAND", "Brand"]).trim() || "Medlane", source: "Supplier", supplier: "", category: importedCategory(classification), classification, uom: normalizeUom(rowValue(headers, row, ["UOM"])) || "unit", terms: 30, cost: 0, price: 0, lot: "", expiry: "", migrated: true };
+  return { code: code || rowValue(headers, row, ["ITEM CODE", "Item Code"]).trim(), name: rowValue(headers, row, ["ITEM DESCRIPTION", "Item Description"]).trim(), brand: rowValue(headers, row, ["BRAND", "Brand"]).trim(), source: "Supplier", supplier: "", category: importedCategory(classification), classification, uom: normalizeUom(rowValue(headers, row, ["UOM"])) || "unit", terms: 30, cost: 0, price: 0, lot: "", expiry: "", migrated: true };
 }
 /** @param {any} rows */
 function validateSalesMigrationRows(rows) {
@@ -6029,7 +6045,7 @@ function buildMigratedSale(row, headers) {
   // No placeholder clients: validateSalesMigrationRows() blocks any row whose client isn't already
   // in the masterlist, so `client` is always found here and the invoice takes its real terms.
   if (area && !platformAreas().some((entry) => entry.toLowerCase() === area.toLowerCase())) data.platformAreas.push(area);
-  return { id: documentNo, documentNo, po: `MIG-${documentNo}`, client: client?.name || clientName, area, dealer: rowValue(headers, row, ["Classification"]) || client?.dealer || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]) || client?.salesAccount || "Migrated", type, date: importDate(rowValue(headers, row, ["Date"]), rowValue(headers, row, ["Year"]), rowValue(headers, row, ["Month"])), item: product, brand, qty, uom, amount, discount, discountReason: discount ? "Migrated discount" : "", tax, net, terms: Number(client?.terms || 30), paid: 0, status: "Active", migrated: true, migrationSource: "Sales/Collections import", migrationRemarks: rowValue(headers, row, ["Remarks"]), lines: [{ item: product, code: item?.code || `MIG-${documentNo}`.slice(0, 24), brand, qty, uom, price, lot: "Migrated", expiry: "N/A", terms: Number(client?.terms || 30) }] };
+  return { id: documentNo, documentNo, po: `MIG-${documentNo}`, client: client?.name || clientName, area, dealer: rowValue(headers, row, ["Classification"]) || client?.dealer || "Direct", salesperson: rowValue(headers, row, ["Sales Rep"]) || (client?.salesperson && client.salesperson !== "Unassigned" ? client.salesperson : "") || "Migrated", type, date: importDate(rowValue(headers, row, ["Date"]), rowValue(headers, row, ["Year"]), rowValue(headers, row, ["Month"])), item: product, brand, qty, uom, amount, discount, discountReason: discount ? "Migrated discount" : "", tax, net, terms: Number(client?.terms || 30), paid: 0, status: "Active", migrated: true, migrationSource: "Sales/Collections import", migrationRemarks: rowValue(headers, row, ["Remarks"]), lines: [{ item: product, code: item?.code || `MIG-${documentNo}`.slice(0, 24), brand, qty, uom, price, lot: "Migrated", expiry: "N/A", terms: Number(client?.terms || 30) }] };
 }
 /** @param {any} rows */
 function validateCollectionsMigrationRows(rows) {
@@ -6221,7 +6237,7 @@ function importCheckedRows(checked) {
     const recordKeys = [];
     /** @type {any[]} */
     const items = [];
-    ready.forEach((item) => { const product = buildImportedProduct(parsed[item.row - 1], headers); data.items.push(product); items.push(product); recordKeys.push(product.code); });
+    ready.forEach((item) => { const product = buildImportedProduct(parsed[item.row - 1], headers, item.code); data.items.push(product); items.push(product); recordKeys.push(product.code); });
     return { module: "Products/Services", records: ready.length, skipped: checked.length - ready.length, recordType: "items", recordKeys, createdRecords: { items } };
   }
   if (kind === "inventoryMigration") {
@@ -9086,7 +9102,7 @@ function validateMasterRecord(type, values, exceptIndex = -1) {
     if (tin && String(tin).replace(/\D/g, "").length !== 12) throw new Error("TIN No. must be exactly 12 digits (000-000-000-000) if provided.");
     if (sameName(data.clients, values.name)) throw new Error("Duplicate client name detected.");
     if (values.code && sameCode(data.clients, values.code)) throw new Error("Duplicate client code detected.");
-    if (tin && sameTin(data.clients, tin)) throw new Error("Duplicate client TIN detected.");
+    if (tin && isUniqueClientTin(normalizeMasterTin(tin)) && sameTin(data.clients, tin)) throw new Error("Duplicate client TIN detected.");
     if (Number(values.creditLimit || 0) < 0) throw new Error("Credit limit cannot be negative.");
   }
   if (type === "supplier") {

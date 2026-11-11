@@ -1077,6 +1077,11 @@ function normalizeMasterCode(value) { return String(value ?? "").toLowerCase().r
 /** @param {any} value */
 // An all-zero TIN is a "no TIN on file" placeholder (matches the server guard), so it never counts as a duplicate.
 function normalizeMasterTin(value) { const digits = String(value ?? "").replace(/\D/g, ""); return /^0+$/.test(digits) ? "" : digits; }
+// Client TINs that several client records may share on purpose: Universidad de Sta. Isabel (R5_94)
+// and its USI-HSD unit (R5_95) are one taxpayer. Keep in sync with SHARED_CLIENT_TINS in src/worker.js.
+const SHARED_CLIENT_TINS = new Set(["417226790001"]);
+/** True when a (normalized) client TIN must be unique: 12 digits and not on the shared list. @param {string} tin */
+function isUniqueClientTin(tin) { return tin.length === 12 && !SHARED_CLIENT_TINS.has(tin); }
 /** @param {any} record */
 function isArchived(record) { return Boolean(record && record.archived); }
 /** @template T @param {T[] | null | undefined} list @returns {T[]} */

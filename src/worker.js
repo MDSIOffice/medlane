@@ -1406,13 +1406,16 @@ const masterName = (/** @type {any} */ value) => String(value ?? "").toLowerCase
 const masterCode = (/** @type {any} */ value) => String(value ?? "").toLowerCase().replace(/\s+/g, "");
 // An all-zero TIN is a "no TIN on file" placeholder, so it never counts as a duplicate.
 const masterTin = (/** @type {any} */ value) => { const digits = String(value ?? "").replace(/\D/g, ""); return /^0+$/.test(digits) ? "" : digits; };
+// Client TINs several client records may share on purpose: Universidad de Sta. Isabel (R5_94) and
+// its USI-HSD unit (R5_95) are one taxpayer. Keep in sync with SHARED_CLIENT_TINS in public/scripts/state.js.
+const SHARED_CLIENT_TINS = new Set(["417226790001"]);
 
 /** @param {any} data @param {any} spec */
 function masterlistIdentity(data, spec) {
   return {
     name: masterName(data?.[spec.name]),
     code: spec.code ? masterCode(data?.[spec.code]) : "",
-    tin: spec.tin && masterTin(data?.[spec.tin]).length === 12 ? masterTin(data[spec.tin]) : "",
+    tin: spec.tin && masterTin(data?.[spec.tin]).length === 12 && !(spec.label === "client" && SHARED_CLIENT_TINS.has(masterTin(data[spec.tin]))) ? masterTin(data[spec.tin]) : "",
   };
 }
 

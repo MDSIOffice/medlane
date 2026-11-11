@@ -659,7 +659,7 @@ function workflowFacts() {
   const pendingExpenses = data.replenishments.filter((item) => (item.requestStatus || item.status) !== "Approved" && (item.requestStatus || item.status) !== "Cancelled");
   const duePayables = data.payables.filter((payable) => payable.amount > payable.paid);
   const chequeReviews = data.payments.filter((payment) => payment.method === "Cheque" && (!payment.bank || !payment.chequeDate));
-  const duplicateClients = data.clients.filter((client, index) => data.clients.findIndex((item) => item.name.toLowerCase() === client.name.toLowerCase() || item.tin === client.tin) !== index);
+  const duplicateClients = data.clients.filter((client, index) => { const tin = normalizeMasterTin(client.tin); return data.clients.findIndex((item) => item.name.toLowerCase() === client.name.toLowerCase() || (isUniqueClientTin(tin) && normalizeMasterTin(item.tin) === tin)) !== index; });
   const openIssues = data.productIssues.filter((report) => report.status === "Open");
   const escalatedIssues = data.productIssues.filter((report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status));
   return { activeSales, openSales, overdue, nearDue, lowStock, nearExpiry, missingDocs, pendingContacts, pendingTransfers, pendingExpenses, duePayables, chequeReviews, duplicateClients, openIssues, escalatedIssues };
