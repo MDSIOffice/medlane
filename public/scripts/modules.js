@@ -5989,7 +5989,9 @@ function validateSalesMigrationRows(rows) {
     const documentNo = siNo || tsDr;
     const type = siNo ? "SI" : String(tsDr).toUpperCase().startsWith("DR") ? "DR" : "TS";
     const client = rowValue(headers, row, ["CLIENT"]);
-    const product = rowValue(headers, row, ["PRODUCT"]);
+    // PRODUCT is optional: the opening-AR template has no product columns, so those rows
+    // import as a single "Accounts Receivable" balance line.
+    const product = rowValue(headers, row, ["PRODUCT"]) || OPENING_AR_LINE_ITEM;
     const amount = importNumber(rowValue(headers, row, ["Actual Sales", "NET Sales", "Total Price", "Invoice Amount", "Amount"]));
     const issues = [];
     if (!documentNo) issues.push("Missing SI No. or TS/DR");
@@ -5998,12 +6000,13 @@ function validateSalesMigrationRows(rows) {
     if (!client) issues.push("Missing client");
     // Strict ordering: the Clients masterlist must be imported first (the server enforces the same).
     else if (!data.clients.some((entry) => normalizeMasterName(entry.name) === normalizeMasterName(client))) issues.push("Client not in Clients masterlist — import Clients first or fix the name");
-    if (!product) issues.push("Missing product");
     if (amount < 0) issues.push("Invalid amount");
     if (documentNo) seenDocuments.add(String(documentNo).trim().toLowerCase());
     return { row: index + 2, kind: "salesMigration", documentNo, type, client, area: rowValue(headers, row, ["Area"]), product, status: issues.length ? "Blocked" : "Ready", issues: issues.join("; ") || "Safe to import" };
   });
 }
+// Line item for opening-AR rows that carry no PRODUCT; isBookkeepingOnlyLine() keeps it out of item reports.
+const OPENING_AR_LINE_ITEM = "Accounts Receivable";
 /** @param {any} row @param {any} headers */
 function buildMigratedSale(row, headers) {
   const siNo = rowValue(headers, row, ["SI No."]);
@@ -6012,11 +6015,11 @@ function buildMigratedSale(row, headers) {
   const type = siNo ? "SI" : String(tsDr).toUpperCase().startsWith("DR") ? "DR" : "TS";
   const clientName = rowValue(headers, row, ["CLIENT"]);
   const area = rowValue(headers, row, ["Area"]) || "Region I";
-  const product = rowValue(headers, row, ["PRODUCT"]);
+  const product = rowValue(headers, row, ["PRODUCT"]) || OPENING_AR_LINE_ITEM;
   const brand = rowValue(headers, row, ["Brand"]) || "Migrated";
   const qty = importNumber(rowValue(headers, row, ["Qty"])) || 1;
   const uom = rowValue(headers, row, ["U/M", "UOM"]) || "unit";
-  const price = importNumber(rowValue(headers, row, ["Unit Price"])) || importNumber(rowValue(headers, row, ["Amount", "Total Price", "Actual Sales"])) / qty || 0;
+  const price = importNumber(rowValue(headers, row, ["Unit Price"])) || importNumber(rowValue(headers, row, ["Amount", "Total Price", "Actual Sales", "Invoice Amount"])) / qty || 0;
   const amount = type === "DR" ? 0 : importNumber(rowValue(headers, row, ["Amount", "Total Price", "Actual Sales", "Invoice Amount"]));
   const discount = importNumber(rowValue(headers, row, ["Discount", "LESS TPC"]));
   const tax = type === "DR" ? 0 : importNumber(rowValue(headers, row, ["12% VAT"]));

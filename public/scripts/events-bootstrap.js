@@ -1794,7 +1794,7 @@ async function forceLogoutSession(sessionId) {
 let lastImportFileName = null;
 qs("#import-sample").addEventListener("click", () => {
   lastImportFileName = null;
-  qs("#csv-input").value = "vvv\tYear\tMonth\tOffice\tDate\tSales Rep\tBranch\tArea\tTS/DR\tSI No.\tTIN\tCLIENT\tClassification\tBrand\tPRODUCT\tQty\tU/M\tUnit Price\tAmount\tDiscount\tTotal Price\tInvoice Amount\tLESS TPC\tActual Sales\t12% VAT\tNET Sales\tCWT\tRemarks\n1\t2026\tJuly\tLas Pinas\t2026-07-15\tAna Cruz\tLas Pinas\tRegion IV-A\t\tSI-MIG-001\t123-456-789\tPrimeCare Diagnostics\tDirect\tSysmex\tHematology Reagent\t2\tkit\t4200\t8400\t0\t8400\t9408\t0\t8400\t1008\t9408\t0\tMigrated opening AR\n2\t2026\tJuly\tNaga\t2026-07-16\tMika Tan\tNaga\tRegion V\tTS-MIG-002\t\t222-333-444\tBicol Heart Lab\tDirect\tBD\tVacutainer Tubes\t100\tbox\t35\t3500\t0\t3500\t3500\t0\t3500\t0\t3500\t0\tMigrated opening AR";
+  qs("#csv-input").value = "Year\tMonth\tOffice\tDate\tSales Rep\tBranch\tArea\tTS/DR\tSI No.\tCLIENT\tDiscount\tInvoice Amount\tLESS TPC\tCWT\tRemarks\n2026\tJuly\tLas Pinas\t2026-07-15\tAna Cruz\tLas Pinas\tRegion IV-A\t\tSI-MIG-001\tPrimeCare Diagnostics\t0\t9408\t0\t0\tOpening AR\n2026\tJuly\tNaga\t2026-07-16\tMika Tan\tNaga\tRegion V\tTS-MIG-002\t\tBicol Heart Lab\t0\t3500\t0\t0\tOpening AR";
   renderImportCheck();
 });
 qs("#csv-file-input").addEventListener("change", async (event) => {
@@ -1839,10 +1839,12 @@ const IMPORT_TEMPLATES = {
     ["Sample Vacutainer Tubes", "VT-1001", "100", "2027-12-31"],
     ["EQP-0001", "", "2", ""],
   ] },
+  // Opening AR carries balances only (no product/qty/price columns): each row becomes one
+  // "Accounts Receivable" bookkeeping line, which product/item reports already exclude.
   sales: { file: "medlane-template-sales-opening-ar.csv", rows: [
-    ["Year", "Month", "Office", "Date", "Sales Rep", "Branch", "Area", "TS/DR", "SI No.", "TIN", "CLIENT", "Classification", "Brand", "PRODUCT", "Qty", "U/M", "Unit Price", "Amount", "Discount", "Total Price", "Invoice Amount", "LESS TPC", "Actual Sales", "12% VAT", "NET Sales", "CWT", "Remarks"],
-    ["2026", "July", "Las Pinas", "2026-07-15", "Ana Cruz", "Las Pinas", "Region IV-A", "", "SI-MIG-001", "123-456-789-000", "Sample Diagnostics Center", "Direct", "Sysmex", "Sample Hematology Reagent", "2", "kit", "4200", "8400", "0", "8400", "9408", "0", "8400", "1008", "9408", "0", "Opening AR"],
-    ["2026", "July", "Naga", "2026-07-16", "Mika Tan", "Naga", "Region V", "TS-MIG-002", "", "222-333-444-000", "Sample Heart Lab", "Direct", "BD", "Sample Vacutainer Tubes", "100", "box", "35", "3500", "0", "3500", "3500", "0", "3500", "0", "3500", "0", "Opening AR"],
+    ["Year", "Month", "Office", "Date", "Sales Rep", "Branch", "Area", "TS/DR", "SI No.", "CLIENT", "Discount", "Invoice Amount", "LESS TPC", "CWT", "Remarks"],
+    ["2026", "July", "Las Pinas", "2026-07-15", "Ana Cruz", "Las Pinas", "Region IV-A", "", "SI-MIG-001", "Sample Diagnostics Center", "0", "9408", "0", "0", "Opening AR"],
+    ["2026", "July", "Naga", "2026-07-16", "Mika Tan", "Naga", "Region V", "TS-MIG-002", "", "Sample Heart Lab", "0", "3500", "0", "0", "Opening AR"],
   ] },
   collections: { file: "medlane-template-collections.csv", rows: [
     ["SI / TS / DR", "Receipt No.", "Amount Paid", "Method", "Bank", "Reference", "Cheque Date", "Date of Collection"],
