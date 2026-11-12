@@ -1654,6 +1654,42 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
     }
   }
 
+  // Expense requests: a Cancelled one is final — nobody edits or revives it. A Returned one is back
+  // with its maker, who edits and resubmits it; anyone else may only cancel it. (Client gates the
+  // buttons in requestActions/openExpenseForResubmit; this enforces it for any direct save.)
+  const expenseRows = rows.filter((row) => row.module_name === "replenishments");
+  if (expenseRows.length) {
+    const stored = await fetchStored("replenishments", expenseRows);
+    // Only the fields a real edit/approval changes are compared: the client fills in defaults
+    // (empty method/bank/cheque, …) when it loads expenses, so a whole-row comparison would flag
+    // an untouched cancelled expense on every full save. Key order is normalised too — Postgres
+    // jsonb reorders object keys.
+    /** @param {unknown} value @returns {unknown} */
+    const canonical = (value) => Array.isArray(value) ? value.map(canonical)
+      : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(/** @type {Record<string, unknown>} */ (value)[key])]))
+      : value ?? "";
+    // Fields the client never back-fills on load (method → "Cash", rebuilt items and a derived
+    // requestStatus are left out; status is checked separately below).
+    const expenseFields = ["type", "requester", "employeeName", "office", "date", "amount"];
+    const sameData = (/** @type {Record<string, unknown>} */ a, /** @type {Record<string, unknown>} */ b) =>
+      expenseFields.every((field) => JSON.stringify(canonical(a?.[field])) === JSON.stringify(canonical(b?.[field])))
+      && (!Array.isArray(a?.items) || JSON.stringify(canonical(a.items)) === JSON.stringify(canonical(b?.items)))
+      && Boolean(a?.paymentConfirmed) === Boolean(b?.paymentConfirmed);
+    const statusOf = (/** @type {Record<string, unknown>} */ data) => lower(data?.requestStatus || data?.status);
+    for (const row of expenseRows) {
+      const prev = stored.get(row.record_key);
+      if (!prev) continue;
+      if (statusOf(prev) === "cancelled") {
+        if (statusOf(row.data) !== "cancelled" || !sameData(prev, row.data)) throw new Error(`Expense ${row.record_key} is cancelled and can no longer be edited`);
+        continue;
+      }
+      if (statusOf(prev) === "returned" && statusOf(row.data) !== "cancelled" && !(statusOf(row.data) === "returned" && sameData(prev, row.data))) {
+        const maker = lower(prev.createdByUser);
+        if (!maker || maker !== lower(profile?.email)) throw new Error(`Only the person who made expense ${row.record_key} can edit it while it is returned`);
+      }
+    }
+  }
+
   // A bounced collection can only be moved on (redeposited) by a Superadmin — the client offers
   // that as the one action on a Bounced payment, but the plain record save would otherwise let
   // any collections user flip it straight back to For Deposit/Deposited.

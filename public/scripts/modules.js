@@ -4519,17 +4519,20 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
   toast(`${receiptNo} marked ${status}.`);
 }
 
-/** @param {string} currentCheque @returns {Promise<string | null>} */
-function promptRedepositCheque(currentCheque) {
+// A "Multiple Cheques" collection shows one editable number per cheque; anything else one field.
+/** @param {string} currentCheque @param {ChequeLine[]} [cheques] @returns {Promise<{ cheque: string, cheques: ChequeLine[] } | null>} */
+function promptRedepositCheque(currentCheque, cheques = []) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     dialog.className = "modal invite-confirm-modal";
-    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Redeposit</p><h2>Redeposit bounced payment</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div><p class="page-description">The payment goes back to For Deposit and the invoice's paid amount is applied again. Change the cheque number if the client issued a replacement cheque.</p><div class="field full"><label for="redeposit-cheque">Cheque No.</label><input id="redeposit-cheque" autocomplete="off" value="${escapeHtml(currentCheque)}" /></div><div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Go Back</button><button class="primary-button confirm-button" value="confirm">Redeposit</button></div></form>`;
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Redeposit</p><h2>Redeposit bounced payment</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div><p class="page-description">The payment goes back to For Deposit and the invoice's paid amount is applied again. Change the cheque number if the client issued a replacement cheque.</p>${cheques.length ? cheques.map((cheque, index) => `<div class="field full"><label for="redeposit-cheque-${index}">Cheque ${index + 1} No.${cheque.chequeDate ? ` <small>(${escapeHtml(cheque.chequeDate)})</small>` : ""}</label><input id="redeposit-cheque-${index}" class="redeposit-cheque-input" autocomplete="off" value="${escapeHtml(cheque.reference || "")}" /></div>`).join("") : `<div class="field full"><label for="redeposit-cheque">Cheque No.</label><input id="redeposit-cheque" autocomplete="off" value="${escapeHtml(currentCheque)}" /></div>`}<div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Go Back</button><button class="primary-button confirm-button" value="confirm">Redeposit</button></div></form>`;
     document.body.appendChild(dialog);
     dialog.addEventListener("close", () => {
       const value = /** @type {HTMLInputElement | null} */ (dialog.querySelector("#redeposit-cheque"))?.value.trim() || "";
+      const chequeNumbers = qsaIn(dialog, ".redeposit-cheque-input").map((input) => input.value.trim());
       dialog.remove();
-      resolve(dialog.returnValue === "confirm" ? value : null);
+      if (dialog.returnValue !== "confirm") return resolve(null);
+      resolve(cheques.length ? { cheque: chequeNumbers.filter(Boolean).join(", "), cheques: cheques.map((cheque, index) => ({ ...cheque, reference: chequeNumbers[index] || cheque.reference })) } : { cheque: value, cheques: [] });
     });
     dialog.showModal();
   });
@@ -4543,8 +4546,10 @@ async function redepositCollectionPayment(receiptNo) {
   if (!payments.every((payment) => payment.collectionStatus === "Bounced")) return toast("Only a Bounced payment can be redeposited.");
   const request = data.paymentRequests.find((entry) => entry.cvNo === (payments[0].paymentRequestCvNo || receiptNo));
   const previousCheque = String(request?.cheque || payments[0].reference || "");
-  const cheque = await promptRedepositCheque(previousCheque);
-  if (cheque === null) return;
+  const previousCheques = request?.paymentType === "Multiple Cheques" && Array.isArray(request.cheques) ? request.cheques : [];
+  const answer = await promptRedepositCheque(previousCheque, previousCheques);
+  if (answer === null) return;
+  const cheque = answer.cheque;
   const by = currentUser?.name || "System User";
   const chequeNote = cheque && cheque !== previousCheque ? ` Cheque No. changed from ${previousCheque || "-"} to ${cheque}.` : "";
   payments.forEach((payment) => {
@@ -4553,11 +4558,13 @@ async function redepositCollectionPayment(receiptNo) {
     payment.collectionStatus = "For Deposit";
     payment.postedDate = "";
     if (cheque) payment.reference = cheque;
+    if (answer.cheques.length) payment.cheques = answer.cheques.map((entry) => ({ ...entry }));
     payment.statusHistory ||= [];
     payment.statusHistory.push(...collectionStatusHistory(`Redeposited — For Deposit${cheque ? ` (Cheque ${cheque})` : ""}`));
   });
   if (request) {
     if (cheque) request.cheque = cheque;
+    if (answer.cheques.length) request.cheques = answer.cheques;
     request.history = paymentRequestHistory(request);
     request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Redeposited", note: `Redeposited by ${by}; back to For Deposit and the invoice paid amount re-applied.${chequeNote}`, by });
   }
@@ -5810,8 +5817,11 @@ function itemForecastRows(allocationMonths) {
   // too, or every stocked item stays listed whatever is picked. Client/division/region describe
   // who bought it, so with any of those set only items with matching sales are listed.
   const salesScoped = Boolean(forecastFilters.client || forecastFilters.division || forecastFilters.region);
+  // The page's main Search bar (#global-search) narrows the list too — it re-renders this
+  // section on every keystroke but used to be ignored here.
   const itemPasses = (/** @type {any} */ item) => (!forecastFilters.brand || item.brand === forecastFilters.brand)
     && (!forecastFilters.item || forecastItemMatchesQuery(item.code, item.name, forecastFilters.item))
+    && includesSearch([item.code, item.name, item.brand, item.supplier, item.classification || item.category])
     && (!forecastFilters.classification || (item.classification || item.category || "") === forecastFilters.classification);
   return data.items.filter((item) => itemPasses(item) && (salesScoped ? qtyByCode[item.code] : qtyByCode[item.code] || stockByCode[item.code])).map((item) => {
     const totalQty = qtyByCode[item.code] || 0;
@@ -6825,7 +6835,7 @@ function renderReplenishments() {
     { tone: "success", label: "Paid expenses", value: peso.format(paidExpenses), note: `${activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length} confirmed payment${activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length === 1 ? "" : "s"}` },
     { tone: "warning", label: "Pending approval", value: peso.format(pendingAmount), note: `${requests.length} request${requests.length === 1 ? "" : "s"} pending` },
   ], [
-    { title: "Status Count", items: [{ label: "Pending", value: requests.length }, { label: "Approved", value: approved.length }, { label: "Paid", value: activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length }] },
+    { title: "Status Count", items: [{ label: "Pending", value: requests.filter((r) => r.requestStatus !== "Returned").length }, { label: "Returned", value: rows.filter((r) => r.requestStatus === "Returned").length }, { label: "Cancelled", value: rows.filter((r) => (r.requestStatus || r.status) === "Cancelled").length }, { label: "Approved", value: approved.length }, { label: "Paid", value: activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length }] },
     { title: "Expense Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averageExpense) }, { label: "Largest", value: peso.format(largestExpense) }] },
     { title: "Classification", kind: "pairs", items: [{ label: topType?.[0] || "Top Type", value: topType ? peso.format(topType[1]) : peso.format(0) }, { label: "Approved", value: peso.format(approvedAmount) }] },
   ]);
