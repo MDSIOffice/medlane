@@ -7,6 +7,31 @@ const jsonHeaders = {
   "cache-control": "no-store",
 };
 
+// Cache busting: every deploy gets a new version id, which the HTML pages stamp onto their script,
+// stylesheet and landing-image URLs (and expose as data-asset-version for the inline script loader).
+// Those paths are served with a one-year immutable cache (public/_headers), so a deploy is picked up
+// at once while repeat visits skip the download. No build step to forget: the worker does it per page.
+const VERSIONED_ASSET = /^\/?(scripts\/|styles\.css|assets\/landing\/)/;
+/** @param {Response} page @param {WorkerEnv} env */
+function stampAssetUrls(page, env) {
+  const version = String(env.CF_VERSION_METADATA?.id || "").replace(/[^a-z0-9]/gi, "").slice(0, 12);
+  if (!version) return page;
+  /** @param {string} attr */
+  const stamp = (attr) => ({
+    /** @param {Element} element */
+    element(element) {
+      const value = element.getAttribute(attr) || "";
+      if (VERSIONED_ASSET.test(value) && !value.includes("?")) element.setAttribute(attr, `${value}?v=${version}`);
+    },
+  });
+  return new HTMLRewriter()
+    .on("html", { element(element) { element.setAttribute("data-asset-version", version); } })
+    .on("script[src]", stamp("src"))
+    .on("link[href]", stamp("href"))
+    .on("img[src]", stamp("src"))
+    .transform(page);
+}
+
 /** @type {Record<AppRole, string[]>} */
 const roleModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
@@ -6304,7 +6329,8 @@ export default {
         const response = await env.ASSETS.fetch(request);
         const headers = new Headers(response.headers);
         headers.set("cache-control", "no-cache, must-revalidate");
-        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+        const page = new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+        return /text\/html/i.test(headers.get("content-type") || "") ? stampAssetUrls(page, env) : page;
       }
 
       return env.ASSETS.fetch(request);

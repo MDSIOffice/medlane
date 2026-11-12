@@ -11,22 +11,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Medlane Diagnostic Solutions, Inc.</title>
-    <meta name="description" content="Medlane OS is the secure operations platform for Medlane Diagnostic Solutions, Inc." />
+    <meta name="description" content="Medlane Diagnostic Solutions, Inc. imports and distributes diagnostic equipment, reagents and laboratory supplies across the Philippines, from branches in Las Piñas and Naga City." />
     <link rel="canonical" href="https://medlanesolutions.com/" />
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png" />
-    <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="favicon-512x512.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#0077bd" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="Medlane Diagnostic Solutions, Inc." />
     <meta property="og:title" content="Medlane Diagnostic Solutions, Inc." />
-    <meta property="og:description" content="Secure operations platform for Medlane Diagnostic Solutions, Inc." />
+    <meta property="og:description" content="Diagnostic equipment, reagents and laboratory supplies for laboratories across the Philippines, from Luzon to Mindanao since 1997." />
     <meta property="og:url" content="https://medlanesolutions.com/" />
     <meta property="og:image" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260826a" />
     <meta property="og:image:secure_url" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260826a" />
@@ -37,7 +37,7 @@
     <meta property="og:updated_time" content="2026-08-26T00:00:00+00:00" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Medlane Diagnostic Solutions, Inc." />
-    <meta name="twitter:description" content="Secure operations platform for Medlane Diagnostic Solutions, Inc." />
+    <meta name="twitter:description" content="Diagnostic equipment, reagents and laboratory supplies for laboratories across the Philippines, from Luzon to Mindanao since 1997." />
     <meta name="twitter:image" content="https://medlanesolutions.com/medlane-social-preview.jpg?v=20260826a" />
     <meta name="twitter:image:alt" content="Medlane Diagnostic Solutions logo" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -45,16 +45,39 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800&family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "Organization",
-        "name": "Medlane Diagnostic Solutions, Inc.",
-        "alternateName": "Medlane OS",
-        "url": "https://medlanesolutions.com/",
-        "logo": "https://medlanesolutions.com/medlane.jpg",
-        "image": "https://medlanesolutions.com/medlane-social-preview.jpg?v=20260826a",
-        "description": "Licensed importer and distributor of diagnostic equipment, reagents, and laboratory supplies across the Philippines."
-      }
+      [
+        {
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "@id": "https://medlanesolutions.com/#website",
+          "name": "Medlane Diagnostic Solutions",
+          "alternateName": [
+            "Medlane",
+            "Medlane Diagnostic Solutions, Inc."
+          ],
+          "url": "https://medlanesolutions.com/",
+          "publisher": {
+            "@id": "https://medlanesolutions.com/#organization"
+          }
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "@id": "https://medlanesolutions.com/#organization",
+          "name": "Medlane Diagnostic Solutions, Inc.",
+          "alternateName": "Medlane",
+          "url": "https://medlanesolutions.com/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://medlanesolutions.com/favicon-512x512.png",
+            "width": 512,
+            "height": 512
+          },
+          "image": "https://medlanesolutions.com/medlane-social-preview.jpg?v=20260826a",
+          "foundingDate": "1997",
+          "description": "Licensed importer and distributor of diagnostic equipment, reagents, and laboratory supplies across the Philippines."
+        }
+      ]
     </script>
   </head>
   <body>
@@ -1582,7 +1605,8 @@
         }
         ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
-          script.src = "scripts/" + file;
+          var version = document.documentElement.getAttribute("data-asset-version");
+          script.src = "scripts/" + file + (version ? "?v=" + version : "");
           script.async = false; // Run in this order: they share one global scope.
           document.body.appendChild(script);
         });

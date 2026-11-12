@@ -1045,8 +1045,7 @@ select, .search-input {
 .map-zoom-controls strong { min-width: 48px; color: var(--blue-dark); font-size: 12px; text-align: center; }
 .map-zoom-controls .mini-button { min-height: 32px; padding: 5px 10px; }
 .static-ph-map { display: block; width: 100%; max-width: 100%; height: auto; flex: 0 1 auto; }
-.static-ph-map > rect { fill: #fff; }
-.ph-reference-map { opacity: 0.98; }
+.ph-reference-map { opacity: 1; }
 .static-ph-map .map-region-fill { fill: rgba(245, 158, 11, 0.24); stroke: var(--orange); stroke-width: 5; stroke-linejoin: round; opacity: 0.92; filter: drop-shadow(0 10px 16px rgba(15, 23, 42, 0.16)); cursor: pointer; }
 .static-ph-map .map-region-fill.answered { fill: rgba(15, 159, 122, 0.27); stroke: var(--green); }
 .static-ph-map .map-region-fill.tracked { fill: rgba(71, 85, 199, 0.24); stroke: var(--purple); }

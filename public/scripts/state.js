@@ -239,7 +239,9 @@ const frontendModuleRecordKeys = {
   calendar: ["calendarEvents"],
 };
 
-const philippinesRegionsGeoJsonUrl = "https://raw.githubusercontent.com/wmgeolab/geoBoundaries/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
+// geoBoundaries PHL ADM1 (NAMRIA/PSA/OCHA, CC BY 3.0 IGO), points thinned to ~2 km. Hosted here because
+// the raw.githubusercontent.com link served a Git LFS pointer instead of the data, so no regions drew.
+const philippinesRegionsGeoJsonUrl = "/assets/ph-regions.geojson";
 
 /** @type {Record<string, number[]>} */
 const clientCoordinates = {

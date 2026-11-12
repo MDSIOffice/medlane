@@ -6941,7 +6941,7 @@ async function renderCollectionMapVisual() {
   } catch {
     overlays = "";
   }
-  qs("#collection-map").innerHTML = `<div class="map-topbar"><div class="map-legend static"><span class="answered">Answered</span><span class="tracked">Tracked</span><span class="unreached">Unreached</span><span class="no-response">No Reply</span><span class="pending">Pending</span></div></div><div class="map-pan-viewport"><svg class="static-ph-map" width="${Math.round(1000 * collectionMapZoom)}" height="${Math.round(891 * collectionMapZoom)}" viewBox="0 0 2524 2248" role="img" aria-label="Philippines client follow-up map"><rect width="2524" height="2248" rx="72"></rect><image class="ph-reference-map" href="ph-07.png" x="0" y="0" width="2524" height="2248" preserveAspectRatio="xMidYMid meet"></image><g class="map-overlay-layer">${overlays}</g><g class="map-label-layer">${labels}</g></svg></div>`;
+  qs("#collection-map").innerHTML = `<div class="map-topbar"><div class="map-legend static"><span class="answered">Answered</span><span class="tracked">Tracked</span><span class="unreached">Unreached</span><span class="no-response">No Reply</span><span class="pending">Pending</span></div></div><div class="map-pan-viewport"><svg class="static-ph-map" width="${Math.round(1000 * collectionMapZoom)}" height="${Math.round(891 * collectionMapZoom)}" viewBox="0 0 2524 2248" role="img" aria-label="Philippines client follow-up map"><defs><linearGradient id="phMapSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef7fc"></stop><stop offset="1" stop-color="#d7ebf7"></stop></linearGradient></defs><rect width="2524" height="2248" rx="72" fill="url(#phMapSea)"></rect><image class="ph-reference-map" href="assets/ph-land.svg" x="874.3" y="67.5" width="1249.4" height="2114.9" preserveAspectRatio="none"></image><g class="map-overlay-layer">${overlays}</g><g class="map-label-layer">${labels}</g></svg></div>`;
 }
 
 /** @type {any} */
@@ -8476,7 +8476,8 @@ function loadPdfLib() {
   if (window.PDFLib) return Promise.resolve();
   pdfLibLoadPromise ||= new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "scripts/vendor/pdf-lib.min.js";
+    const assetVersion = document.documentElement.getAttribute("data-asset-version");
+    script.src = `scripts/vendor/pdf-lib.min.js${assetVersion ? `?v=${assetVersion}` : ""}`;
     script.onload = () => /** @type {() => void} */ (resolve)();
     script.onerror = () => {
       pdfLibLoadPromise = null; // Let the next click try again.

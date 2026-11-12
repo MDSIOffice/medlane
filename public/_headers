@@ -1,0 +1,8 @@
+# Script, stylesheet and landing-image URLs are stamped ?v=<deploy version> by the worker
+# (stampAssetUrls in src/worker.js), so a new deploy always loads under new URLs.
+/scripts/*
+  Cache-Control: public, max-age=31536000, immutable
+/styles.css
+  Cache-Control: public, max-age=31536000, immutable
+/assets/landing/*
+  Cache-Control: public, max-age=31536000, immutable
