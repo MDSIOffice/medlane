@@ -90,6 +90,11 @@ let currentSalesBreakdownDimension = null;
 let clientInvoicesReturnSection = "receivables-tracker";
 /** @type {any} */
 let editingPoId = null;
+// The invoice being cancelled while its Cancel & Replace modal is open. It still reads as active
+// until the save, but must not count against its own PO's pending qty or the client's credit,
+// or the replacement can never be raised against the same PO.
+/** @type {string | null} */
+let cancelReplaceSaleId = null;
 // Set while the maker edits an expense request that an approver returned to them.
 /** @type {string | null} */
 let editingExpenseId = null;

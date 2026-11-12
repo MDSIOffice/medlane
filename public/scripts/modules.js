@@ -615,12 +615,16 @@ function findSaleByDocumentInput(value) {
 }
 
 // Lots an invoice line can draw from: on hand at the branch, not expired, earliest expiry first.
+// While a Cancel & Replace is open, the invoice being cancelled gives its stock back on save, so its
+// lots count with that quantity added — otherwise reusing the same lot would show nothing to pick.
 /** @param {any} item @param {string} branch */
 function invoiceSelectableLots(item, branch) {
   if (!item) return [];
+  const cancelling = cancelReplaceSaleId ? data.sales.find((sale) => sale.id === cancelReplaceSaleId && !sale.noPo) : null;
+  const returnedQty = (/** @type {StockRow} */ entry) => (cancelling?.lines || []).filter((line) => line.code === entry.code && (line.sourceBranch || line.branch) === entry.branch && line.lot === entry.lot).reduce((sum, line) => sum + Number(line.qty || 0), 0);
   return data.inventory
     .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.lot && (hasNoExpiry(entry.expiry) || !isExpiredDate(entry.expiry)))
-    .map((entry) => ({ lot: entry.lot, expiry: entry.expiry || "N/A", qty: Number(entry.qty || 0) }))
+    .map((entry) => ({ lot: entry.lot, expiry: entry.expiry || "N/A", qty: Number(entry.qty || 0) + returnedQty(entry) }))
     .filter((entry) => entry.qty > 0)
     .sort((a, b) => daysUntil(hasNoExpiry(a.expiry) ? "2099-12-31" : a.expiry) - daysUntil(hasNoExpiry(b.expiry) ? "2099-12-31" : b.expiry));
 }
@@ -740,7 +744,7 @@ function findClientByName(value) {
 /** @param {any} po @param {string} code */
 function poServedQty(po, code) {
   return data.sales
-    .filter((sale) => sale.po === po.id && sale.status !== "Cancelled")
+    .filter((sale) => sale.po === po.id && sale.status !== "Cancelled" && sale.id !== cancelReplaceSaleId)
     .flatMap((sale) => sale.lines || [])
     .filter((line) => line.code === code)
     .reduce((sum, line) => sum + Number(line.qty || 0), 0);
@@ -951,7 +955,7 @@ function syncInvoiceLinesForClient() {
 
 /** @param {boolean} [allowPartial] */
 function syncInvoicePurchaseOrders(allowPartial = false) {
-  if (modalType !== "invoice") return;
+  if (!["invoice", "cancelReplace"].includes(modalType)) return;
   const clientInput = qs("#client");
   const poInput = qs("#po");
   if (!clientInput || !poInput) return;
@@ -965,7 +969,7 @@ function syncInvoicePurchaseOrders(allowPartial = false) {
 }
 
 function syncInvoiceFromPurchaseOrder() {
-  if (modalType !== "invoice") return;
+  if (!["invoice", "cancelReplace"].includes(modalType)) return;
   const po = data.purchaseOrders.find((entry) => entry.id === qs("#po")?.value);
   if (!po) return;
   qs("#client").value = po.client;
@@ -990,7 +994,7 @@ function collectInvoicePreviewLines() {
 
 function renderInvoiceComputePreview() {
   const preview = qs("#invoice-compute-preview");
-  if (!preview || modalType !== "invoice") return;
+  if (!preview || !["invoice", "cancelReplace"].includes(modalType)) return;
   const client = data.clients.find((entry) => entry.name === qs("#client")?.value);
   const type = qs("#type")?.value || "SI";
   const lines = collectInvoicePreviewLines();
@@ -1123,7 +1127,7 @@ function renderSettingsTutorial() {
       ["Create TS", "Creates Transmittal Slip for non-SI sales tracking.", "Choose TS and complete item/lot/expiry details.", "Use when items are transmitted but treated separately from SI billing."],
       ["Create DR", "Creates Delivery Receipt without prices and excludes it from Sales totals.", "Choose DR and complete item/lot/expiry details.", "Use for deliveries where pricing should not appear on the document."],
       ["Print Preview", "Shows data-only overlay for pre-printed SI/TS/DR forms.", "Open invoice card, click Print, then print from preview.", "Use Print Without Date if the physical form already has a date."],
-      ["Cancel", "Cancels a wrong invoice and returns its stock.", "Click Cancel and enter the reason, then create a new invoice if one is needed.", "Use for wrong document number, client, item, or tax setting after posting."],
+      ["Cancel only / Cancel & Replace", "Cancels a wrong invoice (returning its stock), optionally creating its replacement in the same step.", "Click Cancel only and enter the reason, or Cancel / Replace and enter the reason plus the new document details.", "Use for wrong document number, client, item, or tax setting after posting."],
     ] },
     { title: "Sales", role: "Sales personal; Accounting/Admin all", submodules: [
       ["Sales List", "Reviews SI/TS sales records and payment status.", "Filter by document type or status.", "Sales users see personal sales; Accounting/Admin sees all."],
@@ -4136,7 +4140,7 @@ function renderInvoicing() {
   renderPendingCreditInvoices();
   const rows = invoicingVisibleSales().reverse();
   const deliveryControl = (/** @type {any} */ s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
-  const actionCell = (/** @type {any} */ s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-invoice="${escapeHtml(s.id)}" type="button">Cancel</button>`}</div>`;
+  const actionCell = (/** @type {any} */ s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-invoice="${escapeHtml(s.id)}" type="button">Cancel only</button><button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
   qsa("#invoice-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.invoiceView === invoiceViewMode));
   qs("#invoice-table-view").hidden = invoiceViewMode !== "table";
   qs("#invoice-grid").hidden = invoiceViewMode !== "card";
@@ -8826,6 +8830,7 @@ const modalConfigs = {
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["birthday", "Birthday", "date"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist-optional", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["skipPo", "Skip PO — record-keeping only, this invoice won't be printed", "checkbox"], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
+  cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["preparedBy", "Collector", "datalist", () => activeEmployees().map((employee) => employee.name)], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Multiple Cheques", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
@@ -8840,10 +8845,11 @@ const modalConfigs = {
 function openModal(type, edit = null) {
   modalType = type;
   editingExpenseId = null;
+  cancelReplaceSaleId = type === "cancelReplace" ? edit?.oldInvoice || null : null;
   modalReadOnly = Boolean(edit?.readOnly);
   editContext = edit?.record && !modalReadOnly ? edit : null;
   const config = modalConfigs[type];
-  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue", "instrumentalServiceReport", "paymentRequest", "payable", "replenishment"].includes(type));
+  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue", "instrumentalServiceReport", "paymentRequest", "payable", "replenishment"].includes(type));
   qs("#demo-modal").classList.toggle("inventory-po-modal", type === "inventoryPurchaseOrder");
   const isEditRecord = Boolean(edit?.record);
   qs("#modal-title").textContent = modalReadOnly ? "Collection History" : isEditRecord ? config.title.replace("Add", "Edit") : config.title;
@@ -8882,7 +8888,7 @@ function openModal(type, edit = null) {
   }).join("");
   editingPoId = type === "purchaseOrder" && edit?.poEdit ? edit.poEdit.id : null;
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor(edit?.poEdit?.lines?.length ? edit.poEdit.lines : [{}], { requireLot: false }));
-  if (type === "invoice") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
+  if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
   if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false, allowDiscount: true, showCode: true }));
   if (type === "purchaseOrder" && editingPoId) {
     const po = edit.poEdit;
@@ -8905,6 +8911,22 @@ function openModal(type, edit = null) {
     updateDocumentLabel();
     syncInvoicePurchaseOrders();
     toggleInvoiceSkipPoField();
+  }
+  if (type === "cancelReplace") {
+    const oldSale = data.sales.find((sale) => sale.id === edit?.oldInvoice);
+    qs("#oldInvoice").value = edit?.oldInvoice || "";
+    qs("#date").value = fmtDate(today);
+    qs("#sourceBranch").value = oldSale?.sourceBranch || oldSale?.lines?.[0]?.sourceBranch || inventoryBranchTab || platformBranches()[0] || "";
+    qs("#vatCode").value = oldSale?.vatCode || "VAT";
+    qs("#discount").value = oldSale?.discount || 0;
+    qs("#discountReason").required = false;
+    updateDocumentLabel();
+    if (oldSale) {
+      qs("#client").value = oldSale.client;
+      qs("#po").value = oldSale.po || "";
+      qs("#discountReason").value = oldSale.discountReason || "";
+      qs("#invoice-line-list").innerHTML = (oldSale.lines || []).map((line) => invoiceLineTemplate(line)).join("");
+    }
   }
   if (["payable", "replenishment"].includes(type)) {
     qs("#modal-fields").insertAdjacentHTML("beforeend", renderFinancialRequestEditor(edit?.record?.items?.length ? edit.record.items : [{}]));
@@ -8986,7 +9008,7 @@ function openModal(type, edit = null) {
       qs("#salary").required = false;
     }
   }
-  if (type === "invoice") renderInvoiceComputePreview();
+  if (["invoice", "cancelReplace"].includes(type)) renderInvoiceComputePreview();
   if (modalReadOnly) {
     qsa("#modal-fields input, #modal-fields select, #modal-fields textarea, #modal-fields button").forEach((el) => { el.disabled = true; });
     qs("#modal-submit").hidden = true;
@@ -9242,7 +9264,14 @@ async function restoreMasterlistRecord(type, index) {
   toast(`${label} restored.`);
 }
 
-// Cancel only — no replacement. Users raise a new invoice separately if one is needed.
+/** @param {string} invoiceId */
+function openCancelReplaceModal(invoiceId) {
+  const sale = data.sales.find((entry) => entry.id === invoiceId);
+  if (Number(sale?.paid || 0) > 0) return toast("This invoice already has a payment recorded — it can no longer be cancelled or replaced.");
+  openModal("cancelReplace", { oldInvoice: invoiceId });
+}
+
+// "Cancel only": cancels without a replacement (Cancel / Replace is openCancelReplaceModal above).
 /** @param {string} invoiceId */
 async function cancelInvoice(invoiceId) {
   const sale = data.sales.find((entry) => entry.id === invoiceId);

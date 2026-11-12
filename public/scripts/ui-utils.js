@@ -172,7 +172,7 @@ function contactStatusFromLabel(status) {
 }
 /** @param {string} clientName */
 function clientBalance(clientName) {
-  return data.sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
+  return data.sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled" && sale.id !== cancelReplaceSaleId).reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
 }
 /** @param {string} clientName @param {number} [pendingAmount] */
 function clientCreditState(clientName, pendingAmount = 0) {
