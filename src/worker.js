@@ -180,7 +180,11 @@ async function supabaseFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
   const result = await supabaseFetchWithRetry(env, path, init);
   const modules = liveModulesForWrite(path, init);
-  if (modules.length) await notifyLiveClients(env, modules);
+  if (modules.length) {
+    // Someone just saved: the next full load must read fresh data, not a shared snapshot.
+    stateSnapshots.clear();
+    await notifyLiveClients(env, modules);
+  }
   return result;
 }
 
@@ -365,6 +369,40 @@ async function withStockLock(env, stateKey, fn) {
   }
 }
 
+// ---- Shared state snapshot ------------------------------------------------------------------
+// The full-state load reads every record (megabytes) before trimming. When 50-100 people load at
+// once (Monday 8am, or every tab reloading after a deploy) each used to do its own read, and the
+// database fell over. Loads arriving within a couple of seconds now share one in-flight read in
+// this isolate. Safe because the client catches up from `changesCursor` (the snapshot's own
+// newest updated_at) through /api/modules/changes, and any write from this isolate drops it.
+const STATE_SNAPSHOT_MAX_AGE_MS = 2000;
+/** @typedef {{ trimmedRows: ReturnType<typeof trimPaginatedModuleRows>["rows"], pagination: ReturnType<typeof trimPaginatedModuleRows>["pagination"], changesCursor: string, loadedAt: string, resetAt: Awaited<ReturnType<typeof dataResetAt>> }} StateSnapshot */
+/** @type {Map<string, { at: number, promise: Promise<StateSnapshot> }>} */
+const stateSnapshots = new Map();
+
+/** @param {WorkerEnv} env @param {string} stateKey @returns {Promise<StateSnapshot>} */
+function sharedStateSnapshot(env, stateKey) {
+  const hit = stateSnapshots.get(stateKey);
+  if (hit && Date.now() - hit.at < STATE_SNAPSHOT_MAX_AGE_MS) return hit.promise;
+  // loadedAt is taken before the read, so it never postdates the data it describes.
+  const loadedAt = new Date().toISOString();
+  const promise = Promise.all([
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`),
+    dataResetAt(env, stateKey),
+  ]).then(([rows, resetAt]) => {
+    // Ship only what's still open/pending plus the most recent PAGINATED_MODULE_PAGE_SIZE for the
+    // modules whose history only ever grows — older closed records come via /api/modules/page.
+    // changesCursor is the database's own latest updated_at over the FULL row set, so an edit to
+    // an old, trimmed-out record still moves the live-sync cursor and clock skew can't open a gap.
+    const { rows: trimmedRows, pagination } = trimPaginatedModuleRows(rows);
+    return { trimmedRows, pagination, changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString(), loadedAt, resetAt };
+  });
+  stateSnapshots.set(stateKey, { at: Date.now(), promise });
+  // A failed read must not be handed to the next people who load.
+  promise.catch(() => { if (stateSnapshots.get(stateKey)?.promise === promise) stateSnapshots.delete(stateKey); });
+  return promise;
+}
+
 // ---- Short-lived auth cache -----------------------------------------------------------------
 // Every open tab calls /api/modules/changes whenever anyone saves. Re-verifying the login each
 // time costs ~4 Supabase round trips, so with 100 people one save meant ~400 extra auth queries.
@@ -375,7 +413,7 @@ const authCache = new Map();
 
 /** @param {Request} request @param {WorkerEnv} env */
 async function authenticatedProfileCached(request, env) {
-  const cacheKey = `${request.headers.get("authorization") || ""}|${sessionHeader(request)}`;
+  const cacheKey = `${request.headers.get("authorization") || ""}|${sessionHeader(request)}|${request.headers.get(PREVIEW_ROLE_HEADER) || ""}`;
   const hit = authCache.get(cacheKey);
   if (hit && hit.expires > Date.now()) return hit.value;
   const value = await authenticatedProfile(request, env);
@@ -1183,28 +1221,7 @@ async function profileForUser(env, userId, email) {
   const profile = /** @type {ProfileRow[]} */ (await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`));
   if (!profile[0]) throw new Error(`No Medlane profile found for ${email || "this account"}`);
   const permissions = /** @type {ModulePermissionRow[]} */ (await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}&select=module_key,can_view,can_edit`));
-  const fallback = roleModules[profile[0].role] || roleModules.Sales;
-  const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
-  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : fallback;
-  // Every role can view memos regardless of when their module_permissions rows were created —
-  // this is a newer module that predates most existing users' explicit permission grants, and
-  // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
-  if (!view.includes("memos")) view.push("memos");
-  // The Calendar is a shared schedule everyone can see and add to, regardless of module_permissions.
-  for (const list of [view, edit]) if (!list.includes("calendar")) list.push("calendar");
-  // Every role can read the items/clients/suppliers catalog regardless of module_permissions —
-  // it's reference data that receiving, transfers, demos, and invoicing autofill from, not just
-  // an admin-screen concern. Deliberately view-only and not overridable per-user: editing the
-  // catalog still requires the real "masterlists" permission.
-  if (!view.includes("catalog-reference")) view.push("catalog-reference");
-  const blocked = ROLE_BLOCKED_MODULES[profile[0].role] || [];
-  if (blocked.length) {
-    for (const list of [view, edit]) for (let i = list.length - 1; i >= 0; i -= 1) if (blocked.includes(list[i])) list.splice(i, 1);
-  }
-  if (["Superadmin", "CEO"].includes(profile[0].role)) {
-    if (!view.includes("backup")) view.push("backup");
-    if (!edit.includes("backup")) edit.push("backup");
-  }
+  const { view, edit } = moduleListsFor(profile[0].role, permissions);
   const passwordConfirmedAt = profile[0].password_confirmed_at || profile[0].created_at;
   const passwordKycDue = !passwordConfirmedAt || Date.now() - new Date(passwordConfirmedAt).getTime() >= PASSWORD_KYC_MAX_AGE_MS;
   return {
@@ -1219,6 +1236,58 @@ async function profileForUser(env, userId, email) {
     passwordKycDue,
     themePreference: profile[0].theme_preference === "dark" ? "dark" : "light",
   };
+}
+
+// The view/edit module lists for a role: the user's own module_permissions rows when they have
+// any, else the role defaults, plus the modules every role always gets and minus role blocks.
+/** @param {AppRole} role @param {ModulePermissionRow[]} permissions */
+function moduleListsFor(role, permissions) {
+  const fallback = roleModules[role] || roleModules.Sales;
+  const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
+  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : fallback;
+  // Every role can view memos regardless of when their module_permissions rows were created —
+  // this is a newer module that predates most existing users' explicit permission grants, and
+  // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
+  if (!view.includes("memos")) view.push("memos");
+  // The Calendar is a shared schedule everyone can see and add to, regardless of module_permissions.
+  for (const list of [view, edit]) if (!list.includes("calendar")) list.push("calendar");
+  // Every role can read the items/clients/suppliers catalog regardless of module_permissions —
+  // it's reference data that receiving, transfers, demos, and invoicing autofill from, not just
+  // an admin-screen concern. Deliberately view-only and not overridable per-user: editing the
+  // catalog still requires the real "masterlists" permission.
+  if (!view.includes("catalog-reference")) view.push("catalog-reference");
+  const blocked = ROLE_BLOCKED_MODULES[role] || [];
+  if (blocked.length) {
+    for (const list of [view, edit]) for (let i = list.length - 1; i >= 0; i -= 1) if (blocked.includes(list[i])) list.splice(i, 1);
+  }
+  if (["Superadmin", "CEO"].includes(role)) {
+    if (!view.includes("backup")) view.push("backup");
+    if (!edit.includes("backup")) edit.push("backup");
+  }
+  return { view, edit };
+}
+
+// ---- Role preview -----------------------------------------------------------------------------
+// A real Superadmin or CEO can send `x-medlane-preview-role: <Role>` to use the app exactly as
+// that role: every permission check below sees the previewed role and its DEFAULT module
+// permissions (not anyone's custom grants), so what they can view and do is genuinely limited,
+// server-side, not just hidden in the UI. Nobody can preview Superadmin, and a CEO can't preview
+// CEO, so preview can only ever narrow access. Identity (id, email, name) stays the real person's.
+const PREVIEW_ROLE_HEADER = "x-medlane-preview-role";
+/** @param {AppRole} realRole @returns {AppRole[]} */
+function previewableRolesFor(realRole) {
+  if (!["Superadmin", "CEO"].includes(realRole)) return [];
+  return /** @type {AppRole[]} */ (Object.keys(roleModules)).filter((role) => role !== "Superadmin" && role !== realRole);
+}
+/** @param {Request} request @param {Profile} profile @returns {Profile} */
+function applyPreviewRole(request, profile) {
+  const requested = String(request.headers.get(PREVIEW_ROLE_HEADER) || "").trim();
+  if (!requested) return profile;
+  if (!["Superadmin", "CEO"].includes(profile.role)) throw new Error("Only Superadmin or CEO can preview a role");
+  const role = /** @type {AppRole} */ (requested);
+  if (!previewableRolesFor(profile.role).includes(role)) throw new Error(`Only Superadmin or CEO can preview a role, and not "${requested}"`);
+  const { view, edit } = moduleListsFor(role, []);
+  return { ...profile, role, modules: view, customPermissions: { enabled: true, view, edit }, previewOf: profile.role };
 }
 
 /** @param {WorkerEnv} env @param {string} userId */
@@ -1238,7 +1307,7 @@ async function markPasswordConfirmed(env, userId) {
 async function authenticatedProfile(request, env) {
   const { user } = await authenticatedUser(request, env);
   await validateAppSession(env, request, user.id);
-  return { authUser: user, profile: await profileForUser(env, user.id, user.email) };
+  return { authUser: user, profile: applyPreviewRole(request, await profileForUser(env, user.id, user.email)) };
 }
 
 /** @param {Profile} profile */
@@ -4567,7 +4636,7 @@ export default {
       if (url.pathname === "/api/auth/me") {
         if (request.method !== "GET") return methodNotAllowed();
         const { profile } = await authenticatedProfile(request, env);
-        return json({ user: profile });
+        return json({ user: { ...profile, previewableRoles: previewableRolesFor(profile.previewOf || profile.role) } });
       }
 
       if (url.pathname === "/api/app-state") {
@@ -4660,7 +4729,8 @@ export default {
         const entry = {
           date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }),
           user: profile.name || profile.email || "System User",
-          role: profile.role || "Unknown",
+          // While previewing, the audit trail still names the real role behind the action.
+          role: profile.previewOf ? `${profile.previewOf} (previewing ${profile.role})` : profile.role || "Unknown",
           action,
           module: module || "",
           record: record || "",
@@ -4777,20 +4847,10 @@ export default {
           // is never part of app state; `game-scores` is served by /api/game/*) — excluding
           // them here keeps this load, which every client runs, from paging through
           // thousands of dead session rows.
-          // loadedAt is taken before the read, so it never postdates the data it describes.
-          const loadedAt = new Date().toISOString();
-          const [rows, resetAt] = await Promise.all([
-            supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`),
-            dataResetAt(env, stateKey),
-          ]);
-          // Ship only what's still open/pending plus the most recent PAGINATED_MODULE_PAGE_SIZE
-          // for the modules whose history only ever grows — older closed records are fetched on
-          // demand via /api/modules/page. changesCursor is derived from the FULL row set (not the
-          // trimmed one) so an edit to an old, trimmed-out record still moves the live-sync cursor.
-          const { rows: trimmedRows, pagination } = trimPaginatedModuleRows(rows);
-          // `changesCursor` seeds the client's live-update poll (/api/modules/changes). It's the
-          // database's own latest updated_at, so Worker/DB clock skew can't open a gap.
-          return json({ data: stateFromRecords(filterRecordsForProfile(trimmedRows, profile, "view").map(withStockBaseRow)), revision: Date.now(), changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString(), pagination, loadedAt, resetAt });
+          // Shared read: everyone loading within STATE_SNAPSHOT_MAX_AGE_MS gets the same database
+          // read (see sharedStateSnapshot); only the per-person permission filter runs per request.
+          const { trimmedRows, pagination, changesCursor, loadedAt, resetAt } = await sharedStateSnapshot(env, stateKey);
+          return json({ data: stateFromRecords(filterRecordsForProfile(trimmedRows, profile, "view").map(withStockBaseRow)), revision: Date.now(), changesCursor, pagination, loadedAt, resetAt });
         }
         if (request.method === "PUT") {
           requireWriteAccess(profile);

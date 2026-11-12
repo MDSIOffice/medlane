@@ -1065,7 +1065,38 @@ function renderUserMenu() {
   qs("#user-initials").textContent = initials(profile.name);
   qs("#user-popover-name").textContent = profile.name;
   qs("#user-popover-role").hidden = false;
-  qs("#user-popover-role").textContent = profile.role || "";
+  const previewOf = /** @type {string | undefined} */ (currentUser.previewOf);
+  qs("#user-popover-role").textContent = previewOf ? `${profile.role} (preview · you are ${previewOf})` : profile.role || "";
+  renderRolePreview(previewOf);
+}
+
+// Superadmin/CEO "Preview as role": the server lists the roles this person may preview
+// (previewableRoles on /api/auth/me) and enforces the previewed role's permissions on every
+// request; the client just picks one and reloads so every screen is drawn as that role.
+/** @param {string | undefined} previewOf */
+function renderRolePreview(previewOf) {
+  const roles = /** @type {string[]} */ (currentUser?.previewableRoles || []);
+  const picker = qs("#role-preview-picker");
+  const banner = qs("#role-preview-banner");
+  if (picker) picker.hidden = !roles.length;
+  const select = /** @type {HTMLSelectElement | null} */ (qs("#role-preview-select"));
+  if (select && roles.length) {
+    const current = previewOf ? currentUser?.role : "";
+    select.innerHTML = roles.map((role) => `<option value="${escapeHtml(role)}"${role === current ? " selected" : ""}>${escapeHtml(role)}</option>`).join("");
+  }
+  const startButton = qs("#role-preview-start");
+  if (startButton) startButton.textContent = previewOf ? "Switch" : "Preview";
+  if (banner) banner.hidden = !previewOf;
+  document.body.classList.toggle("role-previewing", Boolean(previewOf));
+  const name = qs("#role-preview-name");
+  if (name) name.textContent = previewOf ? String(currentUser?.role || "") : "";
+}
+
+/** @param {string} role */
+function switchRolePreview(role) {
+  if (hasPendingSaveQueue()) return toast("Some changes are still saving. Wait until everything shows Saved, then switch.");
+  MedlaneAPI.setPreviewRole(role);
+  location.reload();
 }
 
 function renderUserSettings() {

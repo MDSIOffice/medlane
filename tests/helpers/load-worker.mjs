@@ -14,6 +14,7 @@ const EXPOSED = [
   "boardMonitorsDue", "dailyDigestHours", "odometerReminderMessage", "assertSaveNotStale",
   "createBackup", "restoreBackupObject", "persistedKeys", "assertMigratedStockAllowed",
   "takeStockBases", "rebaseStockRows", "withStockBase", "savedStockQty", "withStockLock", "loginThrottle",
+  "applyPreviewRole", "previewableRolesFor", "sharedStateSnapshot", "supabaseFetch",
 ];
 
 registerHooks({

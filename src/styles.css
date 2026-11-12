@@ -692,6 +692,17 @@ body[data-active-section="notifications"] #export-demo { display: none; }
 .user-chip strong { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--chip-blue-bg); color: var(--accent); box-shadow: 0 0 0 2px var(--accent); font: 700 13px var(--font-display); }
 .user-popover { position: absolute; top: calc(100% + 10px); right: 0; z-index: 21; display: grid; gap: 9px; width: 250px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel-solid); padding: 14px; box-shadow: var(--shadow); }
 .user-popover span { color: var(--muted); }
+/* Superadmin/CEO "Preview as role" */
+.role-preview-picker { display: grid; gap: 6px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 10px 0; }
+.role-preview-picker label { font-size: 12px; font-weight: 800; color: var(--ink); }
+.role-preview-picker-row { display: flex; gap: 6px; }
+.role-preview-picker-row select { flex: 1; min-width: 0; }
+.role-preview-picker small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.role-preview-banner { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; border: 1px solid var(--orange); border-radius: 12px; background: color-mix(in srgb, var(--orange) 14%, var(--panel-solid)); padding: 10px 14px; color: var(--ink); font-size: 13px; }
+.role-preview-banner[hidden] { display: none; }
+.role-preview-banner strong { color: var(--ink); }
+.role-preview-banner .mini-button { flex: none; }
+@media (max-width: 640px) { .role-preview-banner { flex-direction: column; align-items: stretch; } }
 .settings-permission-note { border: 1px dashed rgba(0, 110, 182, 0.28); border-radius: 18px; background: var(--tint); padding: 14px; }
 .settings-permission-note strong, .settings-permission-note span { display: block; }
 .settings-permission-note span { margin-top: 4px; color: var(--muted); }

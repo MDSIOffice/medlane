@@ -1,6 +1,17 @@
 // @ts-check
 const MedlaneAPI = (() => {
   const sessionKey = "medlane-api-session";
+  // Role preview (Superadmin/CEO only, enforced server-side): kept per tab in sessionStorage and
+  // sent as x-medlane-preview-role on every request, so the server applies that role's permissions.
+  const previewRoleKey = "medlane-preview-role";
+  let previewRole = "";
+  try { previewRole = sessionStorage.getItem(previewRoleKey) || ""; } catch { previewRole = ""; }
+  /** @param {string} role */
+  function setPreviewRole(role) {
+    previewRole = String(role || "");
+    try { if (previewRole) sessionStorage.setItem(previewRoleKey, previewRole); else sessionStorage.removeItem(previewRoleKey); } catch { /* storage blocked */ }
+  }
+  function getPreviewRole() { return previewRole; }
 
   /** @returns {ApiSession | null} */
   function session() {
@@ -10,7 +21,7 @@ const MedlaneAPI = (() => {
   /** @param {ApiSession | null} value */
   function setSession(value) {
     if (value) localStorage.setItem(sessionKey, JSON.stringify(value));
-    else localStorage.removeItem(sessionKey);
+    else { localStorage.removeItem(sessionKey); setPreviewRole(""); }
   }
 
   /** @type {any} */
@@ -154,6 +165,7 @@ const MedlaneAPI = (() => {
     const headers = { ...(options.headers || {}) };
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
     if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+    if (previewRole) headers["x-medlane-preview-role"] = previewRole;
     if (options.body && !(options.body instanceof FormData)) headers["content-type"] = "application/json";
     const response = await fetchWithDiagnostics(path, { ...options, headers }, options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
     const payload = await response.json().catch(() => null);
@@ -224,6 +236,7 @@ const MedlaneAPI = (() => {
   async function login(email, password) {
     const payload = /** @type {LoginResponse} */ (await request("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }));
     setSession(payload.session);
+    setPreviewRole(""); // every sign-in starts as the person's real role
     localStorage.setItem("medlane-session", JSON.stringify(payload.user));
     return payload;
   }
@@ -260,6 +273,7 @@ const MedlaneAPI = (() => {
       /** @type {Record<string, string>} */
       const headers = { Authorization: `Bearer ${active.access_token}` };
       if (active.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+      if (previewRole) headers["x-medlane-preview-role"] = previewRole;
       return fetch(`/api/modules/changes?${new URLSearchParams({ since })}`, { headers });
     };
     let response = await send();
@@ -317,6 +331,7 @@ const MedlaneAPI = (() => {
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
     if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+    if (previewRole) headers["x-medlane-preview-role"] = previewRole;
     // No abort timeout here — file downloads can legitimately take a while; classification alone
     // still tells a genuine network drop apart from offline or a rejected/failed request.
     const response = await fetchWithDiagnostics(`/api/files/${encodeURIComponent(/** @type {string} */ (id))}`, { headers }, null);
@@ -599,6 +614,7 @@ const MedlaneAPI = (() => {
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
     if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+    if (previewRole) headers["x-medlane-preview-role"] = previewRole;
     const response = await fetchWithDiagnostics(`/api/backups/${encodeURIComponent(id)}`, { headers }, null);
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
@@ -624,6 +640,7 @@ const MedlaneAPI = (() => {
     const headers = {};
     if (active?.access_token) headers.Authorization = `Bearer ${active.access_token}`;
     if (active?.app_session_id) headers["x-medlane-session-id"] = active.app_session_id;
+    if (previewRole) headers["x-medlane-preview-role"] = previewRole;
     const response = await fetchWithDiagnostics(`/api/backups/object?${new URLSearchParams({ key })}`, { headers }, null);
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
@@ -699,5 +716,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
+  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();

@@ -599,6 +599,10 @@
 
     <main class="app-shell">
       <div class="app-ambient-grid" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="role-preview-banner" id="role-preview-banner" role="status" hidden>
+        <span>Previewing as <strong id="role-preview-name">Role</strong> — you can only view and do what this role can. Changes you save are real and are logged under your name.</span>
+        <button class="mini-button" id="role-preview-exit" type="button">Exit preview</button>
+      </div>
       <header class="topbar">
         <div>
           <p class="eyebrow">Medlane Diagnostic Solutions</p>
@@ -636,6 +640,11 @@
             <div class="user-popover" id="user-popover" hidden>
               <strong id="user-popover-name">User</strong>
               <span id="user-popover-role">Role</span>
+              <div class="role-preview-picker" id="role-preview-picker" hidden>
+                <label for="role-preview-select">Preview as role</label>
+                <div class="role-preview-picker-row"><select id="role-preview-select"></select><button class="mini-button" id="role-preview-start" type="button">Preview</button></div>
+                <small>See and use the app exactly as this role can. Your own access returns when you exit.</small>
+              </div>
               <button class="ghost-button" id="open-settings" type="button">User settings</button>
               <div class="theme-switch-row">
                 <span id="theme-switch-label">Light mode</span>

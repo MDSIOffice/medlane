@@ -694,6 +694,11 @@ qs("#sidebar-collapse-toggle")?.addEventListener("click", () => {
 });
 syncSidebarCollapseToggle();
 qs("#logout-top-button")?.addEventListener("click", logoutCurrentUser);
+qs("#role-preview-start")?.addEventListener("click", () => {
+  const role = /** @type {HTMLSelectElement | null} */ (qs("#role-preview-select"))?.value || "";
+  if (role) switchRolePreview(role);
+});
+qs("#role-preview-exit")?.addEventListener("click", () => switchRolePreview(""));
 qs("#settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const values = formObject(event.currentTarget);
@@ -2563,7 +2568,13 @@ function showAuthenticatedApp() {
 }
 async function hydrateAuthenticatedSession() {
   if (!MedlaneAPI?.session()?.access_token) throw new Error("No active API session");
-  const me = await MedlaneAPI.me();
+  // A preview the server no longer allows (e.g. the account's role changed) must not log the
+  // person out — drop the preview and load their own access instead.
+  const me = await MedlaneAPI.me().catch(async (/** @type {unknown} */ error) => {
+    if (!MedlaneAPI.getPreviewRole()) throw error;
+    MedlaneAPI.setPreviewRole("");
+    return MedlaneAPI.me();
+  });
   currentUser = me.user;
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   const serverState = await MedlaneAPI.loadAppState();

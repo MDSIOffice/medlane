@@ -428,6 +428,8 @@ interface Profile {
   customPermissions: { enabled: boolean; view: string[]; edit: string[] };
   passwordKycDue: boolean;
   themePreference: "dark" | "light";
+  /** Set while a Superadmin/CEO previews another role: their real role. */
+  previewOf?: AppRole;
 }
 
 /** A row of the Supabase profiles table, before profileForUser() turns it into a Profile. */
