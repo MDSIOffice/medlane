@@ -758,7 +758,7 @@ function calendarDayDetailHtml(dateKey, entries) {
   const rows = entries.length
     ? entries.map((entry) => `<div class="alert-item calendar-event-row"><span class="alert-dot ${entry.tone}"></span><div><strong>${escapeHtml(entry.type)} · ${escapeHtml(entry.label)}</strong><span>${entry.by ? `Added by ${escapeHtml(entry.by)}` : ""}</span></div>${entry.canChange ? `<button type="button" class="mini-button danger-button" data-calendar-remove="${escapeHtml(entry.id)}">Remove</button>` : ""}</div>`).join("")
     : `<div class="alert-item"><span class="alert-dot green"></span><div><strong>Nothing scheduled</strong><span>No events on this date yet.</span></div></div>`;
-  return `<div class="calendar-day-detail-header"><strong>${escapeHtml(label)}</strong><button type="button" class="ghost-button" data-calendar-add="${escapeHtml(dateKey)}">Add event on this day</button></div>${rows}`;
+  return `<div class="calendar-day-detail-header"><strong>${escapeHtml(label)}</strong>${dateKey >= fmtDate(today) ? `<button type="button" class="ghost-button" data-calendar-add="${escapeHtml(dateKey)}">Add event on this day</button>` : ""}</div>${rows}`;
 }
 
 // --- Custom combobox replacing native <input list> + <datalist> suggestions ---------------

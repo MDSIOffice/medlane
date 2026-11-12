@@ -2008,7 +2008,7 @@ function showCalendarDayDetail(prefix, dateKey) {
 function addCalendarEventDialog(dateKey = "") {
   const dialog = document.createElement("dialog");
   dialog.className = "modal invite-confirm-modal";
-  dialog.innerHTML = `<form method="dialog" class="calendar-event-form"><div class="modal-header"><div><p class="eyebrow">Calendar</p><h2>Add Event</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div><p class="page-description">Everyone can see events on the Calendar.</p><div class="field full"><label for="calendar-event-title">Event</label><input id="calendar-event-title" maxlength="160" required autocomplete="off" placeholder="e.g. Client visit — Bicol Diagnostics" /></div><div class="form-grid"><div class="field"><label for="calendar-event-date">Date</label><input id="calendar-event-date" type="date" required value="${escapeHtml(dateKey || fmtDate(today))}" /></div><div class="field"><label for="calendar-event-time">Time</label><input id="calendar-event-time" type="time" required value="09:00" /></div></div><div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" value="confirm">Add Event</button></div></form>`;
+  dialog.innerHTML = `<form method="dialog" class="calendar-event-form"><div class="modal-header"><div><p class="eyebrow">Calendar</p><h2>Add Event</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div><p class="page-description">Everyone can see events on the Calendar.</p><div class="field full"><label for="calendar-event-title">Event</label><input id="calendar-event-title" maxlength="160" required autocomplete="off" placeholder="e.g. Client visit — Bicol Diagnostics" /></div><div class="form-grid"><div class="field"><label for="calendar-event-date">Date</label><input id="calendar-event-date" type="date" required min="${fmtDate(today)}" value="${escapeHtml(dateKey && dateKey >= fmtDate(today) ? dateKey : fmtDate(today))}" /></div><div class="field"><label for="calendar-event-time">Time</label><input id="calendar-event-time" type="time" required value="09:00" /></div></div><div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" value="confirm">Add Event</button></div></form>`;
   document.body.appendChild(dialog);
   dialog.addEventListener("close", async () => {
     const title = /** @type {HTMLInputElement} */ (qsIn(dialog, "#calendar-event-title")).value.trim();
@@ -2018,6 +2018,7 @@ function addCalendarEventDialog(dateKey = "") {
     dialog.remove();
     if (!confirmed) return;
     if (!title || !date || !time) return toast("Event, date and time are all required.");
+    if (date < fmtDate(today)) return toast("Events can only be added for today or a future date.");
     /** @type {CalendarEvent} */
     const entry = { id: `EVT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, title, date, time, createdBy: currentUser?.name || currentUser?.email || "User", createdByUser: currentUser?.email || "", createdAt: new Date().toISOString() };
     data.calendarEvents.push(entry);

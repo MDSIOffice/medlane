@@ -1581,6 +1581,8 @@ async function assertCalendarEventChangesAllowed(env, stateKey, profile, rows) {
       if (!String(next.title || "").trim()) throw new Error("Calendar event needs a name");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(next.date || ""))) throw new Error("Calendar event needs a valid date");
       if (!/^\d{2}:\d{2}$/.test(String(next.time || ""))) throw new Error("Calendar event needs a valid time");
+      // Only today or later (Manila) for new events or a moved date; old past events stay removable.
+      if ((!prev || String(prev.date || "") !== String(next.date || "")) && String(next.date) < shortDate()) throw new Error("Calendar event can only be scheduled for today or a future date");
     }
     if (!prev) {
       if (owner !== me && !isManagement) throw new Error("You can only add calendar events as yourself");
@@ -6078,7 +6080,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (/** @type {any} */ error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: /.test(error.message) ? 422 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: |^Calendar event|calendar events as yourself/.test(error.message) ? 422 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },
