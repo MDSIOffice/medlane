@@ -80,6 +80,8 @@ interface StockRow {
   min: number;
   note?: string;
   archived?: boolean;
+  /** Server-attached {record key, qty as stored when loaded}; never stored (see rebaseStockRows). */
+  _stockBase?: { key: string; qty: number };
   [extra: string]: any;
 }
 

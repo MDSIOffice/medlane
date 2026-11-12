@@ -13,6 +13,7 @@ const EXPOSED = [
   "demoRequestInitialStatus", "validateReceivingLines", "validRole", "roleModules", "ROLE_BLOCKED_MODULES",
   "boardMonitorsDue", "dailyDigestHours", "odometerReminderMessage", "assertSaveNotStale",
   "createBackup", "restoreBackupObject", "persistedKeys", "assertMigratedStockAllowed",
+  "takeStockBases", "rebaseStockRows", "withStockBase", "savedStockQty", "withStockLock", "loginThrottle",
 ];
 
 registerHooks({
@@ -21,7 +22,7 @@ registerHooks({
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
-    if (url === STUB_URL) return { format: "module", source: "export class DurableObject {}", shortCircuit: true };
+    if (url === STUB_URL) return { format: "module", source: "export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }", shortCircuit: true };
     if (url.endsWith("/src/worker.js") || url.endsWith("/src/perf-report.js")) {
       let source = readFileSync(fileURLToPath(url), "utf8");
       if (url.endsWith("/src/worker.js")) source += `\nexport { ${EXPOSED.join(", ")} };\n`;

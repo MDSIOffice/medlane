@@ -738,7 +738,7 @@ function calendarWidgetHtml(year, month, events, opts = {}) {
       ? dayEvents.slice(0, shown).map((entry) => `<span class="calendar-dot ${entry.tone}"></span>`).join("")
       : dayEvents.slice(0, shown).map((entry) => `<span class="calendar-chip" title="${escapeHtml(`${entry.type} · ${entry.label}${entry.by ? ` — ${entry.by}` : ""}`)}">${escapeHtml(entry.type)} ${escapeHtml(entry.label)}</span>`).join("");
     const overflow = dayEvents.length > shown ? `<span class="calendar-more">+${dayEvents.length - shown}</span>` : "";
-    cells.push(`<button type="button" class="calendar-cell${key === todayKey ? " is-today" : ""}${dayEvents.length ? " has-events" : ""}" data-calendar-day="${key}"><strong>${day}</strong><span class="${compact ? "calendar-dots" : "calendar-chips"}">${marks}${overflow}</span></button>`);
+    cells.push(`<button type="button" class="calendar-cell${key === todayKey ? " is-today" : ""}${key < todayKey ? " is-past" : ""}${dayEvents.length ? " has-events" : ""}" data-calendar-day="${key}"><strong>${day}</strong><span class="${compact ? "calendar-dots" : "calendar-chips"}">${marks}${overflow}</span></button>`);
   }
   return `<div class="calendar-widget${compact ? " compact" : ""}" data-calendar-year="${year}" data-calendar-month="${month}" data-calendar-prefix="${idPrefix}">
     <div class="calendar-widget-header">

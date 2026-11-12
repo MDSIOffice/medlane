@@ -23,7 +23,7 @@ interface ThemeResponse extends OkResponse { theme: string }
 interface ModulePageInfo { hasMore: boolean; cursor: string | null; loading?: boolean }
 /** loadedAt: server time the data was read (stamped onto later saves as `basedOn`). resetAt: last data-reset marker, or null. */
 interface AppStateResponse { data: RawData; revision: number; changesCursor: string; pagination: Record<string, ModulePageInfo>; loadedAt?: string; resetAt?: string | null }
-interface SaveResponse extends OkResponse { savedRecords: number; revision: number }
+interface SaveResponse extends OkResponse { savedRecords: number; revision: number; /** Stored qty per inventory record key after the save (server rebases stock). */ stock?: Record<string, number> }
 /** One changed record. The module decides its shape, so readers have to narrow `data`. */
 interface ChangedRow { module: string; key: string; data: Record<string, unknown> }
 interface ChangesResponse { rows: ChangedRow[]; cursor: string }

@@ -234,29 +234,163 @@ async function notifyLiveClients(env, modules) {
   }
 }
 
-const LOGIN_THROTTLE_MAX_FAILS = 10;
 const LOGIN_THROTTLE_WINDOW_MS = 5 * 60 * 1000;
+// Per account: 10 wrong passwords in 5 minutes locks only that account (brute-force guard).
+const LOGIN_THROTTLE_MAX_FAILS_PER_ACCOUNT = 10;
+// Per IP: a whole office shares one public IP, so this limit is deliberately high. It only stops
+// one machine guessing across many accounts, never 50-100 staff who mistype now and then.
+const LOGIN_THROTTLE_MAX_FAILS_PER_IP = 100;
 
-// Our own per-IP brute-force guard for /api/auth/login. Supabase only sees the Worker's egress
-// IPs, so its per-IP limits can't tell users apart. Fails open: a throttle outage must never lock
-// everyone out of the app.
-/** @param {WorkerEnv} env @param {Request} request @param {string} action */
-async function loginThrottle(env, request, action) {
+// Our own brute-force guard for /api/auth/login. Supabase only sees the Worker's egress IPs, so
+// its per-IP limits can't tell users apart. Two counters: per account (reset when that account
+// signs in) and per IP (never reset by a success, so one valid login can't wipe an attacker's
+// count). Fails open: a throttle outage must never lock everyone out of the app.
+/** @param {WorkerEnv} env @param {Request} request @param {string} action @param {string} [email] */
+async function loginThrottle(env, request, action, email = "") {
   const ip = clientIp(request);
-  if (!env.LIVE_HUB || !ip) return { blocked: false, retryAfter: 0 };
+  const account = String(email || "").trim().toLowerCase();
+  if (!env.LIVE_HUB) return { blocked: false, retryAfter: 0 };
+  /** @type {Array<[string, number, string]>} */
+  const counters = [];
+  if (account) counters.push([`login-throttle-account:${account}`, LOGIN_THROTTLE_MAX_FAILS_PER_ACCOUNT, action]);
+  // A successful login resets only that account's counter.
+  if (ip) counters.push([`login-throttle:${ip}`, LOGIN_THROTTLE_MAX_FAILS_PER_IP, action === "reset" ? "check" : action]);
   try {
-    const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(`login-throttle:${ip}`));
-    const response = await stub.fetch(`https://live-hub/login-throttle/${action}`, { method: "POST" });
-    return await response.json();
-  } catch (/** @type {any} */ error) {
-    console.warn(JSON.stringify({ message: "Login throttle unavailable", error: error.message }));
+    const results = await Promise.all(counters.map(async ([name, max, counterAction]) => {
+      const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(name));
+      const response = await stub.fetch(`https://live-hub/login-throttle/${counterAction}?max=${max}`, { method: "POST" });
+      return /** @type {{ blocked: boolean, retryAfter: number }} */ (await response.json());
+    }));
+    const blocked = results.filter((result) => result.blocked);
+    return { blocked: blocked.length > 0, retryAfter: Math.max(0, ...blocked.map((result) => Number(result.retryAfter) || 0)) };
+  } catch (error) {
+    console.warn(JSON.stringify({ message: "Login throttle unavailable", error: error instanceof Error ? error.message : String(error) }));
     return { blocked: false, retryAfter: 0 };
   }
+}
+
+// ---- Stock concurrency ----------------------------------------------------------------------
+// The browser works out a stock row's new qty itself and saves the final number. Two people
+// moving the same lot at once would each save "100 - 10 = 90" and one deduction would vanish.
+// So every inventory row the server hands out carries `_stockBase` = {key, qty} as stored at that
+// moment; on save the server applies the browser's CHANGE (qty - base) on top of what is stored
+// NOW, and stock-touching saves run one at a time (withStockLock) so that read+write is atomic.
+// `_stockBase` is never stored. A row without one (older tab, brand-new lot) is saved as-is.
+const STOCK_LOCK_LEASE_MS = 20_000;
+const STOCK_LOCK_WAIT_MS = 20_000;
+
+/** @template T @param {string} moduleName @param {string} recordKey @param {T} recordData @returns {T} */
+function withStockBase(moduleName, recordKey, recordData) {
+  if (moduleName !== "inventory" || !recordData || typeof recordData !== "object" || Array.isArray(recordData)) return recordData;
+  const stockData = /** @type {Record<string, unknown>} */ (recordData);
+  return /** @type {T} */ ({ ...stockData, _stockBase: { key: recordKey, qty: Number(stockData.qty || 0) } });
+}
+
+/** @param {AppRecordRow} row */
+function withStockBaseRow(row) {
+  return row.module_name === "inventory" ? { ...row, data: withStockBase(row.module_name, row.record_key, row.data) } : row;
+}
+
+// Strips `_stockBase` from incoming inventory rows (it must never be stored or trip the
+// field-by-field guards) and returns record_key -> base qty for rows whose marker belongs to
+// that same record (a row copied to another branch/lot carries a foreign key and is ignored).
+/** @param {AppRecordRow[]} rows @returns {Map<string, number>} */
+function takeStockBases(rows) {
+  /** @type {Map<string, number>} */
+  const bases = new Map();
+  for (const row of rows) {
+    if (row.module_name !== "inventory" || !row.data || typeof row.data !== "object" || !("_stockBase" in row.data)) continue;
+    const { _stockBase, ...rest } = /** @type {Record<string, unknown>} */ (row.data);
+    const marker = /** @type {{ key?: unknown, qty?: unknown } | null | undefined} */ (_stockBase);
+    row.data = rest;
+    if (marker && marker.key === row.record_key && Number.isFinite(Number(marker.qty))) bases.set(row.record_key, Number(marker.qty));
+  }
+  return bases;
+}
+
+/** @param {number} value */
+function roundStockQty(value) {
+  return Math.round(value * 10000) / 10000;
+}
+
+// Must run inside withStockLock: re-reads the stored qty and applies this save's change on top.
+/** @param {WorkerEnv} env @param {string} stateKey @param {AppRecordRow[]} rows @param {Map<string, number>} bases */
+async function rebaseStockRows(env, stateKey, rows, bases) {
+  if (!bases.size) return;
+  const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn([...bases.keys()]))}&select=record_key,data`));
+  const storedQty = new Map(stored.map((row) => [row.record_key, Number(/** @type {Record<string, unknown>} */ (row.data || {}).qty || 0)]));
+  for (const row of rows) {
+    if (row.module_name !== "inventory" || !bases.has(row.record_key) || !storedQty.has(row.record_key)) continue;
+    const base = /** @type {number} */ (bases.get(row.record_key));
+    const current = /** @type {number} */ (storedQty.get(row.record_key));
+    if (current === base) continue;
+    const recordData = /** @type {Record<string, unknown>} */ (row.data || {});
+    const next = roundStockQty(current + (Number(recordData.qty || 0) - base));
+    if (next < 0) {
+      const label = [recordData.item || recordData.code, recordData.lot && `lot ${recordData.lot}`, recordData.branch].filter(Boolean).join(" · ");
+      throw new Error(`Stock changed: ${label || row.record_key} now has only ${current} left (someone else used it while you were working). Reload and redo this change.`);
+    }
+    row.data = { ...recordData, qty: next };
+  }
+}
+
+/** @param {AppRecordRow[]} rows @returns {Record<string, number>} */
+function savedStockQty(rows) {
+  return Object.fromEntries(rows.filter((row) => row.module_name === "inventory").map((row) => [row.record_key, Number(/** @type {Record<string, unknown>} */ (row.data || {}).qty || 0)]));
+}
+
+// Runs fn while holding the single stock lock (a LiveHub Durable Object), so stock reads and
+// writes from different people can't interleave. Fails open if the lock service is down.
+/** @template T @param {WorkerEnv} env @param {string} stateKey @param {() => Promise<T>} fn @returns {Promise<T>} */
+async function withStockLock(env, stateKey, fn) {
+  /** @type {ReturnType<NonNullable<WorkerEnv["LIVE_HUB"]>["get"]> | null} */
+  let stub = null;
+  /** @type {string | null} */
+  let token = null;
+  if (env.LIVE_HUB) {
+    try {
+      stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(`stock-lock:${stateKey}`));
+      const response = await stub.fetch("https://live-hub/stock-lock/acquire", { method: "POST" });
+      token = (/** @type {{ token: string | null }} */ (await response.json())).token;
+    } catch (error) {
+      console.warn(JSON.stringify({ message: "Stock lock unavailable", error: error instanceof Error ? error.message : String(error) }));
+      stub = null;
+    }
+    if (stub && !token) throw new Error("Stock is busy: other stock saves are still running. Please try again in a moment.");
+  }
+  try {
+    return await fn();
+  } finally {
+    if (stub && token) await stub.fetch("https://live-hub/stock-lock/release", { method: "POST", body: JSON.stringify({ token }) }).catch(() => null);
+  }
+}
+
+// ---- Short-lived auth cache -----------------------------------------------------------------
+// Every open tab calls /api/modules/changes whenever anyone saves. Re-verifying the login each
+// time costs ~4 Supabase round trips, so with 100 people one save meant ~400 extra auth queries.
+// Read-only endpoints reuse a verified result for a few seconds (per token + app session).
+const AUTH_CACHE_TTL_MS = 15_000;
+/** @type {Map<string, { expires: number, value: Awaited<ReturnType<typeof authenticatedProfile>> }>} */
+const authCache = new Map();
+
+/** @param {Request} request @param {WorkerEnv} env */
+async function authenticatedProfileCached(request, env) {
+  const cacheKey = `${request.headers.get("authorization") || ""}|${sessionHeader(request)}`;
+  const hit = authCache.get(cacheKey);
+  if (hit && hit.expires > Date.now()) return hit.value;
+  const value = await authenticatedProfile(request, env);
+  if (authCache.size > 500) authCache.clear();
+  authCache.set(cacheKey, { expires: Date.now() + AUTH_CACHE_TTL_MS, value });
+  return value;
 }
 
 export class LiveHub extends DurableObject {
   constructor(/** @type {any} */ ctx, /** @type {any} */ env) {
     super(ctx, env);
+    /** @type {{ token: string, expires: number } | null} */
+    this.stockLock = null;
+    /** @type {Array<(value: unknown) => void>} */
+    this.stockWaiters = [];
     // Answered by the runtime itself, without waking this object — keepalives cost nothing.
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
@@ -267,14 +401,37 @@ export class LiveHub extends DurableObject {
       // Per-IP failed-login counter (one object per IP). Only failures count, so many staff
       // behind one office IP signing in successfully never block each other.
       const action = url.pathname.split("/")[2];
+      const maxFails = Number(url.searchParams.get("max")) || LOGIN_THROTTLE_MAX_FAILS_PER_ACCOUNT;
       const now = Date.now();
       let fails = /** @type {number[]} */ ((await this.ctx.storage.get("fails")) || []).filter((t) => now - t < LOGIN_THROTTLE_WINDOW_MS);
       if (action === "fail") fails.push(now);
       if (action === "reset") fails = [];
       if (fails.length) await this.ctx.storage.put("fails", fails); else await this.ctx.storage.delete("fails");
-      const blocked = fails.length >= LOGIN_THROTTLE_MAX_FAILS;
+      const blocked = fails.length >= maxFails;
       const retryAfter = blocked ? Math.max(1, Math.ceil((fails[0] + LOGIN_THROTTLE_WINDOW_MS - now) / 1000)) : 0;
       return Response.json({ blocked, retryAfter });
+    }
+    if (url.pathname === "/stock-lock/acquire" && request.method === "POST") {
+      // In-memory mutex with a lease: one stock save at a time; waiters are woken on release
+      // and re-check every 250ms so an expired lease (crashed request) never wedges the lock.
+      const deadline = Date.now() + STOCK_LOCK_WAIT_MS;
+      while (this.stockLock && this.stockLock.expires > Date.now()) {
+        if (Date.now() >= deadline) return Response.json({ token: null });
+        await new Promise((resolve) => { this.stockWaiters.push(resolve); setTimeout(resolve, 250); });
+      }
+      const token = crypto.randomUUID();
+      this.stockLock = { token, expires: Date.now() + STOCK_LOCK_LEASE_MS };
+      return Response.json({ token });
+    }
+    if (url.pathname === "/stock-lock/release" && request.method === "POST") {
+      const { token } = await request.json().catch(() => ({}));
+      if (this.stockLock?.token === token) {
+        this.stockLock = null;
+        const waiters = this.stockWaiters;
+        this.stockWaiters = [];
+        for (const wake of waiters) wake(undefined);
+      }
+      return new Response(null, { status: 204 });
     }
     if (url.pathname === "/notify" && request.method === "POST") {
       const { modules = [] } = await request.json().catch(() => ({}));
@@ -4325,7 +4482,7 @@ export default {
         if (request.method !== "POST") return methodNotAllowed();
         requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
         const { email, password } = await request.json();
-        const throttle = await loginThrottle(env, request, "check");
+        const throttle = await loginThrottle(env, request, "check", email);
         if (throttle.blocked) {
           return json({ error: `Too many failed sign-in attempts. Try again in ${Math.ceil(throttle.retryAfter / 60)} minute(s).` }, { status: 429, headers: { "retry-after": String(throttle.retryAfter) } });
         }
@@ -4337,12 +4494,12 @@ export default {
         const session = await authResponse.json().catch(() => null);
         if (!authResponse.ok) {
           const authError = session?.error_description || session?.msg || session?.error || "Invalid email or password";
-          if (authResponse.status === 400 || authResponse.status === 401 || authResponse.status === 422) await loginThrottle(env, request, "fail");
+          if (authResponse.status === 400 || authResponse.status === 401 || authResponse.status === 422) await loginThrottle(env, request, "fail", email);
           const debug = url.searchParams.get("debug") === "1";
           console.error(JSON.stringify({ message: "Supabase login failed", authError, status: authResponse.status }));
           return json({ error: authError, ...(debug ? { supabaseStatus: authResponse.status, supabaseResponse: session, supabaseHost: new URL(env.SUPABASE_URL).hostname, supabasePath: new URL(env.SUPABASE_URL).pathname, authUrl: `${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, anonKeyHash: await shortHash(env.SUPABASE_ANON_KEY) } : {}) }, { status: 401 });
         }
-        await loginThrottle(env, request, "reset");
+        await loginThrottle(env, request, "reset", email);
         const user = await profileForUser(env, session.user.id, email);
         const appSession = await createAppSession(env, request, session.user.id);
         return json({ session: { ...session, app_session_id: appSession?.id || null }, user });
@@ -4576,7 +4733,7 @@ export default {
       // place. The window deliberately overlaps by a few seconds (merges are idempotent) so a
       // write that committed slightly out of updated_at order is never skipped.
       if (url.pathname === "/api/modules/changes" && request.method === "GET") {
-        const { profile } = await authenticatedProfile(request, env);
+        const { profile } = await authenticatedProfileCached(request, env);
         const stateKey = appStateKey(env);
         const sinceMs = Date.parse(url.searchParams.get("since") || "");
         if (!Number.isFinite(sinceMs)) return json({ error: "A valid `since` timestamp is required" }, { status: 400 });
@@ -4584,7 +4741,7 @@ export default {
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&updated_at=gte.${encodeURIComponent(since)}&module_name=not.in.${encodeURIComponent(postgrestIn([...NON_STATE_MODULES, "branch", "masterTab", "logs"]))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
         const visible = filterRecordsForProfile(rows, profile, "view");
         const cursor = rows.length ? rows[rows.length - 1].updated_at : new Date(sinceMs).toISOString();
-        return json({ rows: visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data })), cursor });
+        return json({ rows: visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data: withStockBase(module_name, record_key, data) })), cursor });
       }
 
       // "Load previous" — older records for one module that /api/modules/state trimmed out,
@@ -4606,7 +4763,7 @@ export default {
         const page = older.slice(0, limit);
         const visible = filterRecordsForProfile(page, profile, "view");
         return json({
-          rows: visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data })),
+          rows: visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data: withStockBase(module_name, record_key, data) })),
           nextCursor: page.length ? sortOf(page[page.length - 1]) : null,
           hasMore: older.length > limit,
         });
@@ -4633,7 +4790,7 @@ export default {
           const { rows: trimmedRows, pagination } = trimPaginatedModuleRows(rows);
           // `changesCursor` seeds the client's live-update poll (/api/modules/changes). It's the
           // database's own latest updated_at, so Worker/DB clock skew can't open a gap.
-          return json({ data: stateFromRecords(filterRecordsForProfile(trimmedRows, profile, "view")), revision: Date.now(), changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString(), pagination, loadedAt, resetAt });
+          return json({ data: stateFromRecords(filterRecordsForProfile(trimmedRows, profile, "view").map(withStockBaseRow)), revision: Date.now(), changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString(), pagination, loadedAt, resetAt });
         }
         if (request.method === "PUT") {
           requireWriteAccess(profile);
@@ -4650,6 +4807,9 @@ export default {
           const presentKeys = keys.filter((key) => data?.[key] !== undefined && key !== "logs");
           const auditContext = auditContextForRequest(request);
           const rows = recordsFromState(data, authUser.id, stateKey, presentKeys, auditContext);
+          const stockBases = takeStockBases(rows);
+          const runStateSave = async () => {
+          await rebaseStockRows(env, stateKey, rows, stockBases);
           const actor = profile.name || profile.email || "System User";
 
           if (presentKeys.length) {
@@ -4825,7 +4985,9 @@ export default {
             // runs its posts in parallel, so it doesn't need to hold up the response.
             ctx.waitUntil(postRecordEventsToDiscord(env, profile, eventBeforeRows, rows));
           }
-          return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
+          return json({ ok: true, savedRecords: rows.length, revision: Date.now(), stock: savedStockQty(rows) });
+          };
+          return presentKeys.includes("inventory") ? withStockLock(env, stateKey, runStateSave) : runStateSave();
         }
         return methodNotAllowed();
       }
@@ -5078,6 +5240,9 @@ export default {
           value.forEach((record, index) => rows.push({ state_key: stateKey, module_name: key, record_key: String(recordKeys[key]?.[index] || recordKeyFor(key, record, index)), data: record, updated_by: authUser.id }));
         }
         rows = dedupeRowsByRecordKey(rows);
+        const stockBases = takeStockBases(rows);
+        const runRecordSave = async () => {
+        await rebaseStockRows(env, stateKey, rows, stockBases);
 
         const saleCodes = saleScopedInventory ? new Set(records.sales.flatMap((/** @type {Sale} */ sale) => (sale?.lines || []).map((/** @type {any} */ line) => String(line?.code || ""))).filter(Boolean)) : null;
         const saleStockRows = saleScopedInventory ? rows.filter((row) => row.module_name === "inventory") : [];
@@ -5247,7 +5412,9 @@ export default {
           // meaningful chunk of latency (and "Failed to fetch" exposure) from every itemized submit.
           ctx.waitUntil(postRecordEventsToDiscord(env, profile, beforeRows, rows));
         }
-        return json({ ok: true, savedRecords: rows.length, revision: Date.now() });
+        return json({ ok: true, savedRecords: rows.length, revision: Date.now(), stock: savedStockQty(rows) });
+        };
+        return rows.some((row) => row.module_name === "inventory") ? withStockLock(env, stateKey, runRecordSave) : runRecordSave();
       }
 
       if (url.pathname.startsWith("/api/purchase-orders/")) {
@@ -5428,6 +5595,8 @@ export default {
           return json({ ok: true, receipt, po });
         }
         if (receipt.status !== "Pending Approval") throw new Error(`Cannot approve a stock receipt with status "${receipt.status}"`);
+        // Posting a receipt rewrites stock rows, so it holds the same stock lock as invoice saves.
+        return withStockLock(env, stateKey, async () => {
         // The PO lookup and the inventory lookup are independent reads — running them together
         // shaves a full round trip off every approval, which matters most on itemized receipts
         // where the extra latency made a transient network blip more likely to surface as
@@ -5482,6 +5651,7 @@ export default {
           ],
         }));
         return json({ ok: true, receipt, po });
+        });
       }
 
       if (url.pathname === "/api/reports") {
@@ -6080,7 +6250,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (/** @type {any} */ error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: |^Calendar event|calendar events as yourself/.test(error.message) ? 422 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: |^Calendar event|calendar events as yourself|^Stock changed:/.test(error.message) ? 422 : /^Stock is busy/.test(error.message) ? 503 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },

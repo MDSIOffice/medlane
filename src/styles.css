@@ -1602,6 +1602,8 @@ button.calendar-cell:hover { background: var(--tint); }
 .calendar-cell strong { font-size: 13px; font-weight: 800; }
 .calendar-cell.is-today { border-color: var(--blue); background: var(--chip-blue-bg); }
 .calendar-cell.is-today strong { color: var(--blue-dark); }
+.calendar-cell.is-past { cursor: not-allowed; opacity: .55; }
+.calendar-cell.is-past:hover { background: transparent; }
 .calendar-dots { display: flex; align-items: center; justify-content: center; gap: 3px; min-height: 8px; }
 .calendar-dot { width: 6px; height: 6px; border-radius: 50%; }
 .calendar-dot.red { background: var(--red); }

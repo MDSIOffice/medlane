@@ -901,6 +901,7 @@ function saveData(keys = null) {
     }
     const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
     MedlaneAPI.saveAppState(queuedPayload, serverRevision, pendingSaveBasedOn(Object.keys(queuedPayload))).then((result) => {
+      applySavedStock(result, queuedPayload.inventory);
       if (result?.revision) {
         serverRevision = Number(result.revision);
       }
@@ -956,6 +957,7 @@ function flushPendingSaveQueue() {
   setGlobalSaveStatus("saving", "Saving pending changes...");
   const queuedPayload = Object.fromEntries(Object.entries(readPendingSaveQueue()).map(([key, value]) => [key, Array.isArray(value) ? dedupeRecordsForSave(key, value) : value]));
   MedlaneAPI.saveAppState(queuedPayload, serverRevision, pendingSaveBasedOn(Object.keys(queuedPayload))).then((result) => {
+    applySavedStock(result, queuedPayload.inventory);
     if (result?.revision) serverRevision = Number(result.revision);
     writePendingSaveQueue({});
     setGlobalSaveStatus("saved", "Saved");
@@ -989,6 +991,7 @@ function flushPendingSaveQueue() {
       for (const [key, value] of Object.entries(queuedPayload)) {
         try {
           const result = await MedlaneAPI.saveAppState({ [key]: value }, serverRevision, pendingSaveBasedOn([key]));
+          if (key === "inventory") applySavedStock(result, /** @type {StockRow[]} */ (value));
           if (result?.revision) serverRevision = Number(result.revision);
           clearPendingSaveQueueKeys([key]);
         } catch (/** @type {any} */ innerError) {
@@ -1027,15 +1030,57 @@ function flushPendingSaveQueue() {
   });
 }
 
-/** @param {Record<string, any[] | undefined>} records @param {Record<string, any>} [recordKeys] */
+// Stock rows from the server carry `_stockBase` ({key, qty} as stored when loaded). The server
+// applies a save's change (qty - base) on top of the CURRENT stored qty, so two people moving the
+// same lot at once can't erase each other's deduction (see rebaseStockRows in src/worker.js).
+// After a save, move each row's base to what the server stored, shifting the local qty by any
+// difference (another user's concurrent change) so later edits build on the right number.
+/** @param {SaveResponse | null | undefined} result @param {StockRow[] | undefined} sentInventory */
+function applySavedStock(result, sentInventory) {
+  const stock = result?.stock;
+  if (!stock || typeof stock !== "object" || !Array.isArray(data?.inventory)) return;
+  /** @type {Map<string, number>} */
+  const sentQty = new Map();
+  (sentInventory || []).forEach((item, index) => { const key = saveRecordKeyFor("inventory", item, index); if (key) sentQty.set(key, Number(item?.qty || 0)); });
+  data.inventory.forEach((item, index) => {
+    const key = saveRecordKeyFor("inventory", item, index);
+    if (!key || !(key in stock)) return;
+    const savedQty = Number(stock[key]);
+    if (!Number.isFinite(savedQty)) return;
+    const shift = sentQty.has(key) ? savedQty - Number(sentQty.get(key)) : 0;
+    if (shift) item.qty = Math.round((Number(item.qty || 0) + shift) * 10000) / 10000;
+    item._stockBase = { key, qty: savedQty };
+  });
+}
+// Stock saves from this tab go one at a time, so a second save is sent with the base the first
+// one just stored (otherwise the server would apply the first deduction twice).
+/** @type {Promise<unknown>} */
+let stockSaveChain = Promise.resolve();
+/** @param {Parameters<typeof persistRecordsNow>[0]} records @param {Parameters<typeof persistRecordsNow>[1]} [recordKeys] */
 async function persistRecords(records, recordKeys = {}) {
+  if (!Array.isArray(records?.inventory) || !records.inventory.length) return persistRecordsNow(records, recordKeys);
+  const previous = stockSaveChain;
+  /** @type {(value?: unknown) => void} */
+  let release = () => {};
+  stockSaveChain = new Promise((resolve) => { release = resolve; });
+  await previous.catch(() => null);
+  try {
+    return await persistRecordsNow(records, recordKeys);
+  } finally {
+    release();
+  }
+}
+/** @param {Record<string, any[] | undefined>} records @param {Record<string, any>} [recordKeys] */
+async function persistRecordsNow(records, recordKeys = {}) {
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return null;
   const filtered = Object.fromEntries(Object.entries(records || /** @type {Record<string, any>} */ ({})).filter(([, value]) => Array.isArray(value) && value.length).map(([key, value]) => [key, dedupeRecordsForSave(key, /** @type {any[]} */ (value), recordKeys?.[key])]));
   if (!Object.keys(filtered).length) return null;
   setGlobalSaveStatus("saving", "Saving...");
   beginSaveOperation();
   try {
+    const sentInventory = filtered.inventory ? JSON.parse(JSON.stringify(filtered.inventory)) : undefined;
     const result = await MedlaneAPI.saveRecords(filtered, recordKeys);
+    applySavedStock(result, sentInventory);
     if (result?.revision) serverRevision = Number(result.revision);
     clearPendingSaveQueueKeys(Object.keys(filtered));
     setGlobalSaveStatus("saved", "Saved");
@@ -1053,6 +1098,19 @@ async function persistRecords(records, recordKeys = {}) {
       }
       setGlobalSaveStatus("error", "Not saved", error.message);
       if (typeof toast === "function") toast("The system data was reset since this page loaded. Reloaded the latest data — please redo this change.");
+      return { ok: false, queued: false, error: error.message };
+    }
+    // Someone else used the same stock first and there isn't enough left for this change. Load the
+    // current stock so the user sees the real numbers, then let them redo it.
+    if (/^Stock changed:/.test(error.message || "")) {
+      const latest = await MedlaneAPI.loadAppState().catch(() => null);
+      if (latest?.data) {
+        serverRevision = Number(latest.revision || 0);
+        data = normalizeData({ ...emptyProductionData(), ...latest.data });
+        if (typeof renderAll === "function") renderAll();
+      }
+      setGlobalSaveStatus("error", "Not saved", error.message);
+      if (typeof toast === "function") toast(`Not saved: ${error.message}`);
       return { ok: false, queued: false, error: error.message };
     }
     // Refused for good (validation/permission, e.g. an invoice with an expired lot): queueing it

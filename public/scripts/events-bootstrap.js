@@ -2475,9 +2475,13 @@ function connectLiveSocket() {
   });
   socket.addEventListener("message", (event) => {
     if (event.data === "pong") return;
-    // Coalesce a burst of pings (one save can touch several modules) into a single fetch.
-    clearTimeout(liveSyncDebounce);
-    liveSyncDebounce = setTimeout(runLiveSync, 200);
+    // Coalesce a burst of pings (one save can touch several modules) into a single fetch: a
+    // fetch already scheduled covers any message that arrives before it runs. The random
+    // 0.2-2.2s delay spreads 50-100 open tabs out instead of all hitting
+    // /api/modules/changes in the same instant, and since it isn't reset per message a busy
+    // stream of saves can't postpone a tab's refresh indefinitely.
+    if (liveSyncDebounce) return;
+    liveSyncDebounce = setTimeout(() => { liveSyncDebounce = null; runLiveSync(); }, 200 + Math.floor(Math.random() * 2000));
   });
   socket.addEventListener("close", () => {
     clearInterval(liveKeepaliveTimer);
@@ -2506,6 +2510,7 @@ function stopLiveSync() {
   clearTimeout(liveSyncTimer);
   clearTimeout(liveSocketRetryTimer);
   clearTimeout(liveSyncDebounce);
+  liveSyncDebounce = null;
   clearInterval(liveKeepaliveTimer);
   liveSyncRenderPending = false;
   liveSocketRetry = 0;
