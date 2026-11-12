@@ -1725,12 +1725,25 @@ async function cancelStockReceipt(index) {
 
 /** @param {any} receipt */
 function fillStockSheetFromReceipt(receipt) {
-  const bodyRows = (receipt.lines || []).map((/** @type {any} */ line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(line.branch || inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
-  qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
+  const bodyRows = (receipt.lines || []).map((/** @type {any} */ line) => { const uid = ++stockSheetRowUid; return `<tr><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry === "N/A" ? "" : line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
+  qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
   qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
   if (qs("#stock-sheet-order-number")) qs("#stock-sheet-order-number").value = receipt.orderNumber || "";
   if (qs("#stock-sheet-date-received")) qs("#stock-sheet-date-received").value = receipt.dateReceived || fmtDate(today);
   if (qs("#stock-sheet-source")) qs("#stock-sheet-source").value = receipt.source || "";
+  const branches = [...new Set((receipt.lines || []).map((/** @type {{ branch?: string }} */ line) => line.branch).filter(Boolean))];
+  setStockSheetBranch(branches[0] || inventoryBranchTab);
+  if (branches.length > 1) toast(`This receipt has lines for ${branches.join(", ")}. Saving it will receive every line into the Receiving Branch selected.`);
+}
+
+/** The single Receiving Branch for the whole receipt. @param {string} [branch] */
+function setStockSheetBranch(branch) {
+  const select = qs("#stock-sheet-branch");
+  if (!select) return;
+  const branches = platformBranches();
+  const value = branch && branches.includes(branch) ? branch : branches.includes(inventoryBranchTab) ? inventoryBranchTab : branches[0] || "";
+  select.innerHTML = branchOptions(value);
+  select.value = value;
 }
 
 /** @param {any} index */
@@ -3027,11 +3040,11 @@ let editingStockReceiptId = null;
 /** @param {any} index */
 function stockSheetRow(index) {
   const uid = ++stockSheetRowUid;
-  return `<tr><td><select class="stock-branch">${branchOptions(inventoryBranchTab)}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" /></td><td><input class="stock-lot" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" /></td><td><input class="stock-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
+  return `<tr><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" /></td><td><input class="stock-lot" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" /></td><td><input class="stock-qty" type="number" min="1" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`;
 }
 
-// An inventory PO can be received into every branch on one receipt: each receipt line picks its
-// own branch. Keep in sync with ALL_RECEIVING_BRANCHES in worker.js.
+// An inventory PO can be ordered for "All Branches"; each receipt picks one Receiving Branch
+// (applied to every line), so such a PO can be received across several receipts. Keep in sync with ALL_RECEIVING_BRANCHES in worker.js.
 const ALL_RECEIVING_BRANCHES = "All Branches";
 /** @param {any} po */
 function poDefaultReceivingBranch(po) { return po?.branch && po.branch !== ALL_RECEIVING_BRANCHES ? po.branch : inventoryBranchTab; }
@@ -3042,6 +3055,7 @@ function resetStockSheetMeta() {
   if (qs("#stock-sheet-order-number")) qs("#stock-sheet-order-number").value = "";
   if (qs("#stock-sheet-date-received")) qs("#stock-sheet-date-received").value = fmtDate(today);
   if (qs("#stock-sheet-source")) qs("#stock-sheet-source").value = "";
+  setStockSheetBranch(inventoryBranchTab);
 }
 
 function renderStockSheet() {
@@ -3052,7 +3066,7 @@ function renderStockSheet() {
   if (picker) { picker.innerHTML = pickerOptions; picker.disabled = false; }
   editingStockReceiptId = null;
   resetStockSheetMeta();
-  tableEl.innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${stockSheetRow(0)}</tbody>`;
+  tableEl.innerHTML = `<thead><tr><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${stockSheetRow(0)}</tbody>`;
 }
 
 /** @param {string} poId */
@@ -3060,9 +3074,10 @@ function fillStockSheetFromInventoryPo(poId) {
   const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === poId);
   if (!po) return renderStockSheet();
   if (qs("#stock-sheet-order-number") && !qs("#stock-sheet-order-number").value.trim()) qs("#stock-sheet-order-number").value = po.id;
+  setStockSheetBranch(poDefaultReceivingBranch(po));
   const remainingLines = /** @type {PoLine[]} */ (po.lines).filter((line) => Number(line.qty || 0) - Number(line.receivedQty || 0) > 0);
-  const bodyRows = (remainingLines.length ? remainingLines : /** @type {PoLine[]} */ (po.lines)).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><select class="stock-branch">${branchOptions(poDefaultReceivingBranch(po))}</select></td><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
-  qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Receiving Branch</th><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
+  const bodyRows = (remainingLines.length ? remainingLines : /** @type {PoLine[]} */ (po.lines)).map((line) => { const uid = ++stockSheetRowUid; return `<tr><td><input class="stock-brand" name="stock-brand-${uid}" list="inventory-brand-options" autocomplete="off" value="${escapeHtml(line.brand || "")}" /></td><td><input class="stock-code" name="stock-code-${uid}" list="inventory-code-options" autocomplete="off" value="${escapeHtml(line.code || "")}" /></td><td><input class="stock-item" name="stock-item-${uid}" list="inventory-item-options" autocomplete="off" value="${escapeHtml(line.item || "")}" /></td><td><input class="stock-lot" value="${escapeHtml(line.lot || "")}" /></td><td><input class="stock-expiry" type="date" min="${fmtDate(today)}" value="${escapeHtml(line.expiry || "")}" /></td><td><input class="stock-qty" type="number" min="1" value="${Number(line.qty || 0) - Number(line.receivedQty || 0)}" /></td><td class="sheet-action-cell"><button class="icon-button danger-button remove-sheet-row" type="button" aria-label="Delete row" title="Delete row">×</button></td></tr>`; }).join("");
+  qs("#stock-sheet-table").innerHTML = `<thead><tr><th>Brand</th><th>Item Code</th><th>Item Name</th><th>Serial No./Lot No.</th><th>Expiry Date</th><th>Qty.</th><th>Action</th></tr></thead><tbody>${bodyRows}</tbody>`;
   qsa("#stock-sheet-table .stock-item").forEach((input) => syncStockSheetRow(input, true));
 }
 
@@ -3298,7 +3313,6 @@ function saveStockSheetDraft() {
     const key = stockSheetDraftKey();
     if (!key || !qs("#stock-sheet-modal")?.open) return;
     const rows = qsa("#stock-sheet-table tbody tr").map((row) => ({
-      branch: qsIn(row, ".stock-branch")?.value || "",
       brand: qsIn(row, ".stock-brand")?.value || "",
       code: qsIn(row, ".stock-code")?.value || "",
       item: qsIn(row, ".stock-item")?.value || "",
@@ -3311,7 +3325,7 @@ function saveStockSheetDraft() {
     localStorage.setItem(key, JSON.stringify({
       poId: qs("#inventory-po-receive-picker")?.value || "",
       editingStockReceiptId: editingStockReceiptId || null,
-      meta: { orderNumber, dateReceived: qs("#stock-sheet-date-received")?.value || "", source: qs("#stock-sheet-source")?.value || "" },
+      meta: { orderNumber, dateReceived: qs("#stock-sheet-date-received")?.value || "", source: qs("#stock-sheet-source")?.value || "", branch: qs("#stock-sheet-branch")?.value || "" },
       rows,
       savedAt: Date.now(),
     }));
@@ -3333,13 +3347,15 @@ function restoreStockSheetDraftIfMatching(poId, editingReceiptId) {
   if (qs("#stock-sheet-order-number")) qs("#stock-sheet-order-number").value = draft.meta?.orderNumber || "";
   if (qs("#stock-sheet-date-received")) qs("#stock-sheet-date-received").value = draft.meta?.dateReceived || fmtDate(today);
   if (qs("#stock-sheet-source")) qs("#stock-sheet-source").value = draft.meta?.source || "";
+  // Older drafts stored the branch per row.
+  const draftBranch = draft.meta?.branch || draft.rows?.find((/** @type {{ branch?: string }} */ row) => row.branch)?.branch;
+  if (draftBranch) setStockSheetBranch(draftBranch);
   const tbody = qs("#stock-sheet-table tbody");
   if (tbody && draft.rows?.length) {
     tbody.innerHTML = draft.rows.map((/** @type {any} */ row, /** @type {any} */ index) => stockSheetRow(index)).join("");
     qsa("#stock-sheet-table tbody tr").forEach((tr, index) => {
       const row = draft.rows[index];
       if (!row) return;
-      if (row.branch && qsIn(tr, ".stock-branch")) qsIn(tr, ".stock-branch").value = row.branch;
       if (qsIn(tr, ".stock-brand")) qsIn(tr, ".stock-brand").value = row.brand || "";
       if (qsIn(tr, ".stock-code")) qsIn(tr, ".stock-code").value = row.code || "";
       if (qsIn(tr, ".stock-item")) qsIn(tr, ".stock-item").value = row.item || "";
@@ -3364,9 +3380,10 @@ async function saveStockSheet() {
   if (!orderNumber) return toast("Order Number is required.");
   if (!dateReceived) return toast("Date Received is required.");
   if (!source) return toast("Select Shipment or Local Purchase.");
+  const branch = qs("#stock-sheet-branch")?.value || "";
+  if (!branch) return toast("Select the Receiving Branch.");
   const meta = { orderNumber, dateReceived, source };
   const rows = /** @type {any[]} */ (qsa("#stock-sheet-table tbody tr").map((row) => {
-    const branch = qsIn(row, ".stock-branch")?.value;
     const code = qsIn(row, ".stock-code")?.value.trim();
     const itemName = qsIn(row, ".stock-item")?.value.trim();
     const item = findItemByCodeOrName(code || itemName);

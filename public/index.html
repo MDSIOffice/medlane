@@ -1382,10 +1382,11 @@
     <dialog class="modal sheet-modal" id="stock-sheet-modal">
       <div class="sheet-modal-body">
         <div class="modal-header"><div><p class="eyebrow">Receive Stock</p><h2>Spreadsheet Entry</h2></div><button class="icon-button" id="stock-sheet-close" type="button" aria-label="Close">x</button></div>
-        <p class="page-description">One receipt covers every branch — set the Receiving Branch on each line.</p>
+        <p class="page-description">Every item on this receipt goes into the Receiving Branch selected below.</p>
         <div class="form-grid">
           <div class="field"><label for="stock-sheet-order-number">Order Number</label><input id="stock-sheet-order-number" placeholder="Supplier order / DR number" /></div>
           <div class="field"><label for="stock-sheet-date-received">Date Received</label><input id="stock-sheet-date-received" type="date" /></div>
+          <div class="field"><label for="stock-sheet-branch">Receiving Branch</label><select id="stock-sheet-branch"></select></div>
           <div class="field"><label for="stock-sheet-source">Shipment / Local Purchase</label><select id="stock-sheet-source"><option value="">Select source</option><option value="Shipment">Shipment</option><option value="Local Purchase">Local Purchase</option></select></div>
           <div class="field"><label for="inventory-po-receive-picker">Inventory Purchase Order</label><select id="inventory-po-receive-picker"></select></div>
         </div>

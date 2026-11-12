@@ -936,13 +936,13 @@ select, .search-input {
 .workflow-card .workflow-action:hover { background: var(--chip-blue-bg); transform: none; }
 .inventory-action-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
 .inventory-action-row .primary-button { min-width: 180px; }
-#stock-sheet-table { min-width: 1780px; table-layout: fixed; }
+#stock-sheet-table { min-width: 1570px; table-layout: fixed; }
 #transfer-sheet-table { min-width: 1580px; table-layout: fixed; }
-#stock-sheet-table th:nth-child(1), #stock-sheet-table td:nth-child(1), #stock-sheet-table th:nth-child(2), #stock-sheet-table td:nth-child(2), #stock-sheet-table th:nth-child(3), #stock-sheet-table td:nth-child(3) { width: 210px; }
-#stock-sheet-table th:nth-child(4), #stock-sheet-table td:nth-child(4), #stock-sheet-table th:nth-child(5), #stock-sheet-table td:nth-child(5) { width: 300px; }
-#stock-sheet-table th:nth-child(6), #stock-sheet-table td:nth-child(6) { width: 210px; }
-#stock-sheet-table th:nth-child(7), #stock-sheet-table td:nth-child(7), #transfer-sheet-table th:nth-child(6), #transfer-sheet-table td:nth-child(6) { width: 150px; }
-#stock-sheet-table th:nth-child(8), #stock-sheet-table td:nth-child(8), #transfer-sheet-table th:nth-child(7), #transfer-sheet-table td:nth-child(7) { width: 84px; min-width: 84px; max-width: 84px; }
+#stock-sheet-table th:nth-child(1), #stock-sheet-table td:nth-child(1), #stock-sheet-table th:nth-child(2), #stock-sheet-table td:nth-child(2) { width: 210px; }
+#stock-sheet-table th:nth-child(3), #stock-sheet-table td:nth-child(3), #stock-sheet-table th:nth-child(4), #stock-sheet-table td:nth-child(4) { width: 300px; }
+#stock-sheet-table th:nth-child(5), #stock-sheet-table td:nth-child(5) { width: 210px; }
+#stock-sheet-table th:nth-child(6), #stock-sheet-table td:nth-child(6), #transfer-sheet-table th:nth-child(6), #transfer-sheet-table td:nth-child(6) { width: 150px; }
+#stock-sheet-table th:nth-child(7), #stock-sheet-table td:nth-child(7), #transfer-sheet-table th:nth-child(7), #transfer-sheet-table td:nth-child(7) { width: 84px; min-width: 84px; max-width: 84px; }
 #transfer-sheet-table th:nth-child(1), #transfer-sheet-table td:nth-child(1) { width: 210px; }
 #transfer-sheet-table th:nth-child(2), #transfer-sheet-table td:nth-child(2), #transfer-sheet-table th:nth-child(3), #transfer-sheet-table td:nth-child(3) { width: 300px; }
 #transfer-sheet-table th:nth-child(4), #transfer-sheet-table td:nth-child(4), #transfer-sheet-table th:nth-child(5), #transfer-sheet-table td:nth-child(5) { width: 220px; }
