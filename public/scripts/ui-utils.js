@@ -113,7 +113,12 @@ function inventoryStatus(item) {
 function expiresWithinMonths(expiry, months) {
   const limit = new Date(today);
   limit.setMonth(limit.getMonth() + months);
-  return String(expiry).slice(0, 10) <= fmtDate(limit);
+  // String compare only works for ISO dates; imported/hand-entered values like "03/15/2027"
+  // or "Mar 2027" are parsed first so they still count as Near Expiry.
+  const text = String(expiry).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10) <= fmtDate(limit);
+  const parsed = new Date(text);
+  return !Number.isNaN(parsed.getTime()) && parsed.getTime() <= limit.getTime();
 }
 /** @param {string} status */
 function statusClass(status) {

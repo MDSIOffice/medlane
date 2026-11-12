@@ -477,7 +477,7 @@ async function approvePaymentRequest(cvNo) {
   const touchedSales = [];
   const applyPayment = (/** @type {Sale} */ sale, /** @type {any} */ applied) => {
     if (applied <= 0) return;
-    const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: "", chequeDate: request.chequeDate || "", transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposit", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposit"), paymentRequestCvNo: request.cvNo };
+    const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: request.paymentType === "Multiple Cheques" ? request.cheque || "" : "", chequeDate: request.chequeDate || "", cheques: Array.isArray(request.cheques) ? request.cheques.map((cheque) => ({ ...cheque })) : [], transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposit", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposit"), paymentRequestCvNo: request.cvNo };
     data.payments.push(payment);
     // Applied as soon as it's posted (queued for deposit), not gated on deposit confirmation,
     // so the receivable balance reflects partial payments right away. Bounced reverses it back.
@@ -4402,7 +4402,7 @@ function renderCollections() {
   const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map((s) => {
     const payments = data.payments.filter((payment) => payment.invoice === s.id || payment.invoice === s.documentNo);
     const latest = payments.at(-1) || /** @type {Record<string, any>} */ ({});
-    const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((/** @type {any} */ cheque) => `${cheque.reference} · ${cheque.chequeDate} · ${peso.format(cheque.amount)}`).join("<br>")}</small>` : latest.chequeDate || "-";
+    const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((/** @type {ChequeLine} */ cheque) => [cheque.reference, cheque.chequeDate, cheque.amount ? peso.format(cheque.amount) : ""].filter(Boolean).map((part) => escapeHtml(part)).join(" · ")).join("<br>")}</small>` : latest.chequeDate || "-";
     const status = latest.collectionStatus || "For Deposit";
     return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(/** @type {Payment} */ (latest), s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
   });
@@ -4774,11 +4774,40 @@ function togglePaymentRequestChequeFields() {
   ["bank", "bankAccount", "cheque", "chequeDate", "transferDate"].forEach((id) => {
     const field = /** @type {AnyEl} */ (qs(`#${id}`)?.closest(".field"));
     if (!field) return;
-    const visible = id === "bank" ? ["Check", "Bank Transfer"].includes(type) : id === "bankAccount" || id === "transferDate" ? type === "Bank Transfer" : type === "Check";
+    const visible = id === "bank" ? ["Check", "Multiple Cheques", "Bank Transfer"].includes(type) : id === "bankAccount" || id === "transferDate" ? type === "Bank Transfer" : type === "Check";
     field.hidden = !visible;
-    qs(`#${id}`).required = (type === "Check" && id === "bank") || (type === "Bank Transfer" && ["bank", "transferDate"].includes(id));
+    qs(`#${id}`).required = (["Check", "Multiple Cheques"].includes(type) && id === "bank") || (type === "Bank Transfer" && ["bank", "transferDate"].includes(id));
     if (!visible && id !== "bankAccount") qs(`#${id}`).value = "";
   });
+  ensureMultiChequeEditor();
+  const editor = qs("#multi-cheque-editor");
+  if (editor) {
+    const multi = type === "Multiple Cheques";
+    editor.hidden = !multi;
+    qsaIn(editor, ".multi-cheque-number, .multi-cheque-date").forEach((input) => { input.required = multi; });
+  }
+}
+
+/** @param {Partial<ChequeLine>} [cheque] */
+function multiChequeRowTemplate(cheque = {}) {
+  return `<div class="payment-request-line-row multi-cheque-row"><div class="field"><label>Cheque No.</label><input class="multi-cheque-number" autocomplete="off" value="${escapeHtml(cheque.reference || "")}" /></div><div class="field"><label>Cheque Date</label><input class="multi-cheque-date" type="date" value="${escapeHtml(cheque.chequeDate || "")}" /></div><button class="icon-button danger-button remove-multi-cheque" type="button" aria-label="Remove cheque">Remove</button></div>`;
+}
+
+// The Multiple Cheques editor lives right after the single Cheque Date field and is only shown
+// when Type of Payment = "Multiple Cheques".
+function ensureMultiChequeEditor() {
+  if (qs("#multi-cheque-editor")) return;
+  const anchor = qs("#chequeDate")?.closest(".field");
+  if (!anchor) return;
+  anchor.insertAdjacentHTML("afterend", `<div class="field full" id="multi-cheque-editor" hidden><label>Cheques</label><p class="field-help">Add one row per cheque received for this collection.</p><div id="multi-cheque-list">${multiChequeRowTemplate()}${multiChequeRowTemplate()}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-multi-cheque" type="button">Add Cheque</button></div></div>`);
+}
+
+/** @returns {ChequeLine[]} */
+function collectMultiCheques() {
+  return qsa(".multi-cheque-row").map((row) => ({
+    reference: qsIn(row, ".multi-cheque-number")?.value.trim() || "",
+    chequeDate: qsIn(row, ".multi-cheque-date")?.value || "",
+  })).filter((cheque) => cheque.reference || cheque.chequeDate);
 }
 
 function syncPaymentRequestBankAccount() {
@@ -4834,7 +4863,7 @@ function syncPaymentRequestTotal() {
 function paymentRequestHtml(request) {
   const items = request.items?.length ? request.items : [{ particulars: request.particulars || "", amount: request.amount || request.total || 0 }];
   const paymentDate = request.paymentType === "Bank Transfer" ? request.transferDate : request.chequeDate;
-  return `<section class="payment-request-print">${printableBrandHeaderHtml(request.cvNo)}<div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Collector: <strong>${escapeHtml(request.preparedBy)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Bank Transfer" ? "[x]" : "[ ]"} Bank Transfer</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((/** @type {any} */ item, /** @type {any} */ index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${peso.format(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${withholdingMoney(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${withholdingMoney(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${peso.format(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>${escapeHtml(paymentRequestInstructions)}</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div><div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Account No.: ${escapeHtml(request.bankAccount || "-")}<br>Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml(paymentDate || "-")}<br>Name and Signature of approver:</div></footer>${printableFooterHtml()}</section>`;
+  return `<section class="payment-request-print">${printableBrandHeaderHtml(request.cvNo)}<div class="pr-meta"><span>Client: <strong>${escapeHtml(request.employee)}</strong></span><span>Collector: <strong>${escapeHtml(request.preparedBy)}</strong></span><span>Date: <strong>${escapeHtml(request.date)}</strong></span></div><div class="pr-checks"><strong>Mode of Payment:</strong><span>${request.paymentType === "Cash" ? "[x]" : "[ ]"} Cash</span><span>${request.paymentType === "Check" ? "[x]" : "[ ]"} Check</span><span>${request.paymentType === "Multiple Cheques" ? "[x]" : "[ ]"} Multiple Cheques</span><span>${request.paymentType === "Bank Transfer" ? "[x]" : "[ ]"} Bank Transfer</span><span>${request.paymentType === "Debit Memo" ? "[x]" : "[ ]"} Debit Memo</span></div><table><thead><tr><th>Date</th><th>Particulars</th><th>Amount</th></tr></thead><tbody>${items.map((/** @type {any} */ item, /** @type {any} */ index) => `<tr><td>${index === 0 ? escapeHtml(request.date) : ""}</td><td>${escapeHtml(item.particulars)}</td><td>${peso.format(item.amount)}</td></tr>`).join("")}${request.withholdingTax ? `<tr><td colspan="2">Less: Withholding Tax 5%</td><td>${withholdingMoney(request.withholdingTax)}</td></tr>` : ""}${request.expandedWithholdingTax ? `<tr><td colspan="2">Less: Expanded Withholding Tax 1%</td><td>${withholdingMoney(request.expandedWithholdingTax)}</td></tr>` : ""}<tr><td colspan="2"><strong>Total</strong></td><td><strong>${peso.format(request.total)}</strong></td></tr></tbody></table><p class="pr-instructions"><strong>${escapeHtml(paymentRequestInstructions)}</strong></p><footer><div>Prepared by:<br><strong>${escapeHtml(request.preparedBy)}</strong><br>${escapeHtml(request.preparedRole)}</div><div>Approved by:<br><strong>Maria Emma F. Llorin</strong><br>CEO</div><div><strong>PAYMENT DETAILS:</strong><br>Bank Name: ${escapeHtml(request.bank || "-")}<br>Account No.: ${escapeHtml(request.bankAccount || "-")}<br>${request.paymentType === "Multiple Cheques" && request.cheques?.length ? request.cheques.map((/** @type {ChequeLine} */ cheque, /** @type {number} */ index) => `Check ${index + 1}: ${escapeHtml(cheque.reference || "-")} · ${escapeHtml(cheque.chequeDate || "-")}`).join("<br>") : `Check no: ${escapeHtml(request.cheque || "-")}<br>Date: ${escapeHtml(paymentDate || "-")}`}<br>Name and Signature of approver:</div></footer>${printableFooterHtml()}</section>`;
 }
 /** @param {any} identifier */
 async function previewPaymentRequest(identifier) {
@@ -8786,7 +8815,7 @@ const modalConfigs = {
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist-optional", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["skipPo", "Skip PO — record-keeping only, this invoice won't be printed", "checkbox"], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
-  paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["preparedBy", "Collector", "datalist", () => activeEmployees().map((employee) => employee.name)], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
+  paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["preparedBy", "Collector", "datalist", () => activeEmployees().map((employee) => employee.name)], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Multiple Cheques", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => [ALL_RECEIVING_BRANCHES, ...platformBranches()]], ["date", "PO Date", "date"]] },

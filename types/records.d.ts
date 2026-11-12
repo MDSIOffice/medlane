@@ -152,6 +152,13 @@ interface AppUser {
 interface Bank { name: string; account?: string; [extra: string]: any }
 
 /** Payment request / CV (data.paymentRequests). */
+/** One cheque in a "Multiple Cheques" collection. */
+interface ChequeLine {
+  reference: string;
+  chequeDate: string;
+  amount?: number;
+}
+
 interface PaymentRequest {
   id: string;
   cvNo: string;
@@ -175,6 +182,8 @@ interface PaymentRequest {
   bankAccount?: string;
   cheque?: string;
   chequeDate?: string;
+  /** "Multiple Cheques" collections: one entry per cheque received. */
+  cheques?: ChequeLine[];
   transferDate?: string;
   preparedBy?: string;
   createdAt?: string;

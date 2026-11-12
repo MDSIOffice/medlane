@@ -269,6 +269,19 @@ async function submitModal(event) {
       values.bankAccount = data.banks.find((bank) => bank.name === values.bank)?.account || values.bankAccount || "";
     }
     if (values.paymentType !== "Bank Transfer") { values.transferDate = ""; values.bankAccount = ""; }
+    if (values.paymentType === "Multiple Cheques") {
+      const cheques = collectMultiCheques();
+      if (!values.bank) return toast("Bank name is required for cheque collections.");
+      if (cheques.length < 2) return toast("Add at least two cheques for Multiple Cheques (use Check for a single cheque).");
+      if (cheques.some((cheque) => !cheque.reference || !cheque.chequeDate)) return toast("Each cheque needs a cheque number and cheque date.");
+      const numbers = cheques.map((cheque) => cheque.reference.toLowerCase());
+      if (new Set(numbers).size !== numbers.length) return toast("The same cheque number is entered more than once.");
+      values.cheques = cheques;
+      values.cheque = cheques.map((cheque) => cheque.reference).join(", ");
+      values.chequeDate = cheques.map((cheque) => cheque.chequeDate).sort()[0];
+    } else {
+      values.cheques = [];
+    }
 
     let items, gross, withholdingTax, expandedWithholdingTax, total, netAmount;
     if (paymentRequestPreselectedInvoice) {
@@ -1436,6 +1449,12 @@ qs("#modal-fields").addEventListener("click", (event) => {
     syncPaymentRequestTotal();
     syncFinancialRequestTotal();
   }
+  if (closestEl(event.target, "#add-multi-cheque")) {
+    qs("#multi-cheque-list")?.insertAdjacentHTML("beforeend", multiChequeRowTemplate());
+    togglePaymentRequestChequeFields();
+  }
+  const multiChequeRemove = closestEl(event.target, ".remove-multi-cheque");
+  if (multiChequeRemove && qsa(".multi-cheque-row").length > 1) closestEl(multiChequeRemove, ".multi-cheque-row").remove();
   const paymentRequestRemove = closestEl(event.target, ".remove-payment-request-line");
   if (paymentRequestRemove && qsa(".payment-request-line-row").length > 1) {
     closestEl(paymentRequestRemove, ".payment-request-line-row").remove();
@@ -1936,6 +1955,10 @@ document.addEventListener("scroll", (event) => { if (/** @type {AnyEl} */ (event
 let loginAutofillSubmitTimer = null;
 let loginUserTyped = false;
 let loginBiometricTried = false;
+// Auto sign-in fires at most once per login-page visit. Without this cap, a failed auto-submit
+// (wrong saved password, or a mis-detected "autofill") re-arms on the next keystroke and
+// hammers /api/auth/login until the server rate-limits the account ("too many login attempts").
+let loginAutoSubmitUsed = false;
 function isAuthenticatedRoute() {
   return Boolean(currentUser) || document.body.classList.contains("app-route");
 }
@@ -1946,6 +1969,8 @@ function submitLoginIfReady() {
   if (!form || !email || !password) return false;
   if (form.dataset.submitting === "true" || isAuthenticatedRoute()) return false;
   if (!String(email.value || "").trim() || !String(password.value || "")) return false;
+  if (loginAutoSubmitUsed) return false;
+  loginAutoSubmitUsed = true;
   form.requestSubmit();
   return true;
 }
@@ -1956,10 +1981,11 @@ function scheduleAutofillLoginSubmit() {
   const email = qs("#login-email");
   const password = qs("#login-password");
   if (!form || !email || !password || form.dataset.submitting === "true" || isAuthenticatedRoute()) return;
+  if (loginUserTyped || loginAutoSubmitUsed) return;
   clearTimeout(loginAutofillSubmitTimer);
   let attempts = 0;
   const tick = () => {
-    if (form.dataset.submitting === "true" || isAuthenticatedRoute()) return;
+    if (form.dataset.submitting === "true" || isAuthenticatedRoute() || loginUserTyped) return;
     attempts += 1;
     const filled = String(email.value || "").trim() && String(password.value || "");
     const autofilled = [email, password].some((input) => {
@@ -1994,16 +2020,25 @@ function startLoginAutoSignIn() {
   if (isAuthenticatedRoute()) return;
   loginUserTyped = false;
   loginBiometricTried = false;
+  loginAutoSubmitUsed = false;
   tryBiometricLogin();
   scheduleAutofillLoginSubmit();
 }
 window.addEventListener("pageshow", () => setTimeout(startLoginAutoSignIn, 300));
 qsa("#login-email, #login-password").forEach((input) => {
+  // Any real keystroke (incl. Backspace and mobile/IME keyboards, which report key
+  // "Unidentified"/"Process") means the user is typing — never auto-submit for them.
   input.addEventListener("keydown", (event) => {
-    if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key && event.key.length === 1) loginUserTyped = true;
+    if (!event.metaKey && !event.ctrlKey && event.key !== "Tab" && event.key !== "Enter") loginUserTyped = true;
+  });
+  input.addEventListener("input", (event) => {
+    // Typing/paste/delete arrive as InputEvents with an inputType; browser autofill arrives as a
+    // plain Event or as "insertReplacementText". Only the latter should arm auto sign-in.
+    const inputType = event instanceof InputEvent ? event.inputType : "";
+    if (inputType && inputType !== "insertReplacementText") { loginUserTyped = true; clearTimeout(loginAutofillSubmitTimer); return; }
+    scheduleAutofillLoginSubmit();
   });
   input.addEventListener("change", scheduleAutofillLoginSubmit);
-  input.addEventListener("input", scheduleAutofillLoginSubmit);
   input.addEventListener("animationstart", scheduleAutofillLoginSubmit);
 });
 qs("#login-pw-toggle")?.addEventListener("click", () => {
