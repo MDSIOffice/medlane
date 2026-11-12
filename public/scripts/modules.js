@@ -115,12 +115,13 @@ function ensureWorkflowPanel(sectionId) {
   if (sectionId === "notifications") return null;
   const section = document.getElementById(sectionId);
   if (!section || qsIn(section, ".workflow-assist")) return section?.querySelector(".workflow-assist");
-  const anchor = qsIn(section, ".section-header, .toolbar, .feature-strip") || section.firstElementChild;
+  const anchor = qsIn(section, ".section-header, .ui-tabs, .toolbar, .feature-strip") || section.firstElementChild;
   const panel = document.createElement("article");
   panel.className = "panel workflow-assist";
   panel.dataset.workflowSection = sectionId;
   panel.innerHTML = `<div class="panel-header"><div><p class="eyebrow">Workflow Assistant</p><h2></h2><p></p></div><span class="badge"></span></div><div class="workflow-grid"></div>`;
-  anchor?.insertAdjacentElement(anchor.classList.contains("section-header") ? "afterend" : "beforebegin", panel);
+  // Redesigned pages (.ui-tabs): the assistant sits under the tab row, below the page header.
+  anchor?.insertAdjacentElement(anchor.classList.contains("section-header") || anchor.classList.contains("ui-tabs") ? "afterend" : "beforebegin", panel);
   return panel;
 }
 
@@ -1018,7 +1019,7 @@ function showSection(sectionId, options = {}) {
   document.body.dataset.activeSection = sectionId;
   // Keep the URL on the current page so a browser refresh stays here instead of bouncing to the
   // dashboard. Detail pages keep whatever list page the user came from.
-  if (location.protocol !== "file:" && document.body.classList.contains("app-route") && canRestoreSection(sectionId)) history.replaceState(null, "", sectionId === "dashboard" ? "/dashboard" : sectionId === "inventory" ? `/dashboard?${inventoryQueryString()}` : `/dashboard?section=${encodeURIComponent(sectionId)}`);
+  if (location.protocol !== "file:" && document.body.classList.contains("app-route") && canRestoreSection(sectionId)) history.replaceState(null, "", sectionId === "dashboard" ? "/dashboard" : sectionId === "inventory" ? `/dashboard?${inventoryQueryString()}` : sectionId === "sales" ? `/dashboard?${salesQueryString()}` : `/dashboard?section=${encodeURIComponent(sectionId)}`);
   qsa(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === sectionId));
   qsa(".section").forEach((section) => section.classList.toggle("active", section.id === sectionId));
   const activeButton = qs(`.nav-item[data-section="${sectionId}"]`);
@@ -2699,13 +2700,7 @@ function inventoryQueryString() {
   const p = new URLSearchParams({ section: "inventory" });
   if (inventoryWorkflowTab !== "stocks") {
     p.set("tab", inventoryWorkflowTab);
-    const view = inventoryTabView;
-    if (view.branch !== "all") p.set("branch", view.branch);
-    if (view.scope) p.set("status", view.scope);
-    if (view.q) p.set("q", view.q);
-    if (view.sort) { p.set("sort", view.sort.key); p.set("dir", view.sort.dir === 1 ? "asc" : "desc"); }
-    if (view.page > 0) p.set("page", String(view.page + 1));
-    if (view.sel) p.set("sel", view.sel);
+    uiViewStateToQuery(p, inventoryTabView);
     return p.toString();
   }
   if (inventoryBranchView !== "all") p.set("branch", inventoryBranchView);
@@ -2998,20 +2993,8 @@ function renderInventoryWorkflowTabs() {
 // Each tab is described by an InventoryTabView built from the real records; renderInventoryTab()
 // draws it with the shared ui-kit pieces. Row actions reuse the existing action cells (their
 // data-* attributes are what the app's delegated handlers already listen for).
-/**
- * @typedef {{
- *   id: string, cells: string[], search: string, branches: string[], scopes: string[],
- *   sortValues: Record<string, string | number | null>, csv: (string | number)[], detail: () => UiDetail
- * }} InventoryTabRow
- */
-/**
- * @typedef {{
- *   title: string, intro: string, placeholder: string, actions: string[], stats: UiCard[],
- *   cols: UiCol[], csvHeader: string[], rows: InventoryTabRow[], empty: [string, string], minWidth: number,
- *   defaultSort: { key: string, dir: number }, chips: { key: string, label: string, tone?: UiTone }[], defaultScope: string,
- *   loadMore?: string
- * }} InventoryTabView
- */
+/** @typedef {UiViewRow} InventoryTabRow */
+/** @typedef {Omit<UiView, "csvName"> & { loadMore?: string }} InventoryTabView */
 const INVENTORY_TRANSFER_DONE = ["Received", "Cancelled"];
 const INVENTORY_DEMO_CLOSED = ["Returned", "To Sales", "Cancelled"];
 /** @type {Record<string, UiTone>} */
@@ -3026,13 +3009,11 @@ const INVENTORY_RECEIPT_TONES = { "Pending Approval": "amber", Approved: "green"
 const INVENTORY_TRANSFER_LABELS = { "For Receiving": "Awaiting dispatch", "In Transit": "In transit", Incomplete: "Received short", Received: "Complete", Cancelled: "Cancelled" };
 const INVENTORY_TAB_PAGE_SIZE = 25;
 
-function inventoryResetTabView() {
-  inventoryTabView = { q: "", sel: "", sort: null, page: 0, branch: "all", scope: "" };
-}
+function inventoryResetTabView() { inventoryTabView = uiBlankViewState(); }
 /** @param {Record<string, UiTone>} map @param {string} status @returns {UiTone} */
 function inventoryTone(map, status) { return map[status] || "slate"; }
 /** @param {string} id */
-function inventoryTabSelect(id) { return { "data-inventory-tab-select": id }; }
+function inventoryTabSelect(id) { return uiViewSelect("inventory-tab", id); }
 /** Table "next step" cell: the record's first action, else its waiting note. @param {string} actionHtml */
 function inventoryNextStep(actionHtml) {
   const { buttons, notes } = uiAdoptActions(actionHtml, { size: "xs", primaryFirst: false });
@@ -3107,7 +3088,7 @@ function inventoryTransferSummary(transfer) {
 }
 
 /** @param {string} tab @returns {InventoryTabView} */
-function inventoryTabModel(tab) {
+function inventoryTabModelBase(tab) {
   const closeAttrs = { "data-inventory-tab-close": "" };
   const proxy = (/** @type {string} */ id, /** @type {string} */ label) => uiButton(label, { "data-inventory-proxy": id }, { size: "sm" });
   const exportButton = (/** @type {string} */ label = "Export") => uiButton(label, { "data-inventory-tab-export": tab }, { size: "sm" });
@@ -3387,76 +3368,20 @@ function inventoryTabModel(tab) {
   };
 }
 
-/** The current tab's rows after branch / chip / search filters, sorted. @param {InventoryTabView} view */
-function inventoryTabRows(view) {
-  const state = inventoryTabView;
-  const scope = state.scope || view.defaultScope;
-  const needle = state.q.trim().toLowerCase();
-  const filtered = view.rows
-    .filter((row) => state.branch === "all" || row.branches.includes(state.branch))
-    .filter((row) => !scope || scope === "all" || row.scopes.includes(scope))
-    .filter((row) => !needle || row.search.toLowerCase().includes(needle));
-  return uiSortRows(filtered, state.sort || view.defaultSort);
+/** A tab's full view: the description above plus what the shared tab view needs. @param {string} tab @returns {UiView} */
+function inventoryTabModel(tab) {
+  const { loadMore, ...view } = inventoryTabModelBase(tab);
+  const pagination = loadMore === "load-more-inventory-pos" ? modulePagination.inventoryPurchaseOrders : loadMore === "load-more-transfers" ? modulePagination.pendingTransfers : null;
+  return {
+    ...view,
+    csvName: `inventory-${tab}.csv`,
+    branchOptions: inventoryBranchOptions(),
+    after: (lastPage) => loadMore && pagination?.hasMore && lastPage ? `<div class="ui-load-more">${uiButton("Load older records", { "data-inventory-load-more": loadMore }, { size: "sm" })}</div>` : "",
+  };
 }
 
 function renderInventoryTab() {
-  const tab = inventoryWorkflowTab;
-  const view = inventoryTabModel(tab);
-  const state = inventoryTabView;
-  const scope = state.scope || view.defaultScope;
-  const branchRows = view.rows.filter((row) => state.branch === "all" || row.branches.includes(state.branch));
-  const sorted = inventoryTabRows(view);
-  const pageCount = Math.max(1, Math.ceil(sorted.length / INVENTORY_TAB_PAGE_SIZE));
-  state.page = Math.min(Math.max(state.page, 0), pageCount - 1);
-  if (state.sel) { // keep a deep-linked / just-selected record on screen
-    const at = sorted.findIndex((row) => row.id === state.sel);
-    if (at >= 0 && Math.floor(at / INVENTORY_TAB_PAGE_SIZE) !== state.page && !inventoryTabPageTouched) state.page = Math.floor(at / INVENTORY_TAB_PAGE_SIZE);
-  }
-  inventoryTabPageTouched = false;
-  const pageRows = sorted.slice(state.page * INVENTORY_TAB_PAGE_SIZE, (state.page + 1) * INVENTORY_TAB_PAGE_SIZE);
-  const selected = view.rows.find((row) => row.id === state.sel);
-  if (state.sel && !selected) state.sel = "";
-  const detail = selected ? selected.detail() : null;
-  /** @type {UiChip[]} */
-  const chips = view.chips.length ? [
-    ...(view.defaultScope ? [] : [{ key: "", label: "All", count: branchRows.length, tone: /** @type {"all"} */ ("all") }]),
-    ...view.chips.map((chip) => ({ key: chip.key, label: chip.label, count: branchRows.filter((row) => row.scopes.includes(chip.key)).length, tone: chip.tone })).filter((chip) => chip.count > 0 || chip.key === scope || chip.key === view.defaultScope),
-    ...(view.defaultScope ? [{ key: "all", label: "All", count: branchRows.length, tone: /** @type {"all"} */ ("all") }] : []),
-  ] : [];
-  const filtersOn = Boolean(state.q || state.branch !== "all" || (state.scope && state.scope !== view.defaultScope));
-  const pagination = view.loadMore === "load-more-inventory-pos" ? modulePagination.inventoryPurchaseOrders : view.loadMore === "load-more-transfers" ? modulePagination.pendingTransfers : null;
-  const loadMore = view.loadMore && pagination?.hasMore && state.page >= pageCount - 1
-    ? `<div class="ui-load-more">${uiButton("Load older records", { "data-inventory-load-more": view.loadMore }, { size: "sm" })}</div>` : "";
-  const html = `<div class="ui-tab-intro"><div><h2 class="ui-h2">${escapeHtml(view.title)}</h2><p class="ui-desc">${escapeHtml(view.intro)}</p></div>${view.actions.length ? `<div class="ui-actions">${view.actions.join("")}</div>` : ""}</div>`
-    + `<div class="ui-cards">${uiSummaryCards(view.stats)}</div>`
-    + uiFilterBar({
-      title: view.title,
-      // Demo requests carry no branch, so only offer the branch filter where rows have one.
-      segment: view.rows.some((row) => row.branches.some(Boolean)) ? { label: "Branch", attr: "data-inventory-tab-branch", options: inventoryBranchOptions(), active: state.branch } : undefined,
-      search: { id: "inventory-tab-search", value: state.q, placeholder: view.placeholder, label: `Search ${view.title.toLowerCase()}` },
-      extra: view.actions.some((action) => action.includes("data-inventory-tab-export")) ? "" : uiButton("Export", { "data-inventory-tab-export": tab }, { size: "sm" }),
-    })
-    + (chips.length ? uiStatusChips({ chips, active: scope, attr: "data-inventory-tab-scope", label: "Filter by status" }) : "")
-    + `<div class="ui-body">${uiDataTable({
-      cols: view.cols,
-      rows: pageRows.map((row) => ({ id: row.id, cells: row.cells, selected: row.id === state.sel, focusText: row.search })),
-      caption: view.title, minWidth: view.minWidth,
-      sort: state.sort || view.defaultSort, sortAttr: "data-inventory-tab-sort",
-      empty: filtersOn && view.rows.length ? { title: "Nothing matches these filters", text: "Try another branch or status, or clear the search.", clearAttrs: { "data-inventory-tab-clear": "" } } : { title: view.empty[0], text: view.empty[1] },
-      foot: { shown: pageRows.length, total: sorted.length, page: state.page, pageCount, pageAttr: "data-inventory-tab-page" },
-      after: loadMore,
-    })}${detail ? `<aside class="ui-card ui-detail" id="inventory-tab-detail" aria-label="${escapeHtml(detail.label)}">${uiDetailPanel(detail)}</aside>` : ""}</div>`;
-  uiRender(qs("#inventory-tab-panel"), html);
-}
-let inventoryTabPageTouched = false;
-
-/** CSV of the current tab's filtered rows. */
-function exportInventoryTabCsv() {
-  const view = inventoryTabModel(inventoryWorkflowTab);
-  const rows = inventoryTabRows(view);
-  if (!rows.length) return toast("Nothing in the current view to export.");
-  downloadCsv(`inventory-${inventoryWorkflowTab}.csv`, [view.csvHeader, ...rows.map((row) => row.csv.map((cell) => String(cell ?? "")))]);
-  log(`Exported ${view.title} (CSV)`, "Inventory", `${rows.length} records`, { save: false });
+  uiRender(qs("#inventory-tab-panel"), uiViewHtml(inventoryTabModel(inventoryWorkflowTab), inventoryTabView, "inventory-tab", INVENTORY_TAB_PAGE_SIZE));
 }
 
 /** Opens the tab holding a PO / receipt / transfer / demo request and selects it (deep links). @param {string} query @returns {boolean} */
@@ -4315,68 +4240,384 @@ function salesTargetProgress(agentName) {
   return { agent: agentName, target, currentSales, pct: target ? Math.round((currentSales / target) * 100) : 0, year };
 }
 
-function renderSalesTargetPanel() {
-  const target = qs("#sales-target-panel");
-  if (!target) return;
+/** Target progress for the signed-in agent, or the per-agent table for CEO/Superadmin; "" otherwise. */
+function salesTargetPanelHtml() {
   if (currentUser?.role === "Sales") {
     const progress = salesTargetProgress(currentUser.name);
-    target.innerHTML = progress
-      ? `<article class="panel sales-target-card"><div class="panel-header"><div><p class="eyebrow">${progress.year} Target Sales</p><h2>${peso.format(progress.currentSales)} of ${peso.format(progress.target)}</h2></div><span class="pill ${progress.pct >= 100 ? "green" : progress.pct >= 60 ? "orange" : "red"}">${progress.pct}% complete</span></div><div class="chart-track"><span class="chart-fill ${progress.pct >= 100 ? "green" : ""}" style="width:${Math.min(100, Math.max(2, progress.pct))}%"></span></div></article>`
-      : "";
-    return;
+    if (!progress) return "";
+    const tone = progress.pct >= 100 ? "green" : progress.pct >= 60 ? "amber" : "red";
+    return `<div class="ui-card ui-target"><div class="ui-target-head"><div><span class="ui-stat-label">${uiDot(tone)}${progress.year} target sales</span><strong class="ui-num">${escapeHtml(peso.format(progress.currentSales))} of ${escapeHtml(peso.format(progress.target))}</strong></div>${uiPill(`${progress.pct}% complete`, tone)}</div><div class="ui-meter" aria-hidden="true"><span class="t-${tone}" style="width:${Math.min(100, Math.max(2, progress.pct))}%"></span></div></div>`;
   }
-  if (!["CEO", "Superadmin"].includes(currentUser?.role)) { target.innerHTML = ""; return; }
-  const agents = /** @type {any[]} */ (data.employees.filter((e) => Number(e.targetSales || 0) > 0).map((e) => salesTargetProgress(e.name)).filter(Boolean)).sort((a, b) => a.pct - b.pct);
-  target.innerHTML = agents.length ? `<article class="panel"><div class="panel-header"><div><p class="eyebrow">${new Date().getFullYear()} Sales Targets</p><h2>${agents.length} agent${agents.length === 1 ? "" : "s"} with a target set</h2></div></div><div class="table-card compact-table"><table><thead><tr><th>Agent</th><th>Target</th><th>Current Year Sales</th><th>% Complete</th></tr></thead><tbody>${agents.map((a) => `<tr><td data-label="Agent">${escapeHtml(a.agent)}</td><td data-label="Target">${peso.format(a.target)}</td><td data-label="Current Year Sales">${peso.format(a.currentSales)}</td><td data-label="% Complete"><span class="pill ${a.pct >= 100 ? "green" : a.pct >= 60 ? "orange" : "red"}">${a.pct}%</span></td></tr>`).join("")}</tbody></table></div></article>` : "";
+  if (!["CEO", "Superadmin"].includes(currentUser?.role)) return "";
+  const agents = data.employees.filter((e) => Number(e.targetSales || 0) > 0).map((e) => salesTargetProgress(e.name)).filter((entry) => entry !== null).sort((a, b) => a.pct - b.pct);
+  if (!agents.length) return "";
+  return `<details class="ui-card ui-target"><summary><span class="ui-stat-label">${uiDot("accent")}${new Date().getFullYear()} sales targets</span><span class="ui-sub">${agents.length} agent${agents.length === 1 ? "" : "s"} with a target set</span></summary><div class="ui-table-scroll"><table class="ui-table" style="min-width:520px"><caption class="sr-only">Sales targets</caption><thead><tr><th scope="col">Agent</th><th scope="col" class="num">Target</th><th scope="col" class="num">Current year sales</th><th scope="col">Progress</th></tr></thead><tbody>${agents.map((a) => `<tr><td class="ui-strong">${escapeHtml(a.agent)}</td><td class="num">${uiCellNum(peso.format(a.target))}</td><td class="num">${uiCellNum(peso.format(a.currentSales))}</td><td>${uiPill(`${a.pct}%`, a.pct >= 100 ? "green" : a.pct >= 60 ? "amber" : "red")}</td></tr>`).join("")}</tbody></table></div></details>`;
 }
 
-/** @param {Sale[]} sales */
-function populateSalesClientFilter(sales) {
-  const list = qs("#sales-client-options");
-  if (!list) return;
-  const clients = [...new Set(sales.map((/** @type {any} */ s) => s.client).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
-  list.innerHTML = clients.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
+// ---------------------------------------------------------------------------------------------
+// Sales page (redesign phase 2). Three tabs on the shared tab view (ui-kit.js):
+//   orders     client POs ("sales orders"), statuses from how much has been invoiced; creating
+//              and editing still go through the Purchase Orders flows
+//   deliveries issued SI / TS / DR documents by their existing delivery status
+//   invoices   the SI / TS review list that used to be this page (payment tags, totals, targets)
+// Quotations and Returns from the reference are not shown: there are no such records yet.
+// ---------------------------------------------------------------------------------------------
+/** @type {Record<string, string>} */
+const SALES_TAB_LABELS = { orders: "Sales orders", deliveries: "Delivery receipts", invoices: "Invoices" };
+/** @type {Record<string, UiTone>} */
+const SALES_ORDER_TONES = { "For Invoicing": "blue", "Pending Orders": "amber", "Sales Invoice": "green", "Transmittal Slip": "green", "Delivery Receipt": "green" };
+/** @type {Record<string, string>} */
+const SALES_ORDER_LABELS = { "For Invoicing": "For invoicing", "Pending Orders": "Partially invoiced", "Sales Invoice": "Invoiced (SI)", "Transmittal Slip": "Served (TS)", "Delivery Receipt": "Served (DR)" };
+/** Stored delivery statuses (config-data.js) in plain words. @type {Record<string, { label: string, tone: UiTone }>} */
+const SALES_DELIVERY_META = {
+  Pending: { label: "Pending delivery", tone: "amber" },
+  "Document Delivered": { label: "Delivered", tone: "blue" },
+  "Copy Received w/ Proof of Receipt from Customer": { label: "Signed copy received", tone: "green" },
+};
+/** @type {Record<string, UiTone>} */
+const SALES_PAYMENT_TONES = { Paid: "green", Unpaid: "blue", "Partially Paid": "amber", "Near Due": "orange", Overdue: "red", Cancelled: "slate" };
+
+function salesCanViewAll() { return ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role); }
+/** Same scope the Sales page has always used: the branch filter, and Sales agents see only their assigned clients. @param {string} client */
+function salesClientVisible(client) { return salesCanViewAll() || isClientAssignedToCurrentUser(client); }
+function salesScopedDocuments() { return byBranch(data.sales, "area").filter((sale) => salesClientVisible(sale.client)); }
+/** @param {Sale} sale */
+function salesDocNo(sale) { return String(sale.documentNo || sale.id); }
+/** @param {Sale} sale */
+function salesDueDate(sale) { return fmtDate(addDays(sale.date, sale.terms || 0)); }
+/** @param {Sale} sale */
+function salesBalance(sale) { return Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0); }
+/** @param {Sale} sale @returns {SaleLine[]} */
+function salesLines(sale) {
+  return sale.lines?.length ? sale.lines : [/** @type {SaleLine} */ ({ item: sale.item || "Item", code: sale.code || "", brand: sale.brand || "", qty: Number(sale.qty || 0), uom: sale.uom || "unit", price: Number(sale.price || 0), lot: sale.lot, expiry: sale.expiry })];
+}
+/** Branches stock ships from (the client "area" is a sales territory, not a branch). @param {Sale | ClientPO} record */
+function salesBranches(record) {
+  return [...new Set([record.sourceBranch, record.branch, ...(record.lines || []).map((/** @type {PoLine} */ line) => line.sourceBranch || line.branch)].filter(Boolean).map(String))];
+}
+/** @param {ClientPO} po */
+function salesOrderTotal(po) { return (po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0); }
+/** @param {ClientPO} po */
+function salesOrderDocs(po) { return data.sales.filter((sale) => sale.po === po.id && sale.status !== "Cancelled"); }
+function salesMonthKey() { return fmtDate(today).slice(0, 7); }
+/** @param {number} value */
+function salesPesoShort(value) { return `₱${Math.round(value).toLocaleString("en-PH")}`; }
+function salesBranchOptions() { return inventoryBranchOptions(); }
+
+function salesQueryString() {
+  const p = new URLSearchParams({ section: "sales" });
+  if (salesTab !== "orders") p.set("tab", salesTab);
+  uiViewStateToQuery(p, salesView);
+  if (salesTab === "invoices" && salesDocType !== "all") p.set("type", salesDocType);
+  return p.toString();
+}
+function syncSalesUrl() {
+  if (location.protocol === "file:" || !document.body.classList.contains("app-route") || document.body.dataset.activeSection !== "sales") return;
+  try { history.replaceState(null, "", `/dashboard?${salesQueryString()}`); } catch { /* URL sync is best-effort */ }
+}
+
+/** @param {string} tab @returns {UiView} */
+function salesTabModel(tab) {
+  const select = (/** @type {string} */ id) => uiViewSelect("sales", id);
+  const closeAttrs = { "data-sales-close": "" };
+  const monthKey = salesMonthKey();
+
+  if (tab === "orders") {
+    const orders = byBranch(data.purchaseOrders || [], "area").filter((po) => salesClientVisible(po.client));
+    const rows = orders.map(/** @returns {UiViewRow} */ (po) => {
+      const status = poStatus(po);
+      const done = PO_TERMINAL_STATUSES.includes(status);
+      const lines = po.lines || [];
+      const total = salesOrderTotal(po);
+      const docs = salesOrderDocs(po);
+      const servedLines = lines.filter((line) => poLineStatus(po, line).pending <= 1e-9).length;
+      const label = SALES_ORDER_LABELS[status] || status;
+      const tone = SALES_ORDER_TONES[status] || "slate";
+      const scopes = [status, ...(done ? [] : ["open"]), ...(String(po.date || "").startsWith(monthKey) ? ["month"] : [])];
+      const invoiceButton = `<button class="mini-button" data-create-invoice-po="${escapeHtml(po.id)}">${status === "Pending Orders" ? "Invoice remaining" : "Create invoice / DR"}</button>`;
+      return {
+        id: po.id,
+        branches: salesBranches(po),
+        scopes,
+        search: [po.id, po.client, po.area, po.salesperson, label, ...docs.map(salesDocNo), ...lines.map((line) => `${line.item} ${line.code}`)].join(" "),
+        sortValues: { id: po.id, client: String(po.client || ""), date: inventoryDateValue(po.date), amount: total, status: label },
+        csv: [po.id, po.client, po.area || "", po.salesperson || "", po.date, lines.length, total.toFixed(2), label, docs.map(salesDocNo).join("; ")],
+        cells: [
+          uiCellDoc(po.id, select(po.id)),
+          uiCellText(po.client || "—", po.salesperson || "", { strong: true }),
+          escapeHtml(inventoryBranchLabel(po.area || "")),
+          escapeHtml(uiDate(po.date)),
+          uiCellText(inventoryPlural(lines.length, "item"), `Served ${servedLines} of ${lines.length}`),
+          uiCellNum(peso.format(total)),
+          uiPill(label, tone),
+          done ? "" : inventoryNextStep(invoiceButton),
+        ],
+        detail: /** @returns {UiDetail} */ () => {
+          const extra = [
+            ...(poCanEdit(po) ? [`<button class="mini-button" data-po-edit="${escapeHtml(po.id)}">Edit order</button>`] : []),
+            ...docs.map((sale) => `<button class="mini-button" data-sale-detail="${escapeHtml(sale.id)}">View ${escapeHtml(salesDocNo(sale))}</button>`),
+          ];
+          const { actions } = inventoryDetailActions(done ? "" : invoiceButton, extra);
+          return {
+            eyebrow: po.id, title: po.client || "Client order", pill: { text: label, tone }, closeAttrs, label: "Sales order details",
+            fields: [
+              { label: "Area", value: inventoryBranchLabel(po.area || "") },
+              { label: "Order date", value: uiDate(po.date) },
+              { label: "Sales person", value: po.salesperson || "—" },
+              { label: "Served", value: `${servedLines} of ${lines.length} lines` },
+              { label: "Linked invoices", value: docs.map(salesDocNo).join(", ") || "—", mono: Boolean(docs.length), wide: true },
+            ],
+            linesTitle: "Items",
+            lines: lines.map((line) => {
+              const { served, pending } = poLineStatus(po, line);
+              return { left: line.item, sub: `${served} of ${line.qty} ${line.uom || ""} served${pending > 1e-9 ? ` · ${pending} to go` : ""}`.trim(), right: peso.format(lineSubtotal(line)), tone: pending <= 1e-9 ? "green" : served > 0 ? "amber" : "slate" };
+            }),
+            total: { label: "Order total", value: peso.format(total) },
+            note: done ? { text: `Fully served by ${docs.map(salesDocNo).join(", ") || "its documents"}.`, tone: "green" } : status === "Pending Orders" ? { text: "Part of this order is invoiced. Invoice the rest from here or from Purchase Orders.", tone: "amber" } : poCanEdit(po) ? { text: "Nothing is invoiced yet, so the order can still be edited.", tone: "blue" } : undefined,
+            actions,
+          };
+        },
+      };
+    });
+    const sum = (/** @type {string} */ scope) => rows.filter((row) => row.scopes.includes(scope)).reduce((total, row) => total + Number(row.sortValues.amount || 0), 0);
+    const count = (/** @type {string} */ scope) => rows.filter((row) => row.scopes.includes(scope)).length;
+    const monthName = new Date(Number(today)).toLocaleString("en-US", { month: "long", timeZone: "Asia/Manila" });
+    const canOrder = canEditModule("purchase-orders");
+    return {
+      title: "Sales orders", intro: "", placeholder: "Order no., client, sales person or item", actions: [], minWidth: 820,
+      csvName: "sales-orders.csv",
+      csvHeader: ["Order", "Client", "Area", "Sales person", "Date", "Items", "Amount", "Status", "Linked invoices"],
+      stats: [
+        { label: "Orders this month", value: salesPesoShort(sum("month")), sub: `${count("month")} orders in ${monthName}`, tone: "green", scope: "month" },
+        { label: "Open orders", value: count("open"), sub: `${salesPesoShort(sum("open"))} not yet fully invoiced`, tone: "blue", scope: "open" },
+        { label: "Partially invoiced", value: count("Pending Orders"), sub: "Some lines still to serve", tone: "amber", scope: "Pending Orders" },
+        { label: "Ready to invoice", value: count("For Invoicing"), sub: `${salesPesoShort(sum("For Invoicing"))} with nothing invoiced yet`, tone: "orange", scope: "For Invoicing" },
+      ],
+      cols: [{ key: "id", label: "Order", sortable: true }, { key: "client", label: "Client", sortable: true }, { key: "area", label: "Area" }, { key: "date", label: "Date", sortable: true }, { key: "items", label: "Items" }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+      rows,
+      empty: ["No sales orders yet", canOrder ? "Use New sales order to record a client's purchase order." : "Client purchase orders show here once they are recorded."],
+      defaultSort: { key: "date", dir: -1 },
+      chips: [
+        { key: "month", label: "This month", onlyWhenActive: true },
+        { key: "open", label: "Open", onlyWhenActive: true },
+        ...Object.keys(SALES_ORDER_TONES).map((status) => ({ key: status, label: SALES_ORDER_LABELS[status], tone: SALES_ORDER_TONES[status] })),
+      ],
+      defaultScope: "",
+      branchOptions: salesBranchOptions(),
+      after: (lastPage) => modulePagination.purchaseOrders?.hasMore && lastPage ? `<div class="ui-load-more">${uiButton("Load older orders", { "data-sales-load-more": "orders" }, { size: "sm" })}</div>` : "",
+    };
+  }
+
+  if (tab === "deliveries") {
+    const docs = salesScopedDocuments().filter((sale) => sale.status !== "Cancelled");
+    const canUpdate = canUpdateDeliveryStatus();
+    const rows = docs.map(/** @returns {UiViewRow} */ (sale) => {
+      const stored = sale.deliveryStatus || "Pending";
+      const meta = SALES_DELIVERY_META[stored] || { label: stored, tone: /** @type {UiTone} */ ("slate") };
+      const lines = salesLines(sale);
+      const units = lines.reduce((sum, line) => sum + Number(line.qty || 0), 0);
+      const nextStatus = stored === "Pending" ? "Document Delivered" : stored === "Document Delivered" ? "Copy Received w/ Proof of Receipt from Customer" : "";
+      const nextButton = canUpdate && nextStatus ? `<button class="mini-button" data-sales-delivery="${escapeHtml(sale.id)}" data-status="${escapeHtml(nextStatus)}">${nextStatus === "Document Delivered" ? "Mark delivered" : "Signed copy received"}</button>` : "";
+      const docNo = salesDocNo(sale);
+      return {
+        id: sale.id,
+        branches: salesBranches(sale),
+        scopes: [stored],
+        search: [docNo, sale.id, sale.client, sale.po, sale.area, sale.salesperson, meta.label, documentType(sale.type), ...lines.map((line) => `${line.item} ${line.code || ""}`)].join(" "),
+        sortValues: { id: docNo, client: String(sale.client || ""), po: String(sale.po || ""), date: inventoryDateValue(sale.date), status: meta.label },
+        csv: [docNo, documentType(sale.type), sale.client, sale.po || "", sale.date, lines.length, units, meta.label],
+        cells: [
+          uiCellDoc(docNo, select(sale.id), invoiceTypeLabel(sale.type)),
+          uiCellText(sale.client || "—", sale.salesperson || "", { strong: true }),
+          sale.po && !sale.noPo ? `<span class="mono">${escapeHtml(sale.po)}</span>` : `<span class="ui-sub">No PO</span>`,
+          escapeHtml(uiDate(sale.date)),
+          uiCellText(inventoryPlural(lines.length, "line"), `${units} units`),
+          uiPill(meta.label, meta.tone),
+          inventoryNextStep(nextButton),
+        ],
+        detail: /** @returns {UiDetail} */ () => {
+          const others = Object.keys(SALES_DELIVERY_META).filter((status) => status !== stored && status !== nextStatus);
+          const extra = [
+            `<button class="mini-button" data-sale-detail="${escapeHtml(sale.id)}">View document</button>`,
+            `<button class="mini-button" data-print-invoice="${escapeHtml(sale.id)}">Print</button>`,
+            ...(canUpdate ? others.map((status) => `<button class="mini-button" data-sales-delivery="${escapeHtml(sale.id)}" data-status="${escapeHtml(status)}">Set to ${escapeHtml(SALES_DELIVERY_META[status].label.toLowerCase())}</button>`) : []),
+          ];
+          const { actions } = inventoryDetailActions(nextButton, extra);
+          return {
+            eyebrow: docNo, title: sale.client || "Client", pill: { text: meta.label, tone: meta.tone }, closeAttrs, label: "Delivery details",
+            fields: [
+              { label: "Document", value: invoiceTypeLabel(sale.type) },
+              { label: "Order", value: sale.po && !sale.noPo ? sale.po : "No PO", mono: Boolean(sale.po && !sale.noPo) },
+              { label: "Date", value: uiDate(sale.date) },
+              { label: "Ships from", value: inventoryBranchLabel(sale.sourceBranch || sale.branch || sale.area || "") },
+              { label: "Delivery status", value: stored, wide: true },
+            ],
+            linesTitle: "Items",
+            lines: lines.map((line) => ({ left: line.item, sub: [line.lot ? `Lot ${line.lot}` : "", line.expiry ? `exp ${line.expiry}` : ""].filter(Boolean).join(" · "), right: `× ${Number(line.qty || 0)} ${line.uom || ""}`.trim(), tone: meta.tone })),
+            note: canUpdate ? undefined : { text: "Accounting, Superadmin or CEO updates the delivery status.", tone: "slate" },
+            actions,
+          };
+        },
+      };
+    });
+    const count = (/** @type {string} */ status) => rows.filter((row) => row.scopes.includes(status)).length;
+    return {
+      title: "Delivery receipts", intro: "", placeholder: "Document no., order no. or client", actions: [], minWidth: 740,
+      csvName: "sales-deliveries.csv",
+      csvHeader: ["Document", "Type", "Client", "Order", "Date", "Lines", "Units", "Delivery status"],
+      stats: [
+        { label: "Pending delivery", value: count("Pending"), sub: "Issued, not yet delivered", tone: "amber", scope: "Pending" },
+        { label: "Delivered", value: count("Document Delivered"), sub: "Waiting for the signed copy", tone: "blue", scope: "Document Delivered" },
+        { label: "Signed copy received", value: count("Copy Received w/ Proof of Receipt from Customer"), sub: "Proof of receipt on file", tone: "green", scope: "Copy Received w/ Proof of Receipt from Customer" },
+      ],
+      cols: [{ key: "id", label: "Document", sortable: true }, { key: "client", label: "Client", sortable: true }, { key: "po", label: "Order", sortable: true }, { key: "date", label: "Date", sortable: true }, { key: "items", label: "Items" }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+      rows,
+      empty: ["No issued documents", "Sales invoices, transmittal slips and delivery receipts show here with their delivery status once they are issued."],
+      defaultSort: { key: "date", dir: -1 },
+      chips: Object.entries(SALES_DELIVERY_META).map(([key, meta]) => ({ key, label: meta.label, tone: meta.tone })),
+      defaultScope: "",
+      branchOptions: salesBranchOptions(),
+      after: (lastPage) => modulePagination.sales?.hasMore && lastPage ? `<div class="ui-load-more">${uiButton("Load older documents", { "data-sales-load-more": "sales" }, { size: "sm" })}</div>` : "",
+    };
+  }
+
+  // Invoices: the SI / TS review list (what this page used to be).
+  const invoices = salesScopedDocuments().filter((sale) => ["SI", "TS"].includes(documentType(sale.type)));
+  const rows = invoices.map(/** @returns {UiViewRow} */ (sale) => {
+    const status = statusForSale(sale);
+    const tone = SALES_PAYMENT_TONES[status] || "slate";
+    const docNo = salesDocNo(sale);
+    const balance = salesBalance(sale);
+    const due = salesDueDate(sale);
+    const dueIn = daysUntil(due);
+    const open = status !== "Paid" && status !== "Cancelled";
+    const dueText = !open ? "" : dueIn < 0 ? `${-dueIn} days overdue` : dueIn === 0 ? "Due today" : `Due in ${dueIn} days`;
+    const lines = salesLines(sale);
+    return {
+      id: sale.id,
+      branches: salesBranches(sale),
+      scopes: [status],
+      search: [docNo, sale.id, sale.client, sale.area, sale.salesperson, sale.po, status, documentType(sale.type), ...lines.map((line) => line.item)].join(" "),
+      sortValues: { id: docNo, client: String(sale.client || ""), date: inventoryDateValue(sale.date), due: inventoryDateValue(due), net: Number(sale.net || 0), balance, paid: Number(sale.paid || 0), status },
+      csv: [docNo, documentType(sale.type), sale.client, sale.area || "", sale.salesperson || "", sale.date, `${sale.terms || 0} days`, Number(sale.net || 0).toFixed(2), balance.toFixed(2), status, sale.migrated ? "Migrated" : "Manual"],
+      cells: [
+        uiCellDoc(docNo, select(sale.id), invoiceTypeLabel(sale.type)),
+        uiCellText(sale.client || "—", [sale.salesperson, sale.area].filter(Boolean).join(" · "), { strong: true }),
+        uiCellText(uiDate(sale.date), `${sale.terms || 0}-day terms`),
+        uiCellText(uiDate(due), dueText, { subTone: open && dueIn < 0 ? "red" : open && dueIn <= 7 ? "orange" : undefined }),
+        uiCellNum(peso.format(Number(sale.net || 0))),
+        uiCellNum(peso.format(balance)),
+        uiPill(status, tone),
+      ],
+      detail: /** @returns {UiDetail} */ () => ({
+        eyebrow: docNo, title: sale.client || "Client", pill: { text: status, tone }, closeAttrs, label: "Invoice details",
+        fields: [
+          { label: "Type", value: invoiceTypeLabel(sale.type) },
+          { label: "Order", value: sale.po && !sale.noPo ? sale.po : "No PO", mono: Boolean(sale.po && !sale.noPo) },
+          { label: "Area", value: inventoryBranchLabel(sale.area || "") },
+          { label: "Sales person", value: sale.salesperson || "—" },
+          { label: "Date", value: uiDate(sale.date), sub: `${sale.terms || 0}-day terms` },
+          { label: "Due", value: uiDate(due), sub: dueText },
+          { label: "Paid", value: peso.format(Number(sale.paid || 0)) },
+          { label: "Balance", value: peso.format(balance) },
+          { label: "Source", value: sale.migrated ? "Migrated" : `Manual · ${sale.createdBy || sale.salesperson || "unknown user"}`, wide: true },
+          ...(sale.cancelledFrom ? [{ label: "Replaces", value: String(sale.cancelledFrom), mono: true }] : []),
+          ...(sale.replacementId ? [{ label: "Replaced by", value: String(sale.replacementId), mono: true }] : []),
+        ],
+        linesTitle: "Items",
+        lines: lines.map((line) => ({ left: line.item, sub: `${Number(line.qty || 0)} ${line.uom || ""} × ${peso.format(Number(line.price || 0))}`, right: peso.format(lineSubtotal(line)), tone })),
+        total: { label: "Total due", value: peso.format(Number(sale.net || 0)) },
+        note: status === "Overdue" ? { text: `${peso.format(balance)} is ${-dueIn} days overdue.`, tone: "red" } : status === "Near Due" ? { text: `${peso.format(balance)} is due ${dueIn === 0 ? "today" : `in ${dueIn} days`}.`, tone: "orange" } : undefined,
+        actions: uiAdoptActions(`<button data-sale-detail="${escapeHtml(sale.id)}">View invoice</button><button data-sale-timeline="${escapeHtml(sale.id)}">View timeline</button>`).buttons,
+      }),
+    };
+  });
+  const type = salesDocType;
+  const visible = rows.filter((row) => (type === "all" || row.csv[1] === type) && (salesView.branch === "all" || row.branches.includes(salesView.branch)));
+  const total = visible.reduce((sum, row) => sum + Number(row.sortValues.net || 0), 0);
+  const collected = visible.reduce((sum, row) => sum + Number(row.sortValues.paid || 0), 0);
+  const outstanding = visible.reduce((sum, row) => sum + Number(row.sortValues.balance || 0), 0);
+  const overdue = visible.filter((row) => row.scopes.includes("Overdue"));
+  const overdueAmount = overdue.reduce((sum, row) => sum + Number(row.sortValues.balance || 0), 0);
+  const partialAmount = visible.filter((row) => row.scopes.includes("Partially Paid")).reduce((sum, row) => sum + Number(row.sortValues.balance || 0), 0);
+  const largest = visible.reduce((max, row) => Math.max(max, Number(row.sortValues.net || 0)), 0);
+  const average = visible.length ? Math.round(total / visible.length) : 0;
+  const typeToggle = `<div class="ui-seg" role="group" aria-label="Document type">${[["all", "SI & TS"], ["SI", "SI"], ["TS", "TS"]].map(([value, label]) => `<button type="button" data-sales-type="${value}" aria-pressed="${type === value}">${label}</button>`).join("")}</div>`;
+  return {
+    title: "Invoices", intro: "", placeholder: "Document no., client, sales person or item", actions: [], minWidth: 820,
+    csvName: "sales-invoices.csv",
+    csvHeader: ["Document", "Type", "Client", "Area", "Sales person", "Date", "Terms", "Total due", "Balance", "Status", "Source"],
+    before: salesTargetPanelHtml(),
+    stats: [
+      { label: "Total sales in view", value: salesPesoShort(total), sub: `${inventoryPlural(visible.length, "invoice")} · average ${salesPesoShort(average)} · largest ${salesPesoShort(largest)}`, tone: "accent" },
+      { label: "Collected", value: salesPesoShort(collected), sub: `${total ? Math.round((collected / total) * 100) : 0}% collection rate`, tone: "green", scope: "Paid" },
+      { label: "Outstanding", value: salesPesoShort(outstanding), sub: `${salesPesoShort(partialAmount)} on partly paid invoices`, tone: "amber" },
+      { label: "Overdue", value: salesPesoShort(overdueAmount), sub: `${inventoryPlural(overdue.length, "invoice")} past due`, tone: "red", scope: "Overdue" },
+    ],
+    cols: [{ key: "id", label: "Document", sortable: true }, { key: "client", label: "Client", sortable: true }, { key: "date", label: "Date", sortable: true }, { key: "due", label: "Due", sortable: true }, { key: "net", label: "Total due", align: "right", sortable: true }, { key: "balance", label: "Balance", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }],
+    rows,
+    extraFilter: (row) => type === "all" || row.csv[1] === type,
+    filtersOn: type !== "all",
+    toolbarExtra: typeToggle,
+    empty: ["No invoices yet", "Sales invoices and transmittal slips for your clients show here once they are issued."],
+    defaultSort: { key: "date", dir: -1 },
+    chips: Object.keys(SALES_PAYMENT_TONES).map((status) => ({ key: status, label: status, tone: SALES_PAYMENT_TONES[status] })),
+    defaultScope: "",
+    branchOptions: salesBranchOptions(),
+    after: (lastPage) => modulePagination.sales?.hasMore && lastPage ? `<div class="ui-load-more">${uiButton("Load older invoices", { "data-sales-load-more": "sales" }, { size: "sm" })}</div>` : "",
+  };
 }
 
 function renderSales() {
-  const status = qs("#sales-status").value;
-  const type = qs("#sales-type").value;
-  const canViewAllSales = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
-  const scoped = byBranch(data.sales, "area").filter((s) => ["SI", "TS"].includes(documentType(s.type))).filter((s) => canViewAllSales || isClientAssignedToCurrentUser(s.client));
-  populateSalesClientFilter(scoped);
-  const clientQuery = String(qs("#sales-client")?.value || "").trim().toLowerCase();
-  const rows = scoped.filter((s) => !clientQuery || String(s.client || "").toLowerCase().includes(clientQuery)).filter((s) => status === "all" || statusForSale(s) === status).filter((s) => type === "all" || documentType(s.type) === type).filter((s) => includesSearch(Object.values(s))).reverse();
+  if (!SALES_TAB_LABELS[salesTab]) salesTab = "orders";
+  const newOrder = qs("#sales-new-order");
+  if (newOrder) newOrder.hidden = !canEditModule("purchase-orders");
+  const ordersCount = byBranch(data.purchaseOrders || [], "area").filter((po) => salesClientVisible(po.client) && !PO_TERMINAL_STATUSES.includes(poStatus(po))).length;
+  const docs = salesScopedDocuments();
+  /** @type {Record<string, number>} */
+  const counts = {
+    orders: ordersCount,
+    deliveries: docs.filter((sale) => sale.status !== "Cancelled" && (sale.deliveryStatus || "Pending") === "Pending").length,
+    invoices: docs.filter((sale) => ["SI", "TS"].includes(documentType(sale.type)) && ["Overdue", "Near Due"].includes(statusForSale(sale))).length,
+  };
+  qs("#sales-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(SALES_TAB_LABELS).map((key) => ({ key, label: SALES_TAB_LABELS[key], count: counts[key] })), active: salesTab, attr: "data-sales-tab" });
   const nearExpiry = byBranch(data.inventory).filter((item) => inventoryStatus(item) === "Near Expiry");
-  const firstNearExpiry = nearExpiry[0];
-  qs("#near-expiry-sales-alert").innerHTML = nearExpiry.length
-    ? `<button class="near-expiry-banner-button" type="button" data-go-section="inventory" data-focus-record="${escapeHtml(firstNearExpiry.lot)}"><span class="feature-icon">!</span><div><strong>Near-expiry sales alert</strong><small>${nearExpiry.map((item) => `${item.item} (${item.branch}, ${item.expiry})`).join(" · ")}</small></div></button>`
-    : `<span class="feature-icon">✓</span><div><strong>No near-expiry sales alert</strong><small>All selected branch inventory is outside the near-expiry window.</small></div>`;
-  table("#sales-table", ["Document", "Client", "Area", "Sales Person", "Date", "Total Due", "Terms", "Source", "Status", "Actions"], rows.map((s) => ({ focus: s.documentNo || s.id, attrs: { "data-sale-row": s.id }, cells: [`<span class="invoice-type-badge type-${escapeHtml(documentType(s.type))}"><span>${invoiceTypeIcon(s.type)}</span>${escapeHtml(s.documentNo || s.id)}</span>`, s.client, s.area, s.salesperson, s.date, peso.format(s.net), `${s.terms} days`, s.migrated ? `<span class="pill warning">Migrated</span>` : `<span class="pill success" title="Manually inputted by ${escapeHtml(s.createdBy || s.salesperson || "Unknown user")}">Manual</span>`, `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`, `<div class="inline-actions"><button class="mini-button sticky-view" data-sale-detail="${s.id}">View</button><button class="mini-button" data-sale-timeline="${s.id}">View Timeline</button></div>`] })));
-  const totalSales = rows.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const totalCollected = rows.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
-  const outstanding = rows.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
-  const paidCount = rows.filter((sale) => statusForSale(sale) === "Paid").length;
-  const unpaidCount = rows.filter((sale) => statusForSale(sale) === "Unpaid").length;
-  const overdueCount = rows.filter((sale) => statusForSale(sale) === "Overdue").length;
-  const overdueAmount = rows.filter((sale) => statusForSale(sale) === "Overdue").reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
-  const partialAmount = rows.filter((sale) => statusForSale(sale) === "Partially Paid").reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
-  const largestInvoice = rows.reduce((max, sale) => Math.max(max, Number(sale.net || 0)), 0);
-  const averageInvoice = rows.length ? Math.round(totalSales / rows.length) : 0;
-  const collectionRate = totalSales ? Math.round((totalCollected / totalSales) * 100) : 0;
-  qs("#sales-summary-grid").innerHTML = `
-    <div class="sales-summary-hero">
-      <article class="sales-summary-card primary"><span>Total displayed sales</span><strong>${peso.format(totalSales)}</strong><small>${rows.length} invoice${rows.length === 1 ? "" : "s"} in this view</small></article>
-      <article class="sales-summary-card success"><span>Total collected</span><strong>${peso.format(totalCollected)}</strong><small>${collectionRate}% collection rate</small></article>
-      <article class="sales-summary-card warning"><span>Outstanding balance</span><strong>${peso.format(outstanding)}</strong><small>${peso.format(overdueAmount)} overdue</small></article>
-    </div>
-    <div class="sales-summary-groups">
-      <article class="sales-summary-group"><h3>Status Count</h3><div class="summary-pills"><span>Paid <strong>${paidCount}</strong></span><span>Unpaid <strong>${unpaidCount}</strong></span><span>Overdue <strong>${overdueCount}</strong></span></div></article>
-      <article class="sales-summary-group"><h3>Invoice Size</h3><div class="summary-pairs"><span>Average <strong>${peso.format(averageInvoice)}</strong></span><span>Largest <strong>${peso.format(largestInvoice)}</strong></span></div></article>
-      <article class="sales-summary-group"><h3>Risk Amounts</h3><div class="summary-pairs"><span>Overdue <strong>${peso.format(overdueAmount)}</strong></span><span>Partial AR <strong>${peso.format(partialAmount)}</strong></span></div></article>
-    </div>`;
-  renderSalesTargetPanel();
-  const loadMoreSalesButton = qs("#load-more-sales");
-  if (loadMoreSalesButton) loadMoreSalesButton.hidden = !modulePagination.sales?.hasMore || !tableFullyRevealed("#sales-table");
+  const strip = qs("#near-expiry-sales-alert");
+  if (strip) {
+    strip.hidden = !nearExpiry.length;
+    strip.innerHTML = nearExpiry.length
+      ? `${uiDot("amber")}<span><strong>Sell first: ${inventoryPlural(nearExpiry.length, "lot")} near expiry.</strong> ${escapeHtml(nearExpiry.slice(0, 3).map((item) => `${item.item} (${inventoryBranchLabel(item.branch)}, ${uiDate(item.expiry)})`).join(" · "))}${nearExpiry.length > 3 ? " …" : ""}</span><button class="ui-btn xs" type="button" data-go-section="inventory" data-focus-record="${escapeHtml(nearExpiry[0].lot)}">View in Inventory</button>`
+      : "";
+  }
+  uiRender(qs("#sales-tab-panel"), uiViewHtml(salesTabModel(salesTab), salesView, "sales"));
+  syncSalesUrl();
+}
+
+/** Same rule and save as the Invoicing delivery-status control. @param {string} saleId @param {string} status */
+function setSaleDeliveryStatus(saleId, status) {
+  if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
+  const sale = data.sales.find((entry) => entry.id === saleId);
+  if (!sale || !deliveryStatusOptions.includes(status)) return;
+  sale.deliveryStatus = status;
+  log("Updated invoice delivery status", "Invoicing", `${sale.documentNo || sale.id}: ${status}`);
+  saveData();
+  toast(`${sale.documentNo || sale.id} marked ${status}.`);
+  renderAll();
+}
+
+/** Opens Sales on the tab holding a client PO or document and selects it (deep links). @param {string} query @returns {boolean} */
+function salesFocusRecord(query) {
+  const id = query.toLowerCase();
+  for (const tab of ["orders", "invoices", "deliveries"]) {
+    const row = salesTabModel(tab).rows.find((entry) => entry.id.toLowerCase() === id || String(entry.csv[0]).toLowerCase() === id);
+    if (!row) continue;
+    salesTab = tab;
+    salesView = uiBlankViewState();
+    salesDocType = "all";
+    salesView.sel = row.id;
+    return true;
+  }
+  return false;
 }
 
 /** @param {any} target @param {any} heroCards @param {any} groups */

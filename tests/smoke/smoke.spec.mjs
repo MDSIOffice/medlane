@@ -200,7 +200,7 @@ test("logging in only draws what's on screen, and skips the calls other sections
 for (const [section, selector, text] of [
   ["masterlists", "#masterlists", "Naga City Lab"],
   ["inventory", "#inventory", "Glucose Reagent"],
-  ["sales", "#sales", "SI-1"],
+  ["sales", "#sales", "PO-1"], // opens on Sales orders (client POs); SI-1 is on the Invoices tab
   ["purchase-orders", "#purchase-orders", "Invoiced 1"],
   ["invoicing", "#invoicing", "SI-1"],
   ["collections", "#collections", "Naga City Lab"],

@@ -3388,6 +3388,31 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .ui-scope .ui-tab-intro .ui-actions > * { flex: 1 1 auto; }
 }
 
+.ui-scope [hidden] { display: none !important; }
+/* one-line notice strip under the tabs (e.g. Sales near-expiry) */
+.ui-scope .ui-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; padding: 10px 14px; margin: -6px 0 18px; border: 1px solid var(--ui-amber-bg); background: var(--ui-amber-bg); color: var(--ui-amber-fg); border-radius: 12px; font-size: 13px; }
+.ui-scope .ui-strip > span:not(.ui-dot) { flex: 1 1 260px; min-width: 0; }
+.ui-scope .ui-strip .ui-btn { background: var(--ui-surface); }
+/* sales target card */
+.ui-scope .ui-target { padding: 16px 18px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 12px; }
+.ui-scope .ui-target-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.ui-scope .ui-target-head > div { display: flex; flex-direction: column; gap: 4px; }
+.ui-scope .ui-target-head strong { font-size: 20px; font-weight: 800; color: var(--ui-ink); }
+.ui-scope .ui-target summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; cursor: pointer; list-style: none; }
+.ui-scope .ui-target summary::-webkit-details-marker { display: none; }
+.ui-scope .ui-target summary::after { content: "Show"; margin-left: auto; font-size: 13px; font-weight: 700; color: var(--ui-accent); }
+.ui-scope .ui-target[open] summary::after { content: "Hide"; }
+.ui-scope .ui-meter { height: 10px; border-radius: 999px; background: var(--ui-seg); overflow: hidden; }
+.ui-scope .ui-meter span { display: block; height: 100%; border-radius: 999px; background: var(--ui-accent); }
+.ui-scope .ui-meter span.t-green { background: var(--ui-green); }
+.ui-scope .ui-meter span.t-amber { background: var(--ui-amber); }
+.ui-scope .ui-meter span.t-red { background: var(--ui-red); }
+.ui-scope .ui-sub.tone-orange { color: var(--ui-orange-fg); font-weight: 600; }
+.ui-scope #sales-tab-panel .ui-filterbar, .ui-scope #sales-tab-panel .ui-chips { margin-bottom: 0; }
+/* Redesigned pages carry their own page header; hide the app shell's duplicate title there. */
+body[data-active-section="sales"] #page-title,
+body[data-active-section="sales"] #page-description { display: none; }
+
 /* Inventory → Stocks: health bar + top-5 alert cards */
 #inventory .dot { width: 8px; height: 8px; border-radius: 99px; flex-shrink: 0; display: inline-block; background: var(--inv-all); }
 #inventory .dot.s-available, #inventory .inv-bar .s-available { background: var(--inv-available); }

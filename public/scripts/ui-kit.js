@@ -225,3 +225,167 @@ function uiDate(value) {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${Number(match[3])} ${months[Number(match[2]) - 1]} ${match[1]}`;
 }
+
+// ----- Tab view: one module tab = summary cards + filter bar + chips + table + detail panel -----
+// A page describes a tab as a UiView (built from its real records) and keeps a UiViewState; the
+// helpers below draw it, filter/sort/page it, mirror it to the URL and handle its clicks. Every
+// control carries `data-<prefix>-…` so several views can live on one page.
+/**
+ * @typedef {{
+ *   id: string, cells: string[], search: string, branches: string[], scopes: string[],
+ *   sortValues: Record<string, string | number | null>, csv: (string | number)[], detail: () => UiDetail
+ * }} UiViewRow
+ */
+/** @typedef {{ key: string, label: string, tone?: UiTone, onlyWhenActive?: boolean }} UiViewChip */
+/**
+ * @typedef {{
+ *   title: string, intro: string, placeholder: string, actions: string[], stats: (UiCard & { scope?: string })[],
+ *   cols: UiCol[], csvHeader: string[], csvName: string, rows: UiViewRow[], empty: [string, string], minWidth: number,
+ *   defaultSort: { key: string, dir: number }, chips: UiViewChip[], defaultScope: string,
+ *   branchOptions?: UiOption[] | null, toolbarExtra?: string, before?: string, after?: (lastPage: boolean) => string,
+ *   extraFilter?: (row: UiViewRow) => boolean, filtersOn?: boolean
+ * }} UiView
+ */
+/** @typedef {{ q: string, sel: string, sort: { key: string, dir: number } | null, page: number, branch: string, scope: string, touched?: boolean }} UiViewState */
+
+/** @returns {UiViewState} */
+function uiBlankViewState() { return { q: "", sel: "", sort: null, page: 0, branch: "all", scope: "" }; }
+
+/** Reads a view state from URL params (q, sel, sort, dir, page, branch, status). @param {URLSearchParams} params @returns {UiViewState} */
+function uiViewStateFromQuery(params) {
+  const sort = params.get("sort");
+  return {
+    q: params.get("q") || "",
+    sel: params.get("sel") || "",
+    sort: sort ? { key: sort, dir: params.get("dir") === "asc" ? 1 : -1 } : null,
+    page: Math.max(0, (Number(params.get("page")) || 1) - 1),
+    branch: params.get("branch") || "all",
+    scope: params.get("status") || "",
+  };
+}
+/** @param {URLSearchParams} params @param {UiViewState} state */
+function uiViewStateToQuery(params, state) {
+  if (state.branch !== "all") params.set("branch", state.branch);
+  if (state.scope) params.set("status", state.scope);
+  if (state.q) params.set("q", state.q);
+  if (state.sort) { params.set("sort", state.sort.key); params.set("dir", state.sort.dir === 1 ? "asc" : "desc"); }
+  if (state.page > 0) params.set("page", String(state.page + 1));
+  if (state.sel) params.set("sel", state.sel);
+}
+
+/** The view's rows after branch / chip / search filters, sorted. @param {UiView} view @param {UiViewState} state */
+function uiViewRows(view, state) {
+  const scope = state.scope || view.defaultScope;
+  const needle = state.q.trim().toLowerCase();
+  const filtered = view.rows
+    .filter((row) => state.branch === "all" || row.branches.includes(state.branch))
+    .filter((row) => !scope || scope === "all" || row.scopes.includes(scope))
+    .filter((row) => !view.extraFilter || view.extraFilter(row))
+    .filter((row) => !needle || row.search.toLowerCase().includes(needle));
+  return uiSortRows(filtered, state.sort || view.defaultSort);
+}
+
+/** @param {UiView} view @param {UiViewState} state @param {string} prefix @param {number} [pageSize] */
+function uiViewHtml(view, state, prefix, pageSize = 25) {
+  const attr = (/** @type {string} */ name) => `data-${prefix}-${name}`;
+  const scope = state.scope || view.defaultScope;
+  const branchRows = view.rows.filter((row) => state.branch === "all" || row.branches.includes(state.branch));
+  const sorted = uiViewRows(view, state);
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  state.page = Math.min(Math.max(state.page, 0), pageCount - 1);
+  if (state.sel && !state.touched) { // keep a deep-linked / just-selected record on screen
+    const at = sorted.findIndex((row) => row.id === state.sel);
+    if (at >= 0) state.page = Math.floor(at / pageSize);
+  }
+  state.touched = false;
+  const pageRows = sorted.slice(state.page * pageSize, (state.page + 1) * pageSize);
+  const selected = view.rows.find((row) => row.id === state.sel);
+  if (state.sel && !selected) state.sel = "";
+  const detail = selected ? selected.detail() : null;
+  const allChip = { key: view.defaultScope ? "all" : "", label: "All", count: branchRows.length, tone: /** @type {"all"} */ ("all") };
+  /** @type {UiChip[]} */
+  const chips = view.chips.length ? [
+    ...(view.defaultScope ? [] : [allChip]),
+    ...view.chips.map((chip) => ({ key: chip.key, label: chip.label, count: branchRows.filter((row) => row.scopes.includes(chip.key)).length, tone: chip.tone, hide: chip.onlyWhenActive && chip.key !== scope }))
+      .filter((chip) => !chip.hide && (chip.count > 0 || chip.key === scope || chip.key === view.defaultScope))
+      .map(({ key, label, count, tone }) => ({ key, label, count, tone })),
+    ...(view.defaultScope ? [allChip] : []),
+  ] : [];
+  const filtersOn = Boolean(view.filtersOn || state.q || state.branch !== "all" || (state.scope && state.scope !== view.defaultScope));
+  const stats = view.stats.map((card) => card.scope === undefined ? card : { ...card, action: { [attr("scope")]: card.scope }, active: scope === card.scope });
+  const hasBranches = view.branchOptions && view.rows.some((row) => row.branches.some(Boolean));
+  const hasExport = view.actions.some((action) => action.includes(attr("export")));
+  return `${view.intro ? `<div class="ui-tab-intro"><div><h2 class="ui-h2">${escapeHtml(view.title)}</h2><p class="ui-desc">${escapeHtml(view.intro)}</p></div>${view.actions.length ? `<div class="ui-actions">${view.actions.join("")}</div>` : ""}</div>` : ""}`
+    + (view.before || "")
+    + (stats.length ? `<div class="ui-cards">${uiSummaryCards(stats)}</div>` : "")
+    + uiFilterBar({
+      title: view.title,
+      segment: hasBranches && view.branchOptions ? { label: "Branch", attr: attr("branch"), options: view.branchOptions, active: state.branch } : undefined,
+      search: { id: `${prefix}-search`, value: state.q, placeholder: view.placeholder, label: `Search ${view.title.toLowerCase()}` },
+      extra: (view.toolbarExtra || "") + (hasExport ? "" : uiButton("Export", { [attr("export")]: "" }, { size: "sm" })),
+    })
+    + (chips.length ? uiStatusChips({ chips, active: scope, attr: attr("scope"), label: "Filter by status" }) : "")
+    + `<div class="ui-body">${uiDataTable({
+      cols: view.cols,
+      rows: pageRows.map((row) => ({ id: row.id, cells: row.cells, selected: row.id === state.sel, focusText: row.search })),
+      caption: view.title, minWidth: view.minWidth,
+      sort: state.sort || view.defaultSort, sortAttr: attr("sort"),
+      empty: filtersOn && view.rows.length ? { title: "Nothing matches these filters", text: "Try another branch or status, or clear the search.", clearAttrs: { [attr("clear")]: "" } } : { title: view.empty[0], text: view.empty[1] },
+      foot: { shown: pageRows.length, total: sorted.length, page: state.page, pageCount, pageAttr: attr("page") },
+      after: view.after ? view.after(state.page >= pageCount - 1) : "",
+    })}${detail ? `<aside class="ui-card ui-detail" id="${prefix}-detail" aria-label="${escapeHtml(detail.label)}">${uiDetailPanel(detail)}</aside>` : ""}</div>`;
+}
+
+/** Cell that selects its row, for a tab view. @param {string} prefix @param {string} id @returns {UiAttrs} */
+function uiViewSelect(prefix, id) { return { [`data-${prefix}-select`]: id }; }
+
+/**
+ * Handles a click on a tab view's own controls. Returns true when it was one of them.
+ * `extraReset` runs when filters are cleared (for page-specific filters such as a type toggle).
+ * @param {Element} target @param {string} prefix
+ * @param {{ state: () => UiViewState, view: () => UiView, render: () => void, extraReset?: () => void }} hooks
+ */
+function uiViewClick(target, prefix, { state, view, render, extraReset }) {
+  const find = (/** @type {string} */ name) => /** @type {HTMLElement | null} */ (target.closest(`[data-${prefix}-${name}]`));
+  const value = (/** @type {HTMLElement} */ el, /** @type {string} */ name) => el.getAttribute(`data-${prefix}-${name}`) || "";
+  const s = state();
+  const change = (/** @type {() => void} */ mutate, { resetPage = true, closeDetail = false } = {}) => { mutate(); if (resetPage) s.page = 0; if (closeDetail) s.sel = ""; render(); return true; };
+  let el;
+  if ((el = find("select"))) {
+    const id = value(el, "select");
+    change(() => { s.sel = s.sel === id ? "" : id; s.touched = true; }, { resetPage: false });
+    document.getElementById(`${prefix}-detail`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    return true;
+  }
+  if (find("close")) return change(() => {}, { resetPage: false, closeDetail: true });
+  if ((el = find("branch"))) { const branch = value(el, "branch"); return change(() => { s.branch = branch; }); }
+  if ((el = find("scope"))) { const scope = value(el, "scope"); return change(() => { s.scope = scope; }); }
+  if ((el = find("sort"))) {
+    const key = value(el, "sort");
+    const current = s.sort || view().defaultSort;
+    return change(() => { s.sort = { key, dir: current.key === key ? -current.dir : 1 }; });
+  }
+  if ((el = find("page"))) { const next = value(el, "page") === "next"; return change(() => { s.page += next ? 1 : -1; s.touched = true; }, { resetPage: false }); }
+  if (find("clear")) return change(() => { s.q = ""; s.branch = "all"; s.scope = ""; extraReset?.(); }, { closeDetail: true });
+  if (find("export")) { uiExportView(view(), s); return true; }
+  return false;
+}
+
+/** @type {Record<string, ReturnType<typeof setTimeout>>} */
+const uiViewSearchTimers = {};
+/** Debounced search for a tab view; call from an `input` listener. Returns true when handled. @param {Element} input @param {string} prefix @param {() => UiViewState} state @param {() => void} render */
+function uiViewSearch(input, prefix, state, render) {
+  if (!(input instanceof HTMLInputElement) || input.id !== `${prefix}-search`) return false;
+  clearTimeout(uiViewSearchTimers[prefix]);
+  const value = input.value;
+  uiViewSearchTimers[prefix] = setTimeout(() => { const s = state(); s.q = value; s.page = 0; render(); }, 150);
+  return true;
+}
+
+/** CSV of a view's filtered rows. @param {UiView} view @param {UiViewState} state */
+function uiExportView(view, state) {
+  const rows = uiViewRows(view, state);
+  if (!rows.length) return toast("Nothing in the current view to export.");
+  downloadCsv(view.csvName, [view.csvHeader, ...rows.map((row) => row.csv.map((cell) => String(cell ?? "")))]);
+  log(`Exported ${view.title} (CSV)`, view.csvName.split("-")[0].replace(/^./, (c) => c.toUpperCase()), `${rows.length} records`, { save: false });
+}

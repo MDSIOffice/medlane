@@ -1016,13 +1016,6 @@ function inventorySetStatus(key) {
   inventoryWorkflowTab = "stocks";
   inventoryChangeView(() => {}, { closeDetail: true });
 }
-/** Re-renders a non-Stocks inventory tab after changing its view state. @param {() => void} mutate @param {{ resetPage?: boolean, closeDetail?: boolean }} [options] */
-function inventoryTabChange(mutate, { resetPage = true, closeDetail = false } = {}) {
-  mutate();
-  if (resetPage) inventoryTabView.page = 0;
-  if (closeDetail) inventoryTabView.sel = "";
-  renderInventory();
-}
 /** @type {Record<string, () => unknown>} */
 const inventoryLoadMore = { "load-more-inventory-pos": () => loadMoreInventoryPurchaseOrders(), "load-more-transfers": () => loadMoreTransfers() };
 qs("#inventory").addEventListener("click", (event) => {
@@ -1054,29 +1047,8 @@ qs("#inventory").addEventListener("click", (event) => {
   if (closestEl(target, "[data-inventory-close]")) return inventoryChangeView(() => {}, { resetPage: false, closeDetail: true });
   const transfer = closestEl(target, "[data-inventory-transfer]");
   if (transfer) return openTransferForStock(/** @type {string} */ (transfer.dataset.inventoryTransfer));
-  // ----- Other tabs (receiving POs, receipts, transfers, demos, histories) -----
-  const tabSelect = closestEl(target, "[data-inventory-tab-select]");
-  if (tabSelect) {
-    const id = /** @type {string} */ (tabSelect.dataset.inventoryTabSelect);
-    inventoryTabChange(() => { inventoryTabView.sel = inventoryTabView.sel === id ? "" : id; }, { resetPage: false });
-    inventoryTabPageTouched = false;
-    return qs("#inventory-tab-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }
-  if (closestEl(target, "[data-inventory-tab-close]")) return inventoryTabChange(() => {}, { resetPage: false, closeDetail: true });
-  const tabBranch = closestEl(target, "[data-inventory-tab-branch]");
-  if (tabBranch) return inventoryTabChange(() => { inventoryTabView.branch = /** @type {string} */ (tabBranch.dataset.inventoryTabBranch); });
-  const tabScope = closestEl(target, "[data-inventory-tab-scope]");
-  if (tabScope) return inventoryTabChange(() => { inventoryTabView.scope = /** @type {string} */ (tabScope.dataset.inventoryTabScope); });
-  const tabSort = closestEl(target, "[data-inventory-tab-sort]");
-  if (tabSort) {
-    const key = /** @type {string} */ (tabSort.dataset.inventoryTabSort);
-    const current = inventoryTabView.sort || inventoryTabModel(inventoryWorkflowTab).defaultSort;
-    return inventoryTabChange(() => { inventoryTabView.sort = { key, dir: current.key === key ? -current.dir : 1 }; });
-  }
-  const tabPage = closestEl(target, "[data-inventory-tab-page]");
-  if (tabPage) return inventoryTabChange(() => { inventoryTabView.page += tabPage.dataset.inventoryTabPage === "next" ? 1 : -1; inventoryTabPageTouched = true; }, { resetPage: false });
-  if (closestEl(target, "[data-inventory-tab-clear]")) return inventoryTabChange(() => { inventoryTabView.q = ""; inventoryTabView.branch = "all"; inventoryTabView.scope = ""; }, { closeDetail: true });
-  if (closestEl(target, "[data-inventory-tab-export]")) return exportInventoryTabCsv();
+  // ----- Other tabs (receiving POs, receipts, transfers, demos, histories): the shared tab view -----
+  if (uiViewClick(target, "inventory-tab", { state: () => inventoryTabView, view: () => inventoryTabModel(inventoryWorkflowTab), render: renderInventory })) return;
   const loadMore = closestEl(target, "[data-inventory-load-more]");
   if (loadMore) return inventoryLoadMore[/** @type {string} */ (loadMore.dataset.inventoryLoadMore)]?.();
   const proxy = closestEl(target, "[data-inventory-proxy]");
@@ -1107,13 +1079,11 @@ qs("#inventory").addEventListener("click", (event) => {
 // Search boxes are re-rendered with their list, so listen on the section rather than the input.
 qs("#inventory").addEventListener("input", (event) => {
   const input = /** @type {AnyEl} */ (event.target);
-  if (input.id !== "inventory-search" && input.id !== "inventory-tab-search") return;
+  if (uiViewSearch(input, "inventory-tab", () => inventoryTabView, renderInventory)) return;
+  if (input.id !== "inventory-search") return;
   clearTimeout(inventorySearchTimer);
   const value = input.value;
-  inventorySearchTimer = setTimeout(() => {
-    if (input.id === "inventory-search") inventoryChangeView(() => { inventorySearch = value; }, { closeDetail: true });
-    else inventoryTabChange(() => { inventoryTabView.q = value; });
-  }, 150);
+  inventorySearchTimer = setTimeout(() => inventoryChangeView(() => { inventorySearch = value; }, { closeDetail: true }), 150);
 });
 /** @type {ReturnType<typeof setTimeout> | undefined} */
 let inventorySearchTimer;
@@ -1401,33 +1371,41 @@ qs("#invoice-table")?.addEventListener("click", (event) => {
 qs("#invoice-grid").addEventListener("change", (event) => {
   const select = closestEl(event.target, ".delivery-status-select");
   if (!select) return;
-  if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
-  const sale = data.sales.find((entry) => entry.id === select.dataset.saleId);
-  if (!sale) return;
-  sale.deliveryStatus = select.value;
-  log("Updated invoice delivery status", "Invoicing", `${sale.documentNo || sale.id}: ${select.value}`);
-  saveData();
-  toast(`${sale.documentNo || sale.id} marked ${select.value}.`);
+  setSaleDeliveryStatus(/** @type {string} */ (select.dataset.saleId), select.value);
 });
 qs("#invoice-table")?.addEventListener("change", (event) => {
   const select = closestEl(event.target, ".delivery-status-select");
   if (!select) return;
-  if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
-  const sale = data.sales.find((entry) => entry.id === select.dataset.saleId);
-  if (!sale) return;
-  sale.deliveryStatus = select.value;
-  log("Updated invoice delivery status", "Invoicing", `${sale.documentNo || sale.id}: ${select.value}`);
-  saveData();
-  toast(`${sale.documentNo || sale.id} marked ${select.value}.`);
+  setSaleDeliveryStatus(/** @type {string} */ (select.dataset.saleId), select.value);
 });
-qs("#sales-table").addEventListener("click", (event) => {
-  const timelineButton = closestEl(event.target, "[data-sale-timeline]");
-  if (timelineButton) return renderSaleDetail(/** @type {string} */ (timelineButton.dataset.saleTimeline));
-  const detailButton = closestEl(event.target, "[data-sale-detail]");
-  if (detailButton) showSaleDetail(/** @type {string} */ (detailButton.dataset.saleDetail));
-  const row = closestEl(event.target, "tr[data-sale-row]");
-  if (row && !closestEl(event.target, "button")) showSaleDetail(/** @type {string} */ (row.dataset.saleRow));
+// ---- Sales page (redesign) — markup/state in modules.js / state.js ----
+qs("#sales").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  const tab = closestEl(target, "[data-sales-tab]");
+  if (tab) {
+    if (tab.dataset.salesTab !== salesTab) { salesView = uiBlankViewState(); salesDocType = "all"; }
+    salesTab = /** @type {string} */ (tab.dataset.salesTab);
+    return renderSales();
+  }
+  if (closestEl(target, "#sales-new-order")) {
+    if (!canEditModule("purchase-orders")) return toast("Editing is disabled for Purchase Orders in User Settings.");
+    return openModal("purchaseOrder");
+  }
+  const type = closestEl(target, "[data-sales-type]");
+  if (type) { salesDocType = /** @type {string} */ (type.dataset.salesType); salesView.page = 0; return renderSales(); }
+  if (uiViewClick(target, "sales", { state: () => salesView, view: () => salesTabModel(salesTab), render: renderSales, extraReset: () => { salesDocType = "all"; } })) return;
+  const delivery = closestEl(target, "[data-sales-delivery]");
+  if (delivery) return setSaleDeliveryStatus(/** @type {string} */ (delivery.dataset.salesDelivery), /** @type {string} */ (delivery.dataset.status));
+  const loadMore = closestEl(target, "[data-sales-load-more]");
+  if (loadMore) return loadMore.dataset.salesLoadMore === "orders" ? loadMorePurchaseOrders() : loadMoreSales();
+  const timeline = closestEl(target, "[data-sale-timeline]");
+  if (timeline) return renderSaleDetail(/** @type {string} */ (timeline.dataset.saleTimeline));
+  const detail = closestEl(target, "[data-sale-detail]");
+  if (detail) return showSaleDetail(/** @type {string} */ (detail.dataset.saleDetail));
+  const print = closestEl(target, "[data-print-invoice]");
+  if (print) return printInvoice(/** @type {string} */ (print.dataset.printInvoice));
 });
+qs("#sales").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "sales", () => salesView, renderSales); });
 qs("#replenishments-table").addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-approve-expense]");
   if (button) approveExpense(Number(/** @type {string} */ (button.dataset.approveExpense)), /** @type {string} */ (button.dataset.nextStatus));
@@ -1651,22 +1629,7 @@ qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
 qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
 qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
 qs("#inventory-status").addEventListener("change", renderInventory);
-/** @type {any} */
-let salesClientFilterTimer = null;
-qs("#sales-client").addEventListener("input", () => {
-  clearTimeout(salesClientFilterTimer);
-  salesClientFilterTimer = setTimeout(renderSales, 150);
-});
-qs("#sales-status").addEventListener("change", renderSales);
 qs("#product-issue-status").addEventListener("change", renderProductIssues);
-qs("#sales-type").addEventListener("change", renderSales);
-qs("#clear-sales-filters").addEventListener("click", () => {
-  qs("#sales-client").value = "";
-  qs("#sales-status").value = "all";
-  qs("#sales-type").value = "all";
-  renderSales();
-  toast("Sales filters cleared.");
-});
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
 qs("#export-demo")?.addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export logged."); });
 qs("#print-report").addEventListener("click", () => window.print());
@@ -1697,7 +1660,6 @@ qsa("#logs-tabs .tab").forEach((button) => button.addEventListener("click", () =
 }));
 qs("#clear-notification-log-filters").addEventListener("click", () => { qs("#notification-logs-date-from").value = ""; qs("#notification-logs-date-to").value = ""; qs("#notification-logs-channel-filter").value = "all"; renderNotificationLogs(); toast("Filters cleared."); });
 qs("#load-more-notification-logs").addEventListener("click", loadMoreNotificationLogs);
-qs("#load-more-sales").addEventListener("click", loadMoreSales);
 qs("#load-more-purchase-orders").addEventListener("click", loadMorePurchaseOrders);
 qs("#load-more-payables").addEventListener("click", loadMorePayables);
 qs("#load-more-collections").addEventListener("click", loadMoreCollections);

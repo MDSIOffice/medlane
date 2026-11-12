@@ -82,7 +82,7 @@ let inventoryPage = Math.max(0, (Number(inventoryStockParams.get("page")) || 1) 
 let inventorySelectedRef = inventoryStockParams.get("sel") || null;
 /** View state for the non-Stocks inventory tabs; reset whenever the tab changes. */
 const inventoryTabParams = inventoryWorkflowTab !== "stocks" ? inventoryUrlParams : new URLSearchParams();
-/** @type {{ q: string, sel: string, sort: { key: string, dir: number } | null, page: number, branch: string, scope: string }} */
+/** @type {UiViewState} */
 let inventoryTabView = {
   q: inventoryTabParams.get("q") || "",
   sel: inventoryTabParams.get("sel") || "",
@@ -92,6 +92,20 @@ let inventoryTabView = {
   scope: inventoryTabParams.get("status") || "",
 };
 let inventoryFocusQuery = "";
+// Sales page view state, seeded from ?section=sales&tab=…&status=…&q=…&sel=… (see salesQueryString).
+const SALES_TABS = /** @type {(string | null)[]} */ (["orders", "deliveries", "invoices"]);
+const salesUrlParams = (() => {
+  try { const p = new URLSearchParams(location.search); return p.get("section") === "sales" ? p : new URLSearchParams(); } catch { return new URLSearchParams(); }
+})();
+let salesTab = SALES_TABS.includes(salesUrlParams.get("tab")) ? /** @type {string} */ (salesUrlParams.get("tab")) : "orders";
+/** @type {UiViewState} */
+let salesView = (() => {
+  const sort = salesUrlParams.get("sort");
+  return { q: salesUrlParams.get("q") || "", sel: salesUrlParams.get("sel") || "", sort: sort ? { key: sort, dir: salesUrlParams.get("dir") === "asc" ? 1 : -1 } : null, page: Math.max(0, (Number(salesUrlParams.get("page")) || 1) - 1), branch: salesUrlParams.get("branch") || "all", scope: salesUrlParams.get("status") || "" };
+})();
+/** Invoices tab: "all", "SI" or "TS". */
+let salesDocType = ["SI", "TS"].includes(salesUrlParams.get("type") || "") ? /** @type {string} */ (salesUrlParams.get("type")) : "all";
+
 /** @type {any} */
 let poViewMode = "table";
 /** @type {any} */

@@ -500,7 +500,6 @@ function tableFullyRevealed(target) {
 // loadMoreTableRows() has nothing to call to fetch the next page from the server.
 /** @type {Record<string, any>} */
 const paginatedModuleButtons = {
-  "#sales-table": { button: "#load-more-sales", key: "sales", loadMore: () => loadMoreSales() },
   "#purchase-order-table": { button: "#load-more-purchase-orders", key: "purchaseOrders", loadMore: () => loadMorePurchaseOrders() },
   "#payables-table": { button: "#load-more-payables", key: "payables", loadMore: () => loadMorePayables() },
   "#collections-table": { button: "#load-more-collections", key: "payments", loadMore: () => loadMoreCollections() },
@@ -567,7 +566,7 @@ function prepareFocusedSection(section, record) {
   if (section === "product-issues") return renderProductIssues();
   if (section === "replenishments") return renderReplenishments();
   if (section === "collections") return renderCollections();
-  if (section === "sales") return renderSales();
+  if (section === "sales") { salesFocusRecord(query); return renderSales(); }
   if (section === "purchase-orders") { poWorkflowTab = "pending"; return renderPurchaseOrders(); }
   if (section === "invoicing") return renderInvoicing();
   if (section === "imports") return renderImports();

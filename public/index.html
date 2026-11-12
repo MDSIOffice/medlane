@@ -844,14 +844,20 @@
         </div>
       </section>
 
-      <section class="section" id="sales">
-        <div class="section-header"><div><p class="eyebrow">Sales Review</p><h2>SI and TS by client, area, sales person, and payment status</h2></div></div>
-        <div class="near-expiry-banner" id="near-expiry-sales-alert"></div>
-        <div class="toolbar"><input id="sales-client" name="sales-client" list="sales-client-options" type="text" autocomplete="off" placeholder="Filter by client…" aria-label="Filter by client" /><datalist id="sales-client-options"></datalist><select id="sales-status"><option value="all">All Tags</option><option>Unpaid</option><option>Paid</option><option>Partially Paid</option><option>Overdue</option><option>Near Due</option><option>Cancelled</option></select><select id="sales-type"><option value="all">SI or TS</option><option>SI</option><option>TS</option></select><button class="ghost-button" id="clear-sales-filters" type="button">Clear Filters</button></div>
-        <article class="panel sales-total-panel"><div class="sales-summary-grid" id="sales-summary-grid"></div></article>
-        <div id="sales-target-panel"></div>
-        <div class="table-card"><table id="sales-table"></table></div>
-        <button class="ghost-button" id="load-more-sales" type="button" hidden>Load Previous</button>
+      <section class="section ui-scope" id="sales">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Sales</h1></div>
+            <p class="ui-desc">Client orders, deliveries and invoices by client, area and sales person.</p>
+          </div>
+          <div class="ui-actions">
+            <button class="ui-btn" type="button" data-go-section="purchase-orders">Purchase Orders</button>
+            <button class="ui-btn primary" type="button" id="sales-new-order">New sales order</button>
+          </div>
+        </div>
+        <div class="ui-tabs" id="sales-tabs" role="tablist" aria-label="Sales sections"></div>
+        <div class="ui-strip" id="near-expiry-sales-alert" role="status"></div>
+        <div class="ui-section" id="sales-tab-panel"></div>
       </section>
 
       <section class="section" id="item-forecast">
