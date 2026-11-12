@@ -64,7 +64,6 @@
   "100": "Handoff: Medlane OS Login Page Redesign",
   "103": "guardedDialogClose",
   "108": "normalizePayableWithholding",
-  "112": "renderInventory",
   "115": "arTrackerStage",
   "116": "canSeeNotification",
   "117": "clientBalance",
@@ -73,6 +72,5 @@
   "120": "workflowCard",
   "121": "public/scripts/app-motion.js",
   "122": "scripts/app-motion.js",
-  "123": "supabaseFetch",
-  "129": "package.json"
+  "123": "supabaseFetch"
 }
