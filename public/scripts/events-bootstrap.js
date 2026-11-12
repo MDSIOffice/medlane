@@ -1121,12 +1121,6 @@ qs("#po-workflow-tabs")?.addEventListener("click", (event) => {
   poWorkflowTab = button.dataset.poWorkflow;
   renderPurchaseOrders();
 });
-qs("#credit-invoices-workflow-tabs")?.addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-credit-workflow]");
-  if (!button) return;
-  creditInvoiceWorkflowTab = button.dataset.creditWorkflow;
-  renderPendingCreditInvoices();
-});
 qs("#print-template-tabs")?.addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-pt-tab]");
   if (!button) return;
@@ -1178,12 +1172,6 @@ qs("#print-template-panel")?.addEventListener("change", (event) => {
   if (id === "pt-input-align" && ptSelectedField && ptSelectedKind !== "row" && ptSelectedKind !== "row-spacing") applyPtFieldOverride(ptSelectedField, { align: /** @type {AnyEl} */ (event.target).value });
   if (id === "pt-step-select") ptStepIn = Number(/** @type {AnyEl} */ (event.target).value);
 });
-qs("#collections-workflow-tabs").addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-collections-workflow]");
-  if (!button) return;
-  collectionsWorkflowTab = button.dataset.collectionsWorkflow;
-  renderCollections();
-});
 qs("#load-more-collections-history").addEventListener("click", loadMoreCollectionsHistory);
 qs("#payables-workflow-tabs").addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-payables-workflow]");
@@ -1207,13 +1195,6 @@ qs("#po-view-toggle").addEventListener("click", (event) => {
   poViewMode = btn.dataset.poView;
   renderPurchaseOrders();
 });
-qs("#invoice-view-toggle")?.addEventListener("click", (event) => {
-  const btn = closestEl(event.target, "[data-invoice-view]");
-  if (!btn) return;
-  invoiceViewMode = btn.dataset.invoiceView;
-  renderInvoicing();
-});
-qs("#invoicing-type-filter")?.addEventListener("change", renderInvoicing);
 qs("#item-forecast-preset-toggle")?.addEventListener("click", (event) => {
   const btn = closestEl(event.target, "[data-forecast-months]");
   if (!btn) return;
@@ -1319,23 +1300,13 @@ document.body.addEventListener("input", (event) => {
     if (dialog && row && /** @type {AnyEl} */ (event.target).classList.contains("transfer-review-lot")) refreshTransferDispatchModalRow(dialog, row);
   }
 });
-qs("#collections").addEventListener("click", (event) => {
+qs("#receivables-tracker").addEventListener("click", (event) => {
   const statusButton = closestEl(event.target, "[data-contact-status]");
-  if (statusButton) return updateCollectionContact(/** @type {string} */ (statusButton.dataset.contactClient), /** @type {string} */ (statusButton.dataset.contactStatus));
+  if (statusButton) { updateCollectionContact(/** @type {string} */ (statusButton.dataset.contactClient), /** @type {string} */ (statusButton.dataset.contactStatus)); return renderReceivablesTracker(); }
   const channelButton = closestEl(event.target, "[data-contact-channel]");
-  if (channelButton) return toggleContactChannel(/** @type {string} */ (channelButton.dataset.contactClient), /** @type {string} */ (channelButton.dataset.contactChannel));
+  if (channelButton) { toggleContactChannel(/** @type {string} */ (channelButton.dataset.contactClient), /** @type {string} */ (channelButton.dataset.contactChannel)); return renderReceivablesTracker(); }
   const mapTarget = closestEl(event.target, "[data-map-region]");
   if (mapTarget) return openContactRegion(/** @type {string} */ (mapTarget.dataset.mapRegion), mapTarget.dataset.mapClient || "", false);
-});
-qs("#ar-tracker-tabs").addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-ar-tab]");
-  if (!button) return;
-  arTrackerTab = button.dataset.arTab;
-  renderReceivablesTracker();
-});
-qs("#ar-tracker-status-filter")?.addEventListener("change", (event) => {
-  arTrackerStatusFilter = /** @type {AnyEl} */ (event.target).value;
-  renderReceivablesTracker();
 });
 qs("#collections-client-search")?.addEventListener("input", (event) => {
   collectionsClientSearch = /** @type {AnyEl} */ (event.target).value;
@@ -1348,36 +1319,6 @@ qs("#collections-client-search-clear")?.addEventListener("click", () => {
   renderCollectionsClientHistoryPanel();
 });
 qs("#demo-modal").addEventListener("close", () => { cancelReplaceSaleId = null; editingExpenseId = null; });
-qs("#invoice-grid").addEventListener("click", (event) => {
-  const printButton = closestEl(event.target, "[data-print-invoice]");
-  const detailButton = closestEl(event.target, "[data-sale-detail]");
-  const cancelButton = closestEl(event.target, "[data-cancel-invoice]");
-  const replaceButton = closestEl(event.target, "[data-cancel-replace]");
-  if (printButton) printInvoice(/** @type {string} */ (printButton.dataset.printInvoice));
-  if (detailButton) showSaleDetail(/** @type {string} */ (detailButton.dataset.saleDetail));
-  if (cancelButton) cancelInvoice(/** @type {string} */ (cancelButton.dataset.cancelInvoice));
-  if (replaceButton) openCancelReplaceModal(/** @type {string} */ (replaceButton.dataset.cancelReplace));
-});
-qs("#invoice-table")?.addEventListener("click", (event) => {
-  const printButton = closestEl(event.target, "[data-print-invoice]");
-  const detailButton = closestEl(event.target, "[data-sale-detail]");
-  const cancelButton = closestEl(event.target, "[data-cancel-invoice]");
-  const replaceButton = closestEl(event.target, "[data-cancel-replace]");
-  if (printButton) printInvoice(/** @type {string} */ (printButton.dataset.printInvoice));
-  if (detailButton) showSaleDetail(/** @type {string} */ (detailButton.dataset.saleDetail));
-  if (cancelButton) cancelInvoice(/** @type {string} */ (cancelButton.dataset.cancelInvoice));
-  if (replaceButton) openCancelReplaceModal(/** @type {string} */ (replaceButton.dataset.cancelReplace));
-});
-qs("#invoice-grid").addEventListener("change", (event) => {
-  const select = closestEl(event.target, ".delivery-status-select");
-  if (!select) return;
-  setSaleDeliveryStatus(/** @type {string} */ (select.dataset.saleId), select.value);
-});
-qs("#invoice-table")?.addEventListener("change", (event) => {
-  const select = closestEl(event.target, ".delivery-status-select");
-  if (!select) return;
-  setSaleDeliveryStatus(/** @type {string} */ (select.dataset.saleId), select.value);
-});
 // ---- Sales page (redesign) — markup/state in modules.js / state.js ----
 qs("#sales").addEventListener("click", (event) => {
   const target = /** @type {AnyEl} */ (event.target);
@@ -1406,6 +1347,104 @@ qs("#sales").addEventListener("click", (event) => {
   if (print) return printInvoice(/** @type {string} */ (print.dataset.printInvoice));
 });
 qs("#sales").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "sales", () => salesView, renderSales); });
+// ---- Invoicing / Collections / Receivables (redesign) — markup/state in modules.js / state.js ----
+qs("#invoicing").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  const tab = closestEl(target, "[data-invoicing-tab]");
+  if (tab) {
+    if (tab.dataset.invoicingTab !== invoicingTab) { invoicingView = uiBlankViewState(); invoicingDocType = "all"; }
+    invoicingTab = /** @type {string} */ (tab.dataset.invoicingTab);
+    return renderInvoicing();
+  }
+  const approvals = closestEl(target, "#invoicing-approvals-toggle");
+  if (approvals) {
+    const panel = qs("#invoice-approval-panel");
+    panel.hidden = !panel.hidden;
+    approvals.setAttribute("aria-expanded", String(!panel.hidden));
+    if (!panel.hidden) panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    return;
+  }
+  if (closestEl(target, "[data-invoicing-from-order]")) {
+    salesTab = "orders";
+    salesView = uiBlankViewState();
+    salesView.scope = "For Invoicing";
+    salesDocType = "all";
+    return showSection("sales", { scrollTop: true });
+  }
+  const type = closestEl(target, "[data-invoicing-type]");
+  if (type) { invoicingDocType = /** @type {string} */ (type.dataset.invoicingType); invoicingView.page = 0; return renderInvoicing(); }
+  if (closestEl(target, "[data-invoicing-itemized]")) return exportItemizedInvoicingCsv();
+  if (uiViewClick(target, "invoicing", { state: () => invoicingView, view: () => invoicingTabModel(invoicingTab), render: renderInvoicing, extraReset: () => { invoicingDocType = "all"; } })) return;
+  if (closestEl(target, "[data-invoicing-load-more]")) return loadMoreSales();
+  const delivery = closestEl(target, "[data-invoicing-delivery]");
+  if (delivery) return setSaleDeliveryStatus(/** @type {string} */ (delivery.dataset.invoicingDelivery), /** @type {string} */ (delivery.dataset.status));
+  const openDoc = closestEl(target, "[data-invoicing-open-doc]");
+  if (openDoc) { if (invoicingFocusRecord(/** @type {string} */ (openDoc.dataset.invoicingOpenDoc))) renderInvoicing(); return; }
+  const timeline = closestEl(target, "[data-sale-timeline]");
+  if (timeline) return renderSaleDetail(/** @type {string} */ (timeline.dataset.saleTimeline));
+  const detail = closestEl(target, "[data-sale-detail]");
+  if (detail) return showSaleDetail(/** @type {string} */ (detail.dataset.saleDetail));
+  const print = closestEl(target, "[data-print-invoice]");
+  if (print) return printInvoice(/** @type {string} */ (print.dataset.printInvoice));
+  const cancel = closestEl(target, "[data-cancel-invoice]");
+  if (cancel) return cancelInvoice(/** @type {string} */ (cancel.dataset.cancelInvoice));
+  const replace = closestEl(target, "[data-cancel-replace]");
+  if (replace) return openCancelReplaceModal(/** @type {string} */ (replace.dataset.cancelReplace));
+});
+qs("#invoicing").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "invoicing", () => invoicingView, renderInvoicing); });
+qs("#collections").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  const tab = closestEl(target, "[data-collections-tab]");
+  if (tab) {
+    if (tab.dataset.collectionsTab !== collectionsTab) { collectionsView = uiBlankViewState(); collectionsMethod = "all"; }
+    collectionsTab = /** @type {string} */ (tab.dataset.collectionsTab);
+    return renderCollections();
+  }
+  if (closestEl(target, "[data-collections-prepare-slip]")) {
+    if (collectionsTab !== "deposits") { collectionsView = uiBlankViewState(); collectionsMethod = "all"; }
+    collectionsTab = "deposits";
+    return renderCollections();
+  }
+  const method = closestEl(target, "[data-collections-method]");
+  if (method) { collectionsMethod = /** @type {string} */ (method.dataset.collectionsMethod); collectionsView.page = 0; return renderCollections(); }
+  if (uiViewClick(target, "collections", { state: () => collectionsView, view: () => collectionsTabModel(collectionsTab), render: renderCollections, extraReset: () => { collectionsMethod = "all"; } })) return;
+  if (closestEl(target, "[data-collections-load-more]")) { loadMorePaymentRequests(); loadMoreCollections(); return; }
+  const slip = closestEl(target, "[data-collections-print-slip]");
+  if (slip) return previewDepositSlip(/** @type {string} */ (slip.dataset.collectionsPrintSlip));
+  const receipt = closestEl(target, "[data-collections-goto-receipt]");
+  if (receipt) {
+    collectionsTab = "receipts";
+    collectionsView = uiBlankViewState();
+    collectionsMethod = "all";
+    collectionsView.sel = /** @type {string} */ (receipt.dataset.collectionsGotoReceipt);
+    return renderCollections();
+  }
+});
+qs("#collections").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "collections", () => collectionsView, renderCollections); });
+qs("#receivables-tracker").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  const tab = closestEl(target, "[data-receivables-tab]");
+  if (tab) {
+    if (tab.dataset.receivablesTab !== receivablesTab) receivablesView = uiBlankViewState();
+    receivablesTab = /** @type {string} */ (tab.dataset.receivablesTab);
+    return renderReceivablesTracker();
+  }
+  if (closestEl(target, "#receivables-export-aging")) return uiExportView(receivablesTabModel("aging"), receivablesTab === "aging" ? receivablesView : uiBlankViewState());
+  if (closestEl(target, "#receivables-record-collection")) {
+    showSection("collections", { scrollTop: true });
+    return canEditModule("collections") ? openModal("paymentRequest") : toast("Editing is disabled for Collections in User Settings.");
+  }
+  const logFollowup = closestEl(target, "[data-receivables-log-followup]");
+  if (logFollowup) {
+    receivablesTab = "followups";
+    receivablesView = uiBlankViewState();
+    receivablesView.sel = /** @type {string} */ (logFollowup.dataset.receivablesLogFollowup);
+    return renderReceivablesTracker();
+  }
+  if (closestEl(target, "[data-receivables-followup-history]")) { renderCollectionContactMap(); qs("#followup-history-modal").showModal(); return; }
+  uiViewClick(target, "receivables", { state: () => receivablesView, view: () => receivablesTabModel(receivablesTab), render: renderReceivablesTracker });
+});
+qs("#receivables-tracker").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "receivables", () => receivablesView, renderReceivablesTracker); });
 qs("#replenishments-table").addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-approve-expense]");
   if (button) approveExpense(Number(/** @type {string} */ (button.dataset.approveExpense)), /** @type {string} */ (button.dataset.nextStatus));
@@ -1621,8 +1660,6 @@ qs("#dashboard-date-from").addEventListener("change", renderDashboard);
 qs("#dashboard-date-to").addEventListener("change", renderDashboard);
 qs("#clear-dashboard-dates").addEventListener("click", () => { qs("#dashboard-date-from").value = ""; qs("#dashboard-date-to").value = ""; renderDashboard(); toast("Dashboard date filter cleared."); });
 qs("#dashboard-export-csv").addEventListener("click", exportDashboardCsv);
-qs("#invoicing-export-csv")?.addEventListener("click", exportInvoicingCsv);
-qs("#invoicing-export-itemized-csv")?.addEventListener("click", exportItemizedInvoicingCsv);
 qs("#replenishments-export-csv")?.addEventListener("click", exportReplenishmentsCsv);
 qs("#dashboard-export-pdf").addEventListener("click", printDashboardReport);
 qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
@@ -1662,8 +1699,6 @@ qs("#clear-notification-log-filters").addEventListener("click", () => { qs("#not
 qs("#load-more-notification-logs").addEventListener("click", loadMoreNotificationLogs);
 qs("#load-more-purchase-orders").addEventListener("click", loadMorePurchaseOrders);
 qs("#load-more-payables").addEventListener("click", loadMorePayables);
-qs("#load-more-collections").addEventListener("click", loadMoreCollections);
-qs("#load-more-payment-requests").addEventListener("click", loadMorePaymentRequests);
 qs("#notification-logs-channel-filter").addEventListener("change", renderNotificationLogs);
 qs("#clear-notifications").addEventListener("click", () => {
   const dismissed = new Set(data.notificationsDismissed || []);

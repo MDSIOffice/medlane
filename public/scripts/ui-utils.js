@@ -219,25 +219,6 @@ function saleTaxBreakdown(sale) {
 function saleTaxSummary(sale) {
   return "";
 }
-/** @param {Sale} sale */
-function arTrackerStage(sale) {
-  if (sale.status === "Cancelled") return "cancelled";
-  if (sale.paid >= sale.net) return "completed";
-  const dueIn = daysUntil(addDays(sale.date, sale.terms));
-  if (dueIn < 0) return "overdue";
-  if (dueIn <= 7) return "due-soon";
-  return "open-ar";
-}
-/** @param {Sale[]} sales */
-function arTrackerTabs(sales) {
-  return [
-    ["all", "All", sales.length],
-    ["open-ar", "Open AR", sales.filter((sale) => arTrackerStage(sale) === "open-ar").length],
-    ["due-soon", "Due Soon", sales.filter((sale) => arTrackerStage(sale) === "due-soon").length],
-    ["overdue", "Overdue", sales.filter((sale) => arTrackerStage(sale) === "overdue").length],
-    ["cancelled", "Cancelled", sales.filter((sale) => arTrackerStage(sale) === "cancelled").length],
-  ];
-}
 /** @param {string} area */
 function warehouseForArea(area) {
   // Region VI–XIII are the individual Visayas/Mindanao regions (client codes R6…R13); they ship
@@ -502,8 +483,6 @@ function tableFullyRevealed(target) {
 const paginatedModuleButtons = {
   "#purchase-order-table": { button: "#load-more-purchase-orders", key: "purchaseOrders", loadMore: () => loadMorePurchaseOrders() },
   "#payables-table": { button: "#load-more-payables", key: "payables", loadMore: () => loadMorePayables() },
-  "#collections-table": { button: "#load-more-collections", key: "payments", loadMore: () => loadMoreCollections() },
-  "#payment-request-table": { button: "#load-more-payment-requests", key: "paymentRequests", loadMore: () => loadMorePaymentRequests() },
   "#logs-table": { button: "#load-more-logs", hasMore: () => Boolean(logsState.nextCursor), loadMore: () => loadMoreLogs() },
   "#notification-logs-table": { button: "#load-more-notification-logs", hasMore: () => Boolean(notificationLogsState.nextCursor), loadMore: () => loadMoreNotificationLogs() },
   "#collections-history-table": { button: "#load-more-collections-history", hasMore: () => Boolean(collectionsHistoryState.nextCursor), loadMore: () => loadMoreCollectionsHistory() },
@@ -560,15 +539,15 @@ function prepareFocusedSection(section, record) {
     renderMasterlists();
     return;
   }
-  if (section === "receivables-tracker") return renderReceivablesTracker();
+  if (section === "receivables-tracker") { receivablesFocusRecord(query); return renderReceivablesTracker(); }
   if (section === "payables") return renderPayables();
   if (section === "warranty") return renderWarranty();
   if (section === "product-issues") return renderProductIssues();
   if (section === "replenishments") return renderReplenishments();
-  if (section === "collections") return renderCollections();
+  if (section === "collections") { collectionsFocusRecord(query); return renderCollections(); }
   if (section === "sales") { salesFocusRecord(query); return renderSales(); }
   if (section === "purchase-orders") { poWorkflowTab = "pending"; return renderPurchaseOrders(); }
-  if (section === "invoicing") return renderInvoicing();
+  if (section === "invoicing") { invoicingFocusRecord(query); return renderInvoicing(); }
   if (section === "imports") return renderImports();
   if (section === "reports") return renderReports();
   if (section === "users") return renderUsers();

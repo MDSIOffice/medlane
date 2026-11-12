@@ -915,10 +915,20 @@
         <button class="ghost-button" id="load-more-purchase-orders" type="button" hidden>Load Previous</button>
       </section>
 
-      <section class="section" id="invoicing">
-        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>SI, TS, and DR from purchase orders</h2></div><button class="primary-button" data-action="open-modal" data-type="invoice">Create Sales Invoice</button></div>
-        <article class="panel settings-panel invoice-approval-panel">
-          <div class="panel-header"><div><p class="eyebrow">Invoice Template Names</p><h2>Approved By</h2></div></div>
+      <section class="section ui-scope" id="invoicing">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Invoicing</h1></div>
+            <p class="ui-desc">Sales invoices, transmittal slips and delivery receipts: what's billed, when it's due and what's been paid.</p>
+          </div>
+          <div class="ui-actions">
+            <button class="ui-btn" type="button" id="invoicing-approvals-toggle" aria-expanded="false" aria-controls="invoice-approval-panel">Approved-by names</button>
+            <button class="ui-btn" type="button" data-invoicing-from-order>Invoice from sales order</button>
+            <button class="ui-btn primary" type="button" data-action="open-modal" data-type="invoice">New invoice</button>
+          </div>
+        </div>
+        <article class="ui-card ui-form-card" id="invoice-approval-panel" hidden>
+          <div class="ui-tab-intro"><div><h2 class="ui-h2">Approved-by names</h2><p class="ui-desc">Printed in the "Approved by" box of each document type.</p></div></div>
           <form id="invoice-approval-form" class="form-grid">
             <div class="field"><label for="approved-si">SI Approved By</label><input id="approved-si" name="SI" /></div>
             <div class="field"><label for="approved-ts">TS Approved By</label><input id="approved-ts" name="TS" /></div>
@@ -926,22 +936,24 @@
             <div class="modal-actions full"><button class="primary-button" type="submit">Save Invoice Names</button></div>
           </form>
         </article>
-        <article class="panel transfer-panel" id="pending-credit-invoices-card" hidden>
-          <div class="panel-header"><div><p class="eyebrow">Accounting Requests</p><h2 id="credit-invoices-card-title">Pending Credit Approval</h2><p id="credit-invoices-card-description">Invoices Accounting submitted over a client's credit limit, awaiting Admin/CEO sign-off. Nothing is deducted from stock until approved.</p></div></div>
-          <div class="tabs workflow-tabs" id="credit-invoices-workflow-tabs">
-            <button class="tab active" data-credit-workflow="pending">Pending</button>
-            <button class="tab" data-credit-workflow="history">History</button>
-          </div>
-          <div class="table-card compact-table"><table id="pending-credit-invoices-table"></table></div>
-        </article>
-        <div class="toolbar"><select id="invoicing-type-filter" aria-label="Document type"><option value="all">All Types</option><option value="SI">SI</option><option value="TS">TS</option><option value="DR">DR</option></select><button class="ghost-button" id="invoicing-export-csv" type="button">Export CSV</button><button class="ghost-button" id="invoicing-export-itemized-csv" type="button">Export Itemized CSV</button><div class="view-toggle" id="invoice-view-toggle" role="group" aria-label="Invoice view"><button class="view-toggle-btn active" data-invoice-view="table" type="button" aria-label="Table view" title="Table view"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M7.3 3.5v13"/></svg></button><button class="view-toggle-btn" data-invoice-view="card" type="button" aria-label="Card view" title="Card view"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="6.3" height="6.3" rx="1.2"/><rect x="11.2" y="2.5" width="6.3" height="6.3" rx="1.2"/><rect x="2.5" y="11.2" width="6.3" height="6.3" rx="1.2"/><rect x="11.2" y="11.2" width="6.3" height="6.3" rx="1.2"/></svg></button></div></div>
-        <div class="table-card" id="invoice-table-view"><table id="invoice-table"></table></div>
-        <div class="invoice-grid" id="invoice-grid" hidden></div>
+        <div class="ui-tabs" id="invoicing-tabs" role="tablist" aria-label="Invoicing sections"></div>
+        <div id="invoicing-tab-panel"></div>
       </section>
 
-      <section class="section" id="collections">
-        <div class="section-header"><div><p class="eyebrow">Accounting & Admin</p><h2>Collections, due dates, partial payments</h2></div><div class="topbar-actions"><button class="primary-button" data-action="open-modal" data-type="paymentRequest">Add Collection</button></div></div>
-        <article class="panel sales-total-panel"><div class="sales-summary-grid" id="collections-summary-grid"></div></article>
+      <section class="section ui-scope" id="collections">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Collections</h1></div>
+            <p class="ui-desc">Cash, checks and bank transfers received from clients, from receipt to deposit.</p>
+          </div>
+          <div class="ui-actions">
+            <button class="ui-btn" type="button" data-collections-prepare-slip>Prepare deposit slip</button>
+            <button class="ui-btn primary" type="button" data-action="open-modal" data-type="paymentRequest">Record collection</button>
+          </div>
+        </div>
+        <div class="ui-tabs" id="collections-tabs" role="tablist" aria-label="Collections sections"></div>
+        <div id="collections-tab-panel"></div>
+        <div id="collections-history-panel" class="ui-legacy-panel" hidden>
         <article class="panel total-collections-panel">
           <div class="panel-header"><div><p class="eyebrow">Summary</p><h2>Total Collections</h2></div></div>
           <div class="toolbar date-toolbar">
@@ -952,21 +964,7 @@
           </div>
           <div class="total-collections-amount" id="total-collections-amount"></div>
         </article>
-        <div class="visual-grid" id="collections-visuals"></div>
-        <div class="tabs workflow-tabs" id="collections-workflow-tabs"><button class="tab active" data-collections-workflow="ledger">AR Ledger</button><button class="tab" data-collections-workflow="requests">Payment Received</button><button class="tab" data-collections-workflow="history">Collections History</button><button class="tab" data-collections-workflow="followups">Follow-ups Map</button></div>
-        <div class="workflow-panel" data-collections-panel="followups"><article class="panel collection-map-panel">
-          <div class="panel-header"><div><p class="eyebrow">Weekly Contact Map</p><h2>Client Follow-up Status Across the Philippines</h2><p>Manually mark each client and the channels used this week.</p></div><span class="badge">Call / email / telephone</span></div>
-          <div class="collection-map-layout">
-            <div class="ph-map" id="collection-map"></div>
-            <div>
-              <div class="collection-map-actions" id="collection-map-actions"></div>
-              <button class="ghost-button" id="open-followup-history" type="button">Follow-up History</button>
-            </div>
-          </div>
-        </article></div>
-        <div class="workflow-panel active" data-collections-panel="ledger"><div class="table-card"><table id="collections-table"></table></div><button class="ghost-button" id="load-more-collections" type="button" hidden>Load Previous</button></div>
-        <div class="workflow-panel" data-collections-panel="requests"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Payment Received</p><h2>Collections</h2></div></div><div class="table-card compact-table"><table id="payment-request-table"></table></div><button class="ghost-button" id="load-more-payment-requests" type="button" hidden>Load Previous</button></article></div>
-        <div class="workflow-panel" data-collections-panel="history"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Collections History</p><h2>All previous collection activity</h2></div></div>
+          <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Collections History</p><h2>All previous collection activity</h2></div></div>
           <div class="toolbar" id="collections-client-search-row" hidden>
             <div class="field">
               <label for="collections-client-search">Search Client History</label>
@@ -977,26 +975,35 @@
           </div>
           <div id="collections-client-history-panel" hidden></div>
           <div id="collections-history-log"><div class="table-card compact-table"><table id="collections-history-table"></table></div><button class="ghost-button" id="load-more-collections-history" type="button" hidden>Load More</button></div>
-        </article></div>
+        </article>
+        </div>
       </section>
 
-      <section class="section" id="receivables-tracker">
-        <div class="section-header"><div><p class="eyebrow">Receivables</p><h2>PO to invoice to collection flow</h2></div></div>
-        <div class="order-status-tabs" id="ar-tracker-tabs"></div>
-        <div class="toolbar receivables-status-toolbar">
-          <div class="field">
-            <label for="ar-tracker-status-filter">Payment Status</label>
-            <select id="ar-tracker-status-filter">
-              <option value="all">All</option>
-              <option value="Near Due">Due</option>
-              <option value="Overdue">Overdue</option>
-              <option value="Unpaid">Unpaid</option>
-            </select>
+      <section class="section ui-scope" id="receivables-tracker">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Receivables</h1></div>
+            <p class="ui-desc">What each client owes, how old it is, and who needs a follow-up.</p>
+          </div>
+          <div class="ui-actions">
+            <button class="ui-btn" type="button" id="receivables-export-aging">Export aging report</button>
+            <button class="ui-btn primary" type="button" id="receivables-record-collection">Record collection</button>
           </div>
         </div>
-        <div class="visual-grid" id="ar-tracker-visuals"></div>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Client Receivables</p><h2>Open balance by client</h2></div></div><div class="table-card compact-table"><table id="client-receivables-table"></table></div></article>
-        <article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Regional Receivables</p><h2>Open client invoices grouped by region</h2></div></div><p class="page-description">Expand a region, then click a client to jump straight to their invoice timeline.</p><div id="regional-receivables-groups" class="region-groups-list"></div></article>
+        <div class="ui-tabs" id="receivables-tabs" role="tablist" aria-label="Receivables sections"></div>
+        <div id="receivables-tab-panel"></div>
+        <div id="receivables-followups-map" class="ui-legacy-panel" hidden>
+          <article class="panel collection-map-panel">
+          <div class="panel-header"><div><p class="eyebrow">Weekly Contact Map</p><h2>Client Follow-up Status Across the Philippines</h2><p>Manually mark each client and the channels used this week.</p></div><span class="badge">Call / email / telephone</span></div>
+          <div class="collection-map-layout">
+            <div class="ph-map" id="collection-map"></div>
+            <div>
+              <div class="collection-map-actions" id="collection-map-actions"></div>
+              <button class="ghost-button" id="open-followup-history" type="button">Follow-up History</button>
+            </div>
+          </div>
+        </article>
+        </div>
       </section>
 
       <section class="section" id="client-invoices">

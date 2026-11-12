@@ -26,7 +26,7 @@
  * @typedef {{
  *   eyebrow: string, title: string, pill?: { text: string, tone: UiTone }, closeAttrs: UiAttrs, label: string,
  *   fields: UiField[], linesTitle?: string, lines?: UiLine[], total?: { label: string, value: string },
- *   note?: { text: string, tone: UiTone }, actions: string[], extra?: string
+ *   note?: { text: string, tone: UiTone }, actions: string[], extra?: string, top?: string
  * }} UiDetail
  */
 
@@ -126,10 +126,10 @@ function uiCellNum(value) { return `<span class="ui-num">${escapeHtml(String(val
  *   sort?: { key: string, dir: number }, sortAttr?: string,
  *   empty: { title: string, text: string, clearAttrs?: UiAttrs },
  *   foot: { shown: number, total: number, page: number, pageCount: number, pageAttr: string, note?: string },
- *   after?: string
+ *   after?: string, totals?: string[]
  * }} options
  */
-function uiDataTable({ cols, rows, caption, minWidth = 900, compact = false, sort, sortAttr = "", empty, foot, after = "" }) {
+function uiDataTable({ cols, rows, caption, minWidth = 900, compact = false, sort, sortAttr = "", empty, foot, after = "", totals }) {
   const head = cols.map((col) => {
     const right = col.align === "right";
     const cls = [right ? "num" : "", col.className || ""].filter(Boolean).join(" ");
@@ -143,8 +143,9 @@ function uiDataTable({ cols, rows, caption, minWidth = 900, compact = false, sor
     const cls = [col?.align === "right" ? "num" : "", col?.className || ""].filter(Boolean).join(" ");
     return `<td${cls ? ` class="${cls}"` : ""}>${cell}</td>`;
   }).join("")}</tr>`).join("");
+  const totalsRow = totals?.length ? `<tfoot><tr>${totals.map((cell, index) => `<td${cols[index]?.align === "right" ? ` class="num"` : ""}>${cell}</td>`).join("")}</tr></tfoot>` : "";
   const tableHtml = rows.length
-    ? `<div class="ui-table-scroll"><table class="ui-table${compact ? " compact" : ""}" style="min-width:${Number(minWidth) || 0}px"><caption class="sr-only">${escapeHtml(caption)}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
+    ? `<div class="ui-table-scroll"><table class="ui-table${compact ? " compact" : ""}" style="min-width:${Number(minWidth) || 0}px"><caption class="sr-only">${escapeHtml(caption)}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${totalsRow}</table></div>`
     : `<div class="ui-empty"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.text)}</span>${empty.clearAttrs ? uiButton("Clear filters", empty.clearAttrs, { size: "sm" }) : ""}</div>`;
   const pageText = foot.pageCount > 1 ? ` · page ${foot.page + 1} of ${foot.pageCount}` : "";
   const footHtml = `<div class="ui-foot"><span>Showing ${foot.shown} of ${foot.total}${pageText}${foot.note ? ` · ${escapeHtml(foot.note)}` : ""}</span><div class="ui-pager">${uiButton("Previous", { [foot.pageAttr]: "prev" }, { size: "xs", disabled: foot.page <= 0 })}${uiButton("Next", { [foot.pageAttr]: "next" }, { size: "xs", disabled: foot.page >= foot.pageCount - 1 })}</div></div>`;
@@ -153,16 +154,28 @@ function uiDataTable({ cols, rows, caption, minWidth = 900, compact = false, sor
 
 const UI_CLOSE_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 
+/** A titled list of detail lines with an optional total row (used inside detail panels). @param {string} title @param {UiLine[]} lines @param {{ label: string, value: string }} [total] @param {string} [emptyText] */
+function uiLines(title, lines, total, emptyText = "") {
+  if (!lines.length && !emptyText) return "";
+  const list = lines.length
+    ? `<ul>${lines.map((line) => `<li>${uiDot(line.tone || "slate")}<div class="grow"><strong>${escapeHtml(line.left)}</strong>${line.sub ? `<small>${escapeHtml(line.sub)}</small>` : ""}</div>${line.right ? `<b class="ui-num">${escapeHtml(line.right)}</b>` : ""}</li>`).join("")}</ul>`
+    : `<p class="ui-muted">${escapeHtml(emptyText)}</p>`;
+  return `<div class="ui-lines"><h4>${escapeHtml(title)}</h4>${list}${total ? `<div class="ui-lines-total"><span>${escapeHtml(total.label)}</span><b class="ui-num">${escapeHtml(total.value)}</b></div>` : ""}</div>`;
+}
+
+/** Received → Deposited → Cleared/Bounced style progress for a detail panel. @param {{ label: string, state: "done" | "current" | "todo" | "bad" }[]} steps */
+function uiSteps(steps) {
+  return `<ol class="ui-steps">${steps.map((step) => `<li class="is-${step.state}"><span class="bar" aria-hidden="true"></span><span class="label">${escapeHtml(step.label)}</span></li>`).join("")}</ol>`;
+}
+
 /** Inner HTML for an `<aside class="ui-card ui-detail">`. @param {UiDetail} detail */
 function uiDetailPanel(detail) {
   const fields = detail.fields.map((field) => `<div${field.wide ? ` class="wide"` : ""}><dt>${escapeHtml(field.label)}</dt><dd${field.mono ? ` class="mono break"` : ""}>${escapeHtml(field.value || "—")}${field.sub ? `<small>${escapeHtml(field.sub)}</small>` : ""}</dd></div>`).join("");
-  const lines = detail.lines?.length
-    ? `<div class="ui-lines"><h4>${escapeHtml(detail.linesTitle || "Items")}</h4><ul>${detail.lines.map((line) => `<li>${uiDot(line.tone || "slate")}<div class="grow"><strong>${escapeHtml(line.left)}</strong>${line.sub ? `<small>${escapeHtml(line.sub)}</small>` : ""}</div>${line.right ? `<b class="ui-num">${escapeHtml(line.right)}</b>` : ""}</li>`).join("")}</ul>${detail.total ? `<div class="ui-lines-total"><span>${escapeHtml(detail.total.label)}</span><b class="ui-num">${escapeHtml(detail.total.value)}</b></div>` : ""}</div>`
-    : "";
+  const lines = detail.lines?.length ? uiLines(detail.linesTitle || "Items", detail.lines, detail.total) : "";
   const note = detail.note?.text ? `<p class="ui-note t-${uiTone(detail.note.tone)}">${escapeHtml(detail.note.text)}</p>` : "";
   const actions = detail.actions.length ? `<div class="ui-detail-actions">${detail.actions.join("")}</div>` : "";
   return `<div class="ui-detail-head"><div><span class="ui-eyebrow mono">${escapeHtml(detail.eyebrow)}</span><h3>${escapeHtml(detail.title)}</h3>${detail.pill ? uiPill(detail.pill.text, detail.pill.tone) : ""}</div><button class="ui-icon-btn" type="button"${uiAttrs(detail.closeAttrs)} aria-label="Close details" title="Close">${UI_CLOSE_ICON}</button></div>
-    <dl class="ui-dl">${fields}</dl>${lines}${detail.extra || ""}${note}${actions}`;
+    ${detail.top || ""}<dl class="ui-dl">${fields}</dl>${lines}${detail.extra || ""}${note}${actions}`;
 }
 
 /**
@@ -243,7 +256,7 @@ function uiDate(value) {
  *   cols: UiCol[], csvHeader: string[], csvName: string, rows: UiViewRow[], empty: [string, string], minWidth: number,
  *   defaultSort: { key: string, dir: number }, chips: UiViewChip[], defaultScope: string,
  *   branchOptions?: UiOption[] | null, toolbarExtra?: string, before?: string, after?: (lastPage: boolean) => string,
- *   extraFilter?: (row: UiViewRow) => boolean, filtersOn?: boolean
+ *   extraFilter?: (row: UiViewRow) => boolean, filtersOn?: boolean, totals?: (rows: UiViewRow[]) => string[]
  * }} UiView
  */
 /** @typedef {{ q: string, sel: string, sort: { key: string, dir: number } | null, page: number, branch: string, scope: string, touched?: boolean }} UiViewState */
@@ -333,6 +346,7 @@ function uiViewHtml(view, state, prefix, pageSize = 25) {
       empty: filtersOn && view.rows.length ? { title: "Nothing matches these filters", text: "Try another branch or status, or clear the search.", clearAttrs: { [attr("clear")]: "" } } : { title: view.empty[0], text: view.empty[1] },
       foot: { shown: pageRows.length, total: sorted.length, page: state.page, pageCount, pageAttr: attr("page") },
       after: view.after ? view.after(state.page >= pageCount - 1) : "",
+      totals: view.totals && sorted.length ? view.totals(sorted) : undefined,
     })}${detail ? `<aside class="ui-card ui-detail" id="${prefix}-detail" aria-label="${escapeHtml(detail.label)}">${uiDetailPanel(detail)}</aside>` : ""}</div>`;
 }
 

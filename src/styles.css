@@ -3264,6 +3264,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 /* cards */
 .ui-scope .ui-card { background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-card); color: var(--ui-ink); }
 .ui-scope .ui-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
+@media (min-width: 1100px) { .ui-scope .ui-cards:has(> :nth-child(5)) { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 .ui-scope .ui-stat { padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; text-align: left; font: inherit; }
 .ui-scope .ui-stat.is-action { cursor: pointer; }
 .ui-scope .ui-stat.is-action:hover { border-color: var(--ui-border-strong); background: var(--ui-hover); }
@@ -3413,6 +3414,55 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 body[data-active-section="sales"] #page-title,
 body[data-active-section="sales"] #page-description { display: none; }
 
+/* Invoicing / Collections / Receivables (phase 3) */
+.ui-scope .ui-meter span.t-orange { background: var(--ui-orange); }
+.ui-scope .ui-meter span.t-accent { background: var(--ui-accent); }
+.ui-scope .ui-lines .ui-muted { padding: 4px 0; }
+.ui-scope .ui-lines .attached-files-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-scope .ui-steps { list-style: none; margin: 0 0 4px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ui-scope .ui-steps li { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ui-scope .ui-steps .bar { display: block; height: 6px; border-radius: 99px; background: var(--ui-border); }
+.ui-scope .ui-steps .label { font: 600 12px var(--ui-font); color: var(--ui-subtle); }
+.ui-scope .ui-steps .is-done .bar, .ui-scope .ui-steps .is-current .bar { background: var(--ui-green); }
+.ui-scope .ui-steps .is-current .bar { background: linear-gradient(90deg, var(--ui-green) 50%, var(--ui-border) 50%); }
+.ui-scope .ui-steps .is-bad .bar { background: var(--ui-red); }
+.ui-scope .ui-steps .is-done .label, .ui-scope .ui-steps .is-current .label { color: var(--ui-ink); }
+.ui-scope .ui-steps .is-current .label, .ui-scope .ui-steps .is-bad .label { font-weight: 700; }
+.ui-scope .ui-steps .is-bad .label { color: var(--ui-red-fg); }
+.ui-scope .ui-credit { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
+.ui-scope .ui-credit .ui-meter { height: 6px; }
+.ui-scope table.ui-table tfoot td { border-top: 2px solid var(--ui-border); border-bottom: 0; background: var(--ui-head); font-weight: 700; padding-top: 12px; padding-bottom: 12px; }
+.ui-scope .ui-aging { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.ui-scope .ui-aging-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 28px; }
+.ui-scope .ui-aging-head > div { display: flex; flex-direction: column; gap: 4px; }
+.ui-scope .ui-aging-total { font: 800 28px var(--ui-font); letter-spacing: -0.02em; color: var(--ui-ink); font-variant-numeric: tabular-nums; }
+.ui-scope .ui-aging-head dl { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; }
+.ui-scope .ui-aging-head dl div { display: flex; flex-direction: column; gap: 2px; }
+.ui-scope .ui-aging-head dt { font: 600 12px var(--ui-font); color: var(--ui-subtle); }
+.ui-scope .ui-aging-head dd { margin: 0; font: 700 15px var(--ui-font); color: var(--ui-ink); font-variant-numeric: tabular-nums; }
+.ui-scope .ui-aging-head dd small { font-weight: 600; color: var(--ui-subtle); margin-left: 4px; }
+.ui-scope .ui-aging-bar { display: flex; height: 14px; border-radius: 99px; overflow: hidden; gap: 2px; background: var(--ui-seg); }
+.ui-scope .ui-aging-bar span { min-width: 4px; }
+.ui-scope .ui-aging-bar .t-green { background: var(--ui-green); }
+.ui-scope .ui-aging-bar .t-amber { background: var(--ui-amber); }
+.ui-scope .ui-aging-bar .t-orange { background: var(--ui-orange); }
+.ui-scope .ui-aging-bar .t-red { background: var(--ui-red); }
+.ui-scope .ui-aging-bar .t-red.deep { background: #7A1F1A; }
+.ui-scope .ui-aging-bar .t-slate { background: var(--ui-all); }
+:root[data-theme="dark"] .ui-scope .ui-aging-bar .t-red.deep { background: #e0675b; }
+.ui-scope .ui-btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-scope .ui-btn.is-on { border-color: var(--ui-accent); background: var(--ui-accent-soft); color: var(--ui-accent); font-weight: 700; }
+.ui-scope .ui-form-card { padding: 18px 20px; }
+.ui-scope .ui-form-card .ui-tab-intro { margin-bottom: 12px; }
+.ui-scope .ui-legacy-panel { display: flex; flex-direction: column; gap: 16px; }
+.ui-scope .ui-legacy-panel[hidden] { display: none; }
+.ui-scope #receivables-followups-map { margin-top: 20px; }
+.deposit-slip-print { color: #12202E; font-size: 13px; }
+.deposit-slip-print table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.deposit-slip-print th, .deposit-slip-print td { border: 1px solid #CBD3DB; padding: 6px 8px; text-align: left; }
+.deposit-slip-print .num { text-align: right; font-variant-numeric: tabular-nums; }
+.deposit-slip-sign { margin-top: 28px; }
+
 /* Inventory → Stocks: health bar + top-5 alert cards */
 #inventory .dot { width: 8px; height: 8px; border-radius: 99px; flex-shrink: 0; display: inline-block; background: var(--inv-all); }
 #inventory .dot.s-available, #inventory .inv-bar .s-available { background: var(--inv-available); }
@@ -3490,7 +3540,10 @@ body[data-active-section="inventory"] #page-description { display: none; }
 .topbar .topbar-title { min-width: 0; }
 /* Redesigned modules carry their own page header. */
 body[data-active-section="inventory"] .topbar-title,
-body[data-active-section="sales"] .topbar-title { display: none; }
+body[data-active-section="sales"] .topbar-title,
+body[data-active-section="invoicing"] .topbar-title,
+body[data-active-section="collections"] .topbar-title,
+body[data-active-section="receivables-tracker"] .topbar-title { display: none; }
 @media (max-width: 1180px) {
   .topbar .tb-workspace { order: 10; }
 }

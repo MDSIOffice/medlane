@@ -1019,7 +1019,7 @@ function showSection(sectionId, options = {}) {
   document.body.dataset.activeSection = sectionId;
   // Keep the URL on the current page so a browser refresh stays here instead of bouncing to the
   // dashboard. Detail pages keep whatever list page the user came from.
-  if (location.protocol !== "file:" && document.body.classList.contains("app-route") && canRestoreSection(sectionId)) history.replaceState(null, "", sectionId === "dashboard" ? "/dashboard" : sectionId === "inventory" ? `/dashboard?${inventoryQueryString()}` : sectionId === "sales" ? `/dashboard?${salesQueryString()}` : `/dashboard?section=${encodeURIComponent(sectionId)}`);
+  if (location.protocol !== "file:" && document.body.classList.contains("app-route") && canRestoreSection(sectionId)) history.replaceState(null, "", sectionId === "dashboard" ? "/dashboard" : `/dashboard?${sectionQueryString(sectionId)}`);
   qsa(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === sectionId));
   qsa(".section").forEach((section) => section.classList.toggle("active", section.id === sectionId));
   const activeButton = qs(`.nav-item[data-section="${sectionId}"]`);
@@ -4620,6 +4620,1079 @@ function salesFocusRecord(query) {
   return false;
 }
 
+// ===== Invoicing / Collections / Receivables (module redesign, phase 3) =====
+// Each page is one tab view (see uiViewHtml in ui-kit.js) built from real records. Statuses
+// here are derived for display only; nothing new is stored.
+
+/** URL for one of the three accounting pages. @param {string} section @param {string} tab @param {string} defaultTab @param {UiViewState} view @param {Record<string, string>} [extra] */
+function moduleViewQueryString(section, tab, defaultTab, view, extra = {}) {
+  const p = new URLSearchParams({ section });
+  if (tab !== defaultTab) p.set("tab", tab);
+  uiViewStateToQuery(p, view);
+  Object.entries(extra).forEach(([key, value]) => { if (value && value !== "all") p.set(key, value); });
+  return p.toString();
+}
+function invoicingQueryString() { return moduleViewQueryString("invoicing", invoicingTab, "invoices", invoicingView, { type: invoicingTab === "invoices" ? invoicingDocType : "" }); }
+function collectionsQueryString() { return moduleViewQueryString("collections", collectionsTab, "receipts", collectionsView, { method: collectionsTab === "receipts" ? collectionsMethod : "" }); }
+function receivablesQueryString() { return moduleViewQueryString("receivables-tracker", receivablesTab, "aging", receivablesView); }
+/** @param {string} section @param {string} query */
+function syncModuleUrl(section, query) {
+  if (location.protocol === "file:" || !document.body.classList.contains("app-route") || document.body.dataset.activeSection !== section) return;
+  try { history.replaceState(null, "", `/dashboard?${query}`); } catch { /* URL sync is best-effort */ }
+}
+/** The URL showSection writes for a section that keeps view state in the query string. @param {string} sectionId */
+function sectionQueryString(sectionId) {
+  if (sectionId === "inventory") return inventoryQueryString();
+  if (sectionId === "sales") return salesQueryString();
+  if (sectionId === "invoicing") return invoicingQueryString();
+  if (sectionId === "collections") return collectionsQueryString();
+  if (sectionId === "receivables-tracker") return receivablesQueryString();
+  return `section=${encodeURIComponent(sectionId)}`;
+}
+
+/** Days from today to a date: negative once it has passed. @param {string} date */
+function moduleDaysFromToday(date) { return daysUntil(date); }
+/** "Due in 5 days" / "Due today" / "12 days overdue". @param {number} days */
+function moduleDueText(days) {
+  if (days < 0) return `${-days} ${-days === 1 ? "day" : "days"} overdue`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  return `Due in ${days} days`;
+}
+/** @param {number} days @returns {UiTone | undefined} */
+function moduleDueTone(days) { return days < 0 ? "red" : days <= 7 ? "orange" : undefined; }
+
+const INVOICING_TAB_LABELS = /** @type {Record<string, string>} */ ({ invoices: "Invoices", credit: "Credit approvals" });
+const INVOICING_STATUS_TONES = /** @type {Record<string, UiTone>} */ ({ Issued: "blue", "Partially paid": "amber", Overdue: "red", Paid: "green", Void: "slate" });
+const INVOICING_CREDIT_TONES = /** @type {Record<string, UiTone>} */ ({ Pending: "amber", Approved: "green", Rejected: "red" });
+
+/** Invoice status, derived from the balance and due date (never stored). @param {Sale} sale */
+function invoicingStatus(sale) {
+  if (sale.status === "Cancelled") return "Void";
+  if (salesBalance(sale) <= 0.005) return "Paid";
+  if (moduleDaysFromToday(salesDueDate(sale)) < 0) return "Overdue";
+  if (Number(sale.paid || 0) > 0) return "Partially paid";
+  return "Issued";
+}
+
+/** @param {any} method */
+function collectionMethodKey(method) {
+  const text = String(method || "").toLowerCase();
+  if (text.includes("cheque") || text.includes("check")) return "check";
+  if (text.includes("transfer")) return "transfer";
+  if (text === "cash") return "cash";
+  return "other";
+}
+/** @param {any} method */
+function collectionMethodLabel(method) {
+  const key = collectionMethodKey(method);
+  return key === "check" ? (String(method) === "Multiple Cheques" ? "Checks" : "Check") : key === "transfer" ? "Bank transfer" : key === "cash" ? "Cash" : String(method || "—");
+}
+
+/** Does this collection receipt cover the invoice? @param {PaymentRequest} request @param {string} doc @param {string} id */
+function requestCoversInvoice(request, doc, id) {
+  const refs = [request.invoice, ...(request.invoices || []), ...(request.items || []).map((item) => item.invoice)].filter(Boolean).map(String);
+  return refs.includes(doc) || refs.includes(id);
+}
+/** What a receipt applies to each invoice. @param {PaymentRequest} request @returns {{ invoice: string, amount: number }[]} */
+function requestInvoiceShares(request) {
+  const items = (request.items || []).filter((item) => item.invoice);
+  if (items.length) return items.map((item) => ({ invoice: String(item.invoice), amount: Number(item.netAmount ?? item.amount ?? 0) }));
+  const invoices = request.invoices?.length ? request.invoices : request.invoice ? [request.invoice] : [];
+  return invoices.map((invoice) => ({ invoice: String(invoice), amount: invoices.length === 1 ? Number(request.total || 0) : 0 }));
+}
+
+/** Payments applied to an invoice, plus receipts still awaiting approval. @param {Sale} sale @returns {UiLine[]} */
+function invoicePaymentLines(sale) {
+  const doc = salesDocNo(sale);
+  const lines = data.payments.filter((payment) => !payment.voided && (payment.invoice === doc || payment.invoice === sale.id)).map(/** @returns {UiLine} */ (payment) => {
+    const method = collectionMethodLabel(payment.method);
+    const amount = peso.format(Number(payment.amount || 0));
+    const when = uiDate(payment.dateCollected || payment.dateRecorded || payment.date);
+    if (payment.collectionStatus === "Bounced") return { left: `Reversed · ${payment.receiptNo}`, sub: `${method} bounced, so it no longer counts against this invoice`, right: "", tone: "red" };
+    if (payment.collectionStatus === "Posted Date") return { left: payment.receiptNo, sub: `Post-dated ${method.toLowerCase()}${payment.postedDate ? ` · dated ${uiDate(payment.postedDate)}` : ""}${payment.bank ? ` · ${payment.bank}` : ""}`, right: `− ${amount}`, tone: "amber" };
+    return { left: payment.receiptNo, sub: `${when} · ${method}${payment.bank ? ` · ${payment.bank}` : ""}${payment.collectionStatus === "For Deposit" ? " · not yet deposited" : ""}`, right: `− ${amount}`, tone: "green" };
+  });
+  data.paymentRequests.filter((request) => (request.requestStatus || request.status) === "Pending" && requestCoversInvoice(request, doc, sale.id)).forEach((request) => {
+    const share = requestInvoiceShares(request).find((entry) => entry.invoice === doc || entry.invoice === sale.id);
+    lines.push({ left: `Pending · ${request.cvNo}`, sub: `${collectionMethodLabel(request.paymentType)} awaiting approval · applies once approved`, right: share?.amount ? peso.format(share.amount) : "", tone: "amber" });
+  });
+  return lines;
+}
+
+/** @param {string} tab @returns {UiView} */
+function invoicingTabModel(tab) {
+  const select = (/** @type {string} */ id) => uiViewSelect("invoicing", id);
+  const closeAttrs = { "data-invoicing-close": "" };
+
+  if (tab === "credit") {
+    const canDecide = canApproveCreditInvoice();
+    const requests = [...(data.pendingCreditInvoices || [])];
+    const rows = requests.map(/** @returns {UiViewRow} */ (request) => {
+      const status = String(request.status || "Pending");
+      const tone = INVOICING_CREDIT_TONES[status] || "slate";
+      const projected = Number(request.projected || 0);
+      const limit = Number(request.limit || 0);
+      const over = Math.max(projected - limit, 0);
+      const decide = status === "Pending" && canDecide ? `<button class="mini-button" data-credit-approve="${escapeHtml(request.id)}">Approve</button>` : "";
+      return {
+        id: String(request.id),
+        branches: [],
+        scopes: [status],
+        search: [request.id, request.client, request.requestedBy, request.requestedByRole, status, request.resultingDocumentNo].filter(Boolean).join(" "),
+        sortValues: { id: String(request.id), client: String(request.client || ""), date: inventoryDateValue(request.requestedAt), projected, status },
+        csv: [request.id, request.client, request.requestedBy || "", request.requestedAt || "", projected.toFixed(2), limit.toFixed(2), status, request.decidedBy || "", request.resultingDocumentNo || ""],
+        cells: [
+          uiCellDoc(String(request.id), select(String(request.id))),
+          uiCellText(request.client || "—", "", { strong: true }),
+          uiCellText(request.requestedBy || "—", request.requestedByRole || ""),
+          escapeHtml(uiDate(request.requestedAt)),
+          uiCellText(peso.format(projected), over ? `${peso.format(over)} over the limit` : "", { subTone: over ? "red" : undefined }),
+          uiCellNum(peso.format(limit)),
+          uiPill(status, tone),
+          inventoryNextStep(decide),
+        ],
+        detail: /** @returns {UiDetail} */ () => {
+          const actions = status === "Pending" && canDecide
+            ? uiAdoptActions(`<button data-credit-approve="${escapeHtml(request.id)}">Approve &amp; create invoice</button><button class="danger-button" data-credit-reject="${escapeHtml(request.id)}">Reject</button>`).buttons
+            : request.resultingDocumentNo ? uiAdoptActions(`<button data-invoicing-open-doc="${escapeHtml(request.resultingDocumentNo)}">View ${escapeHtml(request.resultingDocumentNo)}</button>`).buttons : [];
+          return {
+            eyebrow: String(request.id), title: request.client || "Client", pill: { text: status, tone }, closeAttrs, label: "Credit approval details",
+            fields: [
+              { label: "Requested by", value: request.requestedBy || "—", sub: request.requestedByRole || "" },
+              { label: "Requested", value: uiDate(request.requestedAt) },
+              { label: "Projected balance", value: peso.format(projected) },
+              { label: "Credit limit", value: peso.format(limit) },
+              ...(status !== "Pending" ? [{ label: "Decided by", value: request.decidedBy || "—", sub: uiDate(request.decidedAt) }] : []),
+              ...(request.resultingDocumentNo ? [{ label: "Invoice created", value: String(request.resultingDocumentNo), mono: true }] : []),
+              ...(request.rejectReason ? [{ label: "Reason", value: String(request.rejectReason), wide: true }] : []),
+            ],
+            note: status === "Pending"
+              ? { text: canDecide ? "Approving re-checks stock and the order, then creates the invoice. Nothing is deducted until then." : "Waiting for Admin, CEO or Superadmin. Nothing is deducted from stock until it is approved.", tone: "amber" }
+              : status === "Rejected" ? { text: "Rejected. No invoice was created.", tone: "red" } : { text: "Approved. The invoice was created and stock deducted.", tone: "green" },
+            actions,
+          };
+        },
+      };
+    });
+    const count = (/** @type {string} */ status) => rows.filter((row) => row.scopes.includes(status)).length;
+    const waiting = rows.filter((row) => row.scopes.includes("Pending")).reduce((sum, row) => sum + Number(row.sortValues.projected || 0), 0);
+    return {
+      title: "Credit approvals", intro: "", placeholder: "Request no., client or requester", actions: [], minWidth: 860,
+      csvName: "invoicing-credit-approvals.csv",
+      csvHeader: ["Request", "Client", "Requested by", "Requested", "Projected balance", "Credit limit", "Status", "Decided by", "Invoice"],
+      stats: [
+        { label: "Waiting for approval", value: count("Pending"), sub: count("Pending") ? `${salesPesoShort(waiting)} projected balance` : "Nothing waiting", tone: "amber", scope: "Pending" },
+        { label: "Approved", value: count("Approved"), sub: "Invoice created over the limit", tone: "green", scope: "Approved" },
+        { label: "Rejected", value: count("Rejected"), sub: "No invoice created", tone: "red", scope: "Rejected" },
+      ],
+      cols: [{ key: "id", label: "Request", sortable: true }, { key: "client", label: "Client", sortable: true }, { key: "by", label: "Requested by" }, { key: "date", label: "Requested", sortable: true }, { key: "projected", label: "Projected balance", sortable: true }, { key: "limit", label: "Credit limit", align: "right" }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+      rows,
+      empty: ["No credit approval requests", "When Accounting invoices a client past its credit limit, the request waits here for Admin, CEO or Superadmin."],
+      defaultSort: { key: "date", dir: -1 },
+      chips: Object.keys(INVOICING_CREDIT_TONES).map((status) => ({ key: status, label: status, tone: INVOICING_CREDIT_TONES[status] })),
+      defaultScope: "",
+      branchOptions: null,
+    };
+  }
+
+  const canUpdate = canUpdateDeliveryStatus();
+  const monthKey = salesMonthKey();
+  const docs = byBranch(data.sales, "area");
+  const rows = docs.map(/** @returns {UiViewRow} */ (sale) => {
+    const status = invoicingStatus(sale);
+    const tone = INVOICING_STATUS_TONES[status];
+    const docNo = salesDocNo(sale);
+    const type = documentType(sale.type);
+    const balance = sale.status === "Cancelled" ? 0 : salesBalance(sale);
+    const due = salesDueDate(sale);
+    const dueIn = moduleDaysFromToday(due);
+    const open = status !== "Paid" && status !== "Void";
+    const dueText = status === "Paid" ? "Settled" : status === "Void" ? "Cancelled" : moduleDueText(dueIn);
+    const net = Number(sale.net || 0);
+    const recordPayment = open ? `<button class="mini-button" data-make-payment-request="${escapeHtml(docNo)}">Record payment</button>` : "";
+    const scopes = [status, ...(open ? ["open"] : []), ...(open && dueIn >= 0 && dueIn <= 7 ? ["duesoon"] : []), ...(status !== "Void" && String(sale.date || "").startsWith(monthKey) ? ["month"] : [])];
+    const lines = salesLines(sale);
+    return {
+      id: sale.id,
+      branches: salesBranches(sale),
+      scopes,
+      search: [docNo, sale.id, sale.client, sale.area, sale.salesperson, sale.po, status, type, ...lines.map((line) => line.item)].join(" "),
+      sortValues: { id: docNo, client: String(sale.client || ""), date: inventoryDateValue(sale.date), due: inventoryDateValue(due), net, balance, status },
+      csv: [docNo, type, sale.client, sale.area || "", sale.salesperson || "", sale.date, `${sale.terms || 0} days`, due, net.toFixed(2), Number(sale.paid || 0).toFixed(2), balance.toFixed(2), status, sale.deliveryStatus || "Pending"],
+      cells: [
+        uiCellDoc(docNo, select(sale.id), invoiceTypeLabel(sale.type)),
+        uiCellText(sale.client || "—", [inventoryBranchLabel(sale.sourceBranch || sale.branch || ""), sale.area].filter((part) => part && part !== "—").join(" · "), { strong: true }),
+        uiCellText(uiDate(sale.date), `${sale.terms || 0}-day terms`),
+        uiCellText(uiDate(due), dueText, { subTone: open ? moduleDueTone(dueIn) : undefined }),
+        uiCellNum(peso.format(net)),
+        uiCellNum(peso.format(balance)),
+        uiPill(status, tone),
+        inventoryNextStep(recordPayment),
+      ],
+      detail: /** @returns {UiDetail} */ () => {
+        const breakdown = saleTaxBreakdown(sale);
+        const vatLines = /** @type {UiLine[]} */ (breakdown.addVat > 0
+          ? [{ left: "VATable amount", sub: "Total ÷ 1.12", right: peso.format(breakdown.amountNetVat), tone: "slate" }, { left: "VAT (12%)", right: peso.format(breakdown.addVat), tone: "slate" }]
+          : [{ left: type === "SI" ? "VAT-exempt sale" : `${invoiceTypeLabel(sale.type)} · no VAT shown`, right: peso.format(net), tone: "slate" }]);
+        if (Number(sale.discount || 0) > 0) vatLines.push({ left: "Discount", sub: sale.discountReason || "", right: `− ${peso.format(Number(sale.discount || 0))}`, tone: "slate" });
+        const payments = invoicePaymentLines(sale);
+        const stored = sale.deliveryStatus || "Pending";
+        const nextDelivery = stored === "Pending" ? "Document Delivered" : stored === "Document Delivered" ? "Copy Received w/ Proof of Receipt from Customer" : "";
+        const hasCopy = attachedFilesFor("sale", sale.id).length > 0;
+        const buttons = [
+          ...(open ? [`<button data-make-payment-request="${escapeHtml(docNo)}">Record payment</button>`] : []),
+          `<button data-sale-detail="${escapeHtml(sale.id)}">View invoice</button>`,
+          ...(sale.noPo ? [] : [`<button data-print-invoice="${escapeHtml(sale.id)}">Print</button>`]),
+          `<button data-sale-timeline="${escapeHtml(sale.id)}">View timeline</button>`,
+          `<button data-upload-copy="${escapeHtml(sale.id)}">${hasCopy ? "Replace physical copy" : "Upload physical copy"}</button>`,
+          ...(canUpdate && status !== "Void" ? [nextDelivery, ...Object.keys(SALES_DELIVERY_META).filter((option) => option !== stored && option !== nextDelivery)].filter(Boolean).map((option) => `<button data-invoicing-delivery="${escapeHtml(sale.id)}" data-status="${escapeHtml(option)}">${option === nextDelivery ? (option === "Document Delivered" ? "Mark delivered" : "Signed copy received") : escapeHtml(SALES_DELIVERY_META[option].label)}</button>`) : []),
+          ...(status === "Void" || Number(sale.paid || 0) > 0 ? [] : [`<button class="danger-button" data-cancel-invoice="${escapeHtml(sale.id)}">Cancel only</button>`, `<button class="danger-button" data-cancel-replace="${escapeHtml(sale.id)}">Cancel / Replace</button>`]),
+        ];
+        const actions = [...uiAdoptActions(buttons.join(""), { primaryFirst: open }).buttons, `<input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(sale.id)}" data-rerender="invoicing" hidden />`];
+        const files = attachedFilesHtml("sale", sale.id);
+        return {
+          eyebrow: docNo, title: sale.client || "Client", pill: { text: status, tone }, closeAttrs, label: "Invoice details",
+          fields: [
+            { label: "Type", value: invoiceTypeLabel(sale.type) },
+            { label: "Order", value: sale.po && !sale.noPo ? String(sale.po) : "No PO", mono: Boolean(sale.po && !sale.noPo) },
+            { label: "Issued", value: uiDate(sale.date), sub: `${sale.terms || 0}-day terms` },
+            { label: "Due", value: uiDate(due), sub: dueText },
+            { label: "Area", value: sale.area || "—" },
+            { label: "Ships from", value: inventoryBranchLabel(sale.sourceBranch || sale.branch || "") },
+            { label: "Sales person", value: sale.salesperson || "—" },
+            { label: "Delivery", value: SALES_DELIVERY_META[stored]?.label || stored },
+            ...(sale.cancelledFrom ? [{ label: "Replaces", value: String(sale.cancelledFrom), mono: true }] : []),
+            ...(sale.replacementId ? [{ label: "Replaced by", value: String(sale.replacementId), mono: true }] : []),
+          ],
+          linesTitle: "Amount",
+          lines: vatLines,
+          total: { label: "Invoice total", value: peso.format(net) },
+          extra: uiLines("Payments applied", payments, status === "Void" ? undefined : { label: "Balance due", value: peso.format(balance) }, "No payments recorded yet.")
+            + uiLines("Items", lines.map((line) => ({ left: line.item, sub: `${Number(line.qty || 0)} ${line.uom || ""} × ${peso.format(Number(line.price || 0))}${line.lot ? ` · lot ${line.lot}` : ""}`, right: peso.format(lineSubtotal(line)), tone: "slate" })))
+            + (files ? `<div class="ui-lines"><h4>Physical copy</h4>${files}</div>` : ""),
+          note: status === "Void" ? { text: `Cancelled${sale.cancelReason ? `: ${sale.cancelReason}` : ""}${sale.replacementId ? `. Replaced by ${sale.replacementId}.` : "."}`, tone: "slate" }
+            : status === "Overdue" ? { text: `${peso.format(balance)} is ${-dueIn} ${-dueIn === 1 ? "day" : "days"} overdue.`, tone: "red" }
+            : sale.noPo ? { text: "Record-keeping only (no PO), so it isn't printed.", tone: "slate" }
+            : open && dueIn <= 7 ? { text: `${peso.format(balance)} is ${dueIn === 0 ? "due today" : `due in ${dueIn} ${dueIn === 1 ? "day" : "days"}`}.`, tone: "orange" } : undefined,
+          actions,
+        };
+      },
+    };
+  });
+  const type = invoicingDocType;
+  const visible = rows.filter((row) => (type === "all" || row.csv[1] === type) && (invoicingView.branch === "all" || row.branches.includes(invoicingView.branch)));
+  const sum = (/** @type {string} */ scope, /** @type {string} */ key) => visible.filter((row) => row.scopes.includes(scope)).reduce((total, row) => total + Number(row.sortValues[key] || 0), 0);
+  const count = (/** @type {string} */ scope) => visible.filter((row) => row.scopes.includes(scope)).length;
+  const monthName = new Date(Number(today)).toLocaleString("en-US", { month: "long", timeZone: "Asia/Manila" });
+  const typeToggle = `<div class="ui-seg" role="group" aria-label="Document type">${[["all", "All types"], ["SI", "SI"], ["TS", "TS"], ["DR", "DR"]].map(([value, label]) => `<button type="button" data-invoicing-type="${value}" aria-pressed="${type === value}">${label}</button>`).join("")}</div>`;
+  return {
+    title: "Invoices", intro: "", placeholder: "Invoice no., order no., client or item", actions: [], minWidth: 900,
+    csvName: "invoices.csv",
+    csvHeader: ["Document", "Type", "Client", "Area", "Sales person", "Issued", "Terms", "Due", "Amount", "Paid", "Balance", "Status", "Delivery"],
+    stats: [
+      { label: "Invoiced this month", value: salesPesoShort(sum("month", "net")), sub: `${inventoryPlural(count("month"), "document")} issued in ${monthName}`, tone: "blue", scope: "month" },
+      { label: "Unpaid balance", value: salesPesoShort(sum("open", "balance")), sub: `${inventoryPlural(count("open"), "open invoice")}`, tone: "amber", scope: "open" },
+      { label: "Overdue", value: salesPesoShort(sum("Overdue", "balance")), sub: `${inventoryPlural(count("Overdue"), "invoice")} past due date`, tone: "red", scope: "Overdue" },
+      { label: "Due within 7 days", value: salesPesoShort(sum("duesoon", "balance")), sub: `${inventoryPlural(count("duesoon"), "invoice")} coming due`, tone: "orange", scope: "duesoon" },
+    ],
+    cols: [{ key: "id", label: "Invoice", sortable: true }, { key: "client", label: "Client", sortable: true }, { key: "date", label: "Issued", sortable: true }, { key: "due", label: "Due", sortable: true }, { key: "net", label: "Amount", align: "right", sortable: true }, { key: "balance", label: "Balance", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+    rows,
+    extraFilter: (row) => type === "all" || row.csv[1] === type,
+    filtersOn: type !== "all",
+    toolbarExtra: typeToggle + uiButton("Itemized CSV", { "data-invoicing-itemized": "" }, { size: "sm" }),
+    empty: ["No invoices yet", "Sales invoices, transmittal slips and delivery receipts show here once they are issued."],
+    defaultSort: { key: "date", dir: -1 },
+    chips: [
+      { key: "month", label: "This month", onlyWhenActive: true },
+      { key: "open", label: "Unpaid", onlyWhenActive: true },
+      { key: "duesoon", label: "Due within 7 days", onlyWhenActive: true },
+      ...Object.keys(INVOICING_STATUS_TONES).map((status) => ({ key: status, label: status, tone: INVOICING_STATUS_TONES[status] })),
+    ],
+    defaultScope: "",
+    branchOptions: salesBranchOptions(),
+    after: (lastPage) => modulePagination.sales?.hasMore && lastPage ? `<div class="ui-load-more">${uiButton("Load older invoices", { "data-invoicing-load-more": "" }, { size: "sm" })}</div>` : "",
+  };
+}
+
+function renderInvoicing() {
+  ensureUploadedFilesLoaded(renderInvoicing);
+  if (!INVOICING_TAB_LABELS[invoicingTab]) invoicingTab = "invoices";
+  const credits = data.pendingCreditInvoices || [];
+  /** @type {Record<string, number>} */
+  const counts = {
+    invoices: byBranch(data.sales, "area").filter((sale) => invoicingStatus(sale) === "Overdue").length,
+    credit: credits.filter((request) => request.status === "Pending").length,
+  };
+  qs("#invoicing-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(INVOICING_TAB_LABELS).map((key) => ({ key, label: INVOICING_TAB_LABELS[key], count: counts[key] })), active: invoicingTab, attr: "data-invoicing-tab" });
+  uiRender(qs("#invoicing-tab-panel"), uiViewHtml(invoicingTabModel(invoicingTab), invoicingView, "invoicing"));
+  syncModuleUrl("invoicing", invoicingQueryString());
+}
+
+/** The sales documents in the Invoices tab's current view (for the itemized export). */
+function invoicingVisibleSales() {
+  const ids = new Set(uiViewRows(invoicingTabModel("invoices"), invoicingTab === "invoices" ? invoicingView : uiBlankViewState()).map((row) => row.id));
+  return data.sales.filter((sale) => ids.has(sale.id));
+}
+
+/** Opens Invoicing on the tab holding a document or credit request and selects it (deep links). @param {string} query @returns {boolean} */
+function invoicingFocusRecord(query) {
+  const id = query.toLowerCase();
+  for (const tab of ["invoices", "credit"]) {
+    const saved = invoicingDocType;
+    invoicingDocType = "all";
+    const row = invoicingTabModel(tab).rows.find((entry) => entry.id.toLowerCase() === id || String(entry.csv[0]).toLowerCase() === id);
+    invoicingDocType = saved;
+    if (!row) continue;
+    invoicingTab = tab;
+    invoicingView = uiBlankViewState();
+    invoicingDocType = "all";
+    invoicingView.sel = row.id;
+    return true;
+  }
+  return false;
+}
+
+const COLLECTIONS_TAB_LABELS = /** @type {Record<string, string>} */ ({ receipts: "Collection receipts", deposits: "Deposit slips", register: "Check register", history: "History" });
+/** Receipt lifecycle, mapped from the stored request status + collection status. */
+const COLLECTION_STATES = /** @type {Record<string, { label: string, short: string, tone: UiTone }>} */ ({
+  approval: { label: "Awaiting approval", short: "Awaiting approval", tone: "slate" },
+  pdc: { label: "Post-dated check", short: "Post-dated", tone: "amber" },
+  deposit: { label: "To deposit", short: "To deposit", tone: "orange" },
+  approved: { label: "Approved", short: "Approved", tone: "blue" },
+  deposited: { label: "Deposited", short: "Deposited", tone: "green" },
+  bounced: { label: "Bounced", short: "Bounced", tone: "red" },
+  cancelled: { label: "Cancelled", short: "Cancelled", tone: "slate" },
+});
+
+/**
+ * One collection receipt: a recorded CR/PR (payment request) with the payments it created, or —
+ * for imported / older records with no request — the payments that share a receipt number.
+ * @typedef {{
+ *   id: string, request: PaymentRequest | null, payments: Payment[], state: string,
+ *   client: string, collector: string, date: string, method: string, bank: string,
+ *   cheque: string, chequeDate: string, cheques: ChequeLine[], transferDate: string,
+ *   total: number, shares: { invoice: string, amount: number }[]
+ * }} CollectionReceipt
+ */
+
+/** @param {Payment[]} payments */
+function collectionPaymentsState(payments) {
+  if (payments.some((payment) => payment.collectionStatus === "Bounced")) return "bounced";
+  if (payments.some((payment) => payment.collectionStatus === "Posted Date")) return "pdc";
+  if (payments.length && payments.every((payment) => payment.collectionStatus === "Deposited")) return "deposited";
+  return "deposit";
+}
+
+/** @param {PaymentRequest} request @param {Payment[]} payments */
+function collectionReceiptState(request, payments) {
+  const status = request.requestStatus || request.status;
+  if (status === "Cancelled") return "cancelled";
+  if (status === "Pending") return "approval";
+  if (payments.length) return status === "Completed" && !payments.some((payment) => ["Bounced", "Posted Date", "For Deposit"].includes(payment.collectionStatus)) ? "deposited" : collectionPaymentsState(payments);
+  return status === "Completed" ? "deposited" : "approved";
+}
+
+/** Every collection receipt, newest data first as stored. @returns {CollectionReceipt[]} */
+function collectionReceipts() {
+  /** @type {Map<string, Payment[]>} */
+  const byKey = new Map();
+  const live = data.payments.filter((payment) => !payment.voided);
+  live.forEach((payment) => {
+    const key = String(payment.paymentRequestCvNo || payment.receiptNo || "");
+    if (key) byKey.set(key, [...(byKey.get(key) || []), payment]);
+  });
+  /** @type {CollectionReceipt[]} */
+  const receipts = [];
+  const claimed = new Set();
+  (data.paymentRequests || []).forEach((request) => {
+    const payments = byKey.get(request.cvNo) || [];
+    claimed.add(request.cvNo);
+    receipts.push({
+      id: request.cvNo, request, payments, state: collectionReceiptState(request, payments),
+      client: request.employee || request.client || "", collector: request.preparedBy || "", date: String(request.date || ""),
+      method: request.paymentType || "", bank: request.bank || "", cheque: request.cheque || "", chequeDate: request.chequeDate || "",
+      cheques: request.paymentType === "Multiple Cheques" ? (request.cheques || []) : [], transferDate: request.transferDate || "",
+      total: Number(request.total || 0),
+      shares: payments.length ? payments.map((payment) => ({ invoice: payment.invoice, amount: Number(payment.amount || 0) })) : requestInvoiceShares(request),
+    });
+  });
+  byKey.forEach((payments, key) => {
+    if (claimed.has(key)) return;
+    const first = payments[0];
+    receipts.push({
+      id: key, request: null, payments, state: collectionPaymentsState(payments),
+      client: first.client || "", collector: "", date: fmtDateSafe(first.dateCollected || first.dateRecorded || first.date) || String(first.dateCollected || first.dateRecorded || ""),
+      method: first.method || "", bank: first.bank || "", cheque: collectionMethodKey(first.method) === "check" ? (first.reference || "") : "", chequeDate: first.chequeDate || "",
+      cheques: /** @type {ChequeLine[]} */ (Array.isArray(first.cheques) ? first.cheques : []), transferDate: first.transferDate || "",
+      total: payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+      shares: payments.map((payment) => ({ invoice: payment.invoice, amount: Number(payment.amount || 0) })),
+    });
+  });
+  return receipts;
+}
+
+/** Received → Approved → Deposited (or Bounced). @param {string} state */
+function collectionReceiptSteps(state) {
+  /** @type {("done" | "current" | "todo" | "bad")[]} */
+  const marks = state === "approval" ? ["current", "todo", "todo"]
+    : state === "deposited" ? ["done", "done", "done"]
+    : state === "bounced" ? ["done", "done", "bad"]
+    : state === "cancelled" ? ["done", "bad", "todo"]
+    : ["done", "done", "current"];
+  const labels = ["Received", state === "cancelled" ? "Cancelled" : "Approved", state === "bounced" ? "Bounced" : "Deposited"];
+  return uiSteps(labels.map((label, index) => ({ label, state: marks[index] })));
+}
+
+/** Where a receipt's money is: bank, check no., dates. @param {CollectionReceipt} receipt */
+function collectionMethodSub(receipt) {
+  const key = collectionMethodKey(receipt.method);
+  if (receipt.cheques.length) return `${inventoryPlural(receipt.cheques.length, "check")}${receipt.bank ? ` · ${receipt.bank}` : ""}`;
+  if (key === "check") return [receipt.bank, receipt.cheque ? `No. ${receipt.cheque}` : "", receipt.chequeDate ? `dated ${uiDate(receipt.chequeDate)}` : ""].filter(Boolean).join(" · ") || "Check";
+  if (key === "transfer") return [receipt.bank, receipt.transferDate ? uiDate(receipt.transferDate) : ""].filter(Boolean).join(" · ") || "Bank transfer";
+  if (key === "cash") return "Collected in cash";
+  return "";
+}
+
+/** Sales by id and document number, for lookups across many receipts. @returns {Map<string, Sale>} */
+function salesLookup() {
+  /** @type {Map<string, Sale>} */
+  const index = new Map();
+  data.sales.forEach((sale) => { index.set(String(sale.id), sale); if (sale.documentNo) index.set(String(sale.documentNo), sale); });
+  return index;
+}
+/** Branch(es) a receipt belongs to, from the invoices it pays. @param {string[]} invoices @param {Map<string, Sale>} index */
+function collectionBranches(invoices, index) {
+  return [...new Set(invoices.flatMap((invoice) => {
+    const sale = index.get(invoice);
+    return sale ? salesBranches(sale) : [];
+  }))];
+}
+
+/** Next-step button for a receipt. @param {CollectionReceipt} receipt */
+function collectionNextButton(receipt) {
+  const cv = escapeHtml(receipt.id);
+  if (receipt.state === "approval") return canApprovePaymentRequests() ? `<button class="mini-button" data-payment-request-approve="${cv}">Approve</button>` : "";
+  if (receipt.state === "deposit" || receipt.state === "pdc") return `<button class="mini-button" data-collection-status="${cv}:Deposited">Mark deposited</button>`;
+  if (receipt.state === "bounced") return canRedepositCollections() ? `<button class="mini-button" data-collection-redeposit="${cv}">Redeposit</button>` : "";
+  return "";
+}
+
+/** All detail-panel actions for a receipt (same data-* attributes the old tables used). @param {CollectionReceipt} receipt */
+function collectionReceiptActions(receipt) {
+  const cv = escapeHtml(receipt.id);
+  const state = receipt.state;
+  const buttons = [];
+  if (state === "approval" && canApprovePaymentRequests()) buttons.push(`<button data-payment-request-approve="${cv}">Approve</button>`, `<button class="danger-button" data-payment-request-cancel="${cv}">Cancel</button>`);
+  if (state === "deposit" || state === "pdc") {
+    buttons.push(`<button data-collection-status="${cv}:Deposited">Mark deposited</button>`);
+    if (state === "deposit") buttons.push(`<button data-collection-status="${cv}:Posted Date">Post-dated</button>`);
+    buttons.push(`<button class="danger-button" data-collection-status="${cv}:Bounced">Bounced</button>`);
+  }
+  if (state === "bounced" && canRedepositCollections()) buttons.push(`<button data-collection-redeposit="${cv}">Redeposit</button>`);
+  const primary = buttons.length > 0;
+  if (receipt.request) buttons.push(`<button data-payment-request-preview="${cv}">Preview / print</button>`, `<button data-payment-request-timeline="${cv}">View timeline</button>`);
+  const firstSale = receipt.shares.map((share) => data.sales.find((sale) => sale.documentNo === share.invoice || sale.id === share.invoice)).find(Boolean);
+  if (firstSale) buttons.push(`<button data-sale-timeline="${escapeHtml(firstSale.id)}">Invoice timeline</button>`);
+  return uiAdoptActions(buttons.join(""), { primaryFirst: primary }).buttons;
+}
+
+/** @param {string} tab @returns {UiView} */
+function collectionsTabModel(tab) {
+  const select = (/** @type {string} */ id) => uiViewSelect("collections", id);
+  const closeAttrs = { "data-collections-close": "" };
+  const monthKey = salesMonthKey();
+  const receipts = collectionReceipts();
+  const saleIndex = salesLookup();
+  const clientOf = (/** @type {string} */ invoice) => saleIndex.get(invoice)?.client || "";
+
+  if (tab === "deposits") {
+    const toDeposit = data.payments.filter((payment) => !payment.voided && payment.collectionStatus === "For Deposit");
+    /** @type {Map<string, Payment[]>} */
+    const byBranchKey = new Map();
+    toDeposit.forEach((payment) => {
+      const sale = saleIndex.get(payment.invoice);
+      const branch = sale ? (salesBranches(sale)[0] || "") : "";
+      byBranchKey.set(branch, [...(byBranchKey.get(branch) || []), payment]);
+    });
+    const rows = [...byBranchKey.entries()].map(/** @returns {UiViewRow} */ ([branch, payments]) => {
+      const label = branch ? inventoryBranchLabel(branch) : "No branch on invoice";
+      const total = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      const receiptNos = [...new Set(payments.map((payment) => payment.receiptNo))];
+      const cash = payments.filter((payment) => collectionMethodKey(payment.method) === "cash").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      const id = `slip:${branch || "none"}`;
+      return {
+        id,
+        branches: branch ? [branch] : [],
+        scopes: ["deposit"],
+        search: [label, ...receiptNos, ...payments.map((payment) => `${payment.client} ${payment.invoice} ${payment.bank || ""}`)].join(" "),
+        sortValues: { id: label, amount: total, count: receiptNos.length },
+        csv: [label, fmtDate(today), receiptNos.join("; "), total.toFixed(2)],
+        cells: [
+          uiCellDoc(`${label} slip`, select(id), `Built ${uiDate(fmtDate(today))}`, { plain: true }),
+          `<span class="ui-sub">—</span>`,
+          uiCellText(inventoryPlural(receiptNos.length, "receipt"), receiptNos.slice(0, 3).join(", ") + (receiptNos.length > 3 ? " …" : "")),
+          uiCellText(peso.format(total), `${peso.format(cash)} cash · ${peso.format(total - cash)} checks & transfers`),
+          uiPill("To deposit", "orange"),
+          inventoryNextStep(`<button class="mini-button" data-collections-print-slip="${escapeHtml(branch)}">Print slip</button>`),
+        ],
+        detail: /** @returns {UiDetail} */ () => ({
+          eyebrow: `${label} · ${uiDate(fmtDate(today))}`, title: peso.format(total), pill: { text: "To deposit", tone: "orange" }, closeAttrs, label: "Deposit slip details",
+          fields: [
+            { label: "Branch", value: label },
+            { label: "Receipts", value: String(receiptNos.length) },
+            { label: "Cash", value: peso.format(cash) },
+            { label: "Checks & transfers", value: peso.format(total - cash) },
+            { label: "Bank account", value: "—", sub: "Not recorded on receipts", wide: true },
+          ],
+          linesTitle: "Receipts on this slip",
+          lines: payments.slice(0, 60).map((payment) => ({ left: `${payment.receiptNo} · ${payment.client || "—"}`, sub: `${collectionMethodLabel(payment.method)}${payment.bank ? ` · ${payment.bank}` : ""} · for ${payment.invoice}`, right: peso.format(Number(payment.amount || 0)), tone: "orange" })),
+          total: { label: "Slip total", value: peso.format(total) },
+          note: { text: `Built live from receipts marked To deposit${payments.length > 60 ? ` (first 60 of ${payments.length} shown; the printed slip lists all)` : ""}. Slip numbers aren't stored yet; mark each receipt deposited once the bank accepts it.`, tone: "slate" },
+          actions: [
+            uiButton("Print slip", { "data-collections-print-slip": branch }, { primary: true }),
+            ...(receiptNos.length <= 8 ? uiAdoptActions(receiptNos.map((receipt) => `<button data-collection-status="${escapeHtml(receipt)}:Deposited">Mark ${escapeHtml(receipt)} deposited</button>`).join(""), { primaryFirst: false }).buttons : []),
+          ],
+        }),
+      };
+    });
+    const total = rows.reduce((sum, row) => sum + Number(row.sortValues.amount || 0), 0);
+    const receiptCount = rows.reduce((sum, row) => sum + Number(row.sortValues.count || 0), 0);
+    const bounced = data.payments.filter((payment) => !payment.voided && payment.collectionStatus === "Bounced");
+    return {
+      title: "Deposit slips", intro: "", placeholder: "Branch, receipt no. or client", actions: [], minWidth: 820,
+      csvName: "collections-deposit-slips.csv",
+      csvHeader: ["Branch", "Date", "Receipts", "Amount"],
+      stats: [
+        { label: "Ready to deposit", value: salesPesoShort(total), sub: `${inventoryPlural(receiptCount, "receipt")} across ${rows.length} ${rows.length === 1 ? "branch" : "branches"}`, tone: "orange" },
+        { label: "Returned checks", value: salesPesoShort(bounced.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)), sub: bounced.length ? `${inventoryPlural(bounced.length, "bounced check")} to redeposit` : "None", tone: "red" },
+      ],
+      cols: [{ key: "id", label: "Slip", sortable: true }, { key: "bank", label: "Bank account" }, { key: "count", label: "Receipts", sortable: true }, { key: "amount", label: "Amount", sortable: true }, { key: "status", label: "Status" }, { key: "next", label: "", align: "right" }],
+      rows,
+      empty: ["Nothing to deposit", "Approved cash and checks marked To deposit are grouped here into one slip per branch."],
+      defaultSort: { key: "amount", dir: -1 },
+      chips: [],
+      defaultScope: "",
+      branchOptions: null,
+    };
+  }
+
+  if (tab === "register") {
+    /** @type {UiViewRow[]} */
+    const rows = [];
+    receipts.forEach((receipt) => {
+      if (collectionMethodKey(receipt.method) !== "check" || receipt.state === "cancelled") return;
+      const meta = COLLECTION_STATES[receipt.state];
+      const cheques = receipt.cheques.length
+        ? receipt.cheques.map((cheque) => ({ no: cheque.reference, date: cheque.chequeDate, amount: Number(cheque.amount || 0) }))
+        : [{ no: receipt.cheque, date: receipt.chequeDate || receipt.payments.find((payment) => payment.postedDate)?.postedDate || "", amount: receipt.total }];
+      const invoices = receipt.shares.map((share) => share.invoice);
+      cheques.forEach((cheque, index) => {
+        const id = cheques.length > 1 ? `${receipt.id}#${index + 1}` : receipt.id;
+        const days = cheque.date ? moduleDaysFromToday(cheque.date) : null;
+        const dateSub = receipt.state === "bounced" ? "Bounced" : days !== null && days > 0 && receipt.state !== "deposited" ? `in ${days} ${days === 1 ? "day" : "days"}` : "";
+        rows.push({
+          id,
+          branches: collectionBranches(invoices, saleIndex),
+          scopes: [receipt.state],
+          search: [cheque.no, receipt.bank, receipt.client, receipt.id, ...invoices, meta.label].filter(Boolean).join(" "),
+          sortValues: { id: String(cheque.no || ""), client: receipt.client, date: inventoryDateValue(cheque.date || receipt.date), amount: cheque.amount, status: meta.short },
+          csv: [cheque.no || "", receipt.bank, receipt.client, cheque.date || "", cheque.amount.toFixed(2), receipt.id, meta.label],
+          cells: [
+            uiCellDoc(cheque.no || "No number", select(id), receipt.bank),
+            uiCellText(receipt.client || "—", "", { strong: true }),
+            uiCellText(uiDate(cheque.date || receipt.date), dateSub, { subTone: receipt.state === "bounced" ? "red" : dateSub ? "orange" : undefined }),
+            uiCellNum(peso.format(cheque.amount)),
+            `<span class="mono">${escapeHtml(receipt.id)}</span>`,
+            uiPill(meta.short, meta.tone),
+            inventoryNextStep(collectionNextButton(receipt)),
+          ],
+          detail: /** @returns {UiDetail} */ () => ({
+            eyebrow: `${receipt.bank || "Bank"} · ${cheque.no || "no number"}`, title: peso.format(cheque.amount), pill: { text: meta.label, tone: meta.tone }, closeAttrs, label: "Check details",
+            fields: [
+              { label: "Client", value: receipt.client || "—" },
+              { label: "Check date", value: uiDate(cheque.date), sub: dateSub },
+              { label: "Receipt", value: receipt.id, mono: true },
+              { label: "Bank", value: receipt.bank || "—" },
+              { label: "For invoices", value: invoices.join(", ") || "—", mono: Boolean(invoices.length), wide: true },
+            ],
+            note: receipt.state === "pdc" ? { text: `Post-dated. Deposit on or after ${uiDate(receipt.payments.find((payment) => payment.postedDate)?.postedDate || cheque.date)}.`, tone: "amber" }
+              : receipt.state === "bounced" ? { text: "Returned by the bank. The invoice balance was restored; a Superadmin must redeposit it.", tone: "red" }
+              : receipt.state === "approval" ? { text: "The receipt is waiting for Superadmin/CEO approval.", tone: "slate" } : undefined,
+            actions: [...collectionReceiptActions(receipt), uiButton("View receipt", { "data-collections-goto-receipt": receipt.id })],
+          }),
+        });
+      });
+    });
+    const sum = (/** @type {string} */ scope) => rows.filter((row) => row.scopes.includes(scope)).reduce((total, row) => total + Number(row.sortValues.amount || 0), 0);
+    const count = (/** @type {string} */ scope) => rows.filter((row) => row.scopes.includes(scope)).length;
+    return {
+      title: "Check register", intro: "", placeholder: "Check no., bank, client or receipt", actions: [], minWidth: 880,
+      csvName: "collections-check-register.csv",
+      csvHeader: ["Check", "Bank", "Client", "Check date", "Amount", "Receipt", "Status"],
+      stats: [
+        { label: "Post-dated checks on hand", value: salesPesoShort(sum("pdc")), sub: inventoryPlural(count("pdc"), "check"), tone: "amber", scope: "pdc" },
+        { label: "To deposit", value: salesPesoShort(sum("deposit")), sub: inventoryPlural(count("deposit"), "check"), tone: "orange", scope: "deposit" },
+        { label: "Bounced", value: salesPesoShort(sum("bounced")), sub: count("bounced") ? `${inventoryPlural(count("bounced"), "check")} to redeposit` : "None", tone: "red", scope: "bounced" },
+      ],
+      cols: [{ key: "id", label: "Check", sortable: true }, { key: "client", label: "Client", sortable: true }, { key: "date", label: "Check date", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "receipt", label: "Receipt" }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+      rows,
+      empty: ["No checks recorded", "Every check received on a collection receipt is listed here with its date and where it is now."],
+      defaultSort: { key: "date", dir: -1 },
+      chips: ["approval", "pdc", "deposit", "deposited", "bounced"].map((key) => ({ key, label: COLLECTION_STATES[key].short, tone: COLLECTION_STATES[key].tone })),
+      defaultScope: "",
+      branchOptions: salesBranchOptions(),
+    };
+  }
+
+  // Collection receipts
+  const method = collectionsMethod;
+  const rows = receipts.map(/** @returns {UiViewRow} */ (receipt) => {
+    const meta = COLLECTION_STATES[receipt.state];
+    const invoices = receipt.shares.map((share) => share.invoice);
+    const methodKey = collectionMethodKey(receipt.method);
+    const collected = ["deposit", "pdc", "deposited", "approved"].includes(receipt.state) && receipt.date.startsWith(monthKey);
+    const postedDates = receipt.payments.map((payment) => payment.postedDate).filter(Boolean).sort();
+    const request = receipt.request;
+    return {
+      id: receipt.id,
+      branches: collectionBranches(invoices, saleIndex),
+      scopes: [receipt.state, `method:${methodKey}`, ...(collected ? ["month"] : [])],
+      search: [receipt.id, receipt.client, receipt.collector, receipt.method, receipt.bank, receipt.cheque, ...receipt.cheques.map((cheque) => cheque.reference), ...invoices, meta.label].filter(Boolean).join(" "),
+      sortValues: { id: receipt.id, date: inventoryDateValue(receipt.date), client: receipt.client, amount: receipt.total, status: meta.label, posted: postedDates[0] || receipt.chequeDate || "" },
+      csv: [receipt.id, receipt.date, receipt.client, receipt.collector, receipt.method, receipt.bank, invoices.join("; "), receipt.total.toFixed(2), meta.label],
+      cells: [
+        uiCellDoc(receipt.id, select(receipt.id), uiDate(receipt.date)),
+        uiCellText(receipt.client || "—", [invoices.length ? `For ${invoices.slice(0, 2).join(", ")}${invoices.length > 2 ? ` +${invoices.length - 2}` : ""}` : "", receipt.collector ? `by ${receipt.collector}` : ""].filter(Boolean).join(" · "), { strong: true }),
+        uiCellText(collectionMethodLabel(receipt.method), collectionMethodSub(receipt)),
+        uiCellNum(peso.format(receipt.total)),
+        uiPill(meta.label, meta.tone),
+        inventoryNextStep(collectionNextButton(receipt)),
+      ],
+      detail: /** @returns {UiDetail} */ () => {
+        const posted = postedDates[0];
+        return {
+          eyebrow: receipt.id, title: peso.format(receipt.total), pill: { text: meta.label, tone: meta.tone }, closeAttrs, label: "Collection receipt details",
+          top: collectionReceiptSteps(receipt.state),
+          fields: [
+            { label: "Client", value: receipt.client || "—" },
+            { label: "Received", value: uiDate(receipt.date) },
+            { label: "Method", value: collectionMethodLabel(receipt.method), sub: collectionMethodSub(receipt) },
+            { label: "Collected by", value: receipt.collector || "—" },
+            ...(posted ? [{ label: "Post-dated to", value: uiDate(posted) }] : []),
+            ...(request?.approvedBy ? [{ label: "Approved by", value: request.approvedBy, sub: uiDate(request.approvedAt) }] : []),
+            ...(request?.completedBy ? [{ label: "Deposited", value: uiDate(request.completedAt), sub: `by ${request.completedBy}` }] : []),
+            ...(request?.cancelReason ? [{ label: "Cancel reason", value: request.cancelReason, wide: true }] : []),
+          ],
+          linesTitle: receipt.state === "approval" ? "Will apply to" : receipt.state === "bounced" ? "Reversed on" : "Applied to",
+          lines: receipt.shares.map((share) => ({ left: share.invoice, sub: clientOf(share.invoice), right: share.amount ? peso.format(share.amount) : "", tone: meta.tone })),
+          total: { label: "Receipt total", value: peso.format(receipt.total) },
+          extra: receipt.cheques.length ? uiLines("Checks", receipt.cheques.map((cheque) => ({ left: cheque.reference || "No number", sub: cheque.chequeDate ? `Dated ${uiDate(cheque.chequeDate)}` : "", right: cheque.amount ? peso.format(Number(cheque.amount)) : "", tone: meta.tone }))) : "",
+          note: receipt.state === "approval" ? { text: "Waiting for Superadmin/CEO approval. Invoices are updated once it's approved.", tone: "slate" }
+            : receipt.state === "pdc" ? { text: `Post-dated${posted ? ` to ${uiDate(posted)}` : ""}. It already counts against the invoice; deposit it on or after that date.`, tone: "amber" }
+            : receipt.state === "deposit" ? { text: "Applied to the invoice. Not yet banked.", tone: "orange" }
+            : receipt.state === "bounced" ? { text: "The check bounced, so the invoice balance was restored. A Superadmin must redeposit it.", tone: "red" }
+            : receipt.state === "deposited" ? { text: "Deposited. This receipt can no longer be changed.", tone: "green" } : undefined,
+          actions: collectionReceiptActions(receipt),
+        };
+      },
+    };
+  });
+  const methodRows = rows.filter((row) => method === "all" || row.scopes.includes(`method:${method}`));
+  const sum = (/** @type {string} */ scope) => methodRows.filter((row) => row.scopes.includes(scope)).reduce((total, row) => total + Number(row.sortValues.amount || 0), 0);
+  const count = (/** @type {string} */ scope) => methodRows.filter((row) => row.scopes.includes(scope)).length;
+  const nextPdc = methodRows.filter((row) => row.scopes.includes("pdc")).map((row) => String(row.sortValues.posted || "")).filter(Boolean).sort()[0];
+  const monthName = new Date(Number(today)).toLocaleString("en-US", { month: "long", timeZone: "Asia/Manila" });
+  const methodToggle = `<div class="ui-seg" role="group" aria-label="Payment method">${[["all", "All"], ["cash", "Cash"], ["check", "Check"], ["transfer", "Bank transfer"]].map(([value, label]) => `<button type="button" data-collections-method="${value}" aria-pressed="${method === value}">${label}</button>`).join("")}</div>`;
+  const hasMore = Boolean(modulePagination.paymentRequests?.hasMore || modulePagination.payments?.hasMore);
+  return {
+    title: "Collection receipts", intro: "", placeholder: "Receipt no., client, check no. or invoice", actions: [], minWidth: 780,
+    csvName: "collection-receipts.csv",
+    csvHeader: ["Receipt", "Date", "Client", "Collected by", "Method", "Bank", "Invoices", "Amount", "Status"],
+    stats: [
+      { label: "Collected this month", value: salesPesoShort(sum("month")), sub: `${inventoryPlural(count("month"), "receipt")} in ${monthName}`, tone: "green", scope: "month" },
+      { label: "Cash & checks to deposit", value: salesPesoShort(sum("deposit")), sub: `${inventoryPlural(count("deposit"), "receipt")} not yet banked`, tone: "orange", scope: "deposit" },
+      { label: "Post-dated checks on hand", value: salesPesoShort(sum("pdc")), sub: `${count("pdc")} on hand${nextPdc ? ` · next ${uiDate(nextPdc)}` : ""}`, tone: "amber", scope: "pdc" },
+      { label: "Bounced checks", value: salesPesoShort(sum("bounced")), sub: count("bounced") ? `${inventoryPlural(count("bounced"), "receipt")} to redeposit` : "None", tone: "red", scope: "bounced" },
+    ],
+    cols: [{ key: "id", label: "Receipt", sortable: true }, { key: "client", label: "Client", sortable: true }, { key: "method", label: "Method" }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+    rows,
+    extraFilter: (row) => method === "all" || row.scopes.includes(`method:${method}`),
+    filtersOn: method !== "all",
+    toolbarExtra: methodToggle,
+    empty: ["No collections recorded", "Use Record collection to log cash, checks or bank transfers received from clients."],
+    defaultSort: { key: "date", dir: -1 },
+    chips: [
+      { key: "month", label: "This month", onlyWhenActive: true },
+      ...["approval", "pdc", "deposit", "approved", "deposited", "bounced", "cancelled"].map((key) => ({ key, label: COLLECTION_STATES[key].short, tone: COLLECTION_STATES[key].tone })),
+    ],
+    defaultScope: "",
+    branchOptions: salesBranchOptions(),
+    after: (lastPage) => hasMore && lastPage ? `<div class="ui-load-more">${uiButton("Load older collections", { "data-collections-load-more": "" }, { size: "sm" })}</div>` : "",
+  };
+}
+
+function renderCollections() {
+  syncCollectionContactsForBalances();
+  syncPostedCollectionReminders();
+  if (!COLLECTIONS_TAB_LABELS[collectionsTab]) collectionsTab = "receipts";
+  const requests = data.paymentRequests || [];
+  /** @type {Record<string, number | undefined>} */
+  const counts = {
+    receipts: requests.filter((request) => (request.requestStatus || request.status) === "Pending").length,
+    deposits: new Set(data.payments.filter((payment) => !payment.voided && payment.collectionStatus === "For Deposit").map((payment) => payment.receiptNo)).size,
+    register: data.payments.filter((payment) => !payment.voided && payment.collectionStatus === "Bounced" && collectionMethodKey(payment.method) === "check").length,
+  };
+  qs("#collections-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(COLLECTIONS_TAB_LABELS).map((key) => ({ key, label: COLLECTIONS_TAB_LABELS[key], count: counts[key] })), active: collectionsTab, attr: "data-collections-tab" });
+  const history = collectionsTab === "history";
+  qs("#collections-tab-panel").hidden = history;
+  qs("#collections-history-panel").hidden = !history;
+  if (history) {
+    renderCollectionsTotalSummary();
+    renderCollectionsHistory();
+  } else {
+    uiRender(qs("#collections-tab-panel"), uiViewHtml(collectionsTabModel(collectionsTab), collectionsView, "collections"));
+  }
+  syncModuleUrl("collections", collectionsQueryString());
+}
+
+/** Printable deposit slip for one branch's To deposit receipts. @param {string} branch */
+function previewDepositSlip(branch) {
+  const payments = data.payments.filter((payment) => {
+    if (payment.voided || payment.collectionStatus !== "For Deposit") return false;
+    const sale = saleForPayment(payment);
+    return (sale ? (salesBranches(sale)[0] || "") : "") === branch;
+  });
+  if (!payments.length) return toast("Nothing left to deposit for this branch.");
+  const label = branch ? inventoryBranchLabel(branch) : "No branch on invoice";
+  const total = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const rows = payments.map((payment) => `<tr><td>${escapeHtml(payment.receiptNo)}</td><td>${escapeHtml(payment.client || "—")}</td><td>${escapeHtml(collectionMethodLabel(payment.method))}</td><td>${escapeHtml(payment.bank || "—")}</td><td>${escapeHtml(payment.reference || (payment.cheques || []).map((/** @type {any} */ cheque) => cheque.reference).filter(Boolean).join(", ") || "—")}</td><td>${escapeHtml(payment.invoice)}</td><td class="num">${peso.format(Number(payment.amount || 0))}</td></tr>`).join("");
+  qs("#payment-request-preview-title").textContent = `Deposit slip — ${label}`;
+  qs("#payment-request-preview-content").innerHTML = `<section class="deposit-slip-print">${printableBrandHeaderHtml("Deposit slip")}<p><strong>${escapeHtml(label)}</strong> · ${escapeHtml(uiDate(fmtDate(today)))} · Bank account: ____________________</p><table><thead><tr><th>Receipt</th><th>Client</th><th>Method</th><th>Bank</th><th>Check no.</th><th>Invoice</th><th class="num">Amount</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6"><strong>Total</strong></td><td class="num"><strong>${peso.format(total)}</strong></td></tr></tfoot></table><p class="deposit-slip-sign">Prepared by: ____________________ &nbsp;&nbsp; Deposited by: ____________________</p></section>`;
+  const dialog = qs("#payment-request-preview-modal");
+  if (!dialog.open) dialog.showModal();
+}
+
+/** Opens Collections on the tab holding a receipt or check and selects it (deep links). @param {string} query @returns {boolean} */
+function collectionsFocusRecord(query) {
+  const id = query.toLowerCase();
+  for (const tab of ["receipts", "register"]) {
+    const saved = collectionsMethod;
+    collectionsMethod = "all";
+    const row = collectionsTabModel(tab).rows.find((entry) => entry.id.toLowerCase() === id || String(entry.csv[0]).toLowerCase() === id);
+    collectionsMethod = saved;
+    if (!row) continue;
+    collectionsTab = tab;
+    collectionsView = uiBlankViewState();
+    collectionsMethod = "all";
+    collectionsView.sel = row.id;
+    return true;
+  }
+  return false;
+}
+
+const RECEIVABLES_TAB_LABELS = /** @type {Record<string, string>} */ ({ aging: "Aging by client", soa: "Statements of account", followups: "Follow-ups" });
+/** Aging buckets by days past the due date. */
+const AGING_BUCKETS = /** @type {{ key: string, label: string, short: string, tone: UiTone, test: (days: number) => boolean }[]} */ ([
+  { key: "b0", label: "Current", short: "Current", tone: "green", test: (days) => days <= 0 },
+  { key: "b1", label: "1–30 days", short: "1–30", tone: "amber", test: (days) => days >= 1 && days <= 30 },
+  { key: "b2", label: "31–60 days", short: "31–60", tone: "orange", test: (days) => days >= 31 && days <= 60 },
+  { key: "b3", label: "61–90 days", short: "61–90", tone: "red", test: (days) => days >= 61 && days <= 90 },
+  { key: "b4", label: "Over 90 days", short: "> 90", tone: "red", test: (days) => days > 90 },
+]);
+const RECEIVABLES_RISK = /** @type {Record<string, { label: string, tone: UiTone, rank: number }>} */ ({
+  risk: { label: "At risk", tone: "red", rank: 3 },
+  escalate: { label: "Escalate", tone: "orange", rank: 2 },
+  follow: { label: "Follow up", tone: "amber", rank: 1 },
+  ok: { label: "Current", tone: "green", rank: 0 },
+});
+const FOLLOWUP_TONES = /** @type {Record<string, UiTone>} */ ({ Pending: "slate", Answered: "green", "Cheque Available": "blue", Unreached: "amber", Called: "amber", "No Response": "red" });
+
+/**
+ * Open receivables grouped by client, aged from each invoice's due date.
+ * @returns {{ client: string, area: string, invoices: { sale: Sale, doc: string, balance: number, due: string, days: number, bucket: number }[], amounts: number[], total: number, overdue: number, risk: string, bounced: Payment[], pdc: Payment[], lastPayment: string, branches: string[] }[]}
+ */
+function receivablesByClient() {
+  const canViewAll = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
+  const open = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && salesBalance(sale) > 0.005 && (canViewAll || isClientAssignedToCurrentUser(sale.client)));
+  /** @type {Map<string, Sale[]>} */
+  const grouped = new Map();
+  open.forEach((sale) => grouped.set(sale.client, [...(grouped.get(sale.client) || []), sale]));
+  return [...grouped.entries()].map(([client, sales]) => {
+    const invoices = sales.map((sale) => {
+      const due = salesDueDate(sale);
+      const days = -moduleDaysFromToday(due);
+      return { sale, doc: salesDocNo(sale), balance: salesBalance(sale), due, days, bucket: AGING_BUCKETS.findIndex((bucket) => bucket.test(days)) };
+    }).sort((a, b) => b.days - a.days);
+    const amounts = AGING_BUCKETS.map((_, index) => invoices.filter((invoice) => invoice.bucket === index).reduce((sum, invoice) => sum + invoice.balance, 0));
+    const total = amounts.reduce((sum, amount) => sum + amount, 0);
+    const payments = data.payments.filter((payment) => payment.client === client && !payment.voided);
+    const bounced = payments.filter((payment) => payment.collectionStatus === "Bounced");
+    const pdc = payments.filter((payment) => payment.collectionStatus === "Posted Date");
+    const lastPayment = payments.filter((payment) => payment.collectionStatus !== "Bounced").map((payment) => fmtDateSafe(payment.dateCollected || payment.dateRecorded || payment.date)).filter(Boolean).sort().at(-1) || "";
+    const overdue = total - amounts[0];
+    const risk = amounts[4] > 0 || bounced.length ? "risk" : amounts[3] > 0 ? "escalate" : overdue > 0.005 ? "follow" : "ok";
+    return { client, area: sales[0]?.area || "", invoices, amounts, total, overdue, risk, bounced, pdc, lastPayment, branches: [...new Set(sales.flatMap(salesBranches))] };
+  });
+}
+/** ISO date from a stored date string, or "" when it can't be read. @param {unknown} value */
+function fmtDateSafe(value) {
+  if (!value) return "";
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? "" : fmtDate(parsed);
+}
+
+/** @param {number} value */
+function receivablesShort(value) { return value > 0.005 ? salesPesoShort(value) : "—"; }
+
+/** @param {string} tab @returns {UiView} */
+function receivablesTabModel(tab) {
+  const select = (/** @type {string} */ id) => uiViewSelect("receivables", id);
+  const closeAttrs = { "data-receivables-close": "" };
+  const clients = receivablesByClient();
+  const invoiceLines = (/** @type {ReturnType<typeof receivablesByClient>[number]} */ entry, limit = 12) => [...entry.invoices.slice(0, limit).map(/** @returns {UiLine} */ (invoice) => ({
+    left: invoice.doc,
+    sub: invoice.days > 0 ? `${invoice.days} ${invoice.days === 1 ? "day" : "days"} overdue · due ${uiDate(invoice.due)}` : invoice.days === 0 ? "Due today" : `Due ${uiDate(invoice.due)}`,
+    right: peso.format(invoice.balance),
+    tone: AGING_BUCKETS[invoice.bucket]?.tone || "slate",
+  })), ...(entry.invoices.length > limit ? [/** @type {UiLine} */ ({ left: `+${entry.invoices.length - limit} more open invoices`, sub: `${peso.format(entry.invoices.slice(limit).reduce((sum, invoice) => sum + invoice.balance, 0))} · see View invoices`, tone: "slate" })] : [])];
+  const oldest = (/** @type {ReturnType<typeof receivablesByClient>[number]} */ entry) => entry.invoices[0];
+
+  if (tab === "followups") {
+    const canViewAll = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
+    const balances = new Map(clients.map((entry) => [entry.client, entry]));
+    const contacts = (data.collectionContacts || []).filter((contact) => canViewAll || isClientAssignedToCurrentUser(contact.client));
+    const rows = contacts.map(/** @returns {UiViewRow} */ (contact) => {
+      const status = String(contact.status || "Pending");
+      const label = contactStatusLabel(status);
+      const tone = FOLLOWUP_TONES[status] || "slate";
+      const entry = balances.get(contact.client);
+      const channels = /** @type {string[]} */ (contact.channels || []);
+      const client = String(contact.client);
+      const needs = ["Pending", "No Response", "Unreached", "Called"].includes(status);
+      return {
+        id: client,
+        branches: entry?.branches || [],
+        scopes: [status, ...(needs ? ["needs"] : [])],
+        search: [client, contact.area, label, contact.employee, contact.notes, contact.chequeInvoice, ...(entry?.invoices.map((invoice) => invoice.doc) || [])].filter(Boolean).join(" "),
+        sortValues: { id: client, area: String(contact.area || ""), status: label, last: inventoryDateValue(contact.lastContact), balance: entry?.total || 0 },
+        csv: [client, contact.area || "", label, contact.lastContact || "", contact.employee || "", channels.join(" + "), (entry?.total || 0).toFixed(2), contact.notes || ""],
+        cells: [
+          uiCellDoc(client, select(client), contact.area || "", { plain: true }),
+          uiPill(label, tone),
+          uiCellText(contact.lastContact ? uiDate(contact.lastContact) : "Not contacted", contact.employee || ""),
+          escapeHtml(channels.join(", ") || "—"),
+          uiCellNum(entry ? peso.format(entry.total) : "—"),
+          inventoryNextStep(`<button class="mini-button" data-receivables-select="${escapeHtml(client)}">Log outcome</button>`),
+        ],
+        detail: /** @returns {UiDetail} */ () => {
+          const channelButtons = ["Call", "Email", "Telephone"].map((channel) => `<button class="ui-btn sm${channels.includes(channel) ? " is-on" : ""}" type="button" aria-pressed="${channels.includes(channel)}" data-contact-channel="${channel}" data-contact-client="${escapeHtml(client)}">${channel}</button>`).join("");
+          const outcomeButtons = [["Answered", "Answered"], ["Unreached", "Unreached"], ["No Reply", "No reply"], ["Cheque Available", "Check available"]].map(([value, text]) => `<button class="ui-btn sm${contactStatusFromLabel(value) === status ? " is-on" : ""}" type="button" aria-pressed="${contactStatusFromLabel(value) === status}" data-contact-status="${escapeHtml(value)}" data-contact-client="${escapeHtml(client)}">${escapeHtml(text)}</button>`).join("");
+          return {
+            eyebrow: contact.area || "Follow-up", title: client, pill: { text: label, tone }, closeAttrs, label: "Follow-up details",
+            fields: [
+              { label: "Last contact", value: contact.lastContact ? uiDate(contact.lastContact) : "Not contacted", sub: contact.employee || "" },
+              { label: "Channels this week", value: channels.join(", ") || "—" },
+              { label: "Open balance", value: entry ? peso.format(entry.total) : "—" },
+              { label: "Overdue", value: entry ? peso.format(entry.overdue) : "—" },
+              ...(contact.chequeInvoice ? [{ label: "Check for invoice", value: String(contact.chequeInvoice), mono: true }] : []),
+              ...(contact.notes ? [{ label: "Notes", value: String(contact.notes), wide: true }] : []),
+            ],
+            linesTitle: "Open invoices",
+            lines: entry ? invoiceLines(entry) : [],
+            extra: `<div class="ui-lines"><h4>Channels used this week</h4><div class="ui-btn-row">${channelButtons}</div></div><div class="ui-lines"><h4>Outcome</h4><div class="ui-btn-row">${outcomeButtons}</div></div>`,
+            note: { text: "Follow-ups are weekly: pick the channels you used, then the outcome. Each outcome is saved to the follow-up history.", tone: "slate" },
+            actions: [
+              ...(entry ? uiAdoptActions(`<button data-make-payment-request="${escapeHtml(oldest(entry)?.doc || "")}">Record collection</button><button data-create-soa="${escapeHtml(client)}">Statement</button>`).buttons : []),
+              uiButton("Follow-up history", { "data-receivables-followup-history": "" }),
+            ],
+          };
+        },
+      };
+    });
+    const count = (/** @type {string} */ scope) => rows.filter((row) => row.scopes.includes(scope)).length;
+    return {
+      title: "Follow-ups", intro: "", placeholder: "Client, area, notes or invoice", actions: [], minWidth: 820,
+      csvName: "receivables-follow-ups.csv",
+      csvHeader: ["Client", "Area", "Status", "Last contact", "By", "Channels", "Open balance", "Notes"],
+      stats: [
+        { label: "Need a follow-up", value: count("needs"), sub: "Not yet reached this week, or no reply", tone: "amber", scope: "needs" },
+        { label: "Check available", value: count("Cheque Available"), sub: "Ready for pickup or deposit", tone: "blue", scope: "Cheque Available" },
+        { label: "Answered", value: count("Answered"), sub: "Client answered this week", tone: "green", scope: "Answered" },
+      ],
+      cols: [{ key: "id", label: "Client", sortable: true }, { key: "status", label: "This week", sortable: true }, { key: "last", label: "Last contact", sortable: true }, { key: "channels", label: "Channels" }, { key: "balance", label: "Open balance", align: "right", sortable: true }, { key: "next", label: "", align: "right" }],
+      rows,
+      empty: ["No follow-ups", "Clients with an unpaid balance show here so you can log this week's call, email or visit."],
+      defaultSort: { key: "balance", dir: -1 },
+      chips: Object.keys(FOLLOWUP_TONES).filter((status) => status !== "Called").map((status) => ({ key: status, label: contactStatusLabel(status), tone: FOLLOWUP_TONES[status] })),
+      defaultScope: "",
+      branchOptions: salesBranchOptions(),
+    };
+  }
+
+  if (tab === "soa") {
+    const rows = clients.map(/** @returns {UiViewRow} */ (entry) => {
+      const first = oldest(entry);
+      const overdue = entry.overdue > 0.005;
+      return {
+        id: entry.client,
+        branches: entry.branches,
+        scopes: [overdue ? "overdue" : "current"],
+        search: [entry.client, entry.area, ...entry.invoices.map((invoice) => invoice.doc)].join(" "),
+        sortValues: { id: entry.client, count: entry.invoices.length, oldest: inventoryDateValue(first?.due), total: entry.total, overdue: entry.overdue },
+        csv: [entry.client, entry.area, entry.invoices.length, first?.due || "", entry.total.toFixed(2), entry.overdue.toFixed(2)],
+        cells: [
+          uiCellDoc(entry.client, select(entry.client), entry.area, { plain: true }),
+          escapeHtml(inventoryPlural(entry.invoices.length, "invoice")),
+          uiCellText(uiDate(first?.due), first && first.days > 0 ? `${first.days} ${first.days === 1 ? "day" : "days"} overdue` : "Not yet due", { subTone: first && first.days > 0 ? "red" : undefined }),
+          uiCellNum(peso.format(entry.total)),
+          `<span class="ui-sub">—</span>`,
+          uiPill(overdue ? "Due for a statement" : "Current", overdue ? "orange" : "green"),
+          inventoryNextStep(`<button class="mini-button" data-create-soa="${escapeHtml(entry.client)}">Preview statement</button>`),
+        ],
+        detail: /** @returns {UiDetail} */ () => ({
+          eyebrow: entry.area || "Statement of account", title: entry.client, pill: overdue ? { text: "Due for a statement", tone: "orange" } : { text: "Current", tone: "green" }, closeAttrs, label: "Statement of account preview",
+          fields: [
+            { label: "Open invoices", value: String(entry.invoices.length) },
+            { label: "Overdue", value: peso.format(entry.overdue) },
+            { label: "Last statement sent", value: "—", sub: "Not recorded yet" },
+            { label: "Last payment", value: entry.lastPayment ? uiDate(entry.lastPayment) : "None on record" },
+          ],
+          linesTitle: "On the statement",
+          lines: invoiceLines(entry),
+          total: { label: "Total due", value: peso.format(entry.total) },
+          note: { text: "Post-dated checks already on hand aren't billed again on the statement.", tone: "slate" },
+          actions: uiAdoptActions(`<button data-create-soa="${escapeHtml(entry.client)}">Preview / print statement</button><button data-make-payment-request="${escapeHtml(first?.doc || "")}">Record collection</button><button data-client-invoices="${escapeHtml(entry.client)}">View invoices</button>`).buttons,
+        }),
+      };
+    });
+    const overdueRows = rows.filter((row) => row.scopes.includes("overdue"));
+    return {
+      title: "Statements of account", intro: "", placeholder: "Client, area or invoice", actions: [], minWidth: 900,
+      csvName: "receivables-statements.csv",
+      csvHeader: ["Client", "Area", "Open invoices", "Oldest due", "Total due", "Overdue"],
+      stats: [
+        { label: "Clients with a balance", value: rows.length, sub: salesPesoShort(rows.reduce((sum, row) => sum + Number(row.sortValues.total || 0), 0)) + " open", tone: "accent" },
+        { label: "Due for a statement", value: overdueRows.length, sub: `${salesPesoShort(overdueRows.reduce((sum, row) => sum + Number(row.sortValues.overdue || 0), 0))} overdue`, tone: "orange", scope: "overdue" },
+      ],
+      cols: [{ key: "id", label: "Client", sortable: true }, { key: "count", label: "Open invoices", sortable: true }, { key: "oldest", label: "Oldest due", sortable: true }, { key: "total", label: "Total due", align: "right", sortable: true }, { key: "sent", label: "Last sent" }, { key: "status", label: "Status" }, { key: "next", label: "", align: "right" }],
+      rows,
+      empty: ["No open balances", "Clients with unpaid invoices show here, ready for a statement of account."],
+      defaultSort: { key: "overdue", dir: -1 },
+      chips: [{ key: "overdue", label: "Due for a statement", tone: "orange" }, { key: "current", label: "Current", tone: "green" }],
+      defaultScope: "",
+      branchOptions: salesBranchOptions(),
+    };
+  }
+
+  // Aging by client
+  const rows = clients.map(/** @returns {UiViewRow} */ (entry) => {
+    const credit = clientCreditState(entry.client);
+    const used = credit.limit > 0 ? credit.used / credit.limit : 0;
+    const barTone = used >= 0.9 ? "red" : used >= 0.7 ? "amber" : "accent";
+    const risk = RECEIVABLES_RISK[entry.risk];
+    const first = oldest(entry);
+    const creditCell = credit.limit > 0
+      ? `<div class="ui-credit"><span class="ui-meter"><span class="t-${barTone}" style="width:${Math.min(100, Math.round(used * 100))}%"></span></span><span class="ui-sub${used > 1 ? " tone-red" : ""}">${used > 1 ? "Over limit · " : ""}${Math.round(used * 100)}% of ${salesPesoShort(credit.limit)}</span></div>`
+      : `<span class="ui-sub">No limit set</span>`;
+    const pdcTotal = entry.pdc.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    return {
+      id: entry.client,
+      branches: entry.branches,
+      scopes: [entry.risk, ...AGING_BUCKETS.filter((_, index) => entry.amounts[index] > 0.005).map((bucket) => bucket.key)],
+      search: [entry.client, entry.area, risk.label, ...entry.invoices.map((invoice) => invoice.doc)].join(" "),
+      sortValues: { id: entry.client, total: entry.total, risk: risk.rank * 1e12 + entry.overdue, credit: used, ...Object.fromEntries(AGING_BUCKETS.map((bucket, index) => [bucket.key, entry.amounts[index]])) },
+      csv: [entry.client, entry.area, credit.limit.toFixed(2), ...entry.amounts.map((amount) => amount.toFixed(2)), entry.total.toFixed(2), risk.label],
+      cells: [
+        uiCellDoc(entry.client, select(entry.client), `${inventoryPlural(entry.invoices.length, "open invoice")}${entry.area ? ` · ${entry.area}` : ""}`, { plain: true }),
+        creditCell,
+        ...entry.amounts.map((amount) => uiCellNum(receivablesShort(amount))),
+        `<strong class="ui-num">${escapeHtml(salesPesoShort(entry.total))}</strong>`,
+        uiPill(risk.label, risk.tone),
+      ],
+      detail: /** @returns {UiDetail} */ () => {
+        const bouncedText = entry.bounced.map((payment) => `${payment.receiptNo} (${collectionMethodLabel(payment.method)}${payment.bank ? ` · ${payment.bank}` : ""}, ${peso.format(Number(payment.amount || 0))})`).join(", ");
+        const contact = (data.collectionContacts || []).find((item) => item.client === entry.client);
+        return {
+          eyebrow: entry.area || "Client", title: entry.client, pill: { text: risk.label, tone: risk.tone }, closeAttrs, label: "Client receivables",
+          fields: [
+            { label: "Total open", value: peso.format(entry.total) },
+            { label: "Overdue", value: peso.format(entry.overdue) },
+            { label: "Credit limit", value: credit.limit > 0 ? peso.format(credit.limit) : "No limit set", sub: credit.limit > 0 ? `${Math.round(used * 100)}% used` : "" },
+            { label: "Terms", value: credit.client?.terms ? `${credit.client.terms} days` : "—" },
+            { label: "Last payment", value: entry.lastPayment ? uiDate(entry.lastPayment) : "None on record" },
+            { label: "Post-dated checks", value: entry.pdc.length ? `${salesPesoShort(pdcTotal)} · ${entry.pdc.length} on hand` : "None", sub: entry.pdc.map((payment) => payment.postedDate ? uiDate(payment.postedDate) : "").filter(Boolean).join(", ") },
+            { label: "Follow-up this week", value: contact ? contactStatusLabel(String(contact.status || "Pending")) : "—", sub: contact?.lastContact ? `${uiDate(contact.lastContact)}${contact.employee ? ` · ${contact.employee}` : ""}` : "", wide: !contact?.notes },
+            ...(contact?.notes ? [{ label: "Follow-up notes", value: String(contact.notes), wide: true }] : []),
+          ],
+          linesTitle: "Open invoices",
+          lines: invoiceLines(entry),
+          total: { label: "Total open", value: peso.format(entry.total) },
+          note: entry.bounced.length ? { text: `Bounced: ${bouncedText}. Ask for a replacement before releasing new orders.`, tone: "red" }
+            : entry.risk === "escalate" ? { text: "Has balances 61–90 days past due. Escalate before it goes over 90 days.", tone: "orange" }
+            : entry.risk === "risk" ? { text: "Has balances more than 90 days past due.", tone: "red" } : undefined,
+          actions: [
+            ...uiAdoptActions(`<button data-make-payment-request="${escapeHtml(first?.doc || "")}">Record collection</button><button data-create-soa="${escapeHtml(entry.client)}">Send statement</button><button data-receivables-log-followup="${escapeHtml(entry.client)}">Log follow-up</button><button data-client-invoices="${escapeHtml(entry.client)}">View invoices</button>`).buttons,
+          ],
+        };
+      },
+    };
+  });
+  const visible = rows.filter((row) => receivablesView.branch === "all" || row.branches.includes(receivablesView.branch));
+  const bucketTotals = AGING_BUCKETS.map((bucket) => visible.reduce((sum, row) => sum + Number(row.sortValues[bucket.key] || 0), 0));
+  const grand = bucketTotals.reduce((sum, amount) => sum + amount, 0);
+  const overdue = grand - bucketTotals[0];
+  const over60 = bucketTotals[3] + bucketTotals[4];
+  const pdcOnHand = clients.filter((entry) => visible.some((row) => row.id === entry.client)).reduce((sum, entry) => sum + entry.pdc.reduce((total, payment) => total + Number(payment.amount || 0), 0), 0);
+  const pct = (/** @type {number} */ amount) => grand ? `${Math.round((amount / grand) * 100)}%` : "0%";
+  const agingBar = `<div class="ui-card ui-aging"><div class="ui-aging-head"><div><span class="ui-stat-label">Total receivables</span><strong class="ui-aging-total">${escapeHtml(salesPesoShort(grand))}</strong></div><dl><div><dt>Overdue</dt><dd>${escapeHtml(salesPesoShort(overdue))} <small>${pct(overdue)}</small></dd></div><div><dt>Over 60 days</dt><dd>${escapeHtml(salesPesoShort(over60))} <small>${pct(over60)}</small></dd></div><div><dt>Post-dated checks</dt><dd>${escapeHtml(salesPesoShort(pdcOnHand))}</dd></div></dl></div><div class="ui-aging-bar" role="img" aria-label="Receivables by age">${AGING_BUCKETS.map((bucket, index) => bucketTotals[index] > 0 ? `<span class="t-${bucket.tone}${bucket.key === "b4" ? " deep" : ""}" style="flex:${bucketTotals[index]}" title="${escapeHtml(`${bucket.label}: ${salesPesoShort(bucketTotals[index])}`)}"></span>` : "").join("") || `<span class="t-slate" style="flex:1"></span>`}</div></div>`;
+  return {
+    title: "Aging by client", intro: "", placeholder: "Client, area or invoice no.", actions: [], minWidth: 1000,
+    csvName: "receivables-aging.csv",
+    csvHeader: ["Client", "Area", "Credit limit", ...AGING_BUCKETS.map((bucket) => bucket.label), "Total", "Follow-up"],
+    before: agingBar,
+    stats: AGING_BUCKETS.map((bucket, index) => ({ label: bucket.label, value: salesPesoShort(bucketTotals[index]), sub: `${pct(bucketTotals[index])} of total`, tone: bucket.tone, scope: bucket.key })),
+    cols: [{ key: "id", label: "Client", sortable: true }, { key: "credit", label: "Credit used", sortable: true }, ...AGING_BUCKETS.map((bucket) => /** @type {UiCol} */ ({ key: bucket.key, label: bucket.short, align: "right", sortable: true })), { key: "total", label: "Total", align: "right", sortable: true }, { key: "risk", label: "Follow-up", sortable: true }],
+    rows,
+    empty: ["No open receivables", "Everything is collected. Clients with unpaid invoices show here, aged by due date."],
+    defaultSort: { key: "risk", dir: -1 },
+    chips: [...Object.keys(RECEIVABLES_RISK).map((key) => ({ key, label: RECEIVABLES_RISK[key].label, tone: RECEIVABLES_RISK[key].tone })), ...AGING_BUCKETS.map((bucket) => ({ key: bucket.key, label: bucket.label, tone: bucket.tone, onlyWhenActive: true }))],
+    defaultScope: "",
+    branchOptions: salesBranchOptions(),
+    totals: (shown) => ["<strong>Total</strong>", "", ...AGING_BUCKETS.map((bucket) => `<strong class="ui-num">${escapeHtml(receivablesShort(shown.reduce((sum, row) => sum + Number(row.sortValues[bucket.key] || 0), 0)))}</strong>`), `<strong class="ui-num">${escapeHtml(salesPesoShort(shown.reduce((sum, row) => sum + Number(row.sortValues.total || 0), 0)))}</strong>`, ""],
+  };
+}
+
+function renderReceivablesTracker() {
+  if (!RECEIVABLES_TAB_LABELS[receivablesTab]) receivablesTab = "aging";
+  syncCollectionContactsForBalances();
+  const clients = receivablesByClient();
+  /** @type {Record<string, number>} */
+  const counts = {
+    aging: clients.filter((entry) => entry.risk === "risk").length,
+    soa: clients.filter((entry) => entry.overdue > 0.005).length,
+    followups: (data.collectionContacts || []).filter((contact) => ["Pending", "No Response", "Unreached", "Called"].includes(contact.status)).length,
+  };
+  qs("#receivables-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(RECEIVABLES_TAB_LABELS).map((key) => ({ key, label: RECEIVABLES_TAB_LABELS[key], count: counts[key] })), active: receivablesTab, attr: "data-receivables-tab" });
+  uiRender(qs("#receivables-tab-panel"), uiViewHtml(receivablesTabModel(receivablesTab), receivablesView, "receivables"));
+  const map = qs("#receivables-followups-map");
+  if (map) map.hidden = receivablesTab !== "followups";
+  if (receivablesTab === "followups") renderCollectionContactMap();
+  syncModuleUrl("receivables-tracker", receivablesQueryString());
+}
+
+/** Opens Receivables on a client (by name or one of its open invoices) and selects it. @param {string} query @returns {boolean} */
+function receivablesFocusRecord(query) {
+  const id = query.toLowerCase();
+  const rows = receivablesTabModel("aging").rows;
+  const row = rows.find((entry) => entry.id.toLowerCase() === id) || rows.find((entry) => entry.search.toLowerCase().split(" ").includes(id));
+  if (!row) return false;
+  receivablesTab = "aging";
+  receivablesView = uiBlankViewState();
+  receivablesView.sel = row.id;
+  return true;
+}
+
 /** @param {any} target @param {any} heroCards @param {any} groups */
 function renderFinancialSummary(target, heroCards, groups) {
   qs(target).innerHTML = `
@@ -4972,31 +6045,6 @@ function printMemo(id) {
   if (!dialog.open) dialog.showModal();
 }
 
-function renderInvoicing() {
-  ensureUploadedFilesLoaded(renderInvoicing);
-  renderPendingCreditInvoices();
-  const rows = invoicingVisibleSales().reverse();
-  const deliveryControl = (/** @type {any} */ s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
-  const actionCell = (/** @type {any} */ s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-invoice="${escapeHtml(s.id)}" type="button">Cancel only</button><button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
-  qsa("#invoice-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.invoiceView === invoiceViewMode));
-  qs("#invoice-table-view").hidden = invoiceViewMode !== "table";
-  qs("#invoice-grid").hidden = invoiceViewMode !== "card";
-  if (invoiceViewMode === "table") {
-    table("#invoice-table", ["Document", "Client", "Area", "Date", "Total Due", "Paid", "Balance", "Status", "Delivery", "Actions"], rows.map((s) => {
-      const paid = Number(s.paid || 0);
-      const balance = Math.max(Number(s.net || 0) - paid, 0);
-      return { focus: s.documentNo || s.id, cells: [`<span class="invoice-type-badge type-${escapeHtml(documentType(s.type))}"><span>${invoiceTypeIcon(s.type)}</span>${escapeHtml(s.documentNo || s.id)}</span>`, s.client, s.area || "-", s.date, peso.format(s.net), peso.format(paid), peso.format(balance), `<span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span>`, deliveryControl(s), actionCell(s, true)] };
-    }));
-  }
-  qs("#invoice-grid").innerHTML = rows.map((s) => {
-    const due = fmtDate(addDays(s.date, s.terms));
-    const paid = Number(s.paid || 0);
-    const pending = Math.max(Number(s.net || 0) - paid, 0);
-    const balanceLine = paid > 0 ? `<small class="invoice-balance-line">Paid ${peso.format(paid)} · Pending ${peso.format(pending)}</small>` : "";
-    const taxSummary = saleTaxSummary(s);
-    return `<details class="invoice-card collapsible-invoice" data-invoice-id="${s.id}" data-focus-record="${escapeHtml(s.documentNo || s.id)}"><summary><div class="invoice-type-icon type-${escapeHtml(documentType(s.type))}">${invoiceTypeIcon(s.type)}</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(s.documentNo || s.id)}</strong><strong class="invoice-amount">${peso.format(s.net)}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(statusForSale(s))}">${invoiceTypeLabel(s.type)} · ${statusForSale(s)}</span><span class="pill ${deliveryStatusPillClass(s.deliveryStatus)}">${escapeHtml(s.deliveryStatus || "Pending")}</span>${s.noPo ? `<span class="pill warning">No PO · Not Printed</span>` : ""}<small class="invoice-client-line">${escapeHtml(s.client)}</small><small class="invoice-due-line">Due ${due}</small>${balanceLine}</div></div></summary><div class="invoice-details"><p>${escapeHtml(saleSummary(s))}</p>${taxSummary ? `<small>${escapeHtml(taxSummary)}</small>` : ""}${s.cancelledFrom ? `<small>Replacement for cancelled ${escapeHtml(s.cancelledFrom)}</small>` : ""}${s.replacementId ? `<small>Cancelled and replaced by ${escapeHtml(s.replacementId)}</small>` : ""}${invoiceTaxMetaHtml(s)}<div class="invoice-meta"><span>Terms</span><strong>${s.terms} days</strong></div><div class="invoice-meta"><span>Delivery Status</span>${deliveryControl(s)}</div>${attachedFilesHtml("sale", s.id)}${actionCell(s)}</div></details>`;
-  }).join("");
-}
 
 function clearPrintTarget() {
   document.body.classList.remove("print-single-invoice");
@@ -5219,71 +6267,7 @@ function renderCollectionsTotalSummary() {
   if (el) el.innerHTML = `<strong>${peso.format(total)}</strong><small>${filtered.length} receipt${filtered.length === 1 ? "" : "s"}${client ? ` · ${escapeHtml(client)}` : ""}${from || to ? ` · ${escapeHtml(from || "…")} to ${escapeHtml(to || "…")}` : ""}</small>`;
 }
 
-function renderCollections() {
-  syncCollectionContactsForBalances();
-  syncPostedCollectionReminders();
-  renderCollectionsWorkflowTabs();
-  if (collectionsWorkflowTab === "history") renderCollectionsHistory();
-  renderCollectionsTotalSummary();
-  const visibleSales = byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s)));
-  const visibleDocs = new Set(visibleSales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
-  const visiblePayments = data.payments.filter((payment) => visibleDocs.has(payment.invoice));
-  const totalDue = visibleSales.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-  const totalPaid = visibleSales.reduce((sum, sale) => sum + sale.paid, 0);
-  const dueBuckets = ["Paid", "Partially Paid", "Near Due", "Overdue", "Unpaid"].map((status) => [status, visibleSales.filter((sale) => statusForSale(sale) === status).length]);
-  const methodMix = Object.entries(sumBy(visiblePayments, "method", (payment) => Number(payment.amount || 0))).filter(([, amount]) => amount > 0);
-  const depositedAmount = visiblePayments.filter((payment) => payment.collectionStatus === "Deposited").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const forDepositAmount = visiblePayments.filter((payment) => payment.collectionStatus === "For Deposit").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const bouncedCount = visiblePayments.filter((payment) => payment.collectionStatus === "Bounced").length;
-  const postedCount = visiblePayments.filter((payment) => payment.collectionStatus === "Posted Date").length;
-  const largestPayment = visiblePayments.reduce((max, payment) => Math.max(max, Number(payment.amount || 0)), 0);
-  const averagePayment = visiblePayments.length ? Math.round(visiblePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) / visiblePayments.length) : 0;
-  renderFinancialSummary("#collections-summary-grid", [
-    { tone: "primary", label: "Total displayed collections", value: peso.format(visiblePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)), note: `${visiblePayments.length} receipt${visiblePayments.length === 1 ? "" : "s"} in this view` },
-    { tone: "success", label: "Deposited", value: peso.format(depositedAmount), note: `${forDepositAmount ? `${peso.format(forDepositAmount)} for deposit` : "No pending deposit amount"}` },
-    { tone: "warning", label: "Open receivables", value: peso.format(totalDue), note: `${visibleSales.filter((sale) => statusForSale(sale) === "Overdue").length} overdue invoice${visibleSales.filter((sale) => statusForSale(sale) === "Overdue").length === 1 ? "" : "s"}` },
-  ], [
-    { title: "Collection Status", items: [{ label: "For Deposit", value: visiblePayments.filter((payment) => payment.collectionStatus === "For Deposit").length }, { label: "Deposited", value: visiblePayments.filter((payment) => payment.collectionStatus === "Deposited").length }, { label: "Bounced", value: bouncedCount }] },
-    { title: "Receipt Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averagePayment) }, { label: "Largest", value: peso.format(largestPayment) }] },
-    { title: "Traceability", kind: "pairs", items: [{ label: "Posted Date", value: postedCount }, { label: "Cheque Ready", value: data.collectionContacts.filter((contact) => contact.status === "Cheque Available").length }] },
-  ]);
-  qs("#collections-visuals").innerHTML = [
-    visualCard("₱", "Collection Progress", `${peso.format(totalPaid)} paid`, `<div class="donut-wrap"><div class="donut" style="--paid:${totalPaid + totalDue ? Math.round((totalPaid / (totalPaid + totalDue)) * 100) : 0}%; --partial:${totalPaid + totalDue ? Math.round((totalPaid / (totalPaid + totalDue)) * 100) : 0}%; --end:100%;" data-label="${totalPaid + totalDue ? Math.round((totalPaid / (totalPaid + totalDue)) * 100) : 0}%\ncollected"></div><div class="legend"><span class="green">Paid ${peso.format(totalPaid)}</span><span class="red">Open ${peso.format(totalDue)}</span></div></div>`, "success", "Computed as paid amount divided by paid plus remaining receivables."),
-    visualCard("!", "Due Risk", `${visibleSales.filter((sale) => ["Near Due", "Overdue", "Unpaid"].includes(statusForSale(sale))).length} needs action`, barRows(dueBuckets, (value) => `${value} docs`, ["green", "orange", "orange", "red", "red"]), "warning", "Computed from each invoice balance, due date, and payment status."),
-    visualCard("◆", "Payment Channels", `${data.payments.length} receipts`, barRows(methodMix, (value) => peso.format(value), ["green", "", "orange"]), "info", "Computed from collection records grouped by payment method."),
-  ].join("");
-  renderCollectionContactMap();
-  const rows = byBranch(data.sales, "area").filter((s) => Math.max(Number(s.net || 0) - Number(s.paid || 0), 0) > 0 && includesSearch(Object.values(s))).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map((s) => {
-    const payments = data.payments.filter((payment) => payment.invoice === s.id || payment.invoice === s.documentNo);
-    const latest = payments.at(-1) || /** @type {Record<string, any>} */ ({});
-    const chequeInfo = latest.cheques?.length ? `${latest.cheques.length} cheques<small>${latest.cheques.map((/** @type {ChequeLine} */ cheque) => [cheque.reference, cheque.chequeDate, cheque.amount ? peso.format(cheque.amount) : ""].filter(Boolean).map((part) => escapeHtml(part)).join(" · ")).join("<br>")}</small>` : latest.chequeDate || "-";
-    const status = latest.collectionStatus || "For Deposit";
-    return { focus: [s.documentNo || s.id, latest.receiptNo, s.client].filter(Boolean).join("|"), cells: [s.documentNo || s.id, latest.tag || collectionTagForType(s.type), latest.receiptNo || "-", s.client, s.area, fmtDate(addDays(s.date, s.terms)), latest.dateRecorded || "-", latest.bank || "-", chequeInfo, `<span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>${latest.postedDate ? `<small>Posted ${escapeHtml(latest.postedDate)}</small>` : ""}`, collectionStatusActions(/** @type {Payment} */ (latest), s), peso.format(Math.max(s.net - s.paid, 0)), `<span class="pill ${statusClass(statusForSale(s))}">${statusForSale(s)}</span>`] };
-  });
-  table("#collections-table", ["Document", "Tag", "Receipt No", "Client", "Area", "Due Date", "Date Recorded", "Bank", "Cheque Details", "Collection Status", "Actions", "Balance", "AR Status"], rows);
-  table("#payment-request-table", ["CR/PR No.", "Date", "Client", "Invoice", "Collector", "Payment", "Total", "Status", "Actions"], [...data.paymentRequests].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).map((r) => ({ focus: r.cvNo, cells: [r.cvNo, r.date, r.employee, r.invoice || "-", r.preparedBy || "-", r.paymentType, peso.format(r.total), `<span class="pill ${statusClass(r.requestStatus || r.status)}">${escapeHtml(r.requestStatus || r.status || "-")}</span>`, paymentRequestActionsCell(r)] })));
-  const loadMoreCollectionsButton = qs("#load-more-collections");
-  if (loadMoreCollectionsButton) loadMoreCollectionsButton.hidden = !modulePagination.payments?.hasMore || !tableFullyRevealed("#collections-table");
-  const loadMorePaymentRequestsButton = qs("#load-more-payment-requests");
-  if (loadMorePaymentRequestsButton) loadMorePaymentRequestsButton.hidden = !modulePagination.paymentRequests?.hasMore || !tableFullyRevealed("#payment-request-table");
-}
 
-function renderCollectionsWorkflowTabs() {
-  /** @type {Record<string, any>} */
-  const counts = {
-    ledger: byBranch(data.sales, "area").filter((sale) => Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).length,
-    requests: data.paymentRequests.filter((request) => !["Completed", "Cancelled"].includes(request.requestStatus || request.status)).length,
-    followups: data.collectionContacts.filter((contact) => ["Pending", "No Response", "Unreached", "Cheque Available"].includes(contact.status)).length,
-  };
-  /** @type {Record<string, any>} */
-  const labels = { ledger: "AR Ledger", requests: "Payment Received", history: "Collections History", followups: "Follow-ups Map" };
-  qsaIn(qs("#collections-workflow-tabs"), "[data-collections-workflow]").forEach((button) => {
-    const tab = /** @type {string} */ (button.dataset.collectionsWorkflow);
-    button.classList.toggle("active", tab === collectionsWorkflowTab);
-    button.innerHTML = `${escapeHtml(labels[tab])}${counts[tab] != null ? ` <span class="tab-count">${counts[tab]}</span>` : ""}`;
-  });
-  qsa("[data-collections-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.collectionsPanel === collectionsWorkflowTab));
-}
 
 /** @param {Payment} payment @param {Sale} sale */
 function collectionStatusActions(payment, sale) {
@@ -6163,36 +7147,6 @@ function updateCollectionContact(client, status) {
   toast(`${client} marked ${status}.`);
 }
 
-function renderReceivablesTracker() {
-  const canViewAllReceivables = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
-  const allRows = byBranch(data.sales, "area").filter((sale) => Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).filter((sale) => canViewAllReceivables || isClientAssignedToCurrentUser(sale.client)).filter((sale) => includesSearch(Object.values(sale)));
-  const tabs = arTrackerTabs(allRows);
-  qs("#ar-tracker-tabs").innerHTML = tabs.map(([key, label, count]) => `<button class="order-status-tab ${arTrackerTab === key ? "active" : ""}" data-ar-tab="${key}">${escapeHtml(label)}${key === "all" ? "" : ` <span>(${count})</span>`}</button>`).join("");
-  const stageRows = arTrackerTab === "all" ? allRows : allRows.filter((sale) => arTrackerStage(sale) === arTrackerTab);
-  const rows = arTrackerStatusFilter === "all" ? stageRows : stageRows.filter((sale) => statusForSale(sale) === arTrackerStatusFilter);
-  const openBalance = rows.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-  qs("#ar-tracker-visuals").innerHTML = [
-    visualCard("▦", "Current Tab", tabs.find(([key]) => key === arTrackerTab)?.[1] || "All", barRows(tabs.filter(([key]) => key !== "all").map(([, label, count]) => [label, count]), (value) => `${value} docs`, ["orange", "", "", "green", "red", "orange"]), "info", "Computed from invoice workflow status across PO, invoice, delivery, payment, and AR stages."),
-    visualCard("₱", "Open AR", peso.format(openBalance), `<div class="big-number compact-big">${peso.format(openBalance)}</div><p>${rows.length} invoice${rows.length === 1 ? "" : "s"} in this view.</p>`, openBalance ? "warning" : "success", "Computed as invoice net amount minus paid amount for the filtered records."),
-  ].join("");
-  const byClientReceivables = Object.entries(allRows.reduce((/** @type {Record<string, any>} */ acc, sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
-    .map(([client, invoices]) => [client, invoices, invoices.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
-    .sort((a, b) => b[2] - a[2]);
-  table("#client-receivables-table", ["Client", "Open Invoices", "Total Receivables", "Actions"], byClientReceivables.map(([client, invoices, total]) => [escapeHtml(client), invoices.length, peso.format(total), `<button class="mini-button" data-client-invoices="${escapeHtml(client)}">View</button>`]));
-  const regional = Object.entries(allRows.filter((sale) => Math.max(sale.net - sale.paid, 0) > 0).reduce((/** @type {Record<string, any>} */ acc, sale) => { acc[sale.area] ||= []; acc[sale.area].push(sale); return acc; }, {}))
-    .map(([area, invoices]) => [area, invoices, invoices.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
-    .sort((a, b) => b[2] - a[2]);
-  qs("#regional-receivables-groups").innerHTML = regional.map(([area, invoices, regionBalance], index) => {
-    const byClientInArea = Object.entries(invoices.reduce((/** @type {Record<string, any>} */ acc, /** @type {Sale} */ sale) => { acc[sale.client] ||= []; acc[sale.client].push(sale); return acc; }, {}))
-      .map(([client, clientInvoices]) => [client, clientInvoices, clientInvoices.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0)])
-      .sort((a, b) => b[2] - a[2]);
-    const overdueClients = byClientInArea.filter(([, clientInvoices]) => clientInvoices.some((/** @type {Sale} */ sale) => statusForSale(sale) === "Overdue")).length;
-    return `<details class="region-contact-group" ${index === 0 ? "open" : ""} data-focus-text="${escapeHtml(area)}"><summary><strong>${escapeHtml(area)}</strong><span>${byClientInArea.length} client${byClientInArea.length === 1 ? "" : "s"} · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}${overdueClients ? ` · ${overdueClients} overdue` : ""}</span><span class="pill ${overdueClients ? "red" : "orange"}">${peso.format(regionBalance)} open</span></summary><div class="region-client-list region-client-chip-list">${byClientInArea.map(([client, clientInvoices, balance]) => {
-      const overdue = clientInvoices.some((/** @type {Sale} */ sale) => statusForSale(sale) === "Overdue");
-      return `<button type="button" class="region-client-chip ${overdue ? "overdue" : ""}" data-client-invoices="${escapeHtml(client)}" data-focus-text="${escapeHtml(`${client} ${area}`)}"><strong>${escapeHtml(client)}</strong><small>${clientInvoices.length} invoice${clientInvoices.length === 1 ? "" : "s"}${overdue ? " · overdue" : ""}</small><span class="pill ${overdue ? "red" : "orange"}">${peso.format(balance)}</span></button>`;
-    }).join("")}</div></details>`;
-  }).join("") || `<article class="panel"><p>No open regional receivables — everything is collected.</p></article>`;
-}
 
 /** @param {Sale} sale @param {boolean} [detailed] */
 function trackerCard(sale, detailed = false) {
@@ -6303,19 +7257,7 @@ function renderClientInvoices() {
   renderClientHistoryTabs(client);
 }
 
-function invoicingVisibleSales() {
-  const typeFilter = qs("#invoicing-type-filter")?.value || "all";
-  return byBranch(data.sales, "area").filter((s) => includesSearch(Object.values(s))).filter((s) => typeFilter === "all" || documentType(s.type) === typeFilter);
-}
 
-function exportInvoicingCsv() {
-  const rows = invoicingVisibleSales();
-  if (!rows.length) return toast("No invoices in the current view to export.");
-  const header = ["Document No.", "Type", "Client", "Area", "Salesperson", "Date", "Amount", "Paid", "Balance", "Status"];
-  const body = rows.map((s) => [s.documentNo || s.id, invoiceTypeLabel(s.type), s.client, s.area || "-", s.salesperson || "-", s.date, Number(s.net || 0).toFixed(2), Number(s.paid || 0).toFixed(2), Math.max(Number(s.net || 0) - Number(s.paid || 0), 0).toFixed(2), statusForSale(s)]);
-  downloadCsv("invoices.csv", [header, ...body]);
-  log("Exported invoices (CSV)", "Invoicing", `${rows.length} invoices`, { save: false });
-}
 
 function exportItemizedInvoicingCsv() {
   const rows = invoicingVisibleSales();
@@ -7932,28 +8874,6 @@ async function rejectCreditInvoice(id) {
   saveData(["notifications"]); renderAll(); toast("Request rejected.");
 }
 
-function renderPendingCreditInvoices() {
-  const card = qs("#pending-credit-invoices-card");
-  if (!card) return;
-  const all = [...data.pendingCreditInvoices].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
-  card.hidden = !all.length;
-  if (!all.length) return;
-  const pending = all.filter((request) => request.status === "Pending");
-  const decided = all.filter((request) => request.status !== "Pending");
-  qsa("#credit-invoices-workflow-tabs .tab").forEach((btn) => {
-    const tab = btn.dataset.creditWorkflow;
-    btn.classList.toggle("active", tab === creditInvoiceWorkflowTab);
-    const count = tab === "history" ? decided.length : pending.length;
-    btn.innerHTML = `${tab === "history" ? "History" : "Pending"} <span class="tab-count">${count}</span>`;
-  });
-  const isHistory = creditInvoiceWorkflowTab === "history";
-  qs("#credit-invoices-card-title").textContent = isHistory ? "Credit Approval History" : "Pending Credit Approval";
-  qs("#credit-invoices-card-description").textContent = isHistory ? "Past invoice requests Accounting submitted over a client's credit limit, with the Admin/CEO decision." : "Invoices Accounting submitted over a client's credit limit, awaiting Admin/CEO sign-off. Nothing is deducted from stock until approved.";
-  const requests = isHistory ? decided : pending;
-  /** @type {Record<string, any>} */
-  const pillClass = { Pending: "orange", Approved: "green", Rejected: "red" };
-  table("#pending-credit-invoices-table", ["Request", "Client", "Requested By", "Requested", "Projected Balance", "Credit Limit", "Status", "Actions"], requests.map((request) => ({ focus: request.id, cells: [request.id, request.client, request.requestedBy, request.requestedAt || "-", peso.format(request.projected), peso.format(request.limit), `<span class="pill ${pillClass[request.status] || "gray"}">${escapeHtml(request.status)}</span>`, pendingCreditInvoiceActions(request)] })));
-}
 
 /** @param {any} record @param {any} type @param {any} method */
 function confirmPaymentDetailsModal(record, type, method) {
@@ -9601,7 +10521,7 @@ function handleWorkflowAction(action) {
   }
   if (action.startsWith("open-ar:")) {
     const record = action.slice("open-ar:".length);
-    arTrackerTab = "all";
+    receivablesFocusRecord(record.split("|")[0]);
     renderReceivablesTracker();
     goToFocused("receivables-tracker", record);
     return toast("AR tracker record opened.");

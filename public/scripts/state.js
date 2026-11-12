@@ -47,11 +47,6 @@ let collectionLeafletLayer = null;
 let collectionRegionLayer = null;
 /** @type {any} */
 let philippinesRegionGeoJson = null;
-/** @type {any} */
-let arTrackerTab = "all";
-let arTrackerStatusFilter = "all";
-/** @type {any} */
-let collectionsWorkflowTab = "ledger";
 let collectionsClientSearch = "";
 let collectionMapZoom = 1;
 let inventoryBranchTab = "Las Pinas";
@@ -106,12 +101,40 @@ let salesView = (() => {
 /** Invoices tab: "all", "SI" or "TS". */
 let salesDocType = ["SI", "TS"].includes(salesUrlParams.get("type") || "") ? /** @type {string} */ (salesUrlParams.get("type")) : "all";
 
+// Invoicing / Collections / Receivables view state, seeded from ?section=<id>&tab=…&status=…&q=…&sel=…
+// the same way as Sales (see moduleViewQueryString in modules.js).
+/** @param {string} section @param {string[]} tabs @returns {{ params: URLSearchParams, tab: string, view: UiViewState }} */
+function moduleUrlSeed(section, tabs) {
+  let params = new URLSearchParams();
+  try { const p = new URLSearchParams(location.search); if (p.get("section") === section) params = p; } catch { /* no URL state */ }
+  const tab = tabs.includes(params.get("tab") || "") ? /** @type {string} */ (params.get("tab")) : tabs[0];
+  const sort = params.get("sort");
+  return { params, tab, view: { q: params.get("q") || "", sel: params.get("sel") || "", sort: sort ? { key: sort, dir: params.get("dir") === "asc" ? 1 : -1 } : null, page: Math.max(0, (Number(params.get("page")) || 1) - 1), branch: params.get("branch") || "all", scope: params.get("status") || "" } };
+}
+const INVOICING_TABS = ["invoices", "credit"];
+const invoicingSeed = moduleUrlSeed("invoicing", INVOICING_TABS);
+let invoicingTab = invoicingSeed.tab;
+/** @type {UiViewState} */
+let invoicingView = invoicingSeed.view;
+/** Invoices tab document type: "all", "SI", "TS" or "DR". */
+let invoicingDocType = ["SI", "TS", "DR"].includes(invoicingSeed.params.get("type") || "") ? /** @type {string} */ (invoicingSeed.params.get("type")) : "all";
+const COLLECTIONS_TABS = ["receipts", "deposits", "register", "history"];
+const collectionsSeed = moduleUrlSeed("collections", COLLECTIONS_TABS);
+let collectionsTab = collectionsSeed.tab;
+/** @type {UiViewState} */
+let collectionsView = collectionsSeed.view;
+/** Receipts / check register method filter: "all", "cash", "check" or "transfer". */
+let collectionsMethod = ["cash", "check", "transfer"].includes(collectionsSeed.params.get("method") || "") ? /** @type {string} */ (collectionsSeed.params.get("method")) : "all";
+const RECEIVABLES_TABS = ["aging", "soa", "followups"];
+const receivablesSeed = moduleUrlSeed("receivables-tracker", RECEIVABLES_TABS);
+let receivablesTab = receivablesSeed.tab;
+/** @type {UiViewState} */
+let receivablesView = receivablesSeed.view;
+
 /** @type {any} */
 let poViewMode = "table";
 /** @type {any} */
 let poWorkflowTab = "pending";
-/** @type {any} */
-let creditInvoiceWorkflowTab = "pending";
 let masterShowArchived = false;
 /** @type {any} */
 let currentSalesBreakdownDimension = null;
@@ -127,8 +150,6 @@ let cancelReplaceSaleId = null;
 /** @type {string | null} */
 let editingExpenseId = null;
 let userStatusFilter = "all";
-/** @type {any} */
-let invoiceViewMode = "table";
 /** @type {any} */
 let clientHistoryTab = "invoices";
 /** @type {Record<string, number>} */
