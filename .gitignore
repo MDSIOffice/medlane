@@ -2,3 +2,8 @@
 node_modules/
 .agents/
 .claude/skills/
+
+# Local dev environment (tools/local)
+.dev.vars
+.local/
+.local-start.log

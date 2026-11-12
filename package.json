@@ -11,12 +11,18 @@
     "check:noimplicitany": "bash tools/noimplicitany-gate.sh",
     "test": "node --test \"tests/*.test.mjs\"",
     "check:any": "node tools/any-ratchet.mjs",
-    "test:smoke": "playwright test"
+    "test:smoke": "playwright test",
+    "local": "bash tools/local/start.sh",
+    "local:reseed": "bash tools/local/start.sh --reseed",
+    "local:stop": "npx supabase stop",
+    "load-test": "node tools/load-test.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261106.1",
     "@playwright/test": "^1.65.0",
     "clean-css-cli": "^5.6.3",
-    "typescript": "^7.0.2"
+    "supabase": "^3.1.0",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.160.1"
   }
 }
