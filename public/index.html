@@ -604,26 +604,19 @@
         <button class="mini-button" id="role-preview-exit" type="button">Exit preview</button>
       </div>
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Medlane Diagnostic Solutions</p>
-          <h1 id="page-title">Dashboard</h1>
-          <p class="page-description" id="page-description">Executive overview of sales, collections, receivables, stock alerts, and urgent operational actions.</p>
-          <div class="collab-presence" aria-label="Workspace activity"><span><i></i>Live workspace</span><span>Sales</span><span>Warehouse</span><span>Accounting</span></div>
-        </div>
-        <div class="topbar-actions">
+        <div class="topbar-bar ui-scope">
+          <label class="tb-search" for="global-search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+            <span class="sr-only">Search Medlane OS</span>
+            <input id="global-search" class="search-input" type="search" placeholder="Search client, reagent, invoice" />
+          </label>
+          <div class="tb-spacer"></div>
+          <div class="collab-presence tb-workspace" role="group" aria-label="Workspace activity"><span class="is-live"><i></i>Live</span><span>Sales</span><span>Warehouse</span><span>Accounting</span></div>
           <div class="save-status-indicator" id="save-status-indicator" title="Save status">
             <span class="save-status-logo"><img src="medlane.jpg" alt="" /></span>
             <strong id="save-status-text">Saved</strong>
           </div>
-          <input id="global-search" class="search-input" type="search" placeholder="Search client, reagent, invoice..." />
-          <button class="icon-button notification-button" id="memo-toggle" type="button" aria-label="Memos" data-go-section="memos" title="Memos &amp; Announcements"><span class="notification-symbol">📋</span><span id="memo-count" hidden>0</span></button>
-          <div class="notification-menu">
-            <button class="icon-button notification-button" id="notification-toggle" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notification-popover"><span class="notification-symbol">🔔</span><span id="notification-count">0</span></button>
-            <div class="notification-popover" id="notification-popover" hidden>
-              <div class="notification-popover-header"><strong>Recent Notifications</strong><button class="link-button dark" id="view-all-notifications" type="button">View all</button></div>
-              <div class="alert-list compact-alerts" id="notification-recent-list"></div>
-            </div>
-          </div>
+          <label class="tb-area" for="branch-filter"><span>Area</span>
           <select id="branch-filter" aria-label="Branch filter">
             <option value="all">All Areas</option>
             <option value="Region I">Region I</option>
@@ -633,10 +626,18 @@
             <option value="Region V">Region V</option>
             <option value="Visayas Dealer">Visayas Dealer</option>
             <option value="Mindanao Dealer">Mindanao Dealer</option>
-          </select>
+          </select></label>
+          <button class="icon-button notification-button" id="memo-toggle" type="button" aria-label="Memos" data-go-section="memos" title="Memos &amp; Announcements"><svg class="notification-symbol" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"></rect><path d="M9 4V3h6v1"></path><path d="M9 10h6M9 14h6M9 18h3"></path></svg><span id="memo-count" hidden>0</span></button>
+          <div class="notification-menu">
+            <button class="icon-button notification-button" id="notification-toggle" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notification-popover"><svg class="notification-symbol" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg><span id="notification-count">0</span></button>
+            <div class="notification-popover" id="notification-popover" hidden>
+              <div class="notification-popover-header"><strong>Recent Notifications</strong><button class="link-button dark" id="view-all-notifications" type="button">View all</button></div>
+              <div class="alert-list compact-alerts" id="notification-recent-list"></div>
+            </div>
+          </div>
           <button class="primary-button" id="export-demo" hidden>Export Summary</button>
           <div class="user-menu">
-            <button class="user-chip" id="user-menu-toggle" type="button" aria-expanded="false" aria-controls="user-popover"><span id="welcome-name">Welcome</span><strong id="user-initials">U</strong></button>
+            <button class="user-chip" id="user-menu-toggle" type="button" aria-expanded="false" aria-controls="user-popover"><span id="welcome-name">Welcome</span><strong id="user-initials">U</strong><svg class="tb-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
             <div class="user-popover" id="user-popover" hidden>
               <strong id="user-popover-name">User</strong>
               <span id="user-popover-role">Role</span>
@@ -658,6 +659,11 @@
               <button class="link-button dark" id="logout-top-button" type="button">Logout</button>
             </div>
           </div>
+        </div>
+        <div class="topbar-title">
+          <p class="eyebrow">Medlane Diagnostic Solutions</p>
+          <h1 id="page-title">Dashboard</h1>
+          <p class="page-description" id="page-description">Executive overview of sales, collections, receivables, stock alerts, and urgent operational actions.</p>
         </div>
       </header>
 

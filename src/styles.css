@@ -3455,6 +3455,69 @@ body[data-active-section="sales"] #page-description { display: none; }
 body[data-active-section="inventory"] #page-title,
 body[data-active-section="inventory"] #page-description { display: none; }
 
+/* ===== App top bar (matches the module redesign references) =====
+   One row: search · workspace segment · save state · area · memos · bell · user.
+   The page title sits on its own row below and is hidden on redesigned modules. */
+.app-shell > .topbar { display: flex; flex-direction: column; align-items: stretch; gap: 18px; min-height: 0; margin-bottom: 20px; }
+.topbar .topbar-bar { min-height: 64px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-width: 0; padding: 10px 16px; box-sizing: border-box; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-card); color: var(--ui-ink); }
+.topbar .topbar-bar > * { min-width: 0; }
+.topbar .tb-search { position: relative; flex: 1 1 200px; max-width: 420px; height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--ui-head); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); color: var(--ui-subtle); cursor: text; }
+.topbar .tb-search:focus-within { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+.topbar .tb-search svg { flex-shrink: 0; }
+.topbar .tb-search .search-input { flex: 1; width: auto; min-width: 0; max-width: none; height: 100%; min-height: 0; border: 0; outline: none; padding: 0; background: transparent; box-shadow: none; font: 400 14px var(--ui-font); color: var(--ui-ink); }
+.topbar .tb-search .search-input:focus-visible { outline: none; }
+.topbar .tb-spacer { flex: 1 1 0; }
+.topbar .tb-workspace { display: flex; flex-wrap: nowrap; gap: 2px; margin: 0; padding: 3px; background: var(--ui-seg); border-radius: var(--ui-radius); }
+.topbar .tb-workspace span { min-height: 34px; height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--ui-ink-2); font: 600 13px var(--ui-font); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; box-shadow: none; }
+.topbar .tb-workspace span.is-live, .topbar .tb-workspace span:first-child { border: 0; background: var(--ui-surface); color: var(--ui-ink); font-weight: 700; box-shadow: 0 1px 2px rgba(18, 32, 46, .12); }
+.topbar .tb-workspace i { width: 7px; height: 7px; background: var(--ui-green); box-shadow: none; }
+.topbar .save-status-indicator { flex: 0 0 auto; min-height: 0; padding: 4px; border: 0; background: transparent; }
+.topbar .save-status-indicator strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.topbar .save-status-indicator.error { background: var(--ui-red-bg); }
+.topbar .tb-area { height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 12px; background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius); }
+.topbar .tb-area > span { font: 400 13px var(--ui-font); color: var(--ui-subtle); }
+.topbar .tb-area select { height: 36px; min-height: 0; max-width: 130px; border: 0; outline: none; padding: 0 6px 0 0; background-color: transparent; box-shadow: none; font: 600 14px var(--ui-font); color: var(--ui-ink); }
+.topbar .notification-button { width: 40px; height: 40px; min-height: 40px; border: 0; border-radius: var(--ui-radius); background: transparent; color: var(--ui-ink-2); box-shadow: none; }
+.topbar .notification-button:hover { background: var(--ui-hover); }
+.topbar .notification-button.has-unread { background: var(--ui-red-bg); color: var(--ui-red-fg); border: 0; }
+.topbar .notification-button .notification-symbol { width: 19px; height: 19px; margin: 0; font-size: 0; }
+.topbar .user-chip { width: auto; max-width: none; min-height: 40px; gap: 10px; padding: 2px 4px 2px 8px; border-radius: var(--ui-radius); justify-content: flex-start; font: 700 14px var(--ui-font); color: var(--ui-ink); }
+.topbar .user-chip:hover { background: var(--ui-hover); }
+.topbar .user-chip #welcome-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .user-chip strong { width: 36px; height: 36px; box-sizing: border-box; border: 2px solid var(--ui-accent); background: transparent; color: var(--ui-accent); box-shadow: none; font: 800 13px var(--ui-font); }
+.topbar .user-chip .tb-caret { color: var(--ui-subtle); flex-shrink: 0; }
+.topbar .user-chip[aria-expanded="true"] .tb-caret { transform: rotate(180deg); }
+.topbar .topbar-title { min-width: 0; }
+/* Redesigned modules carry their own page header. */
+body[data-active-section="inventory"] .topbar-title,
+body[data-active-section="sales"] .topbar-title { display: none; }
+@media (max-width: 1180px) {
+  .topbar .tb-workspace { order: 10; }
+}
+@media (max-width: 860px) {
+  .topbar .topbar-bar { padding: 10px 12px; gap: 8px; }
+  .topbar .tb-search { flex: 1 1 100%; max-width: none; order: -1; }
+  .topbar .tb-spacer { display: none; }
+  .topbar .tb-workspace { order: 10; flex: 1 1 100%; overflow-x: auto; }
+  .topbar .tb-workspace span { flex: 1 0 auto; justify-content: center; }
+  .topbar .tb-area { flex: 1 1 auto; }
+  .topbar .tb-area select { max-width: none; flex: 1; }
+  .topbar .notification-menu, .topbar .user-menu { position: relative; top: auto; right: auto; z-index: auto; }
+  .topbar .user-menu { margin-left: auto; }
+  .topbar .user-chip #welcome-name { max-width: 90px; }
+}
+@media print {
+  .app-shell > .topbar { display: block; }
+  .topbar .topbar-bar { display: none !important; }
+}
+@media (max-width: 520px) {
+  .topbar .user-chip #welcome-name { display: none; }
+  .topbar .tb-area { flex: 1 1 0; padding-left: 10px; }
+  .topbar .tb-area > span { display: none; }
+  .topbar .tb-area select { width: 100%; min-width: 0; }
+  .topbar .user-chip { padding-left: 2px; gap: 4px; }
+}
+
 /* ===== LANDING — delivery journey (pinned scroll story, driven by scripts/landing-journey.js) =====
    Base rules render the scenes as plain stacked content (no JS / reduced motion).
    .is-story pins the stage and overlays the scenes. */

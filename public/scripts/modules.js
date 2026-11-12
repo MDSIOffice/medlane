@@ -1062,7 +1062,7 @@ function applyRole() {
 function renderUserMenu() {
   if (!currentUser) return;
   const profile = getCurrentProfile();
-  qs("#welcome-name").textContent = `Welcome, ${firstName(profile.name)}`;
+  qs("#welcome-name").textContent = firstName(profile.name);
   qs("#user-initials").textContent = initials(profile.name);
   qs("#user-popover-name").textContent = profile.name;
   qs("#user-popover-role").hidden = false;
