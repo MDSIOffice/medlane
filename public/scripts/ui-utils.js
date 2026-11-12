@@ -691,41 +691,31 @@ function workflowFacts() {
   return { activeSales, openSales, overdue, nearDue, lowStock, nearExpiry, missingDocs, pendingContacts, pendingTransfers, pendingExpenses, duePayables, chequeReviews, duplicateClients, openIssues, escalatedIssues };
 }
 
+// The Calendar is a shared team schedule: only events people add (data.calendarEvents) appear —
+// invoices, POs, expenses and other dated records are deliberately no longer shown here.
+/** @param {string} time */
+function calendarTimeLabel(time) {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(time || ""));
+  if (!match) return String(time || "");
+  const hours = Number(match[1]);
+  return `${((hours + 11) % 12) + 1}:${match[2]} ${hours < 12 ? "AM" : "PM"}`;
+}
+/** @param {CalendarEvent} entry */
+function canChangeCalendarEvent(entry) {
+  if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
+  return Boolean(entry.createdByUser) && entry.createdByUser.toLowerCase() === String(currentUser?.email || "").toLowerCase();
+}
 /** @param {number} year @param {number} month */
 function calendarEventsForMonth(year, month) {
   /** @type {Record<string, any[]>} */
   const events = {};
-  /** @param {any} dateValue @param {Record<string, any>} entry */
-  const add = (dateValue, entry) => {
-    const key = String(dateValue || "").slice(0, 10);
-    if (!key) return;
-    const parsed = new Date(`${key}T00:00:00`);
-    if (Number.isNaN(parsed.getTime()) || parsed.getFullYear() !== year || parsed.getMonth() + 1 !== month) return;
-    (events[key] ||= []).push(entry);
-  };
-  (data.sales || []).forEach((sale) => {
-    if (sale.status === "Cancelled") return;
-    add(sale.date, { type: "Invoice issued", label: `${sale.id} — ${sale.client}`, tone: "blue", section: "receivables-tracker", record: sale.id });
-    const balance = sale.net - sale.paid;
-    if (balance > 0) {
-      const status = statusForSale(sale);
-      add(fmtDate(addDays(sale.date, sale.terms)), { type: "Invoice due", label: `${sale.id} — ${sale.client} (${peso.format(balance)})`, tone: status === "Overdue" ? "red" : status === "Near Due" ? "orange" : "gray", section: "receivables-tracker", record: sale.id });
-    }
-  });
-  (data.purchaseOrders || []).forEach((po) => add(po.date, { type: "Purchase order", label: `${po.id} — ${po.client}`, tone: "purple", section: "purchase-orders", record: po.id }));
-  (data.inventoryPurchaseOrders || []).forEach((po) => add(po.date, { type: "Inventory PO", label: `${po.id} — ${po.supplier}`, tone: "purple", section: "purchase-orders", record: po.id }));
-  (data.warranties || []).forEach((warranty) => {
-    if (!warranty.warrantyEnd) return;
-    const days = daysUntil(warranty.warrantyEnd);
-    add(warranty.warrantyEnd, { type: "Warranty ends", label: `${warranty.equipment} — ${warranty.client}`, tone: days < 0 ? "red" : days <= 30 ? "orange" : "green", section: "warranty", record: warranty.serial });
-  });
-  (data.paymentRequests || []).forEach((request) => add(request.date, { type: "Payment request", label: `${request.cvNo || request.id || "CV"} — ${request.employee || ""}`.trim(), tone: "teal", section: "collections", record: request.cvNo || request.id || "" }));
-  (data.productIssues || []).forEach((issue) => {
-    add(issue.startDate, { type: "Support report opened", label: `${issue.id} — ${issue.client || issue.equipment || ""}`.trim(), tone: "orange", section: "product-issues", record: issue.id });
-    if (issue.resolvedAt) add(issue.resolvedAt, { type: "Support report resolved", label: `${issue.id} resolved`, tone: "green", section: "product-issues", record: issue.id });
-  });
-  (data.replenishments || []).forEach((expense) => add(expense.date, { type: "Expense", label: `${expense.id} — ${expense.type || "Expense"} (${peso.format(Number(expense.amount || 0))})`, tone: "gray", section: "replenishments", record: expense.id }));
-  (data.payables || []).forEach((payable) => add(payable.date, { type: "Payable", label: `${payable.id} — ${payable.supplier || ""} (${peso.format(Number(payable.amount || 0))})`, tone: "gray", section: "payables", record: payable.id }));
+  const prefix = `${year}-${String(month).padStart(2, "0")}-`;
+  (data.calendarEvents || [])
+    .filter((entry) => !entry.removed && String(entry.date || "").startsWith(prefix))
+    .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")))
+    .forEach((entry) => {
+      (events[entry.date] ||= []).push({ id: entry.id, type: calendarTimeLabel(entry.time), label: entry.title, by: entry.createdBy || "", tone: "blue", canChange: canChangeCalendarEvent(entry) });
+    });
   return events;
 }
 
@@ -743,9 +733,12 @@ function calendarWidgetHtml(year, month, events, opts = {}) {
   for (let day = 1; day <= daysInMonth; day += 1) {
     const key = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const dayEvents = (events[key] || []).slice().sort((a, b) => calendarToneOrder.indexOf(a.tone) - calendarToneOrder.indexOf(b.tone));
-    const dots = dayEvents.slice(0, 3).map((entry) => `<span class="calendar-dot ${entry.tone}"></span>`).join("");
-    const overflow = dayEvents.length > 3 ? `<span class="calendar-more">+${dayEvents.length - 3}</span>` : "";
-    cells.push(`<button type="button" class="calendar-cell${key === todayKey ? " is-today" : ""}${dayEvents.length ? " has-events" : ""}" data-calendar-day="${key}"><strong>${day}</strong><span class="calendar-dots">${dots}${overflow}</span></button>`);
+    const shown = compact ? 3 : 2;
+    const marks = compact
+      ? dayEvents.slice(0, shown).map((entry) => `<span class="calendar-dot ${entry.tone}"></span>`).join("")
+      : dayEvents.slice(0, shown).map((entry) => `<span class="calendar-chip" title="${escapeHtml(`${entry.type} · ${entry.label}${entry.by ? ` — ${entry.by}` : ""}`)}">${escapeHtml(entry.type)} ${escapeHtml(entry.label)}</span>`).join("");
+    const overflow = dayEvents.length > shown ? `<span class="calendar-more">+${dayEvents.length - shown}</span>` : "";
+    cells.push(`<button type="button" class="calendar-cell${key === todayKey ? " is-today" : ""}${dayEvents.length ? " has-events" : ""}" data-calendar-day="${key}"><strong>${day}</strong><span class="${compact ? "calendar-dots" : "calendar-chips"}">${marks}${overflow}</span></button>`);
   }
   return `<div class="calendar-widget${compact ? " compact" : ""}" data-calendar-year="${year}" data-calendar-month="${month}" data-calendar-prefix="${idPrefix}">
     <div class="calendar-widget-header">
@@ -753,6 +746,7 @@ function calendarWidgetHtml(year, month, events, opts = {}) {
       <strong>${escapeHtml(monthName)}</strong>
       <button type="button" class="icon-button" data-calendar-nav="1" aria-label="Next month">›</button>
     </div>
+    ${compact ? "" : `<div class="calendar-widget-actions"><button type="button" class="primary-button" data-calendar-add="">Add Event</button></div>`}
     <div class="calendar-weekday-row">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
     <div class="calendar-grid">${cells.join("")}</div>
     <div class="calendar-day-detail" id="${idPrefix}-day-detail" hidden></div>
@@ -762,9 +756,9 @@ function calendarWidgetHtml(year, month, events, opts = {}) {
 function calendarDayDetailHtml(dateKey, entries) {
   const label = new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const rows = entries.length
-    ? entries.map((entry) => `<div class="alert-item clickable" data-go-section="${escapeHtml(entry.section)}" data-focus-record="${escapeHtml(entry.record || "")}"><span class="alert-dot ${entry.tone}"></span><div><strong>${escapeHtml(entry.type)}</strong><span>${escapeHtml(entry.label)}</span></div></div>`).join("")
-    : `<div class="alert-item"><span class="alert-dot green"></span><div><strong>Nothing on this date</strong><span>No invoices, orders, expenses, or expirations recorded.</span></div></div>`;
-  return `<div class="calendar-day-detail-header"><strong>${escapeHtml(label)}</strong></div>${rows}`;
+    ? entries.map((entry) => `<div class="alert-item calendar-event-row"><span class="alert-dot ${entry.tone}"></span><div><strong>${escapeHtml(entry.type)} · ${escapeHtml(entry.label)}</strong><span>${entry.by ? `Added by ${escapeHtml(entry.by)}` : ""}</span></div>${entry.canChange ? `<button type="button" class="mini-button danger-button" data-calendar-remove="${escapeHtml(entry.id)}">Remove</button>` : ""}</div>`).join("")
+    : `<div class="alert-item"><span class="alert-dot green"></span><div><strong>Nothing scheduled</strong><span>No events on this date yet.</span></div></div>`;
+  return `<div class="calendar-day-detail-header"><strong>${escapeHtml(label)}</strong><button type="button" class="ghost-button" data-calendar-add="${escapeHtml(dateKey)}">Add event on this day</button></div>${rows}`;
 }
 
 // --- Custom combobox replacing native <input list> + <datalist> suggestions ---------------

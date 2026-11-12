@@ -374,6 +374,7 @@ interface AppData {
   stockReceipts: StockReceipt[];
   inventoryDemoRequests: DemoRequest[];
   memos: MemoRecord[];
+  calendarEvents: CalendarEvent[];
   printTemplates: PrintTemplate[];
   pendingCreditInvoices: CreditInvoiceRequest[];
   [collection: string]: any;
@@ -398,6 +399,21 @@ type AppRole = "Superadmin" | "CEO" | "Admin" | "Accounting" | "Sales" | "Logist
 type AccessMode = "view" | "edit";
 
 /** The signed-in user as built by profileForUser(). Every permission decision reads from this. */
+/** A shared Calendar schedule entry. Soft-deleted with `removed` (there is no record delete). */
+interface CalendarEvent {
+  id: string;
+  title: string;
+  /** YYYY-MM-DD */
+  date: string;
+  /** HH:MM (24h) */
+  time: string;
+  createdBy: string;
+  createdByUser: string;
+  createdAt: string;
+  removed?: boolean;
+  removedBy?: string;
+}
+
 interface Profile {
   id: string;
   /** Taken from profiles.full_name, which can be empty. */

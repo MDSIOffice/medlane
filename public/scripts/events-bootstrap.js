@@ -617,6 +617,10 @@ document.body.addEventListener("click", (event) => {
     if (prefix) navigateCalendarWidget(prefix, Number(/** @type {string} */ (calendarNav.dataset.calendarNav)));
     return;
   }
+  const calendarAdd = closestEl(event.target, "[data-calendar-add]");
+  if (calendarAdd) return addCalendarEventDialog(/** @type {string} */ (calendarAdd.dataset.calendarAdd || ""));
+  const calendarRemove = closestEl(event.target, "[data-calendar-remove]");
+  if (calendarRemove) return removeCalendarEvent(/** @type {string} */ (calendarRemove.dataset.calendarRemove));
   const calendarDay = closestEl(event.target, "[data-calendar-day]");
   if (calendarDay) {
     const widget = closestEl(calendarDay, ".calendar-widget");

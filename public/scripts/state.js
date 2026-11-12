@@ -187,6 +187,7 @@ const frontendModuleRecordKeys = {
   "inventory-po-detail": ["inventoryPurchaseOrders", "inventory"],
   "print-templates": ["printTemplates"],
   memos: ["memos"],
+  calendar: ["calendarEvents"],
 };
 
 const philippinesRegionsGeoJsonUrl = "https://raw.githubusercontent.com/wmgeolab/geoBoundaries/41af8f1/releaseData/gbOpen/PHL/ADM1/geoBoundaries-PHL-ADM1_simplified.geojson";
@@ -359,6 +360,7 @@ function emptyProductionData() {
     banks: [],
     printTemplates: [],
     memos: [],
+    calendarEvents: [],
   };
 }
 
@@ -427,6 +429,7 @@ function withStableFallbackIds(records, prefix) {
 function normalizeData(next) {
   next.printTemplates ||= [];
   next.memos ||= [];
+  next.calendarEvents ||= [];
   next.pendingTransfers ||= [];
   next.pendingCreditInvoices ||= [];
   next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };

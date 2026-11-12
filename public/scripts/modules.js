@@ -2004,6 +2004,54 @@ function showCalendarDayDetail(prefix, dateKey) {
   detail.innerHTML = calendarDayDetailHtml(dateKey, events[dateKey] || []);
   detail.hidden = false;
 }
+/** @param {string} [dateKey] */
+function addCalendarEventDialog(dateKey = "") {
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal invite-confirm-modal";
+  dialog.innerHTML = `<form method="dialog" class="calendar-event-form"><div class="modal-header"><div><p class="eyebrow">Calendar</p><h2>Add Event</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div><p class="page-description">Everyone can see events on the Calendar.</p><div class="field full"><label for="calendar-event-title">Event</label><input id="calendar-event-title" maxlength="160" required autocomplete="off" placeholder="e.g. Client visit — Bicol Diagnostics" /></div><div class="form-grid"><div class="field"><label for="calendar-event-date">Date</label><input id="calendar-event-date" type="date" required value="${escapeHtml(dateKey || fmtDate(today))}" /></div><div class="field"><label for="calendar-event-time">Time</label><input id="calendar-event-time" type="time" required value="09:00" /></div></div><div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" value="confirm">Add Event</button></div></form>`;
+  document.body.appendChild(dialog);
+  dialog.addEventListener("close", async () => {
+    const title = /** @type {HTMLInputElement} */ (qsIn(dialog, "#calendar-event-title")).value.trim();
+    const date = /** @type {HTMLInputElement} */ (qsIn(dialog, "#calendar-event-date")).value;
+    const time = /** @type {HTMLInputElement} */ (qsIn(dialog, "#calendar-event-time")).value;
+    const confirmed = dialog.returnValue === "confirm";
+    dialog.remove();
+    if (!confirmed) return;
+    if (!title || !date || !time) return toast("Event, date and time are all required.");
+    /** @type {CalendarEvent} */
+    const entry = { id: `EVT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, title, date, time, createdBy: currentUser?.name || currentUser?.email || "User", createdByUser: currentUser?.email || "", createdAt: new Date().toISOString() };
+    data.calendarEvents.push(entry);
+    const saveResult = await persistRecords({ calendarEvents: [entry] });
+    if (!saveResult?.ok && !saveResult?.queued) {
+      data.calendarEvents = data.calendarEvents.filter((existing) => existing !== entry);
+      return;
+    }
+    log("Added calendar event", "Calendar", `${date} ${time} · ${title}`, { save: false });
+    const [year, month] = date.split("-").map(Number);
+    Object.keys(calendarWidgetRegistry).forEach((prefix) => { calendarViewState[prefix] = { year, month }; });
+    Object.keys(calendarWidgetRegistry).forEach((prefix) => { renderCalendarWidget(prefix); showCalendarDayDetail(prefix, date); });
+    toast("Event added.");
+  });
+  dialog.showModal();
+  /** @type {HTMLInputElement} */ (qsIn(dialog, "#calendar-event-title")).focus();
+}
+
+/** @param {string} id */
+async function removeCalendarEvent(id) {
+  const entry = (data.calendarEvents || []).find((item) => item.id === id);
+  if (!entry || entry.removed) return;
+  if (!canChangeCalendarEvent(entry)) return toast("Only the person who added this event can remove it.");
+  const ok = await confirmDetailsModal({ eyebrow: "Calendar", title: `Remove "${entry.title}"?`, fields: [["Date", entry.date], ["Time", calendarTimeLabel(entry.time)], ["Added by", entry.createdBy || "-"]], confirmLabel: "Remove Event", danger: true });
+  if (!ok) return;
+  entry.removed = true;
+  entry.removedBy = currentUser?.name || currentUser?.email || "User";
+  const saveResult = await persistRecords({ calendarEvents: [entry] });
+  if (!saveResult?.ok && !saveResult?.queued) { entry.removed = false; delete entry.removedBy; return; }
+  log("Removed calendar event", "Calendar", `${entry.date} ${entry.time} · ${entry.title}`, { save: false });
+  Object.keys(calendarWidgetRegistry).forEach((prefix) => { renderCalendarWidget(prefix); showCalendarDayDetail(prefix, entry.date); });
+  toast("Event removed.");
+}
+
 function renderCalendarSection() {
   registerCalendarWidget("calendar-page", "#calendar-page-widget", false);
   renderCalendarWidget("calendar-page");

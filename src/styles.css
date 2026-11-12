@@ -1615,6 +1615,18 @@ button.calendar-cell:hover { background: var(--tint); }
 .calendar-day-detail { display: grid; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
 .calendar-day-detail-header { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
 .calendar-widget.compact .calendar-cell { min-height: 42px; }
+.calendar-widget-actions { display: flex; justify-content: flex-end; }
+.calendar-chips { display: grid; gap: 2px; width: 100%; min-width: 0; }
+.calendar-chip { overflow: hidden; border-radius: 6px; background: var(--chip-blue-bg); padding: 2px 4px; color: var(--blue-dark); font-size: 10px; font-weight: 700; line-height: 1.3; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-widget:not(.compact) .calendar-cell { min-height: 84px; justify-items: stretch; padding: 6px; }
+.calendar-widget:not(.compact) .calendar-cell strong { justify-self: start; }
+.calendar-day-detail-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.calendar-event-row { align-items: center; }
+.calendar-event-row > div { flex: 1; min-width: 0; }
+@media (max-width: 640px) {
+  .calendar-chip { font-size: 9px; padding: 1px 2px; }
+  .calendar-widget:not(.compact) .calendar-cell { min-height: 64px; padding: 4px 2px; }
+}
 .vertical-bars { display: flex; align-items: end; gap: 14px; min-height: 0; height: clamp(190px, 24vw, 280px); margin-top: 18px; padding: 22px 4px 0; overflow: visible auto; max-width: 100%; }
 .vertical-bar { flex: 1 0 68px; display: grid; align-content: end; gap: 8px; min-width: 68px; overflow: visible; }
 .vertical-track { position: relative; height: 158px; border-radius: 14px; background: var(--tint); overflow: hidden; }

@@ -88,6 +88,9 @@ const moduleRecordKeys = {
   "product-issues": ["productIssues"],
   "print-templates": ["printTemplates"],
   memos: ["memos"],
+  // Shared team schedule: every role views and adds events (granted in profileForUser);
+  // only an event's creator (or Superadmin/CEO) changes it — assertCalendarEventChangesAllowed.
+  calendar: ["calendarEvents"],
 };
 
 const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
@@ -1030,6 +1033,8 @@ async function profileForUser(env, userId, email) {
   // this is a newer module that predates most existing users' explicit permission grants, and
   // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
   if (!view.includes("memos")) view.push("memos");
+  // The Calendar is a shared schedule everyone can see and add to, regardless of module_permissions.
+  for (const list of [view, edit]) if (!list.includes("calendar")) list.push("calendar");
   // Every role can read the items/clients/suppliers catalog regardless of module_permissions —
   // it's reference data that receiving, transfers, demos, and invoicing autofill from, not just
   // an admin-screen concern. Deliberately view-only and not overridable per-user: editing the
@@ -1558,6 +1563,35 @@ const DEMO_TRANSITIONS = {
 /** @type {AppRole[]} */
 const SUPPORT_STATUS_ONLY_ROLES = ["Engineering", "Product Specialist"];
 const SUPPORT_STATUS_FIELDS = new Set(["status", "currentActor", "resolvedBy", "resolvedAt", "history", "actionsTaken"]);
+// Calendar events: anyone may add one (as themselves); only its creator or Superadmin/CEO may
+// change or remove (soft-delete via `removed`) an existing one.
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
+async function assertCalendarEventChangesAllowed(env, stateKey, profile, rows) {
+  const eventRows = rows.filter((row) => row.module_name === "calendarEvents");
+  if (!eventRows.length) return;
+  const isManagement = ["Superadmin", "CEO"].includes(profile?.role);
+  const me = String(profile?.email || "").trim().toLowerCase();
+  const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.calendarEvents&record_key=in.${encodeURIComponent(postgrestIn(eventRows.map((row) => row.record_key)))}&select=record_key,data`));
+  const storedByKey = new Map(stored.map((row) => [row.record_key, /** @type {Record<string, unknown>} */ (row.data || {})]));
+  for (const row of eventRows) {
+    const next = /** @type {Record<string, unknown>} */ (row.data || {});
+    const prev = storedByKey.get(row.record_key);
+    const owner = String((prev || next).createdByUser || "").trim().toLowerCase();
+    if (!next.removed) {
+      if (!String(next.title || "").trim()) throw new Error("Calendar event needs a name");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(next.date || ""))) throw new Error("Calendar event needs a valid date");
+      if (!/^\d{2}:\d{2}$/.test(String(next.time || ""))) throw new Error("Calendar event needs a valid time");
+    }
+    if (!prev) {
+      if (owner !== me && !isManagement) throw new Error("You can only add calendar events as yourself");
+      continue;
+    }
+    const keys = ["title", "date", "time", "removed", "createdByUser"];
+    const changed = keys.some((key) => String(prev[key] ?? "") !== String(next[key] ?? ""));
+    if (changed && owner !== me && !isManagement) throw new Error("Only the person who added this calendar event can change or remove it");
+  }
+}
+
 /** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
 async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
   if (!SUPPORT_STATUS_ONLY_ROLES.includes(profile?.role)) return;
@@ -4716,6 +4750,7 @@ export default {
               assertFinancialApprovalAllowed(env, stateKey, profile, rows),
               assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
               assertSupportReportChangesAllowed(env, stateKey, profile, rows),
+              assertCalendarEventChangesAllowed(env, stateKey, profile, rows),
               assertCreditApprovalAllowed(env, stateKey, profile, rows),
               assertMigratedStockAllowed(env, stateKey, profile, rows),
             ]);
@@ -5119,6 +5154,7 @@ export default {
           assertFinancialApprovalAllowed(env, stateKey, profile, rows),
           assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
               assertSupportReportChangesAllowed(env, stateKey, profile, rows),
+              assertCalendarEventChangesAllowed(env, stateKey, profile, rows),
           assertCreditApprovalAllowed(env, stateKey, profile, rows),
           assertMigratedStockAllowed(env, stateKey, profile, rows),
         ]);
