@@ -1517,14 +1517,6 @@ function branchOptions(selected = "") {
   return platformBranches().map((branch) => `<option ${branch === selected ? "selected" : ""}>${escapeHtml(branch)}</option>`).join("");
 }
 
-function renderInventoryBranchTabs() {
-  const host = qs("#inventory-branch-tabs");
-  if (!host) return;
-  if (inventoryBranchView !== "all" && !platformBranches().includes(inventoryBranchView)) inventoryBranchView = "all";
-  const options = [["all", "All branches"], ...platformBranches().map((branch) => [branch, branch === "Las Pinas" ? "Las Piñas" : branch])];
-  host.innerHTML = options.map(([value, label]) => `<button type="button" aria-pressed="${inventoryBranchView === value}" data-inventory-branch="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join("");
-}
-
 /** @param {PendingTransfer} transfer @param {any} index */
 function transferAuthorizationCell(transfer, index) {
   if (transfer.status === "For Receiving") return canApproveInventoryChanges() ? `<div class="inline-actions"><button class="mini-button" data-dispatch-transfer="${index}">Review &amp; Dispatch</button></div>` : `<div class="inline-actions"><small>Awaiting Admin approval</small></div>`;
@@ -2357,8 +2349,11 @@ async function renderValueAnalytics() {
   adoptionGrid.innerHTML = visualCard("↻", "Adoption & Reliability", "Loading...", "<p>Fetching recent activity and backup history...</p>", "info");
   try {
     const [logsResult, backupsResult, backupStatusResult] = await Promise.all([
-      MedlaneAPI.listLogs({ limit: 200 }).catch(() => null),
-      MedlaneAPI.listBackups().catch(() => null),
+      // Only ask for what this role may see: the server refuses audit logs without the "logs"
+      // module and backups below Superadmin/CEO, and those refused calls were showing up as
+      // failed requests for Logistics, HR, Product Specialist and Engineering.
+      effectiveModules().includes("logs") ? MedlaneAPI.listLogs({ limit: 200 }).catch(() => null) : Promise.resolve(null),
+      ["Superadmin", "CEO"].includes(currentUser?.role) ? MedlaneAPI.listBackups().catch(() => null) : Promise.resolve(null),
       MedlaneAPI.backupStatus().catch(() => null),
     ]);
     if (requestId !== valueAdoptionRequest) return;
@@ -2677,29 +2672,49 @@ function inventoryExpiryInfo(item) {
 }
 /** @param {StockRow} item */
 function inventoryRef(item) { return `${item.code}|${item.branch}|${item.lot || item.serial}`; }
-/** @param {StockRow} item */
+/** @typedef {{ key: string, name: string, label: string }} InventoryStatusMeta */
+/** @typedef {{ item: StockRow, meta: InventoryStatusMeta, expiry: { days: number | null, label: string, rel: string }, ref: string, lotText: string, statusText: string, short: number }} InventoryRowModel */
+/** @type {Record<string, UiTone>} */
+const INVENTORY_STATUS_TONES = { available: "green", near: "amber", low: "orange", critical: "red", disposal: "slate" };
+/** @param {string} branch */
+function inventoryBranchLabel(branch) { return branch === "Las Pinas" ? "Las Piñas" : String(branch || "—"); }
+/** @returns {UiOption[]} */
+function inventoryBranchOptions() {
+  return [{ value: "all", label: "All" }, ...platformBranches().map((branch) => ({ value: branch, label: inventoryBranchLabel(branch) }))];
+}
+
+/** @param {StockRow} item @returns {InventoryRowModel} */
 function inventoryRowModel(item) {
   const meta = INVENTORY_STATUS_BY_NAME[inventoryStatus(item)] || INVENTORY_STATUS_META[0];
   const expiry = inventoryExpiryInfo(item);
   const min = Number(item.min) || 0;
   const short = Math.max(min - Number(item.qty || 0), 0);
-  const statusText = meta.key === "low" && short > 0 ? `${meta.label} · ${short} short` : meta.label;
+  const statusText = (meta.key === "low" || meta.key === "critical") && short > 0 ? `${meta.label} · ${short} short` : meta.label;
   return { item, meta, expiry, ref: inventoryRef(item), lotText: String(item.serial || item.lot || "—"), statusText, short };
 }
-/** @param {any} model */
-function inventoryStatusPill(model) {
-  return `<span class="inv-pill s-${model.meta.key}"><span class="dot"></span>${escapeHtml(model.statusText)}</span>`;
-}
+/** @param {InventoryRowModel} model */
+function inventoryStatusPill(model) { return uiPill(model.statusText, INVENTORY_STATUS_TONES[model.meta.key]); }
 
 function inventoryQueryString() {
   const p = new URLSearchParams({ section: "inventory" });
-  if (inventoryWorkflowTab !== "stocks") p.set("tab", inventoryWorkflowTab);
+  if (inventoryWorkflowTab !== "stocks") {
+    p.set("tab", inventoryWorkflowTab);
+    const view = inventoryTabView;
+    if (view.branch !== "all") p.set("branch", view.branch);
+    if (view.scope) p.set("status", view.scope);
+    if (view.q) p.set("q", view.q);
+    if (view.sort) { p.set("sort", view.sort.key); p.set("dir", view.sort.dir === 1 ? "asc" : "desc"); }
+    if (view.page > 0) p.set("page", String(view.page + 1));
+    if (view.sel) p.set("sel", view.sel);
+    return p.toString();
+  }
   if (inventoryBranchView !== "all") p.set("branch", inventoryBranchView);
   if (inventoryStatusKey !== "all") p.set("status", inventoryStatusKey);
   if (inventorySearch) p.set("q", inventorySearch);
   if (inventorySort.key !== "expiry" || inventorySort.dir !== 1) { p.set("sort", inventorySort.key); p.set("dir", inventorySort.dir === 1 ? "asc" : "desc"); }
   if (inventoryCompactView) p.set("compact", "1");
   if (inventoryPage > 0) p.set("page", String(inventoryPage + 1));
+  if (inventorySelectedRef) p.set("sel", inventorySelectedRef);
   return p.toString();
 }
 function syncInventoryUrl() {
@@ -2716,58 +2731,62 @@ function syncInventorySavedPill(status, text) {
   label.textContent = status === "saved" ? "All changes saved" : (text || (status === "saving" ? "Saving…" : "Save failed"));
 }
 
-/** @returns {any[]} */
+/** @returns {InventoryRowModel[]} */
 function inventoryFilteredRows() {
   const needle = inventorySearch.trim().toLowerCase();
-  const matchesBranch = (/** @type {any} */ item) => inventoryBranchView === "all" || item.branch === inventoryBranchView;
-  const matchesSearch = (/** @type {any} */ item) => !needle || [item.item, item.code, item.brand, item.lot, item.serial].join(" ").toLowerCase().includes(needle);
+  const matchesBranch = (/** @type {StockRow} */ item) => inventoryBranchView === "all" || item.branch === inventoryBranchView;
+  const matchesSearch = (/** @type {StockRow} */ item) => !needle || [item.item, item.code, item.brand, item.lot, item.serial].join(" ").toLowerCase().includes(needle);
   return data.inventory
     .filter(matchesBranch)
     .filter((item) => includesSearch(Object.entries(item).filter(([key]) => key !== "history").map(([, value]) => value)))
     .filter(matchesSearch)
     .map(inventoryRowModel);
 }
-/** @param {any} rows @returns {any[]} */
+/** @param {InventoryRowModel[]} rows @returns {InventoryRowModel[]} */
 function inventorySortRows(rows) {
   const { key, dir } = inventorySort;
-  const text = (/** @type {any} */ value) => String(value || "").toLowerCase();
-  const value = (/** @type {any} */ model) => key === "item" ? `${text(model.item.item)} ${text(model.lotText)}` : key === "lot" ? text(model.lotText) : key === "branch" ? text(model.item.branch) : key === "qty" ? Number(model.item.qty || 0) : model.expiry.days;
-  return rows.slice().sort((/** @type {any} */ a, /** @type {any} */ b) => {
+  const text = (/** @type {unknown} */ value) => String(value || "").toLowerCase();
+  /** @param {InventoryRowModel} model @returns {string | number | null} */
+  const value = (model) => key === "item" ? `${text(model.item.item)} ${text(model.lotText)}` : key === "lot" ? text(model.lotText) : key === "branch" ? text(model.item.branch) : key === "qty" ? Number(model.item.qty || 0) : model.expiry.days;
+  return rows.slice().sort((a, b) => {
     const x = value(a), y = value(b);
     if (key === "expiry") { // rows without an expiry always sort last, in either direction
       if (x === null && y === null) return 0;
       if (x === null) return 1;
       if (y === null) return -1;
     }
-    return (x > y ? 1 : x < y ? -1 : 0) * dir;
+    return ((x ?? 0) > (y ?? 0) ? 1 : (x ?? 0) < (y ?? 0) ? -1 : 0) * dir;
   });
 }
 
 function inventoryCardsHtml() {
   const all = (data.inventory || []).map(inventoryRowModel);
-  const by = (/** @type {any} */ key) => all.filter((model) => model.meta.key === key);
+  const by = (/** @type {string} */ key) => all.filter((model) => model.meta.key === key);
   const total = all.length;
   const legend = INVENTORY_STATUS_META.map((meta) => ({ ...meta, count: by(meta.key).length }));
   const health = `<section class="inv-card inv-kcard" aria-label="Stock health">
     <div class="inv-klabel"><span>Stock health</span><small>records</small></div>
     <div class="inv-kval">${total}</div>
     <div class="inv-bar" aria-hidden="true">${legend.filter((m) => m.count).map((m) => `<span class="s-${m.key}" style="flex:${m.count} 1 0"></span>`).join("")}</div>
-    <div class="inv-legend">${legend.map((m) => `<button class="inv-legend-row" type="button" data-inventory-filter="${m.key}"><span class="dot s-${m.key}"></span><span class="grow">${m.label}</span><b>${m.count}</b></button>`).join("")}</div>
+    <div class="inv-legend">${legend.map((m) => `<button class="inv-legend-row" type="button" data-inventory-filter="${m.key}" aria-pressed="${inventoryStatusKey === m.key}"><span class="dot s-${m.key}"></span><span class="grow">${m.label}</span><b>${m.count}</b></button>`).join("")}</div>
   </section>`;
-  const alertCard = (/** @type {any} */ title, /** @type {any} */ key, /** @type {any} */ unit, /** @type {any} */ models, /** @type {any} */ items, /** @type {any} */ itemText, /** @type {any} */ tone) => `<section class="inv-card inv-kcard" aria-label="${escapeHtml(title)}">
+  /** @param {string} title @param {string} key @param {string} unit @param {InventoryRowModel[]} models @param {InventoryRowModel[]} items @param {(model: InventoryRowModel) => string} itemText @param {string} tone */
+  const alertCard = (title, key, unit, models, items, itemText, tone) => `<section class="inv-card inv-kcard" aria-label="${escapeHtml(title)}">
     <div class="inv-klabel"><span class="inv-klabel-t"><span class="dot s-${key}"></span>${escapeHtml(title)}</span><button class="inv-link" type="button" data-inventory-filter="${key}">View all</button></div>
     <div class="inv-kcount"><span class="inv-kval">${models.length}</span><span class="inv-unit">${unit}</span></div>
-    <div class="inv-alist">${items.length ? items.map((/** @type {any} */ model) => `<div><span class="inv-trunc" title="${escapeHtml(inventoryItemLabel(model.item))}">${escapeHtml(inventoryItemLabel(model.item))}</span><b class="${tone}">${escapeHtml(itemText(model))}</b></div>`).join("") : `<div class="inv-none">Nothing to show.</div>`}</div>
+    <div class="inv-alist">${items.length ? items.map((model) => `<div><span class="inv-trunc" title="${escapeHtml(inventoryItemLabel(model.item))}">${escapeHtml(inventoryItemLabel(model.item))}</span><b class="${tone}">${escapeHtml(itemText(model))}</b></div>`).join("") : `<div class="inv-none">Nothing to show.</div>`}</div>
   </section>`;
   const lowCritical = all.filter((model) => ["low", "critical"].includes(model.meta.key));
   const near = by("near");
   const disposal = by("disposal");
-  const top = (/** @type {any} */ list, /** @type {any} */ sorter) => list.slice().sort(sorter).slice(0, 5);
+  /** @param {InventoryRowModel[]} list @param {(a: InventoryRowModel, b: InventoryRowModel) => number} sorter */
+  const top = (list, sorter) => list.slice().sort(sorter).slice(0, 5);
+  const days = (/** @type {InventoryRowModel} */ m) => m.expiry.days ?? 0;
   return [
     health,
-    alertCard("Low & critical", "critical", "records", lowCritical, top(lowCritical, (/** @type {any} */ a, /** @type {any} */ b) => b.short - a.short), (/** @type {any} */ m) => `${m.short} short`, "t-critical"),
-    alertCard("Near expiry", "near", "lots", near, top(near, (/** @type {any} */ a, /** @type {any} */ b) => a.expiry.days - b.expiry.days), (/** @type {any} */ m) => `${m.expiry.days} days`, "t-near"),
-    alertCard("Expired", "disposal", "expired lots", disposal, top(disposal, (/** @type {any} */ a, /** @type {any} */ b) => b.expiry.days - a.expiry.days), (/** @type {any} */ m) => `${Math.abs(m.expiry.days)}d expired`, "t-critical"),
+    alertCard("Low & critical", "critical", "records", lowCritical, top(lowCritical, (a, b) => b.short - a.short), (m) => `${m.short} short`, "t-critical"),
+    alertCard("Near expiry", "near", "lots", near, top(near, (a, b) => days(a) - days(b)), (m) => `${days(m)} days`, "t-near"),
+    alertCard("Expired", "disposal", "expired lots", disposal, top(disposal, (a, b) => days(b) - days(a)), (m) => `${Math.abs(days(m))}d expired`, "t-critical"),
   ].join("");
 }
 
@@ -2780,67 +2799,59 @@ function renderInventoryAreaSelect() {
   select.disabled = source.disabled;
 }
 
-/** @param {any} models */
-function renderInventoryDetail(models) {
-  const panel = qs("#inventory-detail");
-  if (!panel) return;
+/** The Stocks detail panel, or "" when nothing (or a record that no longer exists) is selected. */
+function inventoryStockDetailHtml() {
   const model = inventorySelectedRef ? (data.inventory || []).map(inventoryRowModel).find((m) => m.ref === inventorySelectedRef) : null;
-  if (!model) { inventorySelectedRef = null; panel.hidden = true; panel.innerHTML = ""; return; }
+  if (!model) { inventorySelectedRef = null; return ""; }
   const item = model.item;
-  const ref = escapeHtml(model.ref);
+  const ref = model.ref;
   const reserved = typeof competingPurchaseOrdersForItem === "function" ? competingPurchaseOrdersForItem(item.code, item.branch).reduce((sum, entry) => sum + entry.pending, 0) : 0;
-  const movements = (item.history || []).slice(0, 4);
-  const movementHtml = movements.length
-    ? movements.map((/** @type {any} */ entry) => `<li><time>${escapeHtml(entry.at || "")}</time><span>${escapeHtml(entry.by || "System User")}${(entry.changes || []).length ? ` — ${escapeHtml((entry.changes || []).map((/** @type {any} */ change) => (typeof STOCK_EDIT_FIELD_LABELS !== "undefined" && STOCK_EDIT_FIELD_LABELS[change.field]) || change.field).join(", "))}` : ""}</span></li>`).join("")
-    : `<li class="inv-none">No recorded changes for this lot yet.</li>`;
-  panel.hidden = false;
-  panel.innerHTML = `<div class="inv-detail-head"><div><span class="inv-eyebrow">${escapeHtml(item.brand || "—")}</span><h3>${escapeHtml(item.item)}</h3>${inventoryStatusPill(model)}</div><button class="inv-icon-btn" type="button" data-inventory-close aria-label="Close details" title="Close">${inventoryIcon("close", 18)}</button></div>
-    <dl class="inv-dl">
-      <div><dt>Item code</dt><dd class="mono">${escapeHtml(item.code)}</dd></div>
-      <div><dt>Lot / Serial</dt><dd class="mono break">${escapeHtml(item.serial ? (item.lot && item.lot !== item.serial ? `${item.serial} / ${item.lot}` : item.serial) : (item.lot || "—"))}</dd></div>
-      <div><dt>Branch</dt><dd>${escapeHtml(item.branch)}</dd></div>
-      <div><dt>Expiry</dt><dd>${escapeHtml(model.expiry.label)}<small>${escapeHtml(model.expiry.rel)}</small></dd></div>
-      <div><dt>On hand</dt><dd class="inv-big">${Number(item.qty || 0)}</dd></div>
-      <div><dt>Minimum level</dt><dd>${Number(item.min) > 0 ? Number(item.min) : "—"}</dd></div>
-      ${reserved ? `<div><dt>Reserved (open POs)</dt><dd>${reserved}</dd></div>` : ""}
-      ${item.note ? `<div class="wide"><dt>Note</dt><dd>${escapeHtml(item.note)}</dd></div>` : ""}
-    </dl>
-    <div class="inv-movements"><h4>Recent movements</h4><ul>${movementHtml}</ul></div>
-    <div class="inv-detail-actions">
-      <button class="inv-btn primary" type="button" data-inventory-transfer="${ref}">Transfer</button>
-      ${canEditStockRecord() ? `<button class="inv-btn" type="button" data-stock-edit="${ref}">Edit</button>` : ""}
-      <button class="inv-btn" type="button" data-stock-history="${ref}">History</button>
-    </div>`;
+  /** @type {{ at?: string, by?: string, changes?: { field: string }[] }[]} */
+  const history = Array.isArray(item.history) ? item.history : [];
+  const fieldLabel = (/** @type {string} */ field) => (typeof STOCK_EDIT_FIELD_LABELS !== "undefined" && /** @type {Record<string, string>} */ (STOCK_EDIT_FIELD_LABELS)[field]) || field;
+  const min = Number(item.min) || 0;
+  const days = model.expiry.days;
+  /** @type {{ text: string, tone: UiTone } | undefined} */
+  const note = model.meta.key === "critical" ? { text: `${model.short} below the minimum level of ${min}. Reorder or transfer stock in.`, tone: "red" }
+    : model.meta.key === "low" ? { text: `${model.short} below the minimum level of ${min}.`, tone: "orange" }
+      : model.meta.key === "near" && days !== null ? { text: `Expires ${model.expiry.rel}. Use or transfer this lot first.`, tone: "amber" }
+        : model.meta.key === "disposal" ? { text: `Expired ${model.expiry.rel}. Not available for new invoices.`, tone: "slate" }
+          : undefined;
+  const lotValue = item.serial ? (item.lot && item.lot !== item.serial ? `${item.serial} / ${item.lot}` : item.serial) : (item.lot || "—");
+  const body = uiDetailPanel({
+    eyebrow: item.code,
+    title: item.item,
+    pill: { text: model.statusText, tone: INVENTORY_STATUS_TONES[model.meta.key] },
+    closeAttrs: { "data-inventory-close": "" },
+    label: "Stock record details",
+    fields: [
+      { label: "Brand", value: item.brand || "—" },
+      { label: "Lot / Serial", value: lotValue, mono: true },
+      { label: "Branch", value: inventoryBranchLabel(item.branch) },
+      { label: "Expiry", value: model.expiry.label, sub: model.expiry.rel },
+      { label: "On hand", value: String(Number(item.qty || 0)) },
+      { label: "Minimum level", value: min > 0 ? String(min) : "—" },
+      ...(reserved ? [{ label: "Reserved (open POs)", value: String(reserved) }] : []),
+      ...(item.note ? [{ label: "Note", value: String(item.note), wide: true }] : []),
+    ],
+    linesTitle: "Recent movements",
+    lines: history.slice(0, 4).map((entry) => ({ left: entry.by || "System User", sub: [entry.at || "", (entry.changes || []).map((change) => fieldLabel(change.field)).join(", ")].filter(Boolean).join(" · "), tone: "slate" })),
+    extra: history.length ? "" : `<p class="ui-muted">No recorded changes for this lot yet.</p>`,
+    note,
+    actions: [
+      uiButton("Transfer", { "data-inventory-transfer": ref }, { primary: true }),
+      canEditStockRecord() ? uiButton("Edit", { "data-stock-edit": ref }) : "",
+      uiButton("History", { "data-stock-history": ref }),
+    ].filter(Boolean),
+  });
+  return `<aside class="ui-card ui-detail" id="inventory-detail" aria-label="Stock record details">${body}</aside>`;
 }
 
-function renderInventory() {
-  // Engineering / Product Specialist see only the demo-request workflow; Request Demo itself is
-  // limited to those roles (and Superadmin/CEO). Server-side, canAccessKey() limits their writes.
-  const demoOnly = isDemoOnlyRole();
-  qs("#inventory")?.classList.toggle("demo-only", demoOnly);
-  if (demoOnly) inventoryWorkflowTab = "demos";
-  const demoButton = qs("#open-demo-request");
-  if (demoButton) demoButton.style.display = canRequestDemo() ? "" : "none";
-  if (!platformBranches().includes(inventoryBranchView) && inventoryBranchView !== "all") inventoryBranchView = "all";
-  // The hidden #inventory-status select stays the source of truth for the status filter so the
-  // dashboard/workflow deep-links (which set it to "all") keep working.
-  const statusSelect = qs("#inventory-status");
-  if (statusSelect.dataset.synced !== "1") { // first render: seed the select from the URL
-    statusSelect.value = inventoryStatusKey === "all" ? "all" : /** @type {any} */ (INVENTORY_STATUS_META.find((meta) => meta.key === inventoryStatusKey)).name;
-    statusSelect.dataset.synced = "1";
-  }
-  inventoryStatusKey = INVENTORY_STATUS_BY_NAME[statusSelect.value]?.key || "all";
-  renderInventoryWorkflowTabs();
-  renderInventoryBranchTabs();
-  renderInventoryAreaSelect();
-  syncInventorySavedPill(...(() => { const el = qs("#save-status-indicator"); const s = el?.classList.contains("saving") ? "saving" : el?.classList.contains("error") ? "error" : "saved"; return /** @type {[string, string]} */ ([s, qs("#save-status-text")?.textContent]); })());
-  ensureInventoryDatalists();
-
-  // ----- Stocks tab: cards, chips, table, detail -----
+function renderInventoryStocks() {
   qs("#inventory-visuals").innerHTML = inventoryCardsHtml();
   const baseRows = inventoryFilteredRows();
-  const chipDefs = [{ key: "all", label: "All", count: baseRows.length }, ...INVENTORY_STATUS_META.map((meta) => ({ key: meta.key, label: meta.label, count: baseRows.filter((m) => m.meta.key === meta.key).length }))];
-  qs("#inventory-status-chips").innerHTML = chipDefs.map((chip) => `<button class="inv-chip" type="button" aria-pressed="${inventoryStatusKey === chip.key}" data-inventory-filter="${chip.key}"><span class="dot ${chip.key === "all" ? "s-all" : `s-${chip.key}`}"></span>${chip.label} <span class="n">${chip.count}</span></button>`).join("");
+  /** @type {UiChip[]} */
+  const chips = [{ key: "all", label: "All", count: baseRows.length, tone: "all" }, ...INVENTORY_STATUS_META.map((meta) => ({ key: meta.key, label: meta.label, count: baseRows.filter((m) => m.meta.key === meta.key).length, tone: INVENTORY_STATUS_TONES[meta.key] }))];
   const sorted = inventorySortRows(baseRows.filter((m) => inventoryStatusKey === "all" || m.meta.key === inventoryStatusKey));
   if (inventoryFocusQuery) {
     const at = sorted.findIndex((m) => [m.item.lot, m.item.serial, m.item.code, m.item.item].some((v) => String(v || "").toLowerCase() === inventoryFocusQuery));
@@ -2850,58 +2861,83 @@ function renderInventory() {
   const pageCount = Math.max(1, Math.ceil(sorted.length / INVENTORY_PAGE_SIZE));
   inventoryPage = Math.min(Math.max(inventoryPage, 0), pageCount - 1);
   const pageRows = sorted.slice(inventoryPage * INVENTORY_PAGE_SIZE, (inventoryPage + 1) * INVENTORY_PAGE_SIZE);
-  const search = qs("#inventory-search");
-  if (search && document.activeElement !== search) search.value = inventorySearch;
-  const compactButton = qs("#inventory-compact-toggle");
-  if (compactButton) { compactButton.setAttribute("aria-pressed", String(inventoryCompactView)); compactButton.textContent = inventoryCompactView ? "Comfortable view" : "Compact view"; }
-  const sortHead = (/** @type {any} */ key, /** @type {any} */ label, extra = "") => {
-    const active = inventorySort.key === key;
-    return `<th scope="col" class="${extra}" aria-sort="${active ? (inventorySort.dir === 1 ? "ascending" : "descending") : "none"}"><button type="button" data-inventory-sort="${key}">${label}${active ? (inventorySort.dir === 1 ? " ↑" : " ↓") : ""}</button></th>`;
-  };
   const canEdit = canEditStockRecord();
-  const tableEl = qs("#inventory-table");
-  tableEl.classList.toggle("compact", inventoryCompactView);
-  tableEl.innerHTML = `<thead><tr>${sortHead("item", "Item")}${sortHead("lot", "Lot / Serial")}${sortHead("branch", "Branch")}${sortHead("expiry", "Expiry")}${sortHead("qty", "Qty", "num")}<th scope="col" class="status-col">Status</th><th scope="col" class="actions-col">Actions</th></tr></thead><tbody>${pageRows.map((m) => {
+  /** @type {UiCol[]} */
+  const cols = [
+    { key: "item", label: "Item", sortable: true, className: "col-item" },
+    { key: "lot", label: "Lot / Serial", sortable: true },
+    { key: "branch", label: "Branch", sortable: true },
+    { key: "expiry", label: "Expiry", sortable: true },
+    { key: "qty", label: "Qty", sortable: true, align: "right" },
+    { key: "status", label: "Status", className: "col-status" },
+    { key: "actions", label: "", align: "right", className: "col-actions" },
+  ];
+  /** @type {UiRow[]} */
+  const rows = pageRows.map((m) => {
     const ref = escapeHtml(m.ref);
     const label = escapeHtml(`${m.item.item} lot ${m.lotText}`);
-    return `<tr class="${m.ref === inventorySelectedRef ? "sel" : ""}" data-focus-record="${escapeHtml(m.item.lot || m.item.serial || "")}" data-focus-text="${escapeHtml([m.item.item, m.item.code, m.item.brand, m.item.lot, m.item.serial].join(" "))}">
-      <td><button class="inv-name" type="button" data-inventory-select="${ref}">${escapeHtml(m.item.item)}</button><div class="inv-sub">${escapeHtml(m.item.brand || "—")} · <span class="mono">${escapeHtml(m.item.code)}</span></div></td>
-      <td class="mono lot">${escapeHtml(m.lotText)}</td>
-      <td>${escapeHtml(m.item.branch)}</td>
-      <td><div class="num">${escapeHtml(m.expiry.label)}</div><div class="inv-sub">${escapeHtml(m.expiry.rel)}</div></td>
-      <td class="num qty">${Number(m.item.qty || 0)}</td>
-      <td class="status-col">${inventoryStatusPill(m)}</td>
-      <td class="actions-col"><button class="inv-icon-btn" type="button" data-inventory-transfer="${ref}" title="Transfer" aria-label="Transfer ${label}">${inventoryIcon("transfer")}</button>${canEdit ? `<button class="inv-icon-btn" type="button" data-stock-edit="${ref}" title="Edit" aria-label="Edit ${label}">${inventoryIcon("edit")}</button>` : ""}<button class="inv-icon-btn" type="button" data-inventory-select="${ref}" data-inventory-history="${ref}" title="History" aria-label="History for ${label}">${inventoryIcon("history")}</button></td>
-    </tr>`;
-  }).join("")}</tbody>`;
-  qs("#inventory-empty").hidden = sorted.length > 0;
-  qs("#inventory-foot-text").textContent = `Showing ${pageRows.length} of ${sorted.length} records${pageCount > 1 ? ` · page ${inventoryPage + 1} of ${pageCount}` : ""}`;
-  qs("#inventory-prev").disabled = inventoryPage <= 0;
-  qs("#inventory-next").disabled = inventoryPage >= pageCount - 1;
-  renderInventoryDetail(sorted);
-  syncInventoryUrl();
+    return {
+      id: m.ref,
+      focus: m.item.lot || m.item.serial || "",
+      focusText: [m.item.item, m.item.code, m.item.brand, m.item.lot, m.item.serial].join(" "),
+      selected: m.ref === inventorySelectedRef,
+      cells: [
+        `<button class="ui-name" type="button" data-inventory-select="${ref}">${escapeHtml(m.item.item)}</button><div class="ui-sub">${escapeHtml(m.item.brand || "—")} · <span class="mono">${escapeHtml(m.item.code)}</span></div>`,
+        `<span class="mono ui-lot">${escapeHtml(m.lotText)}</span>`,
+        escapeHtml(inventoryBranchLabel(m.item.branch)),
+        uiCellText(m.expiry.label, m.expiry.rel),
+        `<span class="ui-num ui-qty">${Number(m.item.qty || 0)}</span>`,
+        inventoryStatusPill(m),
+        `<button class="ui-icon-btn" type="button" data-inventory-transfer="${ref}" title="Transfer" aria-label="Transfer ${label}">${inventoryIcon("transfer")}</button>${canEdit ? `<button class="ui-icon-btn" type="button" data-stock-edit="${ref}" title="Edit" aria-label="Edit ${label}">${inventoryIcon("edit")}</button>` : ""}<button class="ui-icon-btn" type="button" data-inventory-select="${ref}" data-inventory-history="${ref}" title="History" aria-label="History for ${label}">${inventoryIcon("history")}</button>`,
+      ],
+    };
+  });
+  const extra = uiButton(inventoryCompactView ? "Comfortable view" : "Compact view", { id: "inventory-compact-toggle", "aria-pressed": String(inventoryCompactView) }, { size: "sm" })
+    + uiButton("Export", { id: "inventory-export" }, { size: "sm" });
+  const html = uiFilterBar({
+    title: "Stock by branch, lot, expiry and serial",
+    segment: { label: "Branch", attr: "data-inventory-branch", options: inventoryBranchOptions(), active: inventoryBranchView },
+    search: { id: "inventory-search", value: inventorySearch, placeholder: "Item, code, brand or lot no.", label: "Search stock" },
+    extra,
+  })
+    + uiStatusChips({ chips, active: inventoryStatusKey, attr: "data-inventory-filter", label: "Filter by status" })
+    + `<div class="ui-body">${uiDataTable({
+      cols, rows, caption: "Stock records", minWidth: 740, compact: inventoryCompactView,
+      sort: inventorySort, sortAttr: "data-inventory-sort",
+      empty: { title: "No stock matches these filters", text: "Try another branch or status, or clear the search.", clearAttrs: { "data-inventory-clear": "" } },
+      foot: { shown: pageRows.length, total: sorted.length, page: inventoryPage, pageCount, pageAttr: "data-inventory-page" },
+    })}${inventoryStockDetailHtml()}</div>`;
+  uiRender(qs("#inventory-stock-list"), html);
+}
 
-  // ----- Other workflow tabs (unchanged tables) -----
-  const inventoryPoLineItems = (/** @type {any} */ po) => itemizedSummary(po.lines?.map((/** @type {any} */ line) => ({ particulars: `${line.item} (${line.qty} ${line.uom}) Lot ${line.lot || "-"} Exp ${line.expiry || "N/A"}`, amount: line.qty * line.price - Number(line.discount || 0) })) || []);
-  table("#inventory-po-table", ["PO", "Supplier", "Branch", "Date", "Terms", "Items", "Status", "Actions"], receivingPurchaseOrders().reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, `${po.terms || 30} days`, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, inventoryPoActionsCell(po, data.inventoryPurchaseOrders.indexOf(po))] })));
-  renderStockReceipts();
-  table("#inventory-po-history-table", ["PO", "Supplier", "Branch", "Date", "Items", "Status", "Completed By", "Actions"], (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).reverse().map((po) => ({ focus: po.id, cells: [po.id, po.supplier, po.branch || "-", po.date, inventoryPoLineItems(po), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span>`, po.receivedBy || po.cancelledBy || "-", `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View Timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`] })));
-  table("#transfer-table", ["Transfer", "Items", "From", "To", "Total Qty", "Lots / Expiry", "Status", "Authorization"], data.pendingTransfers.map((transfer, index) => ({ focus: transfer.id, cells: [transfer.id, transferItemizedDetail(transfer), transfer.from, transfer.to, (transfer.lines || []).reduce((sum, line) => sum + transferLineQty(line), 0), (transfer.lines || []).map((line) => `${escapeHtml(transferLineLot(line))}<small>${escapeHtml(transferLineExpiry(line))}</small>`).join(""), `<span class="pill ${statusClass(transfer.status)}">${transfer.status}</span>`, `${transferAuthorizationCell(transfer, index)}<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View Details</button><button class="mini-button" data-transfer-print="${escapeHtml(transfer.id)}">Print</button>`] })));
-  const demoRequests = data.inventoryDemoRequests || [];
-  const activeDemos = demoRequests.filter((request) => !["Returned", "To Sales", "Cancelled"].includes(request.status));
-  const closedDemos = demoRequests.filter((request) => ["Returned", "To Sales", "Cancelled"].includes(request.status));
-  table("#demo-request-table", ["Request", "Client", "Demo Date", "Items", "Status", "Approvals", "Actions"], activeDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, `${request.salesApprovedBy ? `Sales: ${escapeHtml(request.salesApprovedBy)}` : request.status === "For Logistics Approval" || request.logisticsApprovedBy ? `Logistics: ${escapeHtml(request.logisticsApprovedBy || "Pending")}` : "Logistics: Not needed"}<small>Mgmt: ${escapeHtml(request.managementApprovedBy || "Pending")}</small>`, demoRequestActions(request)] })));
-  table("#demo-history-table", ["Request", "Client", "Demo Date", "Items", "Closed As", "SI No. / Amount", "Closed By"], closedDemos.slice().reverse().map((request) => ({ focus: request.id, cells: [request.id, `${escapeHtml(request.client)}<small>${escapeHtml(request.salesAgent || request.requestedBy || "-")}</small>`, `${escapeHtml(request.demoDate || "-")}<small>Return: ${escapeHtml(request.returnDate || "-")}</small>`, demoRequestLineSummary(request), `<span class="pill ${statusClass(request.status)}">${escapeHtml(request.status)}</span>`, request.status === "To Sales" ? `${escapeHtml(request.siNumber || "-")}<small>${peso.format(request.saleAmount || 0)}</small>` : "-", escapeHtml(request.closedBy || "-")] })));
-  // entry.date is a locale-formatted display string (not reliably sortable as a Date), but
-  // entry.id embeds the real creation timestamp as `TH-<Date.now()>-<random>` — sort on that
-  // instead so a server reload (which arrives oldest-first) still shows latest first here.
-  const transferHistoryTimestamp = (/** @type {any} */ entry) => Number(String(entry.id || "").split("-")[1]) || new Date(entry.date).getTime() || 0;
+function renderInventory() {
+  // Engineering / Product Specialist see only the demo-request workflow; Request Demo itself is
+  // limited to those roles (and Superadmin/CEO). Server-side, canAccessKey() limits their writes.
+  const demoOnly = isDemoOnlyRole();
+  qs("#inventory")?.classList.toggle("demo-only", demoOnly);
+  if (demoOnly && inventoryWorkflowTab !== "demos") { inventoryWorkflowTab = "demos"; inventoryResetTabView(); }
+  const demoButton = qs("#open-demo-request");
+  if (demoButton) demoButton.style.display = canRequestDemo() ? "" : "none";
+  if (!platformBranches().includes(inventoryBranchView) && inventoryBranchView !== "all") inventoryBranchView = "all";
+  // The hidden #inventory-status select stays the source of truth for the status filter so the
+  // dashboard/workflow deep-links (which set it to "all") keep working.
+  const statusSelect = qs("#inventory-status");
+  if (statusSelect.dataset.synced !== "1") { // first render: seed the select from the URL
+    statusSelect.value = INVENTORY_STATUS_META.find((meta) => meta.key === inventoryStatusKey)?.name || "all";
+    statusSelect.dataset.synced = "1";
+  }
+  inventoryStatusKey = INVENTORY_STATUS_BY_NAME[statusSelect.value]?.key || "all";
+  renderInventoryWorkflowTabs();
+  renderInventoryAreaSelect();
+  syncInventorySavedPill(...(() => { const el = qs("#save-status-indicator"); const s = el?.classList.contains("saving") ? "saving" : el?.classList.contains("error") ? "error" : "saved"; return /** @type {[string, string]} */ ([s, qs("#save-status-text")?.textContent]); })());
+  ensureInventoryDatalists();
+  if (inventoryWorkflowTab === "stocks") renderInventoryStocks();
+  else renderInventoryTab();
+  // The modal transfer log (Transfer history → "Activity log") reads this table.
+  const transferHistoryTimestamp = (/** @type {Record<string, unknown>} */ entry) => Number(String(entry.id || "").split("-")[1]) || new Date(String(entry.date)).getTime() || 0;
   const sortedTransferHistory = [...data.transferHistory].sort((a, b) => transferHistoryTimestamp(b) - transferHistoryTimestamp(a));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], sortedTransferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
-  const loadMoreInventoryPosButton = qs("#load-more-inventory-pos");
-  if (loadMoreInventoryPosButton) loadMoreInventoryPosButton.hidden = !modulePagination.inventoryPurchaseOrders?.hasMore || !tableFullyRevealed("#inventory-po-table");
-  const loadMoreTransfersButton = qs("#load-more-transfers");
-  if (loadMoreTransfersButton) loadMoreTransfersButton.hidden = !modulePagination.pendingTransfers?.hasMore || !tableFullyRevealed("#transfer-table");
+  syncInventoryUrl();
 }
 
 let dashboardBackupStatusRequest = 0;
@@ -2944,21 +2980,499 @@ async function renderDashboardBackupStatus() {
 function renderInventoryWorkflowTabs() {
   const tabs = qs("#inventory-workflow-tabs");
   if (!tabs) return;
-  /** @type {Record<string, any>} */
+  /** @type {Record<string, number>} */
   const counts = {
     stocks: (data.inventory || []).length,
     receiving: receivingPurchaseOrders().length,
     receipts: (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval").length,
     completed: (data.inventoryPurchaseOrders || []).filter((po) => inventoryPoTerminalStatuses.includes(po.status)).length,
-    transfers: (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status)).length,
-    demos: (data.inventoryDemoRequests || []).filter((request) => !["Returned", "To Sales", "Cancelled"].includes(request.status)).length,
+    transfers: (data.pendingTransfers || []).filter((transfer) => !INVENTORY_TRANSFER_DONE.includes(transfer.status)).length,
+    demos: (data.inventoryDemoRequests || []).filter((request) => !INVENTORY_DEMO_CLOSED.includes(request.status)).length,
   };
   if (!INVENTORY_TABS.includes(inventoryWorkflowTab)) inventoryWorkflowTab = "stocks";
-  tabs.innerHTML = INVENTORY_TABS.map((tab) => {
-    const count = counts[/** @type {string} */ (tab)];
-    return `<button class="inv-tab" type="button" role="tab" data-inventory-workflow="${tab}" aria-selected="${tab === inventoryWorkflowTab}" tabindex="${tab === inventoryWorkflowTab ? 0 : -1}">${INVENTORY_TAB_LABELS[/** @type {string} */ (tab)]}${count === undefined ? "" : `<span class="inv-count${count > 0 ? " has" : ""}">${count}</span>`}</button>`;
-  }).join("");
-  qsa(".inventory-workflow-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.inventoryPanel === inventoryWorkflowTab));
+  tabs.innerHTML = uiModuleTabs({ tabs: INVENTORY_TABS.map((tab) => ({ key: String(tab), label: INVENTORY_TAB_LABELS[String(tab)], count: counts[String(tab)] })), active: inventoryWorkflowTab, attr: "data-inventory-workflow" });
+  qsa(".inventory-workflow-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.inventoryPanel === (inventoryWorkflowTab === "stocks" ? "stocks" : "tab")));
+}
+
+// ----- Generic Inventory tabs (everything except Stocks) -----------------------------------------
+// Each tab is described by an InventoryTabView built from the real records; renderInventoryTab()
+// draws it with the shared ui-kit pieces. Row actions reuse the existing action cells (their
+// data-* attributes are what the app's delegated handlers already listen for).
+/**
+ * @typedef {{
+ *   id: string, cells: string[], search: string, branches: string[], scopes: string[],
+ *   sortValues: Record<string, string | number | null>, csv: (string | number)[], detail: () => UiDetail
+ * }} InventoryTabRow
+ */
+/**
+ * @typedef {{
+ *   title: string, intro: string, placeholder: string, actions: string[], stats: UiCard[],
+ *   cols: UiCol[], csvHeader: string[], rows: InventoryTabRow[], empty: [string, string], minWidth: number,
+ *   defaultSort: { key: string, dir: number }, chips: { key: string, label: string, tone?: UiTone }[], defaultScope: string,
+ *   loadMore?: string
+ * }} InventoryTabView
+ */
+const INVENTORY_TRANSFER_DONE = ["Received", "Cancelled"];
+const INVENTORY_DEMO_CLOSED = ["Returned", "To Sales", "Cancelled"];
+/** @type {Record<string, UiTone>} */
+const INVENTORY_PO_TONES = { "Pending Approval": "amber", Approved: "blue", "Sent to Supplier": "blue", "In Transit": "blue", "For Receiving": "orange", "Partially Received": "amber", "Fully Received": "green", Cancelled: "slate" };
+/** @type {Record<string, UiTone>} */
+const INVENTORY_TRANSFER_TONES = { "For Receiving": "amber", "In Transit": "blue", Incomplete: "orange", Received: "green", Cancelled: "slate" };
+/** @type {Record<string, UiTone>} */
+const INVENTORY_DEMO_TONES = { "For Sales Approval": "amber", "For Logistics Approval": "amber", "For Management Approval": "amber", Approved: "blue", Returned: "green", "To Sales": "green", Cancelled: "slate" };
+/** @type {Record<string, UiTone>} */
+const INVENTORY_RECEIPT_TONES = { "Pending Approval": "amber", Approved: "green", Cancelled: "slate" };
+/** Transfer statuses read better in plain words; the stored value is unchanged. @type {Record<string, string>} */
+const INVENTORY_TRANSFER_LABELS = { "For Receiving": "Awaiting dispatch", "In Transit": "In transit", Incomplete: "Received short", Received: "Complete", Cancelled: "Cancelled" };
+const INVENTORY_TAB_PAGE_SIZE = 25;
+
+function inventoryResetTabView() {
+  inventoryTabView = { q: "", sel: "", sort: null, page: 0, branch: "all", scope: "" };
+}
+/** @param {Record<string, UiTone>} map @param {string} status @returns {UiTone} */
+function inventoryTone(map, status) { return map[status] || "slate"; }
+/** @param {string} id */
+function inventoryTabSelect(id) { return { "data-inventory-tab-select": id }; }
+/** Table "next step" cell: the record's first action, else its waiting note. @param {string} actionHtml */
+function inventoryNextStep(actionHtml) {
+  const { buttons, notes } = uiAdoptActions(actionHtml, { size: "xs", primaryFirst: false });
+  if (buttons.length) return buttons[0];
+  return notes[0] ? `<span class="ui-sub">${escapeHtml(notes[0])}</span>` : "";
+}
+/** @param {string} actionHtml @param {string[]} [extra] @returns {{ actions: string[], note?: { text: string, tone: UiTone } }} */
+function inventoryDetailActions(actionHtml, extra = []) {
+  const { buttons, notes } = uiAdoptActions(actionHtml);
+  const secondary = uiAdoptActions(extra.join(""), { primaryFirst: !buttons.length }).buttons;
+  return { actions: [...buttons, ...secondary], note: notes[0] ? { text: notes[0], tone: "blue" } : undefined };
+}
+/** @param {number} count @param {string} word */
+function inventoryPlural(count, word) { return `${count} ${word}${count === 1 ? "" : "s"}`; }
+/** A sortable date value (ISO-like or locale strings both work); null when it can't be read. @param {unknown} value */
+function inventoryDateValue(value) {
+  const time = new Date(String(value || "")).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+/** @param {(PoLine | Record<string, unknown>)[]} lines */
+function inventoryUnits(lines) { return lines.reduce((sum, line) => sum + Number(line.qty || 0), 0); }
+/** "2 In Transit · 1 Approved" for the most common statuses. @param {string[]} statuses @param {(status: string) => string} [label] */
+function inventoryStatusBreakdown(statuses, label = (status) => status) {
+  /** @type {Record<string, number>} */
+  const counts = {};
+  statuses.forEach((status) => { counts[status] = (counts[status] || 0) + 1; });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([status, count]) => `${count} ${label(status).toLowerCase()}`).join(" · ");
+}
+/** @param {InventoryPO} po */
+function inventoryPoBranch(po) { return po.branch || po.receivingBranch || ""; }
+/** @param {InventoryPO} po */
+function inventoryPoTotal(po) { return (po.lines || []).reduce((sum, line) => sum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0); }
+/** @param {InventoryPO} po */
+function inventoryPoFinishedOn(po) {
+  const history = po.history || [];
+  const done = [...history].reverse().find((entry) => inventoryPoTerminalStatuses.includes(entry.status)) || history[history.length - 1];
+  return done?.date || po.receivedAt || po.cancelledAt || "";
+}
+/** @param {StockReceipt} receipt */
+function inventoryReceiptBranches(receipt) {
+  return [...new Set([receipt.branch, ...(receipt.lines || []).map((/** @type {PoLine} */ line) => line.branch)].filter(Boolean).map(String))];
+}
+/** @param {PendingTransfer} transfer */
+function inventoryTransferRequestedOn(transfer) {
+  const events = (data.transferHistory || []).filter((/** @type {Record<string, unknown>} */ entry) => entry.transferId === transfer.id);
+  const first = events.sort((/** @type {Record<string, unknown>} */ a, /** @type {Record<string, unknown>} */ b) => (Number(String(a.id || "").split("-")[1]) || 0) - (Number(String(b.id || "").split("-")[1]) || 0))[0];
+  return String(transfer.requestedAt || transfer.date || first?.date || "");
+}
+/** @param {PendingTransfer} transfer */
+function inventoryTransferResult(transfer) {
+  if (transfer.status === "Cancelled") return { text: "Cancelled", tone: /** @type {UiTone} */ ("slate") };
+  const short = (transfer.lines || []).some((/** @type {PoLine} */ line) => Number(line.receivedQty ?? 0) < Number(line.dispatchedQty ?? line.requestedQty ?? 0));
+  return short ? { text: "Received short", tone: /** @type {UiTone} */ ("amber") } : { text: "Complete", tone: /** @type {UiTone} */ ("green") };
+}
+/** @param {PendingTransfer} transfer @returns {UiLine[]} */
+function inventoryTransferLines(transfer) {
+  const done = INVENTORY_TRANSFER_DONE.includes(transfer.status) || transfer.status === "Incomplete";
+  return (transfer.lines || []).map((/** @type {PoLine} */ line) => {
+    const sent = Number(line.dispatchedQty ?? line.requestedQty ?? 0);
+    const got = Number(line.receivedQty ?? 0);
+    const lot = transferLineLot(line);
+    const expiry = transferLineExpiry(line);
+    return done
+      ? { left: line.item, sub: `Lot ${lot}${got < sent ? ` · ${sent - got} missing` : ""}`, right: `${got} of ${sent}`, tone: got < sent ? "amber" : "green" }
+      : { left: line.item, sub: `Lot ${lot} · exp ${expiry}`, right: `× ${transferLineQty(line)}`, tone: inventoryTone(INVENTORY_TRANSFER_TONES, transfer.status) };
+  });
+}
+/** @param {PendingTransfer} transfer */
+function inventoryTransferSummary(transfer) {
+  const lines = transfer.lines || [];
+  return `${inventoryPlural(lines.length, "line")} · ${lines.reduce((sum, line) => sum + transferLineQty(line), 0)} units`;
+}
+
+/** @param {string} tab @returns {InventoryTabView} */
+function inventoryTabModel(tab) {
+  const closeAttrs = { "data-inventory-tab-close": "" };
+  const proxy = (/** @type {string} */ id, /** @type {string} */ label) => uiButton(label, { "data-inventory-proxy": id }, { size: "sm" });
+  const exportButton = (/** @type {string} */ label = "Export") => uiButton(label, { "data-inventory-tab-export": tab }, { size: "sm" });
+  const pos = data.inventoryPurchaseOrders || [];
+
+  if (tab === "receiving" || tab === "completed") {
+    const completed = tab === "completed";
+    const list = completed ? pos.filter((po) => inventoryPoTerminalStatuses.includes(po.status)) : receivingPurchaseOrders();
+    const rows = list.map(/** @returns {InventoryTabRow} */ (po) => {
+      const index = pos.indexOf(po);
+      const lines = po.lines || [];
+      const ordered = inventoryUnits(lines);
+      const received = lines.reduce((sum, line) => sum + Number(line.receivedQty || 0), 0);
+      const branch = inventoryPoBranch(po);
+      const variance = po.status === "Fully Received" && lines.some((line) => Number(line.receivedQty || 0) < Number(line.qty || 0));
+      const result = po.status === "Cancelled" ? { text: "Cancelled", tone: /** @type {UiTone} */ ("slate") } : variance ? { text: "Received with variance", tone: /** @type {UiTone} */ ("amber") } : { text: "Received in full", tone: /** @type {UiTone} */ ("green") };
+      const finished = inventoryPoFinishedOn(po);
+      const leadDays = (() => { const a = inventoryDateValue(po.date), b = inventoryDateValue(finished); return a !== null && b !== null && b >= a ? Math.round((b - a) / 86400000) : null; })();
+      const actionHtml = completed
+        ? `<button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View timeline</button><button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button>`
+        : inventoryPoActionsCell(po, index);
+      const pill = completed ? result : { text: po.status, tone: inventoryTone(INVENTORY_PO_TONES, po.status) };
+      return {
+        id: po.id,
+        branches: [branch],
+        scopes: [completed ? result.text : po.status],
+        search: [po.id, po.supplier, branch, po.status, ...lines.map((line) => `${line.item} ${line.code} ${line.lot || ""}`)].join(" "),
+        sortValues: { id: po.id, supplier: String(po.supplier || ""), branch, date: inventoryDateValue(po.date), finished: inventoryDateValue(finished), lines: lines.length, received: ordered ? received / ordered : 0, status: pill.text },
+        csv: completed ? [po.id, po.supplier, branch, po.date, finished, lines.length, result.text, po.receivedBy || po.cancelledBy || ""] : [po.id, po.supplier, branch, po.date, `${po.terms || 30} days`, `${received} of ${ordered}`, po.status],
+        cells: completed
+          ? [uiCellDoc(po.id, inventoryTabSelect(po.id)), uiCellText(po.supplier, "", { strong: true }), escapeHtml(inventoryBranchLabel(branch)), escapeHtml(uiDate(po.date)), uiCellText(finished ? uiDate(finished) : "—", leadDays !== null ? inventoryPlural(leadDays, "day") : ""), uiCellNum(lines.length), uiPill(result.text, result.tone)]
+          : [uiCellDoc(po.id, inventoryTabSelect(po.id), inventoryPlural(lines.length, "line")), uiCellText(po.supplier, "", { strong: true }), escapeHtml(inventoryBranchLabel(branch)), uiCellText(uiDate(po.date), `${po.terms || 30}-day terms`), uiCellNum(`${received} of ${ordered}`), uiPill(po.status, pill.tone), inventoryNextStep(actionHtml)],
+        detail: /** @returns {UiDetail} */ () => {
+          const { actions, note } = inventoryDetailActions(actionHtml);
+          const shortLines = lines.filter((line) => Number(line.receivedQty || 0) < Number(line.qty || 0));
+          return {
+            eyebrow: po.id, title: po.supplier || "Supplier", pill, closeAttrs, label: "Purchase order details",
+            fields: completed
+              ? [{ label: "Received at", value: inventoryBranchLabel(branch) }, { label: "Ordered", value: uiDate(po.date) }, { label: completed && po.status === "Cancelled" ? "Cancelled" : "Completed", value: finished ? uiDate(finished) : "—", sub: leadDays !== null ? `${inventoryPlural(leadDays, "day")} from order` : "" }, { label: po.status === "Cancelled" ? "Cancelled by" : "Received by", value: po.receivedBy || po.cancelledBy || "—" }]
+              : [{ label: "Deliver to", value: inventoryBranchLabel(branch) }, { label: "Ordered", value: uiDate(po.date) }, { label: "Terms", value: `${po.terms || 30} days` }, { label: "Approved by", value: po.approvedBy || "—" }],
+            linesTitle: completed ? "Received vs ordered" : "Ordered items",
+            lines: lines.map((line) => {
+              const got = Number(line.receivedQty || 0), want = Number(line.qty || 0);
+              return completed
+                ? { left: line.item, sub: [line.code, got < want ? `${want - got} short` : ""].filter(Boolean).join(" · "), right: `${got} of ${want}`, tone: got < want ? "amber" : "green" }
+                : { left: line.item, sub: [line.code, `${got} received`].filter(Boolean).join(" · "), right: `× ${want} ${line.uom || ""}`.trim(), tone: got >= want ? "green" : got > 0 ? "amber" : "slate" };
+            }),
+            total: { label: "PO total", value: peso.format(inventoryPoTotal(po)) },
+            note: completed
+              ? (variance ? { text: `${shortLines.map((line) => `${Number(line.qty || 0) - Number(line.receivedQty || 0)} × ${line.item}`).join(", ")} short on delivery.`, tone: "amber" } : undefined)
+              : note || { text: "Receiving asks for the lot no. and expiry of each line. The receipt then waits under Pending receipts for Superadmin/CEO approval before it is added to stock.", tone: "blue" },
+            actions,
+          };
+        },
+      };
+    });
+    if (completed) {
+      const full = rows.filter((row) => row.scopes[0] === "Received in full").length;
+      const received = rows.filter((row) => row.scopes[0] !== "Cancelled").length;
+      const leads = list.map((po) => { const a = inventoryDateValue(po.date), b = inventoryDateValue(inventoryPoFinishedOn(po)); return po.status !== "Cancelled" && a !== null && b !== null && b >= a ? (b - a) / 86400000 : null; }).filter((value) => value !== null);
+      return {
+        title: "Completed POs", intro: "Purchase orders that have been fully received or cancelled. Any shortfall on receipt stays visible here.",
+        placeholder: "PO no. or supplier", actions: [exportButton()], minWidth: 760,
+        stats: [
+          { label: "Completed POs", value: list.length, sub: inventoryStatusBreakdown(rows.map((row) => row.scopes[0])) || "None yet", tone: "green" },
+          { label: "Received in full", value: `${full} of ${received}`, sub: received - full ? `${inventoryPlural(received - full, "PO")} closed with a shortfall` : "No shortfalls", tone: received - full ? "amber" : "green" },
+          { label: "Average lead time", value: leads.length ? inventoryPlural(Math.round(leads.reduce((a, b) => a + b, 0) / leads.length), "day") : "—", sub: "From order to receipt", tone: "accent" },
+        ],
+        cols: [{ key: "id", label: "PO", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "branch", label: "Received at", sortable: true }, { key: "date", label: "Ordered", sortable: true }, { key: "finished", label: "Completed", sortable: true }, { key: "lines", label: "Lines", align: "right", sortable: true }, { key: "status", label: "Result", sortable: true }],
+        csvHeader: ["PO", "Supplier", "Received at", "Ordered", "Completed", "Lines", "Result", "Completed by"],
+        rows, empty: ["No completed purchase orders yet", "When a supplier PO is fully received or cancelled it moves here, with any shortfall noted."],
+        defaultSort: { key: "finished", dir: -1 }, chips: [{ key: "Received in full", label: "Received in full", tone: "green" }, { key: "Received with variance", label: "With variance", tone: "amber" }, { key: "Cancelled", label: "Cancelled", tone: "slate" }], defaultScope: "",
+      };
+    }
+    const remainingUnits = list.reduce((sum, po) => sum + (po.lines || []).reduce((s, line) => s + Math.max(Number(line.qty || 0) - Number(line.receivedQty || 0), 0), 0), 0);
+    const byBranchText = platformBranches().map((branch) => ({ branch, n: list.filter((po) => inventoryPoBranch(po) === branch).reduce((sum, po) => sum + (po.lines || []).length, 0) })).filter((entry) => entry.n).map((entry) => `${entry.n} to ${inventoryBranchLabel(entry.branch)}`).join(" · ");
+    const ready = list.filter((po) => ["For Receiving", "Partially Received"].includes(po.status)).length;
+    return {
+      title: "Receiving POs", intro: "Purchase orders sent to suppliers that have not been received yet. Receive against the PO so quantity, lot no. and expiry are captured in one step.",
+      placeholder: "PO no., supplier or item", actions: [uiButton("New PO", { "data-action": "open-modal", "data-type": "inventoryPurchaseOrder" }, { size: "sm" })], minWidth: 700,
+      stats: [
+        { label: "Open purchase orders", value: list.length, sub: inventoryStatusBreakdown(list.map((po) => po.status)) || "Nothing on order", tone: "blue" },
+        { label: "Units expected", value: remainingUnits, sub: byBranchText || "No lines outstanding", tone: "accent" },
+        { label: "Ready to receive", value: ready, sub: `${list.filter((po) => po.status === "Pending Approval").length} awaiting Superadmin approval`, tone: ready ? "orange" : "green" },
+      ],
+      cols: [{ key: "id", label: "PO", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "branch", label: "Deliver to", sortable: true }, { key: "date", label: "Ordered", sortable: true }, { key: "received", label: "Received", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+      csvHeader: ["PO", "Supplier", "Deliver to", "Ordered", "Terms", "Received", "Status"],
+      rows, empty: ["No purchase orders waiting to be received", "New supplier POs show here from approval until every line is received."],
+      defaultSort: { key: "date", dir: -1 }, chips: Object.keys(INVENTORY_PO_TONES).filter((status) => !inventoryPoTerminalStatuses.includes(status)).map((status) => ({ key: status, label: status, tone: INVENTORY_PO_TONES[status] })), defaultScope: "",
+      loadMore: "load-more-inventory-pos",
+    };
+  }
+
+  if (tab === "receipts" || tab === "rhist") {
+    const history = tab === "rhist";
+    const receipts = (data.stockReceipts || []).filter((receipt) => receipt.status === (history ? "Approved" : "Pending Approval"));
+    const rows = receipts.map(/** @returns {InventoryTabRow} */ (receipt) => {
+      const index = data.stockReceipts.indexOf(receipt);
+      const lines = receipt.lines || [];
+      const units = inventoryUnits(lines);
+      const branches = inventoryReceiptBranches(receipt);
+      const actionHtml = history ? "" : stockReceiptActionsCell(receipt, index);
+      const viewButtons = [`<button class="mini-button" data-stock-receipt-detail="${escapeHtml(receipt.id)}">View timeline</button>`, ...(receipt.poId ? [`<button class="mini-button" data-inventory-po-timeline="${escapeHtml(receipt.poId)}">View PO</button>`] : [])];
+      return {
+        id: receipt.id,
+        branches,
+        scopes: [receipt.status],
+        search: [receipt.id, receipt.orderNumber, receipt.poId, receipt.supplier, receipt.source, ...lines.map((/** @type {PoLine} */ line) => `${line.item} ${line.code} ${line.lot || ""}`)].join(" "),
+        sortValues: { id: receipt.id, po: String(receipt.poId || ""), supplier: String(receipt.supplier || receipt.source || ""), date: inventoryDateValue(receipt.dateReceived), branch: branches.join(", "), lines: lines.length, by: String((history ? receipt.approvedBy : receipt.submittedBy) || "") },
+        csv: [receipt.id, receipt.orderNumber || "", receipt.poId || "Manual receive", receipt.supplier || receipt.source || "", receipt.dateReceived || "", branches.map(inventoryBranchLabel).join(", "), lines.length, units, (history ? receipt.approvedBy : receipt.submittedBy) || ""],
+        cells: history
+          ? [uiCellDoc(receipt.id, inventoryTabSelect(receipt.id)), escapeHtml(uiDate(receipt.dateReceived)), `<span class="mono">${escapeHtml(receipt.poId || "Manual")}</span>`, uiCellText(receipt.supplier || receipt.source || "—", receipt.orderNumber ? `Order ${receipt.orderNumber}` : "", { strong: true }), escapeHtml(branches.map(inventoryBranchLabel).join(", ") || "—"), uiCellNum(lines.length), uiCellText(receipt.approvedBy || "—", receipt.approvedAt || "")]
+          : [uiCellDoc(receipt.id, inventoryTabSelect(receipt.id), receipt.orderNumber ? `Order ${receipt.orderNumber}` : ""), `<span class="mono">${escapeHtml(receipt.poId || "Manual")}</span>`, uiCellText(receipt.supplier || receipt.source || "—", "", { strong: true }), uiCellText(uiDate(receipt.dateReceived), branches.map(inventoryBranchLabel).join(", ")), uiCellNum(`${lines.length} · ${units} u`), uiPill("Awaiting approval", "amber"), inventoryNextStep(actionHtml)],
+        detail: /** @returns {UiDetail} */ () => {
+          const { actions, note } = inventoryDetailActions(actionHtml, viewButtons);
+          return {
+            eyebrow: receipt.id, title: `${receipt.supplier || receipt.source || "Stock"} delivery`, pill: history ? { text: "Posted to stock", tone: "green" } : { text: "Awaiting approval", tone: "amber" }, closeAttrs, label: "Stock receipt details",
+            fields: [{ label: "PO", value: receipt.poId || "Manual receive", mono: Boolean(receipt.poId) }, { label: "Order no.", value: receipt.orderNumber || "—", mono: Boolean(receipt.orderNumber) }, { label: "Received", value: uiDate(receipt.dateReceived) }, { label: "Source", value: receipt.source || "—" }, { label: "Submitted by", value: receipt.submittedBy || "—", sub: receipt.submittedAt || "" }, ...(history ? [{ label: "Approved by", value: receipt.approvedBy || "—", sub: receipt.approvedAt || "" }] : [])],
+            linesTitle: "Lines",
+            lines: lines.map((/** @type {PoLine} */ line) => ({ left: line.item || line.code, sub: [`Lot ${line.lot || "—"}`, `exp ${line.expiry || "N/A"}`, inventoryBranchLabel(line.branch || "")].join(" · "), right: String(Number(line.qty || 0)), tone: history ? "green" : "amber" })),
+            total: { label: "Units", value: String(units) },
+            note: history ? undefined : note || { text: "Nothing here counts toward stock on hand until a Superadmin or CEO approves it.", tone: "amber" },
+            actions,
+          };
+        },
+      };
+    });
+    if (history) {
+      const monthKey = fmtDate(today).slice(0, 7);
+      const thisMonth = receipts.filter((receipt) => String(receipt.dateReceived || "").startsWith(monthKey));
+      return {
+        title: "Receiving history", intro: "Every approved delivery from suppliers, newest first.",
+        placeholder: "Receipt no., PO no. or supplier", actions: [exportButton()], minWidth: 760,
+        stats: [
+          { label: "Receipts this month", value: thisMonth.length, sub: `${inventoryUnits(thisMonth.flatMap((receipt) => receipt.lines || []))} units received`, tone: "accent" },
+          { label: "All approved receipts", value: receipts.length, sub: `${receipts.filter((receipt) => !receipt.poId).length} received without a PO`, tone: "green" },
+        ],
+        cols: [{ key: "id", label: "Receipt", sortable: true }, { key: "date", label: "Received", sortable: true }, { key: "po", label: "PO", sortable: true }, { key: "supplier", label: "Supplier / source", sortable: true }, { key: "branch", label: "Branch", sortable: true }, { key: "lines", label: "Lines", align: "right", sortable: true }, { key: "by", label: "Approved by", sortable: true }],
+        csvHeader: ["Receipt", "Order no.", "PO", "Supplier / source", "Received", "Branch", "Lines", "Units", "Approved by"],
+        rows, empty: ["No approved receipts yet", "Once a stock receipt is approved and posted, it is listed here."],
+        defaultSort: { key: "date", dir: -1 }, chips: [], defaultScope: "",
+      };
+    }
+    const todayKey = fmtDate(today);
+    return {
+      title: "Pending receipts", intro: "Deliveries that have been received but not yet approved. Nothing here counts toward stock on hand until a Superadmin or CEO approves it.",
+      placeholder: "Receipt, PO no. or item", actions: [proxy("open-stock-sheet", "Receive stock")], minWidth: 760,
+      stats: [
+        { label: "Waiting to post", value: receipts.length, sub: receipts.length ? `${inventoryUnits(receipts.flatMap((receipt) => receipt.lines || []))} units awaiting approval` : "All received stock is posted", tone: receipts.length ? "amber" : "green" },
+        { label: "Received today", value: receipts.filter((receipt) => receipt.dateReceived === todayKey).length, sub: "Deliveries dated today", tone: "accent" },
+      ],
+      cols: [{ key: "id", label: "Receipt", sortable: true }, { key: "po", label: "PO", sortable: true }, { key: "supplier", label: "Supplier / source", sortable: true }, { key: "date", label: "Received", sortable: true }, { key: "lines", label: "Lines", align: "right", sortable: true }, { key: "status", label: "Status" }, { key: "next", label: "", align: "right" }],
+      csvHeader: ["Receipt", "Order no.", "PO", "Supplier / source", "Received", "Branch", "Lines", "Units", "Submitted by"],
+      rows, empty: ["No receipts waiting to be posted", "When a delivery is received, it waits here with its lot numbers and expiry dates until a Superadmin or CEO approves it."],
+      defaultSort: { key: "date", dir: -1 }, chips: [], defaultScope: "",
+    };
+  }
+
+  if (tab === "transfers" || tab === "thist") {
+    const history = tab === "thist";
+    const all = data.pendingTransfers || [];
+    const list = all.filter((transfer) => history === INVENTORY_TRANSFER_DONE.includes(transfer.status));
+    const rows = list.map(/** @returns {InventoryTabRow} */ (transfer) => {
+      const index = all.indexOf(transfer);
+      const requested = inventoryTransferRequestedOn(transfer);
+      const result = inventoryTransferResult(transfer);
+      const pill = history ? result : { text: INVENTORY_TRANSFER_LABELS[transfer.status] || transfer.status, tone: inventoryTone(INVENTORY_TRANSFER_TONES, transfer.status) };
+      const actionHtml = history ? "" : transferAuthorizationCell(transfer, index);
+      const viewButtons = [`<button class="mini-button" data-transfer-timeline="${escapeHtml(transfer.id)}">View details</button>`, `<button class="mini-button" data-transfer-print="${escapeHtml(transfer.id)}">Print transfer slip</button>`];
+      const route = `${inventoryBranchLabel(transfer.from || "")} → ${inventoryBranchLabel(transfer.to || "")}`;
+      const finished = String(transfer.receivedAt || transfer.cancelledAt || "");
+      return {
+        id: transfer.id,
+        branches: [transfer.from || "", transfer.to || ""],
+        scopes: [pill.text],
+        search: [transfer.id, transfer.from, transfer.to, transfer.status, ...(transfer.lines || []).map((/** @type {PoLine} */ line) => `${line.item} ${line.code} ${transferLineLot(line)}`)].join(" "),
+        sortValues: { id: transfer.id, route, date: inventoryDateValue(requested), finished: inventoryDateValue(finished), items: (transfer.lines || []).length, status: pill.text },
+        csv: [transfer.id, transfer.from || "", transfer.to || "", requested, transfer.dispatchedAt || "", transfer.receivedAt || "", inventoryTransferSummary(transfer), pill.text],
+        cells: history
+          ? [uiCellDoc(transfer.id, inventoryTabSelect(transfer.id)), uiCellText(route, "", { strong: true }), escapeHtml(finished ? uiDate(finished) : "—"), escapeHtml(inventoryTransferSummary(transfer)), uiPill(pill.text, pill.tone)]
+          : [uiCellDoc(transfer.id, inventoryTabSelect(transfer.id)), uiCellText(route, "", { strong: true }), uiCellText(requested ? uiDate(requested) : "—", transfer.dispatchedAt ? `Dispatched ${uiDate(transfer.dispatchedAt)}` : ""), escapeHtml(inventoryTransferSummary(transfer)), uiPill(pill.text, pill.tone), inventoryNextStep(actionHtml)],
+        detail: /** @returns {UiDetail} */ () => {
+          const { actions, note } = inventoryDetailActions(actionHtml, viewButtons);
+          const missing = (transfer.lines || []).reduce((sum, /** @type {PoLine} */ line) => sum + Math.max(Number(line.dispatchedQty ?? line.requestedQty ?? 0) - Number(line.receivedQty || 0), 0), 0);
+          return {
+            eyebrow: transfer.id, title: route, pill, closeAttrs, label: "Transfer details",
+            fields: [{ label: "Requested", value: requested ? uiDate(requested) : "—" }, { label: "Requested by", value: transfer.requestedBy || "—" }, { label: "Dispatched", value: transfer.dispatchedAt ? uiDate(transfer.dispatchedAt) : "—", sub: transfer.dispatchedBy || "" }, { label: "Received", value: transfer.receivedAt ? uiDate(transfer.receivedAt) : "—", sub: transfer.receivedBy || "" }],
+            linesTitle: "Items",
+            lines: inventoryTransferLines(transfer),
+            note: transfer.status === "Incomplete" || (history && result.text === "Received short") ? { text: `${inventoryPlural(missing, "unit")} short on arrival.`, tone: "amber" }
+              : transfer.status === "In Transit" ? { text: `${inventoryBranchLabel(transfer.to || "")} confirms the quantity of each lot on arrival; stock is added to that branch then.`, tone: "blue" }
+                : note,
+            actions,
+          };
+        },
+      };
+    });
+    if (history) {
+      const cutoff = Number(today) - 30 * 86400000;
+      const recent = list.filter((transfer) => transfer.status === "Received" && (inventoryDateValue(transfer.receivedAt) ?? 0) >= cutoff);
+      const short = rows.filter((row) => row.scopes[0] === "Received short");
+      return {
+        title: "Transfer history", intro: "Finished transfers between branches, newest first. The activity log lists every dispatch, receipt and note.",
+        placeholder: "Transfer no., branch or item", actions: [uiButton("Activity log", { id: "open-transfer-history" }, { size: "sm" }), exportButton()], minWidth: 700,
+        stats: [
+          { label: "Completed in the last 30 days", value: recent.length, sub: platformBranches().map((branch) => `${recent.filter((transfer) => transfer.to === branch).length} to ${inventoryBranchLabel(branch)}`).join(" · "), tone: "accent" },
+          { label: "Received short", value: short.length, sub: short[0] ? short[0].id : "Every transfer arrived in full", tone: short.length ? "amber" : "green" },
+        ],
+        cols: [{ key: "id", label: "Transfer", sortable: true }, { key: "route", label: "From → To", sortable: true }, { key: "finished", label: "Completed", sortable: true }, { key: "items", label: "Items", sortable: true }, { key: "status", label: "Result", sortable: true }],
+        csvHeader: ["Transfer", "From", "To", "Requested", "Dispatched", "Received", "Items", "Result"],
+        rows, empty: ["No finished transfers yet", "Transfers move here once the receiving branch confirms them, or when they are cancelled."],
+        defaultSort: { key: "finished", dir: -1 }, chips: [{ key: "Complete", label: "Complete", tone: "green" }, { key: "Received short", label: "Received short", tone: "amber" }, { key: "Cancelled", label: "Cancelled", tone: "slate" }], defaultScope: "",
+      };
+    }
+    return {
+      title: "Transfers", intro: "Stock moving between branches. Stock leaves the sending branch on dispatch and is added to the receiving branch when someone confirms receipt.",
+      placeholder: "Transfer no., branch or item", actions: [proxy("open-transfer-sheet", "New transfer")], minWidth: 740,
+      stats: [
+        { label: "Transfers in progress", value: list.length, sub: inventoryStatusBreakdown(list.map((transfer) => transfer.status), (status) => INVENTORY_TRANSFER_LABELS[status] || status) || "Nothing moving", tone: "blue" },
+        { label: "In transit", value: list.filter((transfer) => transfer.status === "In Transit").length, sub: "Dispatched, awaiting receipt", tone: "blue" },
+        { label: "Awaiting dispatch", value: list.filter((transfer) => transfer.status === "For Receiving").length, sub: "Admin reviews and dispatches", tone: "amber" },
+      ],
+      cols: [{ key: "id", label: "Transfer", sortable: true }, { key: "route", label: "From → To", sortable: true }, { key: "date", label: "Requested", sortable: true }, { key: "items", label: "Items", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+      csvHeader: ["Transfer", "From", "To", "Requested", "Dispatched", "Received", "Items", "Status"],
+      rows, empty: ["No transfers in progress", "Use Transfer stock to move a lot from one branch to another."],
+      defaultSort: { key: "date", dir: -1 }, chips: ["For Receiving", "In Transit", "Incomplete"].map((status) => ({ key: INVENTORY_TRANSFER_LABELS[status], label: INVENTORY_TRANSFER_LABELS[status], tone: INVENTORY_TRANSFER_TONES[status] })), defaultScope: "",
+      loadMore: "load-more-transfers",
+    };
+  }
+
+  // Demo requests: open ones by default, closed ones (returned / to sales / cancelled) one chip away.
+  const requests = data.inventoryDemoRequests || [];
+  const rows = requests.map(/** @returns {InventoryTabRow} */ (request) => {
+    const closed = INVENTORY_DEMO_CLOSED.includes(request.status);
+    const lines = /** @type {Record<string, unknown>[]} */ (request.lines || []);
+    const units = inventoryUnits(lines);
+    const overdue = request.status === "Approved" && request.returnDate && daysUntil(request.returnDate) < 0;
+    const pill = { text: overdue ? "Overdue return" : request.status, tone: overdue ? /** @type {UiTone} */ ("red") : inventoryTone(INVENTORY_DEMO_TONES, request.status) };
+    const actionHtml = closed ? "" : demoRequestActions(request);
+    const firstItem = String(lines[0]?.item || lines[0]?.code || "—");
+    return {
+      id: request.id,
+      branches: [String(request.branch || "")].filter(Boolean),
+      scopes: [closed ? "closed" : "open"],
+      search: [request.id, request.client, request.salesAgent, request.requestedBy, request.status, ...lines.map((line) => `${line.item || ""} ${line.code || ""} ${line.lot || ""}`)].join(" "),
+      sortValues: { id: request.id, client: String(request.client || ""), date: inventoryDateValue(request.demoDate), due: inventoryDateValue(request.returnDate), status: pill.text },
+      csv: [request.id, request.client || "", request.salesAgent || request.requestedBy || "", request.demoDate || "", request.returnDate || "", lines.map((line) => `${line.item || line.code} (${Number(line.qty || 0)})`).join("; "), request.status],
+      cells: [uiCellDoc(request.id, inventoryTabSelect(request.id)), uiCellText(request.client || "—", request.salesAgent || request.requestedBy || "", { strong: true }), uiCellText(firstItem, lines.length > 1 ? `+ ${inventoryPlural(lines.length - 1, "more line")}` : `${units} unit${units === 1 ? "" : "s"}`), escapeHtml(uiDate(request.demoDate)), uiCellText(uiDate(request.returnDate), request.returnDate && !closed ? (daysUntil(request.returnDate) < 0 ? `${-daysUntil(request.returnDate)} days late` : `in ${daysUntil(request.returnDate)} days`) : "", { subTone: overdue ? "red" : undefined }), uiPill(pill.text, pill.tone), closed ? "" : inventoryNextStep(actionHtml)],
+      detail: /** @returns {UiDetail} */ () => {
+        const { actions, note } = inventoryDetailActions(actionHtml);
+        const approvals = [request.salesApprovedBy ? `Sales: ${request.salesApprovedBy}` : "", request.logisticsApprovedBy ? `Logistics: ${request.logisticsApprovedBy}` : request.status === "For Logistics Approval" ? "Logistics: pending" : "", `Management: ${request.managementApprovedBy || "pending"}`].filter(Boolean).join(" · ");
+        return {
+          eyebrow: request.id, title: request.client || "Demo request", pill, closeAttrs, label: "Demo request details",
+          fields: [{ label: "Sales agent", value: request.salesAgent || request.requestedBy || "—" }, { label: "Requested by", value: request.requestedBy || "—" }, { label: "Demo date", value: uiDate(request.demoDate) }, { label: "Due back", value: uiDate(request.returnDate) }, ...(request.location ? [{ label: "Location", value: String(request.location), wide: true }] : []), ...(request.purpose ? [{ label: "Purpose", value: String(request.purpose), wide: true }] : []), { label: "Approvals", value: approvals, wide: true }, ...(request.status === "To Sales" ? [{ label: "SI no.", value: request.siNumber || "—", mono: true }, { label: "Sale amount", value: peso.format(request.saleAmount || 0) }] : []), ...(closed ? [{ label: "Closed by", value: request.closedBy || "—" }] : [])],
+          linesTitle: "Items out on demo",
+          lines: lines.map((line) => ({ left: String(line.item || line.code || "Item"), sub: [String(line.type || ""), line.lot ? `Lot ${line.lot}` : "", String(line.notes || "")].filter(Boolean).join(" · "), right: `× ${Number(line.qty || 0)}`, tone: closed ? "green" : pill.tone })),
+          note: overdue ? { text: `Was due back ${uiDate(request.returnDate)}.`, tone: "red" } : actions.length ? undefined : note || (closed ? undefined : { text: "Waiting on the next approver.", tone: "amber" }),
+          actions,
+        };
+      },
+    };
+  });
+  const open = rows.filter((row) => row.scopes[0] === "open");
+  const out = requests.filter((request) => request.status === "Approved");
+  return {
+    title: "Demo requests", intro: "Analyzers and kits lent to clients for a demo, who has them, and when they are due back.",
+    placeholder: "Request, client or item", actions: canRequestDemo() ? [proxy("open-demo-request", "Request demo")] : [], minWidth: 760,
+    stats: [
+      { label: "Waiting for approval", value: requests.filter((request) => /^For /.test(request.status)).length, sub: "Logistics, then management", tone: "amber" },
+      { label: "Out on demo", value: out.length, sub: out.length ? `${out.filter((request) => request.returnDate && daysUntil(request.returnDate) < 0).length} overdue` : "All demo units are in", tone: "blue" },
+      { label: "Closed", value: rows.length - open.length, sub: `${requests.filter((request) => request.status === "To Sales").length} converted to sales`, tone: "green" },
+    ],
+    cols: [{ key: "id", label: "Request", sortable: true }, { key: "client", label: "Client", sortable: true }, { key: "items", label: "Items" }, { key: "date", label: "Demo date", sortable: true }, { key: "due", label: "Due back", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "next", label: "", align: "right" }],
+    csvHeader: ["Request", "Client", "Sales agent", "Demo date", "Due back", "Items", "Status"],
+    rows, empty: ["No demo requests", "When sales asks to lend an analyzer or kits to a client, the request shows here with the client and the return date."],
+    defaultSort: { key: "date", dir: -1 }, chips: [{ key: "open", label: "Open", tone: "blue" }, { key: "closed", label: "Closed", tone: "green" }], defaultScope: "open",
+  };
+}
+
+/** The current tab's rows after branch / chip / search filters, sorted. @param {InventoryTabView} view */
+function inventoryTabRows(view) {
+  const state = inventoryTabView;
+  const scope = state.scope || view.defaultScope;
+  const needle = state.q.trim().toLowerCase();
+  const filtered = view.rows
+    .filter((row) => state.branch === "all" || row.branches.includes(state.branch))
+    .filter((row) => !scope || scope === "all" || row.scopes.includes(scope))
+    .filter((row) => !needle || row.search.toLowerCase().includes(needle));
+  return uiSortRows(filtered, state.sort || view.defaultSort);
+}
+
+function renderInventoryTab() {
+  const tab = inventoryWorkflowTab;
+  const view = inventoryTabModel(tab);
+  const state = inventoryTabView;
+  const scope = state.scope || view.defaultScope;
+  const branchRows = view.rows.filter((row) => state.branch === "all" || row.branches.includes(state.branch));
+  const sorted = inventoryTabRows(view);
+  const pageCount = Math.max(1, Math.ceil(sorted.length / INVENTORY_TAB_PAGE_SIZE));
+  state.page = Math.min(Math.max(state.page, 0), pageCount - 1);
+  if (state.sel) { // keep a deep-linked / just-selected record on screen
+    const at = sorted.findIndex((row) => row.id === state.sel);
+    if (at >= 0 && Math.floor(at / INVENTORY_TAB_PAGE_SIZE) !== state.page && !inventoryTabPageTouched) state.page = Math.floor(at / INVENTORY_TAB_PAGE_SIZE);
+  }
+  inventoryTabPageTouched = false;
+  const pageRows = sorted.slice(state.page * INVENTORY_TAB_PAGE_SIZE, (state.page + 1) * INVENTORY_TAB_PAGE_SIZE);
+  const selected = view.rows.find((row) => row.id === state.sel);
+  if (state.sel && !selected) state.sel = "";
+  const detail = selected ? selected.detail() : null;
+  /** @type {UiChip[]} */
+  const chips = view.chips.length ? [
+    ...(view.defaultScope ? [] : [{ key: "", label: "All", count: branchRows.length, tone: /** @type {"all"} */ ("all") }]),
+    ...view.chips.map((chip) => ({ key: chip.key, label: chip.label, count: branchRows.filter((row) => row.scopes.includes(chip.key)).length, tone: chip.tone })).filter((chip) => chip.count > 0 || chip.key === scope || chip.key === view.defaultScope),
+    ...(view.defaultScope ? [{ key: "all", label: "All", count: branchRows.length, tone: /** @type {"all"} */ ("all") }] : []),
+  ] : [];
+  const filtersOn = Boolean(state.q || state.branch !== "all" || (state.scope && state.scope !== view.defaultScope));
+  const pagination = view.loadMore === "load-more-inventory-pos" ? modulePagination.inventoryPurchaseOrders : view.loadMore === "load-more-transfers" ? modulePagination.pendingTransfers : null;
+  const loadMore = view.loadMore && pagination?.hasMore && state.page >= pageCount - 1
+    ? `<div class="ui-load-more">${uiButton("Load older records", { "data-inventory-load-more": view.loadMore }, { size: "sm" })}</div>` : "";
+  const html = `<div class="ui-tab-intro"><div><h2 class="ui-h2">${escapeHtml(view.title)}</h2><p class="ui-desc">${escapeHtml(view.intro)}</p></div>${view.actions.length ? `<div class="ui-actions">${view.actions.join("")}</div>` : ""}</div>`
+    + `<div class="ui-cards">${uiSummaryCards(view.stats)}</div>`
+    + uiFilterBar({
+      title: view.title,
+      // Demo requests carry no branch, so only offer the branch filter where rows have one.
+      segment: view.rows.some((row) => row.branches.some(Boolean)) ? { label: "Branch", attr: "data-inventory-tab-branch", options: inventoryBranchOptions(), active: state.branch } : undefined,
+      search: { id: "inventory-tab-search", value: state.q, placeholder: view.placeholder, label: `Search ${view.title.toLowerCase()}` },
+      extra: view.actions.some((action) => action.includes("data-inventory-tab-export")) ? "" : uiButton("Export", { "data-inventory-tab-export": tab }, { size: "sm" }),
+    })
+    + (chips.length ? uiStatusChips({ chips, active: scope, attr: "data-inventory-tab-scope", label: "Filter by status" }) : "")
+    + `<div class="ui-body">${uiDataTable({
+      cols: view.cols,
+      rows: pageRows.map((row) => ({ id: row.id, cells: row.cells, selected: row.id === state.sel, focusText: row.search })),
+      caption: view.title, minWidth: view.minWidth,
+      sort: state.sort || view.defaultSort, sortAttr: "data-inventory-tab-sort",
+      empty: filtersOn && view.rows.length ? { title: "Nothing matches these filters", text: "Try another branch or status, or clear the search.", clearAttrs: { "data-inventory-tab-clear": "" } } : { title: view.empty[0], text: view.empty[1] },
+      foot: { shown: pageRows.length, total: sorted.length, page: state.page, pageCount, pageAttr: "data-inventory-tab-page" },
+      after: loadMore,
+    })}${detail ? `<aside class="ui-card ui-detail" id="inventory-tab-detail" aria-label="${escapeHtml(detail.label)}">${uiDetailPanel(detail)}</aside>` : ""}</div>`;
+  uiRender(qs("#inventory-tab-panel"), html);
+}
+let inventoryTabPageTouched = false;
+
+/** CSV of the current tab's filtered rows. */
+function exportInventoryTabCsv() {
+  const view = inventoryTabModel(inventoryWorkflowTab);
+  const rows = inventoryTabRows(view);
+  if (!rows.length) return toast("Nothing in the current view to export.");
+  downloadCsv(`inventory-${inventoryWorkflowTab}.csv`, [view.csvHeader, ...rows.map((row) => row.csv.map((cell) => String(cell ?? "")))]);
+  log(`Exported ${view.title} (CSV)`, "Inventory", `${rows.length} records`, { save: false });
+}
+
+/** Opens the tab holding a PO / receipt / transfer / demo request and selects it (deep links). @param {string} query @returns {boolean} */
+function inventoryFocusTabRecord(query) {
+  const id = query.toLowerCase();
+  const order = ["receiving", "receipts", "transfers", "demos", "completed", "rhist", "thist"];
+  for (const tab of order) {
+    const row = inventoryTabModel(tab).rows.find((entry) => entry.id.toLowerCase() === id);
+    if (!row) continue;
+    inventoryWorkflowTab = tab;
+    inventoryResetTabView();
+    inventoryTabView.sel = row.id;
+    if (tab === "demos" && row.scopes.includes("closed")) inventoryTabView.scope = "closed";
+    return true;
+  }
+  return false;
 }
 
 /** @param {PendingTransfer} transfer @param {string} action @param {any} notes */
@@ -3261,6 +3775,8 @@ async function saveDemoRequest() {
   saveData(["notifications"]);
   qs("#demo-request-modal")?.close();
   inventoryWorkflowTab = "demos";
+  inventoryResetTabView();
+  inventoryTabView.sel = request.id;
   renderAll();
   toast(`${request.id} submitted for ${initialStatus === "For Logistics Approval" ? "Logistics" : "Superadmin/CEO"} approval.`);
 }

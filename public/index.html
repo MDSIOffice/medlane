@@ -264,7 +264,7 @@
       <section class="lr-section lr-profile" id="lr-profile">
         <div class="lr-inner lr-profile-grid">
           <figure class="lr-profile-photo">
-            <img src="assets/landing/team-distributor.jpg" alt="Medlane Diagnostic Solutions team with the Cypress Diagnostics official distributor award" />
+            <img loading="lazy" decoding="async" src="assets/landing/team-distributor.jpg" alt="Medlane Diagnostic Solutions team with the Cypress Diagnostics official distributor award" />
             <figcaption class="lr-holo-badge">
               <span class="lr-holo-label">Since</span>
               <strong>1997</strong>
@@ -350,7 +350,7 @@
           </div>
           <div class="lr-bento">
             <figure class="lr-bento-main">
-              <img src="assets/landing/gallery-main.jpg" alt="Medlane field team with laboratory staff after completing an installation" />
+              <img loading="lazy" decoding="async" src="assets/landing/gallery-main.jpg" alt="Medlane field team with laboratory staff after completing an installation" />
               <figcaption>
                 <strong>Installation added to the books</strong>
                 <span>Our operations field team completing a complex multi-analyzer clinical array setup.</span>
@@ -358,16 +358,16 @@
             </figure>
             <div class="lr-bento-right">
               <figure class="lr-bento-wide">
-                <img src="assets/landing/gallery-analyzer.jpg" alt="Medlane team with laboratory staff beside a newly installed clinical analyzer" />
+                <img loading="lazy" decoding="async" src="assets/landing/gallery-analyzer.jpg" alt="Medlane team with laboratory staff beside a newly installed clinical analyzer" />
                 <figcaption><strong>Analyzer setup and handover</strong></figcaption>
               </figure>
               <div class="lr-bento-pair">
                 <figure>
-                  <img src="assets/landing/gallery-expo.jpg" alt="Medlane team at the MD Solutions booth during a diagnostics expo" />
+                  <img loading="lazy" decoding="async" src="assets/landing/gallery-expo.jpg" alt="Medlane team at the MD Solutions booth during a diagnostics expo" />
                   <figcaption><strong>Diagnostics expo presence</strong></figcaption>
                 </figure>
                 <figure>
-                  <img src="assets/landing/gallery-partner-visit.jpg" alt="Medlane team with Zybio principal partners during a supplier visit" />
+                  <img loading="lazy" decoding="async" src="assets/landing/gallery-partner-visit.jpg" alt="Medlane team with Zybio principal partners during a supplier visit" />
                   <figcaption><strong>Principal partner visit</strong></figcaption>
                 </figure>
               </div>
@@ -820,52 +820,27 @@
         <div class="table-card"><table id="master-table"></table></div>
       </section>
 
-      <section class="section" id="inventory">
-        <div class="inv-header">
-          <div class="inv-title">
-            <div class="inv-title-row"><h1 class="inv-h1">Inventory</h1><span class="inv-saved" id="inventory-saved-pill" role="status" aria-live="polite"><span class="dot"></span><span id="inventory-saved-text">All changes saved</span></span></div>
-            <p class="inv-desc">Track branch stock by item, lot, serial, expiry, quantity and minimum level.</p>
+      <section class="section ui-scope" id="inventory">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Inventory</h1><span class="ui-saved" id="inventory-saved-pill" role="status" aria-live="polite"><span class="ui-dot"></span><span id="inventory-saved-text">All changes saved</span></span></div>
+            <p class="ui-desc">Track branch stock by item, lot, serial, expiry, quantity and minimum level.</p>
           </div>
-          <div class="inventory-action-row inv-actions">
-            <label class="inv-area" for="inventory-area"><span>Area</span><select id="inventory-area"></select></label>
-            <button class="inv-btn" data-action="open-modal" data-type="inventoryPurchaseOrder" type="button">New PO</button>
-            <button class="inv-btn" id="open-demo-request" type="button">Request demo</button>
-            <button class="inv-btn" id="open-transfer-sheet" type="button">Transfer stock</button>
-            <button class="inv-btn primary" id="open-stock-sheet" type="button">Receive stock</button>
+          <div class="ui-actions">
+            <label class="ui-select" for="inventory-area"><span>Area</span><select id="inventory-area"></select></label>
+            <button class="ui-btn" data-action="open-modal" data-type="inventoryPurchaseOrder" type="button">New PO</button>
+            <button class="ui-btn" id="open-demo-request" type="button">Request demo</button>
+            <button class="ui-btn" id="open-transfer-sheet" type="button">Transfer stock</button>
+            <button class="ui-btn primary" id="open-stock-sheet" type="button">Receive stock</button>
           </div>
         </div>
-        <div class="inv-tabs" id="inventory-workflow-tabs" role="tablist" aria-label="Inventory sections"></div>
-        <div class="inventory-workflow-panel active" data-inventory-panel="receiving"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Supplier orders for receiving</h2></div></div><div class="table-card compact-table"><table id="inventory-po-table"></table></div><button class="ghost-button" id="load-more-inventory-pos" type="button" hidden>Load Previous</button></article></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="receipts"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Stock Receiving</p><h2>Awaiting Superadmin/CEO approval</h2></div></div><div class="table-card compact-table"><table id="stock-receipt-table"></table></div></article></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="completed"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Inventory Purchase Orders</p><h2>Completed purchase orders</h2></div></div><div class="table-card compact-table"><table id="inventory-po-history-table"></table></div></article></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="transfers"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Pending Transfers</p><h2>Receiving Authorization</h2></div></div><div class="table-card compact-table"><table id="transfer-table"></table></div><button class="ghost-button" id="load-more-transfers" type="button" hidden>Load Previous</button></article></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="demos"><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo Service Orders</p><h2>Logistics (consumables) and management approval</h2></div></div><div class="table-card compact-table"><table id="demo-request-table"></table></div></article><article class="panel transfer-panel"><div class="panel-header"><div><p class="eyebrow">Demo History</p><h2>Returned or converted to sales</h2></div></div><div class="table-card compact-table"><table id="demo-history-table"></table></div></article></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="rhist"><div class="inv-card inv-dialog-card"><strong>Receiving history</strong><span>Approved stock receipts are shown in a dialog.</span><button class="inv-btn sm" id="open-stock-receipt-history" type="button">Open receiving history</button></div></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="thist"><div class="inv-card inv-dialog-card"><strong>Transfer history</strong><span>Every transfer action, with source, destination, lot, user and notes, is shown in a dialog.</span><button class="inv-btn sm" id="open-transfer-history" type="button">Open transfer history</button></div></div>
-        <div class="inventory-workflow-panel" data-inventory-panel="stocks">
+        <div class="ui-tabs" id="inventory-workflow-tabs" role="tablist" aria-label="Inventory sections"></div>
+        <div class="inventory-workflow-panel" data-inventory-panel="tab" id="inventory-tab-panel"></div>
+        <div class="inventory-workflow-panel active" data-inventory-panel="stocks">
           <article class="panel workflow-assist" data-workflow-section="inventory"><div class="panel-header"><div><p class="eyebrow">Workflow Assistant</p><h2></h2><p></p></div><span class="badge"></span></div><div class="workflow-grid"></div></article>
           <div class="inv-cards" id="inventory-visuals"></div>
-          <section class="inv-stock" aria-label="Stock list">
-            <div class="inv-stock-head">
-              <h3 class="inv-h2">Stock by branch, lot, expiry and serial</h3>
-              <div class="inv-toolbar">
-                <div class="inv-seg" id="inventory-branch-tabs" role="group" aria-label="Branch"></div>
-                <label class="inv-search"><span class="sr-only">Search stock</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-3.5-3.5"/></svg><input id="inventory-search" type="search" autocomplete="off" placeholder="Item, code, brand or lot no." /></label>
-                <button class="inv-btn sm" id="inventory-compact-toggle" type="button" aria-pressed="false">Compact view</button>
-                <button class="inv-btn sm" id="inventory-export" type="button">Export</button>
-              </div>
-            </div>
-            <select id="inventory-status" hidden aria-hidden="true" tabindex="-1"><option value="all">All Status</option><option>Available</option><option>Low Stock</option><option>Near Expiry</option><option>Critical</option><option>Expired</option></select>
-            <div class="inv-chips" id="inventory-status-chips" role="group" aria-label="Filter by status"></div>
-            <div class="inv-body">
-              <div class="inv-card inv-table-card">
-                <div class="inv-table-scroll"><table id="inventory-table" class="inv-table"></table></div>
-                <div class="inv-empty" id="inventory-empty" hidden><strong>No stock matches these filters</strong><span>Try another branch or status, or clear the search.</span><button class="inv-btn sm" id="inventory-clear-filters" type="button">Clear filters</button></div>
-                <div class="inv-foot"><span id="inventory-foot-text"></span><div class="inv-pager"><button class="inv-btn xs" id="inventory-prev" type="button">Previous</button><button class="inv-btn xs" id="inventory-next" type="button">Next</button></div></div>
-              </div>
-              <aside class="inv-card inv-detail" id="inventory-detail" aria-label="Stock record details" hidden></aside>
-            </div>
-          </section>
+          <select id="inventory-status" hidden aria-hidden="true" tabindex="-1"><option value="all">All Status</option><option>Available</option><option>Low Stock</option><option>Near Expiry</option><option>Critical</option><option>Expired</option></select>
+          <section class="ui-section" id="inventory-stock-list" aria-label="Stock list"></section>
         </div>
       </section>
 
@@ -1586,7 +1561,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "modules.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           script.src = "scripts/" + file;
           script.async = false; // Run in this order: they share one global scope.

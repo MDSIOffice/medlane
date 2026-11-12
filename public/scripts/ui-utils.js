@@ -502,8 +502,6 @@ function tableFullyRevealed(target) {
 const paginatedModuleButtons = {
   "#sales-table": { button: "#load-more-sales", key: "sales", loadMore: () => loadMoreSales() },
   "#purchase-order-table": { button: "#load-more-purchase-orders", key: "purchaseOrders", loadMore: () => loadMorePurchaseOrders() },
-  "#inventory-po-table": { button: "#load-more-inventory-pos", key: "inventoryPurchaseOrders", loadMore: () => loadMoreInventoryPurchaseOrders() },
-  "#transfer-table": { button: "#load-more-transfers", key: "pendingTransfers", loadMore: () => loadMoreTransfers() },
   "#payables-table": { button: "#load-more-payables", key: "payables", loadMore: () => loadMorePayables() },
   "#collections-table": { button: "#load-more-collections", key: "payments", loadMore: () => loadMoreCollections() },
   "#payment-request-table": { button: "#load-more-payment-requests", key: "paymentRequests", loadMore: () => loadMorePaymentRequests() },
@@ -591,8 +589,8 @@ function prepareFocusedSection(section, record) {
     renderInventory();
     return;
   }
-  const transfer = data.pendingTransfers.find((item) => [item.id, item.lot].some((value) => String(value || "").toLowerCase() === query));
-  if (transfer) renderInventory();
+  // POs, receipts, transfers and demo requests live on the other tabs: open the right one and select it.
+  if (inventoryFocusTabRecord(query)) renderInventory();
 }
 
 /** @param {string} record */

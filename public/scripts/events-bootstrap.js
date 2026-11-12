@@ -1016,44 +1016,107 @@ function inventorySetStatus(key) {
   inventoryWorkflowTab = "stocks";
   inventoryChangeView(() => {}, { closeDetail: true });
 }
+/** Re-renders a non-Stocks inventory tab after changing its view state. @param {() => void} mutate @param {{ resetPage?: boolean, closeDetail?: boolean }} [options] */
+function inventoryTabChange(mutate, { resetPage = true, closeDetail = false } = {}) {
+  mutate();
+  if (resetPage) inventoryTabView.page = 0;
+  if (closeDetail) inventoryTabView.sel = "";
+  renderInventory();
+}
+/** @type {Record<string, () => unknown>} */
+const inventoryLoadMore = { "load-more-inventory-pos": () => loadMoreInventoryPurchaseOrders(), "load-more-transfers": () => loadMoreTransfers() };
 qs("#inventory").addEventListener("click", (event) => {
   const target = /** @type {AnyEl} */ (event.target);
   const tab = closestEl(target, "[data-inventory-workflow]");
   if (tab) {
+    if (tab.dataset.inventoryWorkflow !== inventoryWorkflowTab) inventoryResetTabView();
     inventoryWorkflowTab = tab.dataset.inventoryWorkflow;
     inventorySelectedRef = null;
-    renderInventory();
-    if (inventoryWorkflowTab === "rhist") qs("#open-stock-receipt-history")?.click();
-    if (inventoryWorkflowTab === "thist") qs("#open-transfer-history")?.click();
-    return;
+    return renderInventory();
   }
+  // ----- Stocks tab -----
   const filter = closestEl(target, "[data-inventory-filter]");
   if (filter) return inventorySetStatus(/** @type {string} */ (filter.dataset.inventoryFilter));
   const branch = closestEl(target, "[data-inventory-branch]");
-  if (branch) return inventoryChangeView(() => { inventoryBranchView = branch.dataset.inventoryBranch; if (inventoryBranchView !== "all") inventoryBranchTab = inventoryBranchView; }, { closeDetail: true });
+  if (branch) return inventoryChangeView(() => { inventoryBranchView = /** @type {string} */ (branch.dataset.inventoryBranch); if (inventoryBranchView !== "all") inventoryBranchTab = inventoryBranchView; }, { closeDetail: true });
   const sort = closestEl(target, "[data-inventory-sort]");
-  if (sort) return inventoryChangeView(() => { const key = sort.dataset.inventorySort; inventorySort = { key: /** @type {any} */ (key), dir: inventorySort.key === key ? -inventorySort.dir : 1 }; });
+  if (sort) return inventoryChangeView(() => { const key = /** @type {string} */ (sort.dataset.inventorySort); inventorySort = { key, dir: inventorySort.key === key ? -inventorySort.dir : 1 }; });
   if (closestEl(target, "#inventory-compact-toggle")) return inventoryChangeView(() => { inventoryCompactView = !inventoryCompactView; }, { resetPage: false });
   if (closestEl(target, "#inventory-export")) return exportInventoryCsv();
-  if (closestEl(target, "#inventory-prev")) return inventoryChangeView(() => { inventoryPage -= 1; }, { resetPage: false });
-  if (closestEl(target, "#inventory-next")) return inventoryChangeView(() => { inventoryPage += 1; }, { resetPage: false });
-  if (closestEl(target, "#inventory-clear-filters")) {
+  const page = closestEl(target, "[data-inventory-page]");
+  if (page) return inventoryChangeView(() => { inventoryPage += page.dataset.inventoryPage === "next" ? 1 : -1; }, { resetPage: false });
+  if (closestEl(target, "[data-inventory-clear]")) {
     qs("#inventory-status").value = "all";
     return inventoryChangeView(() => { inventoryBranchView = "all"; inventorySearch = ""; }, { closeDetail: true });
   }
   const select = closestEl(target, "[data-inventory-select]");
-  if (select) { inventorySelectedRef = select.dataset.inventorySelect; renderInventory(); return qs("#inventory-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+  if (select) { inventorySelectedRef = select.dataset.inventorySelect || null; renderInventory(); return qs("#inventory-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
   if (closestEl(target, "[data-inventory-close]")) return inventoryChangeView(() => {}, { resetPage: false, closeDetail: true });
   const transfer = closestEl(target, "[data-inventory-transfer]");
   if (transfer) return openTransferForStock(/** @type {string} */ (transfer.dataset.inventoryTransfer));
+  // ----- Other tabs (receiving POs, receipts, transfers, demos, histories) -----
+  const tabSelect = closestEl(target, "[data-inventory-tab-select]");
+  if (tabSelect) {
+    const id = /** @type {string} */ (tabSelect.dataset.inventoryTabSelect);
+    inventoryTabChange(() => { inventoryTabView.sel = inventoryTabView.sel === id ? "" : id; }, { resetPage: false });
+    inventoryTabPageTouched = false;
+    return qs("#inventory-tab-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  if (closestEl(target, "[data-inventory-tab-close]")) return inventoryTabChange(() => {}, { resetPage: false, closeDetail: true });
+  const tabBranch = closestEl(target, "[data-inventory-tab-branch]");
+  if (tabBranch) return inventoryTabChange(() => { inventoryTabView.branch = /** @type {string} */ (tabBranch.dataset.inventoryTabBranch); });
+  const tabScope = closestEl(target, "[data-inventory-tab-scope]");
+  if (tabScope) return inventoryTabChange(() => { inventoryTabView.scope = /** @type {string} */ (tabScope.dataset.inventoryTabScope); });
+  const tabSort = closestEl(target, "[data-inventory-tab-sort]");
+  if (tabSort) {
+    const key = /** @type {string} */ (tabSort.dataset.inventoryTabSort);
+    const current = inventoryTabView.sort || inventoryTabModel(inventoryWorkflowTab).defaultSort;
+    return inventoryTabChange(() => { inventoryTabView.sort = { key, dir: current.key === key ? -current.dir : 1 }; });
+  }
+  const tabPage = closestEl(target, "[data-inventory-tab-page]");
+  if (tabPage) return inventoryTabChange(() => { inventoryTabView.page += tabPage.dataset.inventoryTabPage === "next" ? 1 : -1; inventoryTabPageTouched = true; }, { resetPage: false });
+  if (closestEl(target, "[data-inventory-tab-clear]")) return inventoryTabChange(() => { inventoryTabView.q = ""; inventoryTabView.branch = "all"; inventoryTabView.scope = ""; }, { closeDetail: true });
+  if (closestEl(target, "[data-inventory-tab-export]")) return exportInventoryTabCsv();
+  const loadMore = closestEl(target, "[data-inventory-load-more]");
+  if (loadMore) return inventoryLoadMore[/** @type {string} */ (loadMore.dataset.inventoryLoadMore)]?.();
+  const proxy = closestEl(target, "[data-inventory-proxy]");
+  if (proxy) return qs(`#${proxy.dataset.inventoryProxy}`)?.click();
+  if (closestEl(target, "#open-transfer-history")) { renderInventory(); return qs("#transfer-history-modal").showModal(); }
+  // Demo request + transfer actions (these used to be bound to the old #demo-request-table / #transfer-table).
+  const salesApprove = closestEl(target, "[data-demo-sales-approve]");
+  if (salesApprove) return updateDemoRequestStatus(/** @type {string} */ (salesApprove.dataset.demoSalesApprove), "For Management Approval");
+  const logisticsApprove = closestEl(target, "[data-demo-logistics-approve]");
+  if (logisticsApprove) return updateDemoRequestStatus(/** @type {string} */ (logisticsApprove.dataset.demoLogisticsApprove), "For Management Approval");
+  const managementApprove = closestEl(target, "[data-demo-management-approve]");
+  if (managementApprove) return updateDemoRequestStatus(/** @type {string} */ (managementApprove.dataset.demoManagementApprove), "Approved");
+  const returned = closestEl(target, "[data-demo-returned]");
+  if (returned) return updateDemoRequestStatus(/** @type {string} */ (returned.dataset.demoReturned), "Returned");
+  const toSales = closestEl(target, "[data-demo-to-sales]");
+  if (toSales) return updateDemoRequestStatus(/** @type {string} */ (toSales.dataset.demoToSales), "To Sales");
+  const dispatch = closestEl(target, "[data-dispatch-transfer]");
+  if (dispatch) return openTransferDispatchModal(Number(/** @type {string} */ (dispatch.dataset.dispatchTransfer)));
+  const receive = closestEl(target, "[data-receive-transfer]");
+  if (receive) return openTransferReceiveModal(Number(/** @type {string} */ (receive.dataset.receiveTransfer)));
+  const transferTimeline = closestEl(target, "[data-transfer-timeline]");
+  if (transferTimeline) return showTransferTimeline(/** @type {string} */ (transferTimeline.dataset.transferTimeline));
+  const transferPrint = closestEl(target, "[data-transfer-print]");
+  if (transferPrint) return printTransferRequest(/** @type {string} */ (transferPrint.dataset.transferPrint));
+  const receiptDetail = closestEl(target, "[data-stock-receipt-detail]");
+  if (receiptDetail) return showStockReceiptDetail(/** @type {string} */ (receiptDetail.dataset.stockReceiptDetail));
 });
-qs("#inventory-search").addEventListener("input", (event) => {
+// Search boxes are re-rendered with their list, so listen on the section rather than the input.
+qs("#inventory").addEventListener("input", (event) => {
+  const input = /** @type {AnyEl} */ (event.target);
+  if (input.id !== "inventory-search" && input.id !== "inventory-tab-search") return;
   clearTimeout(inventorySearchTimer);
-  const value = /** @type {AnyEl} */ (event.target).value;
-  inventorySearchTimer = setTimeout(() => inventoryChangeView(() => { inventorySearch = value; }, { closeDetail: true }), 150);
+  const value = input.value;
+  inventorySearchTimer = setTimeout(() => {
+    if (input.id === "inventory-search") inventoryChangeView(() => { inventorySearch = value; }, { closeDetail: true });
+    else inventoryTabChange(() => { inventoryTabView.q = value; });
+  }, 150);
 });
-/** @type {any} */
-let inventorySearchTimer = null;
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let inventorySearchTimer;
 qs("#inventory-area").addEventListener("change", (event) => {
   const source = qs("#branch-filter");
   source.value = /** @type {AnyEl} */ (event.target).value;
@@ -1223,7 +1286,6 @@ qs("#item-forecast-print")?.addEventListener("click", () => printItemForecast())
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); restoreStockSheetDraftIfMatching("", null); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); restoreTransferSheetDraft(); qs("#transfer-sheet-modal").showModal(); });
 qs("#open-demo-request")?.addEventListener("click", () => { renderDemoRequestSheet(); qs("#demo-request-modal").showModal(); });
-qs("#open-transfer-history").addEventListener("click", () => { renderInventory(); qs("#transfer-history-modal").showModal(); });
 qs("#open-stock-receipt-history")?.addEventListener("click", () => { renderStockReceiptHistory(); qs("#stock-receipt-history-modal").showModal(); });
 qs("#stock-receipt-history-close")?.addEventListener("click", () => qs("#stock-receipt-history-modal").close());
 qs("#stock-receipt-history-cancel")?.addEventListener("click", () => qs("#stock-receipt-history-modal").close());
@@ -1268,28 +1330,6 @@ guardDialogEscape(qs("#demo-request-modal"));
 qs("#stock-sheet-modal").addEventListener("change", (event) => { if (/** @type {AnyEl} */ (event.target).id === "inventory-po-receive-picker") fillStockSheetFromInventoryPo(/** @type {AnyEl} */ (event.target).value); });
 qs("#save-transfer-sheet").addEventListener("click", saveTransferSheet);
 qs("#demo-request-modal")?.addEventListener("input", (event) => { if (/** @type {AnyEl} */ (event.target).matches(".demo-line-code, .demo-line-item")) syncDemoRequestLine(event.target); });
-qs("#demo-request-table")?.addEventListener("click", /** @returns {any} */ (event) => {
-  const salesApprove = closestEl(event.target, "[data-demo-sales-approve]");
-  if (salesApprove) return updateDemoRequestStatus(/** @type {string} */ (salesApprove.dataset.demoSalesApprove), "For Management Approval");
-  const logisticsApprove = closestEl(event.target, "[data-demo-logistics-approve]");
-  if (logisticsApprove) return updateDemoRequestStatus(/** @type {string} */ (logisticsApprove.dataset.demoLogisticsApprove), "For Management Approval");
-  const managementApprove = closestEl(event.target, "[data-demo-management-approve]");
-  if (managementApprove) return updateDemoRequestStatus(/** @type {string} */ (managementApprove.dataset.demoManagementApprove), "Approved");
-  const returned = closestEl(event.target, "[data-demo-returned]");
-  if (returned) return updateDemoRequestStatus(/** @type {string} */ (returned.dataset.demoReturned), "Returned");
-  const toSales = closestEl(event.target, "[data-demo-to-sales]");
-  if (toSales) return updateDemoRequestStatus(/** @type {string} */ (toSales.dataset.demoToSales), "To Sales");
-});
-qs("#transfer-table").addEventListener("click", (event) => {
-  const dispatch = closestEl(event.target, "[data-dispatch-transfer]");
-  if (dispatch) return openTransferDispatchModal(Number(/** @type {string} */ (dispatch.dataset.dispatchTransfer)));
-  const receive = closestEl(event.target, "[data-receive-transfer]");
-  if (receive) return openTransferReceiveModal(Number(/** @type {string} */ (receive.dataset.receiveTransfer)));
-  const transferTimeline = closestEl(event.target, "[data-transfer-timeline]");
-  if (transferTimeline) return showTransferTimeline(/** @type {string} */ (transferTimeline.dataset.transferTimeline));
-  const transferPrint = closestEl(event.target, "[data-transfer-print]");
-  if (transferPrint) return printTransferRequest(/** @type {string} */ (transferPrint.dataset.transferPrint));
-});
 qs("#transfer-history-table").addEventListener("click", (event) => {
   const transferTimeline = closestEl(event.target, "[data-transfer-timeline]");
   if (transferTimeline) return showTransferTimeline(/** @type {string} */ (transferTimeline.dataset.transferTimeline));
@@ -1659,8 +1699,6 @@ qs("#clear-notification-log-filters").addEventListener("click", () => { qs("#not
 qs("#load-more-notification-logs").addEventListener("click", loadMoreNotificationLogs);
 qs("#load-more-sales").addEventListener("click", loadMoreSales);
 qs("#load-more-purchase-orders").addEventListener("click", loadMorePurchaseOrders);
-qs("#load-more-inventory-pos").addEventListener("click", loadMoreInventoryPurchaseOrders);
-qs("#load-more-transfers").addEventListener("click", loadMoreTransfers);
 qs("#load-more-payables").addEventListener("click", loadMorePayables);
 qs("#load-more-collections").addEventListener("click", loadMoreCollections);
 qs("#load-more-payment-requests").addEventListener("click", loadMorePaymentRequests);

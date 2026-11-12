@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Medlane OS — Inventory</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F3F6F8}
+a{color:#1F5F74}a:hover{color:#163F4D}
+button,input,select{font-family:inherit}
+button{cursor:pointer}
+.nav:hover{background:#EEF3F6}
+.row:hover{background:#F7FAFB}
+.ghost:hover{background:#EEF3F6}
+.sec:hover{background:#F1F5F8;border-color:#B6C2CC}
+.prim:hover{filter:brightness(1.1)}
+.tab:hover{color:#12202E}
+.lnk:hover{text-decoration:underline}
+.alertrow:hover{background:#F7FAFB}
+.field:focus-within{border-color:#1F5F74;box-shadow:0 0 0 3px rgba(31,95,116,.15)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #1F5F74;outline-offset:2px}
+.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width: 860px){.side{display:none !important}}
+</style>
+</helmet>
+
+<div style="min-height: 100vh; display: flex; font-family: 'Manrope', system-ui, sans-serif; color: #12202E; background: #F3F6F8">
+
+  <!-- Medlane OS app sidebar (existing shell) -->
+  <nav class="side" aria-label="Medlane OS" style="width: 248px; flex-shrink: 0; background: #FFFFFF; border-right: 1px solid #DFE5EA; padding: 18px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 6px">
+      <div style="width: 40px; height: 40px; border-radius: 10px; background: #FFFFFF; border: 1px solid #E3E9EE; display: flex; align-items: center; justify-content: center">
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19L10 6l3 5" fill="none" stroke="#D9682B" stroke-width="2.2" stroke-linejoin="round"></path><path d="M7 19l7-11 7 11z" fill="none" stroke="#1F5F74" stroke-width="2.2" stroke-linejoin="round"></path></svg>
+      </div>
+      <div style="display: flex; flex-direction: column">
+        <span style="font-weight: 800; font-size: 15px; letter-spacing: -0.01em">Medlane OS</span>
+        <span style="font-size: 12px; color: #5B6876">Diagnostics Distribution</span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <sc-for list="{{appNav}}" as="n" hint-placeholder-count="12">
+        <a class="nav" href="{{n.href}}" aria-current="{{n.current}}" style="{{n.style}}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.d}}"></path></svg>
+          <span>{{n.label}}</span>
+        </a>
+      </sc-for>
+    </div>
+  </nav>
+
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+
+    <!-- Global top bar -->
+    <header style="min-height: 64px; background: #FFFFFF; border-bottom: 1px solid #DFE5EA; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 28px; box-sizing: border-box">
+      <label class="field" style="flex: 1 1 280px; max-width: 420px; height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #F6F8FA; border: 1px solid #DFE5EA; border-radius: 10px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B6876" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search Medlane OS</span>
+        <input type="search" placeholder="Search client, reagent, invoice" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 14px; color: #12202E; height: 100%">
+      </label>
+      <div style="flex: 1"></div>
+      <div role="group" aria-label="Workspace" style="display: flex; background: #EEF2F5; border-radius: 10px; padding: 3px; gap: 2px">
+        <button aria-pressed="true" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(18,32,46,.12); font-size: 13px; font-weight: 700; color: #12202E; display: flex; align-items: center; gap: 6px"><span style="width: 7px; height: 7px; border-radius: 99px; background: #2F8F6B"></span>Live</button>
+        <button aria-pressed="false" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; font-weight: 600; color: #3A4754">Sales</button>
+        <button aria-pressed="false" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; font-weight: 600; color: #3A4754">Warehouse</button>
+        <button aria-pressed="false" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; font-weight: 600; color: #3A4754">Accounting</button>
+      </div>
+      <button class="ghost" aria-label="Notifications" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: #3A4754; display: flex; align-items: center; justify-content: center; position: relative">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>
+      </button>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="font-size: 14px; font-weight: 700">Geo</span>
+        <div style="width: 36px; height: 36px; border-radius: 999px; border: 2px solid #1F5F74; color: #1F5F74; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-sizing: border-box">GD</div>
+      </div>
+    </header>
+
+    <main style="flex: 1; padding: 24px 28px 48px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; min-width: 0">
+
+      <!-- Page header -->
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 6px; max-width: 640px">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+            <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.025em">Inventory</h1>
+            <span style="font-size: 12px; font-weight: 700; color: #17603F; background: #E6F3EC; border-radius: 999px; padding: 3px 10px; display: inline-flex; align-items: center; gap: 6px"><span style="width: 6px; height: 6px; border-radius: 99px; background: #2F8F6B"></span>All changes saved</span>
+          </div>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #4F5D6B">Track branch stock by item, lot, serial, expiry, quantity and minimum level.</p>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+          <label class="field" style="height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 12px; background: #FFFFFF; border: 1px solid #CBD3DB; border-radius: 10px">
+            <span style="font-size: 13px; color: #5B6876">Area</span>
+            <select style="border: 0; outline: none; background: transparent; font-size: 14px; font-weight: 600; color: #12202E; height: 40px; padding-right: 6px">
+              <option>All areas</option>
+              <option>Las Piñas</option>
+              <option>Naga</option>
+            </select>
+          </label>
+          <button class="sec" style="height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 14px; font-weight: 600">New PO</button>
+          <button class="sec" style="height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 14px; font-weight: 600">Request demo</button>
+          <button class="sec" style="height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h13l-4-4"></path><path d="M17 17H4l4 4"></path></svg>
+            Transfer stock
+          </button>
+          <button class="prim" style="height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid {{accent}}; background: {{accent}}; color: #FFFFFF; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+            Receive stock
+          </button>
+        </div>
+      </div>
+
+      <!-- Module tabs: one row replaces the two rows of tab buttons -->
+      <div role="tablist" aria-label="Inventory sections" style="display: flex; gap: 4px; border-bottom: 1px solid #DFE5EA; overflow-x: auto">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="8">
+          <button class="tab" role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="{{t.style}}">
+            {{t.label}}
+            <sc-if value="{{t.hasCount}}" hint-placeholder-val="{{true}}"><span style="{{t.countStyle}}">{{t.count}}</span></sc-if>
+          </button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{isStocks}}" hint-placeholder-val="{{true}}">
+        <div style="display: flex; flex-direction: column; gap: 20px">
+
+          <!-- Task queue: slim when there's nothing to do -->
+          <div style="background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 12px; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+            <div style="width: 32px; height: 32px; border-radius: 999px; background: #E6F3EC; color: #17603F; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>
+            </div>
+            <div style="flex: 1 1 300px; font-size: 14px"><strong style="font-weight: 700">Warehouse task queue is clear.</strong> <span style="color: #4F5D6B">No urgent recommendations for Inventory right now.</span></div>
+            <span style="font-size: 12px; font-weight: 700; color: #4F5D6B; background: #EEF2F5; border-radius: 999px; padding: 4px 10px">0 recommendations</span>
+          </div>
+
+          <!-- Health + alerts -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px">
+
+            <section aria-label="Stock health" style="background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 14px">
+              <div style="display: flex; align-items: baseline; justify-content: space-between">
+                <span style="font-size: 13px; font-weight: 700; color: #4F5D6B">Stock health</span>
+                <span style="font-size: 12px; color: #5B6876">records</span>
+              </div>
+              <div style="font-size: 32px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1">216</div>
+              <div aria-hidden="true" style="display: flex; height: 10px; border-radius: 999px; overflow: hidden; gap: 2px; background: #EEF2F5">
+                <sc-for list="{{health}}" as="h" hint-placeholder-count="5"><span style="{{h.barStyle}}"></span></sc-for>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px">
+                <sc-for list="{{health}}" as="h" hint-placeholder-count="5">
+                  <button class="alertrow" onClick="{{h.pick}}" style="height: 32px; border: 0; background: transparent; border-radius: 6px; padding: 0 6px; margin: 0 -6px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #12202E; text-align: left">
+                    <span style="{{h.dotStyle}}"></span>
+                    <span style="flex: 1">{{h.label}}</span>
+                    <span style="font-weight: 700; font-variant-numeric: tabular-nums">{{h.count}}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </section>
+
+            <sc-for list="{{alerts}}" as="a" hint-placeholder-count="3">
+              <section aria-label="{{a.title}}" style="background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px">
+                  <span style="font-size: 13px; font-weight: 700; color: #4F5D6B; display: flex; align-items: center; gap: 8px"><span style="{{a.dotStyle}}"></span>{{a.title}}</span>
+                  <button class="lnk" onClick="{{a.pick}}" style="border: 0; background: none; padding: 6px 0; font-size: 13px; font-weight: 700; color: #1F5F74">View all</button>
+                </div>
+                <div style="display: flex; align-items: baseline; gap: 8px">
+                  <span style="font-size: 32px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1">{{a.count}}</span>
+                  <span style="font-size: 14px; color: #4F5D6B">{{a.unit}}</span>
+                </div>
+                <div style="display: flex; flex-direction: column; border-top: 1px solid #EEF2F5">
+                  <sc-for list="{{a.items}}" as="it" hint-placeholder-count="5">
+                    <div style="display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid #EEF2F5; font-size: 13px">
+                      <span class="trunc" style="flex: 1; min-width: 0; font-weight: 600">{{it.name}}</span>
+                      <span style="{{it.metricStyle}}">{{it.metric}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </section>
+            </sc-for>
+          </div>
+
+          <!-- Stock table -->
+          <section aria-label="Stock list" style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+              <h2 style="margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.015em">Stock by branch, lot, expiry and serial</h2>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+                <div role="group" aria-label="Branch" style="display: flex; background: #E7ECF0; border-radius: 10px; padding: 3px; gap: 2px">
+                  <sc-for list="{{branches}}" as="b" hint-placeholder-count="3">
+                    <button onClick="{{b.pick}}" aria-pressed="{{b.on}}" style="{{b.style}}">{{b.label}}</button>
+                  </sc-for>
+                </div>
+                <label class="field" style="width: 280px; max-width: 100%; height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #FFFFFF; border: 1px solid #CBD3DB; border-radius: 10px">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B6876" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+                  <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search stock</span>
+                  <input type="search" value="{{q}}" onChange="{{onSearch}}" placeholder="Item, code, brand or lot no." style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 14px; color: #12202E; height: 100%">
+                </label>
+                <button class="sec" onClick="{{toggleCompact}}" aria-pressed="{{compactOn}}" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16"></path><path d="M4 10h16"></path><path d="M4 14h16"></path><path d="M4 18h16"></path></svg>
+                  {{compactLabel}}
+                </button>
+                <button class="sec" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600">Export</button>
+              </div>
+            </div>
+
+            <div role="group" aria-label="Filter by status" style="display: flex; flex-wrap: wrap; gap: 6px">
+              <sc-for list="{{chips}}" as="c" hint-placeholder-count="6">
+                <button onClick="{{c.pick}}" aria-pressed="{{c.on}}" style="{{c.style}}"><span style="{{c.dotStyle}}"></span>{{c.label}} <span style="{{c.countStyle}}">{{c.count}}</span></button>
+              </sc-for>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start">
+              <div style="flex: 999 1 640px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; overflow: hidden">
+                <div style="overflow-x: auto">
+                  <table style="width: 100%; min-width: 920px; border-collapse: collapse; font-size: 14px">
+                    <thead>
+                      <tr style="background: #F8FAFB; border-bottom: 1px solid #DFE5EA">
+                        <th scope="col" style="text-align: left; padding: 0 8px 0 20px; height: 44px"><button onClick="{{sortItem}}" style="border: 0; background: none; padding: 6px 0; font-size: 12px; font-weight: 700; color: #4F5D6B; letter-spacing: 0.04em; text-transform: uppercase">Item {{arrItem}}</button></th>
+                        <th scope="col" style="text-align: left; padding: 0 8px"><button onClick="{{sortLot}}" style="border: 0; background: none; padding: 6px 0; font-size: 12px; font-weight: 700; color: #4F5D6B; letter-spacing: 0.04em; text-transform: uppercase">Lot / Serial {{arrLot}}</button></th>
+                        <th scope="col" style="text-align: left; padding: 0 8px"><button onClick="{{sortBranch}}" style="border: 0; background: none; padding: 6px 0; font-size: 12px; font-weight: 700; color: #4F5D6B; letter-spacing: 0.04em; text-transform: uppercase">Branch {{arrBranch}}</button></th>
+                        <th scope="col" style="text-align: left; padding: 0 8px"><button onClick="{{sortExpiry}}" style="border: 0; background: none; padding: 6px 0; font-size: 12px; font-weight: 700; color: #4F5D6B; letter-spacing: 0.04em; text-transform: uppercase">Expiry {{arrExpiry}}</button></th>
+                        <th scope="col" style="text-align: right; padding: 0 8px"><button onClick="{{sortQty}}" style="border: 0; background: none; padding: 6px 0; font-size: 12px; font-weight: 700; color: #4F5D6B; letter-spacing: 0.04em; text-transform: uppercase">Qty {{arrQty}}</button></th>
+                        <th scope="col" style="text-align: left; padding: 0 8px 0 20px; font-size: 12px; font-weight: 700; color: #4F5D6B; letter-spacing: 0.04em; text-transform: uppercase">Status</th>
+                        <th scope="col" style="text-align: right; padding: 0 20px 0 8px; font-size: 12px; font-weight: 700; color: #4F5D6B; letter-spacing: 0.04em; text-transform: uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+                        <tr class="row" style="{{r.rowStyle}}">
+                          <td style="{{r.cellFirst}}">
+                            <button class="lnk" onClick="{{r.pick}}" style="border: 0; background: none; padding: 0; text-align: left; color: #12202E; font-size: 14px; font-weight: 700">{{r.name}}</button>
+                            <div style="font-size: 12px; color: #5B6876; margin-top: 2px">{{r.brand}} · <span style="font-family: 'IBM Plex Mono', monospace">{{r.code}}</span></div>
+                          </td>
+                          <td style="{{r.cell}} font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #24313E">{{r.lot}}</td>
+                          <td style="{{r.cell}} color: #24313E">{{r.branch}}</td>
+                          <td style="{{r.cell}}">
+                            <div style="font-variant-numeric: tabular-nums; color: #24313E">{{r.expLabel}}</div>
+                            <div style="font-size: 12px; color: #5B6876; margin-top: 2px">{{r.expRel}}</div>
+                          </td>
+                          <td style="{{r.cell}} text-align: right; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums">{{r.qty}}</td>
+                          <td style="{{r.cell}} padding-left: 20px"><span style="{{r.statusStyle}}"><span style="{{r.statusDot}}"></span>{{r.statusLabel}}</span></td>
+                          <td style="{{r.cellLast}}">
+                            <button class="ghost" aria-label="Transfer {{r.name}} lot {{r.lot}}" title="Transfer" style="width: 40px; height: 40px; border: 0; border-radius: 8px; background: transparent; color: #4F5D6B; display: inline-flex; align-items: center; justify-content: center">
+                              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h13l-4-4"></path><path d="M17 17H4l4 4"></path></svg>
+                            </button>
+                            <button class="ghost" aria-label="Edit {{r.name}} lot {{r.lot}}" title="Edit" style="width: 40px; height: 40px; border: 0; border-radius: 8px; background: transparent; color: #4F5D6B; display: inline-flex; align-items: center; justify-content: center">
+                              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"></path></svg>
+                            </button>
+                            <button class="ghost" onClick="{{r.pick}}" aria-label="History for {{r.name}} lot {{r.lot}}" title="History" style="width: 40px; height: 40px; border: 0; border-radius: 8px; background: transparent; color: #4F5D6B; display: inline-flex; align-items: center; justify-content: center">
+                              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l3 2"></path></svg>
+                            </button>
+                          </td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+                <sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}">
+                  <div style="padding: 44px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px">
+                    <div style="font-size: 16px; font-weight: 700">No stock matches these filters</div>
+                    <div style="font-size: 14px; color: #4F5D6B">Try another branch or status, or clear the search.</div>
+                    <button class="sec" onClick="{{clearAll}}" style="margin-top: 6px; height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600">Clear filters</button>
+                  </div>
+                </sc-if>
+                <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 20px; border-top: 1px solid #DFE5EA; font-size: 13px; color: #4F5D6B">
+                  <span>Showing {{shown}} of 216 records</span>
+                  <div style="display: flex; gap: 6px">
+                    <button class="sec" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600">Previous</button>
+                    <button class="sec" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600">Next</button>
+                  </div>
+                </div>
+              </div>
+
+              <sc-if value="{{hasSel}}" hint-placeholder-val="{{false}}">
+                <aside aria-label="Stock record details" style="flex: 1 1 300px; max-width: 370px; background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+                  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                    <div style="display: flex; flex-direction: column; gap: 6px">
+                      <span style="font-size: 12px; font-weight: 700; color: #5B6876; letter-spacing: 0.06em; text-transform: uppercase">{{sel.brand}}</span>
+                      <span style="font-size: 20px; font-weight: 800; letter-spacing: -0.015em">{{sel.name}}</span>
+                      <span style="{{sel.statusStyle}}"><span style="{{sel.statusDot}}"></span>{{sel.statusLabel}}</span>
+                    </div>
+                    <button class="ghost" onClick="{{closeSel}}" aria-label="Close details" style="width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 8px; background: transparent; color: #4F5D6B; display: flex; align-items: center; justify-content: center">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+                    </button>
+                  </div>
+                  <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; font-size: 14px">
+                    <div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">Item code</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 13px">{{sel.code}}</dd></div>
+                    <div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">Lot / Serial</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 13px; word-break: break-all">{{sel.lot}}</dd></div>
+                    <div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">Branch</dt><dd style="margin: 0">{{sel.branch}}</dd></div>
+                    <div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">Expiry</dt><dd style="margin: 0">{{sel.expLabel}}</dd></div>
+                    <div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">On hand</dt><dd style="margin: 0; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums">{{sel.qty}}</dd></div>
+                    <div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">Minimum level</dt><dd style="margin: 0">{{sel.minLabel}}</dd></div>
+                  </dl>
+                  <div style="border-top: 1px solid #EEF2F5; padding-top: 14px; display: flex; flex-direction: column; gap: 6px">
+                    <div style="font-size: 13px; font-weight: 700">Recent movements</div>
+                    <div style="font-size: 13px; color: #4F5D6B">[Receiving and transfer history for this lot]</div>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                    <button class="prim" style="flex: 1 1 120px; height: 44px; border-radius: 10px; border: 1px solid {{accent}}; background: {{accent}}; color: #FFFFFF; font-size: 14px; font-weight: 700">Transfer</button>
+                    <button class="sec" style="flex: 1 1 90px; height: 44px; border-radius: 10px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 14px; font-weight: 600">Edit</button>
+                    <button class="sec" style="flex: 1 1 90px; height: 44px; border-radius: 10px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 14px; font-weight: 600">History</button>
+                  </div>
+                </aside>
+              </sc-if>
+            </div>
+          </section>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{notStocks}}" hint-placeholder-val="{{false}}">
+        <div style="display: flex; flex-direction: column; gap: 20px">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px">
+            <sc-for list="{{gv.stats}}" as="k" hint-placeholder-count="3">
+              <div style="background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 8px">
+                <span style="font-size: 13px; font-weight: 700; color: #4F5D6B; display: flex; align-items: center; gap: 8px"><span style="{{k.dotStyle}}"></span>{{k.label}}</span>
+                <span style="font-size: 28px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1.1">{{k.value}}</span>
+                <span style="font-size: 13px; color: #4F5D6B">{{k.sub}}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <section aria-label="{{gv.title}}" style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px">
+              <div style="display: flex; flex-direction: column; gap: 4px; max-width: 640px">
+                <h2 style="margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.015em">{{gv.title}}</h2>
+                <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #4F5D6B">{{gv.intro}}</p>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+                <label class="field" style="width: 260px; max-width: 100%; height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #FFFFFF; border: 1px solid #CBD3DB; border-radius: 10px">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B6876" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+                  <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search {{gv.title}}</span>
+                  <input type="search" value="{{gq}}" onChange="{{onGSearch}}" placeholder="{{gv.placeholder}}" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 14px; color: #12202E; height: 100%">
+                </label>
+                <sc-for list="{{gv.actions}}" as="a" hint-placeholder-count="1">
+                  <button class="{{a.cls}}" style="{{a.style}}">{{a.label}}</button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start">
+              <div style="flex: 999 1 640px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; overflow: hidden">
+                <div style="overflow-x: auto">
+                  <table style="{{gv.tableStyle}}">
+                    <thead>
+                      <tr style="background: #F8FAFB; border-bottom: 1px solid #DFE5EA">
+                        <sc-for list="{{gv.cols}}" as="c" hint-placeholder-count="6"><th scope="col" style="{{c.style}}">{{c.label}}</th></sc-for>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <sc-for list="{{gv.rows}}" as="r" hint-placeholder-count="4">
+                        <tr class="row" style="{{r.rowStyle}}">
+                          <sc-for list="{{r.cells}}" as="c" hint-placeholder-count="6">
+                            <td style="{{c.style}}">
+                              <sc-if value="{{c.isLink}}" hint-placeholder-val="{{false}}"><button class="lnk" onClick="{{c.pick}}" style="{{c.linkStyle}}">{{c.text}}</button></sc-if>
+                              <sc-if value="{{c.isText}}" hint-placeholder-val="{{true}}"><span style="{{c.textStyle}}">{{c.text}}</span></sc-if>
+                              <sc-if value="{{c.isPill}}" hint-placeholder-val="{{false}}"><span style="{{c.pillStyle}}"><span style="{{c.dotStyle}}"></span>{{c.text}}</span></sc-if>
+                              <sc-if value="{{c.isBtn}}" hint-placeholder-val="{{false}}"><button class="sec" onClick="{{c.pick}}" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600">{{c.text}}</button></sc-if>
+                              <sc-if value="{{c.hasSub}}" hint-placeholder-val="{{false}}"><div style="{{c.subStyle}}">{{c.sub}}</div></sc-if>
+                            </td>
+                          </sc-for>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+                <sc-if value="{{gv.isEmpty}}" hint-placeholder-val="{{false}}">
+                  <div style="padding: 48px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px">
+                    <div style="width: 44px; height: 44px; border-radius: 999px; background: #EEF2F5; color: #4F5D6B; display: flex; align-items: center; justify-content: center">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z"></path><path d="M3 8v8l9 5 9-5V8"></path></svg>
+                    </div>
+                    <div style="font-size: 16px; font-weight: 700">{{gv.emptyTitle}}</div>
+                    <div style="font-size: 14px; color: #4F5D6B; max-width: 440px; line-height: 1.5">{{gv.emptyText}}</div>
+                  </div>
+                </sc-if>
+                <div style="padding: 10px 20px; border-top: 1px solid #DFE5EA; font-size: 13px; color: #4F5D6B">{{gv.footer}}</div>
+              </div>
+
+              <sc-if value="{{gvHasSel}}" hint-placeholder-val="{{false}}">
+                <aside aria-label="Details" style="flex: 1 1 320px; max-width: 400px; background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+                  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                    <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-start">
+                      <span style="font-size: 13px; font-weight: 700; color: #5B6876; font-family: 'IBM Plex Mono', monospace">{{gs.eyebrow}}</span>
+                      <span style="font-size: 20px; font-weight: 800; letter-spacing: -0.015em">{{gs.title}}</span>
+                      <sc-if value="{{gs.hasPill}}" hint-placeholder-val="{{true}}"><span style="{{gs.pillStyle}}"><span style="{{gs.pillDot}}"></span>{{gs.pillText}}</span></sc-if>
+                    </div>
+                    <button class="ghost" onClick="{{closeG}}" aria-label="Close details" style="width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 8px; background: transparent; color: #4F5D6B; display: flex; align-items: center; justify-content: center">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+                    </button>
+                  </div>
+                  <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; font-size: 14px">
+                    <sc-for list="{{gs.fields}}" as="f" hint-placeholder-count="4">
+                      <div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">{{f.label}}</dt><dd style="{{f.style}}">{{f.value}}</dd></div>
+                    </sc-for>
+                  </dl>
+                  <sc-if value="{{gs.hasLines}}" hint-placeholder-val="{{true}}">
+                    <div style="border-top: 1px solid #EEF2F5; padding-top: 14px; display: flex; flex-direction: column; gap: 10px">
+                      <div style="font-size: 13px; font-weight: 700">{{gs.linesTitle}}</div>
+                      <sc-for list="{{gs.lines}}" as="l" hint-placeholder-count="2">
+                        <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 13px">
+                          <span style="{{l.dotStyle}}"></span>
+                          <div style="flex: 1; min-width: 0">
+                            <div style="font-weight: 600">{{l.left}}</div>
+                            <div style="color: #5B6876">{{l.sub}}</div>
+                          </div>
+                          <span style="font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap">{{l.right}}</span>
+                        </div>
+                      </sc-for>
+                      <sc-if value="{{gs.hasTotal}}" hint-placeholder-val="{{false}}">
+                        <div style="display: flex; justify-content: space-between; border-top: 1px solid #EEF2F5; padding-top: 10px; font-size: 15px; font-weight: 800"><span>{{gs.totalLabel}}</span><span style="font-variant-numeric: tabular-nums">{{gs.totalValue}}</span></div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{gs.hasNote}}" hint-placeholder-val="{{false}}">
+                    <div style="{{gs.noteStyle}}">{{gs.note}}</div>
+                  </sc-if>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                    <sc-for list="{{gs.actions}}" as="a" hint-placeholder-count="2">
+                      <button class="{{a.cls}}" style="{{a.style}}">{{a.label}}</button>
+                    </sc-for>
+                  </div>
+                </aside>
+              </sc-if>
+            </div>
+          </section>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1F5F74","options":["#1F5F74","#1E4E8C","#2F5D3A","#3D3D4E"]},"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'stocks', branch: 'all', q: '', status: 'all', sortKey: 'expiry', sortDir: 1, sel: null, compact: false };
+  }
+
+  data() {
+    return [
+      { brand: 'Zybio', code: 'G78', name: 'HBA1C', lot: '678923', exp: '2027-06-30', qty: 3, branchKey: 'lp', status: 'available', min: null },
+      { brand: 'Zybio', code: 'G78', name: 'HBA1C', lot: '272821', exp: '2027-09-30', qty: 4, branchKey: 'lp', status: 'low', min: 14 },
+      { brand: 'Vedalab', code: 'J89', name: 'FOB', lot: '218289', exp: '2027-02-28', qty: 6, branchKey: 'lp', status: 'available', min: null },
+      { brand: 'Vedalab', code: 'F76', name: 'VEDA8900', lot: '1230104910203', exp: null, qty: 1, branchKey: 'lp', status: 'available', min: null },
+      { brand: 'Zybio', code: 'H80', name: 'EXC200', lot: '838920930409', exp: null, qty: 1, branchKey: 'lp', status: 'available', min: null },
+      { brand: 'Medlane', code: '01.09.31.02.Z3.05', name: 'ZY Z3 Diluent (20 L)', lot: '260116', exp: '2028-01-19', qty: 111, branchKey: 'lp', status: 'low', min: 121 }
+    ];
+  }
+
+  renderVals() {
+    const s = this.state;
+    const accent = this.props.accent ?? '#1F5F74';
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const BR = { lp: 'Las Piñas', naga: 'Naga' };
+
+    const ST = {
+      available: { label: 'Available', color: '#2F8F6B', bg: '#E6F3EC', fg: '#17603F', count: 62 },
+      near: { label: 'Near expiry', color: '#D9A21B', bg: '#FDF5DE', fg: '#7A5300', count: 7 },
+      low: { label: 'Low stock', color: '#E07A2F', bg: '#FDEEE3', fg: '#8F3F07', count: 21 },
+      critical: { label: 'Critical', color: '#C0392B', bg: '#FBE9E7', fg: '#9B1C1C', count: 119 },
+      disposal: { label: 'For disposal', color: '#4A5565', bg: '#ECEFF3', fg: '#2F3946', count: 7 }
+    };
+    const ORDER = ['available', 'near', 'low', 'critical', 'disposal'];
+    const dot = c => 'width:8px;height:8px;border-radius:99px;flex-shrink:0;display:inline-block;background:' + c + ';';
+    const pill = k => 'display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;white-space:nowrap;background:' + ST[k].bg + ';color:' + ST[k].fg + ';';
+
+    const all = this.data().map((r, i) => {
+      let days = null, expLabel = 'No expiry', expRel = 'Serial-tracked';
+      if (r.exp) {
+        const d = new Date(r.exp + 'T00:00:00');
+        days = Math.round((d - today) / 86400000);
+        expLabel = d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+        expRel = days < 0 ? Math.abs(days) + ' days ago' : days < 60 ? 'in ' + days + ' days' : 'in ' + Math.round(days / 30) + ' months';
+      }
+      const st = ST[r.status];
+      const statusLabel = r.status === 'low' && r.min ? st.label + ' · ' + (r.min - r.qty) + ' short' : st.label;
+      return Object.assign({}, r, {
+        id: i, days, expLabel, expRel, branch: BR[r.branchKey], statusLabel,
+        statusStyle: pill(r.status), statusDot: dot(st.color),
+        minLabel: r.min ? String(r.min) : '[MIN LEVEL]'
+      });
+    });
+
+    const inBranch = all.filter(r => s.branch === 'all' || r.branchKey === s.branch);
+    const q = s.q.trim().toLowerCase();
+    let rows = inBranch
+      .filter(r => s.status === 'all' || r.status === s.status)
+      .filter(r => !q || [r.name, r.code, r.brand, r.lot].join(' ').toLowerCase().includes(q));
+    const key = s.sortKey, dir = s.sortDir;
+    const val = r => key === 'item' ? r.name + r.lot : key === 'lot' ? r.lot : key === 'branch' ? r.branch : key === 'qty' ? r.qty : (r.days === null ? Infinity : r.days);
+    rows = rows.slice().sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
+    const sortBy = k => () => this.setState(p => ({ sortKey: k, sortDir: p.sortKey === k ? -p.sortDir : 1 }));
+    const arr = k => s.sortKey === k ? (s.sortDir === 1 ? '↑' : '↓') : '';
+
+    const pad = s.compact ? '7px' : '13px';
+    const viewRows = rows.map(r => Object.assign({}, r, {
+      pick: () => this.setState({ sel: r.id }),
+      rowStyle: 'border-bottom:1px solid #EEF2F5;' + (s.sel === r.id ? 'background:#EEF5F7;box-shadow:inset 3px 0 0 ' + accent + ';' : ''),
+      cell: 'padding:' + pad + ' 8px;vertical-align:middle;',
+      cellFirst: 'padding:' + pad + ' 8px ' + pad + ' 20px;vertical-align:middle;',
+      cellLast: 'padding:' + (s.compact ? '2px' : '6px') + ' 16px ' + (s.compact ? '2px' : '6px') + ' 8px;text-align:right;white-space:nowrap;vertical-align:middle;'
+    }));
+
+    const setStatus = k => () => this.setState({ status: k, tab: 'stocks', sel: null });
+
+    const health = ORDER.map(k => ({
+      label: ST[k].label, count: ST[k].count, pick: setStatus(k),
+      dotStyle: dot(ST[k].color),
+      barStyle: 'display:block;height:100%;flex:' + ST[k].count + ' 1 0;min-width:4px;background:' + ST[k].color + ';'
+    }));
+
+    const metric = c => 'font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;color:' + c + ';';
+    const alerts = [
+      { title: 'Low & critical', count: 140, unit: 'records', k: 'critical', items: [
+        ['HBA1C · Lot 272821', '10 short'], ['ZY Z3 Diluent (20 L) · Lot 260116', '10 short'], ['ZY Probe Cleanser (50 mL)', '10 short'], ['CY URIC ACID LIQUID 2X1', '10 short'], ['I-SMART CONTROL', '10 short']
+      ], fg: '#9B1C1C' },
+      { title: 'Near expiry', count: 7, unit: 'lots', k: 'near', items: [
+        ['ZY CRP 25 T/kit', '31 days'], ['ZYBIO Z5 CONTROL', '44 days'], ['ZYBIO Z5 HEMATOLOGY C…', '44 days'], ['Reagent · Lot lotnumber', '59 days'], ['Reagent · Lot lotnumber', '59 days']
+      ], fg: '#7A5300' },
+      { title: 'For disposal', count: 7, unit: 'expired lots', k: 'disposal', items: [
+        ['Reagent · Lot asds', '48d expired'], ['ZY Wash solution', '31d expired'], ['CY BILIRUBIN TOT…', '14d expired'], ['LIFO AFP (ALPHA-…', '11d expired'], ['ZY cTn I (TROPONIN…', '5d expired']
+      ], fg: '#9B1C1C' }
+    ].map(a => ({
+      title: a.title, count: a.count, unit: a.unit, pick: setStatus(a.k), dotStyle: dot(ST[a.k].color),
+      items: a.items.map(([name, m]) => ({ name, metric: m, metricStyle: metric(a.fg) }))
+    }));
+
+    const chipBase = 'height:36px;padding:0 12px;border-radius:999px;font-size:13px;display:flex;align-items:center;gap:7px;';
+    const chips = [['all', 'All', 216, '#8A96A3']].concat(ORDER.map(k => [k, ST[k].label, ST[k].count, ST[k].color])).map(([k, label, count, c]) => {
+      const on = s.status === k;
+      return {
+        label, count, on: on ? 'true' : 'false', pick: setStatus(k),
+        dotStyle: dot(on ? '#FFFFFF' : c),
+        style: chipBase + (on ? 'border:1px solid #12202E;background:#12202E;color:#FFFFFF;font-weight:700;' : 'border:1px solid #CBD3DB;background:#FFFFFF;color:#24313E;font-weight:600;'),
+        countStyle: 'font-size:12px;font-variant-numeric:tabular-nums;' + (on ? 'opacity:.8;' : 'color:#5B6876;')
+      };
+    });
+
+    const segOn = 'height:34px;padding:0 12px;border:0;border-radius:8px;font-size:13px;font-weight:700;background:#FFFFFF;color:#12202E;box-shadow:0 1px 2px rgba(18,32,46,.12);';
+    const segOff = 'height:34px;padding:0 12px;border:0;border-radius:8px;font-size:13px;font-weight:600;background:transparent;color:#3A4754;';
+    const branches = [['all', 'All branches'], ['lp', 'Las Piñas'], ['naga', 'Naga']].map(([k, label]) => ({
+      label, on: s.branch === k ? 'true' : 'false', style: s.branch === k ? segOn : segOff,
+      pick: () => this.setState({ branch: k, sel: null })
+    }));
+
+    const TABS = [['stocks', 'Stocks', 216], ['rpo', 'Receiving POs', 2], ['pending', 'Pending receipts', 0], ['done', 'Completed POs', 3], ['transfers', 'Transfers', 2], ['demo', 'Demo requests', 0], ['rhist', 'Receiving history', null], ['thist', 'Transfer history', null]];
+    let tabLabel = 'Stocks';
+    const tabs = TABS.map(([k, label, count]) => {
+      const on = s.tab === k;
+      if (on) tabLabel = label;
+      return {
+        label, count: count === null ? '' : count, hasCount: count !== null, on: on ? 'true' : 'false',
+        pick: () => this.setState({ tab: k, sel: null, gsel: null, gq: '' }),
+        style: 'height:46px;padding:0 14px;border:0;background:transparent;white-space:nowrap;display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:-1px;' + (on ? 'font-weight:800;color:#12202E;border-bottom:2px solid ' + accent + ';' : 'font-weight:600;color:#4F5D6B;border-bottom:2px solid transparent;'),
+        countStyle: 'min-width:22px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:999px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;' + (on ? 'background:' + accent + ';color:#FFFFFF;' : count > 0 ? 'background:#E3EEF2;color:#1F5F74;' : 'background:#EEF1F4;color:#5B6876;')
+      };
+    });
+
+    const NAV = [
+      ['Masterlists', 'M4 6h16M4 12h16M4 18h10'],
+      ['Inventory', 'M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8'],
+      ['Item Forecast', 'M3 17l6-6 4 4 8-8M15 7h6v6'],
+      ['Purchase Orders', 'M3 4h2l2.4 11h11L21 7H6.2M9 20h.01M18 20h.01'],
+      ['Sales', 'M4 19V11M10 19V5M16 19v-6M3 21h18'],
+      ['Invoicing', 'M6 3h9l4 4v14H6zM9 12h7M9 16h7'],
+      ['Collections', 'M3 6h18v13H3zM3 10h18'],
+      ['Receivables', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12h8M13 9l3 3-3 3'],
+      ['Warranty', 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'],
+      ['Support Tracker', 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z'],
+      ['History', 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2'],
+      ['Payables', 'M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 21h18'],
+      ['Expenses', 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h3'],
+      ['Import', 'M12 15V3M7 8l5-5 5 5M5 21h14'],
+      ['Reports', 'M5 21V3h14v18zM9 8h6M9 12h6M9 16h6'],
+      ['Recon', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12l3 3 5-6'],
+      ['Users', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6'],
+      ['Settings', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1'],
+      ['Print Templates', 'M7 8V3h10v5M6 17H4v-7h16v7h-2M7 14h10v7H7z']
+    ];
+    const appNav = NAV.map(([label, d]) => {
+      const on = label === 'Inventory';
+      return {
+        label, d, current: on ? 'page' : 'false',
+        href: ({ Inventory: 'Main.dc.html', Sales: 'Sales.dc.html', Invoicing: 'Invoicing.dc.html', Collections: 'Collections.dc.html', Receivables: 'Receivables.dc.html' })[label] || '#',
+        style: 'width:100%;height:38px;padding:0 10px;border:0;border-radius:8px;box-sizing:border-box;text-decoration:none;display:flex;align-items:center;gap:12px;text-align:left;font-size:14px;' + (on ? 'background:#E3EEF2;color:' + accent + ';font-weight:700;' : 'background:transparent;color:#2B3845;font-weight:600;')
+      };
+    });
+
+    const sel = s.sel === null ? null : all.find(r => r.id === s.sel);
+    const blank = { name: '', brand: '', code: '', lot: '', branch: '', expLabel: '', qty: '', minLabel: '', statusLabel: '', statusStyle: '', statusDot: '' };
+
+    return {
+      accent, ...this.gvVals(s, accent), appNav, tabs, tabLabel, health, alerts, chips, branches,
+      isStocks: s.tab === 'stocks', notStocks: s.tab !== 'stocks', goStocks: () => this.setState({ tab: 'stocks' }),
+      q: s.q, onSearch: e => this.setState({ q: e.target.value, sel: null }),
+      rows: viewRows, shown: viewRows.length, isEmpty: viewRows.length === 0,
+      clearAll: () => this.setState({ branch: 'all', q: '', status: 'all' }),
+      compactOn: s.compact ? 'true' : 'false', compactLabel: s.compact ? 'Comfortable view' : 'Compact view',
+      toggleCompact: () => this.setState(p => ({ compact: !p.compact })),
+      sortItem: sortBy('item'), sortLot: sortBy('lot'), sortBranch: sortBy('branch'), sortExpiry: sortBy('expiry'), sortQty: sortBy('qty'),
+      arrItem: arr('item'), arrLot: arr('lot'), arrBranch: arr('branch'), arrExpiry: arr('expiry'), arrQty: arr('qty'),
+      hasSel: !!sel, sel: sel || blank, closeSel: () => this.setState({ sel: null })
+    };
+  }
+
+  gdefs() {
+    const C = (text, t, x) => Object.assign({ text: text, t: t || 'text' }, x || {});
+    return {
+      rpo: {
+        title: 'Receiving POs', intro: 'Purchase orders sent to suppliers that have not arrived yet. Receive against the PO so quantity, lot no. and expiry are captured in one step.',
+        placeholder: 'PO no. or supplier', actions: ['New PO'], minW: 960,
+        stats: [
+          { label: 'Open purchase orders', value: '2', sub: '1 in transit · 1 ordered', tone: 'blue' },
+          { label: 'Lines expected', value: '6', sub: '4 to Las Piñas · 2 to Naga', tone: 'teal' },
+          { label: 'Next arrival', value: '18 Nov', sub: 'PO-2026-0087 from Zybio', tone: 'amber' }
+        ],
+        cols: [{ label: 'PO' }, { label: 'Supplier' }, { label: 'Deliver to' }, { label: 'Ordered' }, { label: 'Expected' }, { label: 'Received', right: true }, { label: 'Status' }, { label: '', right: true }],
+        rows: [
+          { id: 'po87', cells: [C('PO-2026-0087', 'link', { sub: '4 lines' }), C('Zybio', 'strong'), C('Las Piñas'), C('20 Oct 2026'), C('18 Nov 2026', 'text', { sub: 'in 6 days' }), C('0 of 4', 'num'), C('In transit', 'pill', { tone: 'blue' }), C('Receive', 'btn')],
+            detail: { eyebrow: 'PO-2026-0087', title: 'Zybio', pill: ['In transit', 'blue'], fields: [['Deliver to', 'Las Piñas'], ['Ordered', '20 Oct 2026'], ['Expected', '18 Nov 2026'], ['Supplier ref.', '[SUPPLIER REF]']],
+              linesTitle: 'Ordered items', lines: [['HBA1C', 'G78 · 0 received', '× 40', 'amber'], ['ZYBIO Z5 CONTROL', '0 received', '× 20', 'amber'], ['ZY CRP 25 T/kit', '0 received', '× 30', 'amber'], ['ZY Probe Cleanser (50 mL)', '0 received', '× 24', 'amber']],
+              note: 'Receiving asks for the lot no. and expiry of each line, then adds the stock to Las Piñas.', noteTone: 'blue', actions: ['Receive stock', 'Print PO', 'Edit PO'] } },
+          { id: 'po91', cells: [C('PO-2026-0091', 'link', { sub: '2 lines' }), C('Vedalab', 'strong'), C('Naga'), C('2 Nov 2026'), C('25 Nov 2026', 'text', { sub: 'in 13 days' }), C('0 of 2', 'num'), C('Ordered', 'pill', { tone: 'slate' }), C('Receive', 'btn')],
+            detail: { eyebrow: 'PO-2026-0091', title: 'Vedalab', pill: ['Ordered', 'slate'], fields: [['Deliver to', 'Naga'], ['Ordered', '2 Nov 2026'], ['Expected', '25 Nov 2026'], ['Supplier ref.', '[SUPPLIER REF]']],
+              linesTitle: 'Ordered items', lines: [['FOB', 'J89 · 0 received', '× 30', 'amber'], ['VEDA8900', 'F76 · analyzer · serial no. taken on receipt', '× 1', 'amber']],
+              actions: ['Receive stock', 'Print PO', 'Edit PO'] } }
+        ]
+      },
+      pending: {
+        title: 'Pending receipts', intro: 'Deliveries that have arrived but have not been checked and posted. Nothing here counts toward stock on hand until it is posted.',
+        placeholder: 'Receipt or PO no.', actions: ['Receive stock'],
+        stats: [
+          { label: 'Waiting to post', value: '0', sub: 'All received stock is posted', tone: 'green' },
+          { label: 'Received today', value: '0', sub: 'No deliveries logged today', tone: 'teal' }
+        ],
+        cols: [{ label: 'Receipt' }, { label: 'PO' }, { label: 'Supplier' }, { label: 'Received' }, { label: 'Lines', right: true }, { label: 'Status' }],
+        rows: [], empty: ['No receipts waiting to be posted', 'When a delivery is received but not yet checked, it waits here with its lot numbers and expiry dates until someone posts it to stock.']
+      },
+      done: {
+        title: 'Completed POs', intro: 'Purchase orders that have been fully received and closed. Any shortfall on receipt stays visible here.',
+        placeholder: 'PO no. or supplier', actions: ['Export'], minW: 900,
+        stats: [
+          { label: 'Completed POs', value: '3', sub: 'Last 60 days', tone: 'green' },
+          { label: 'Received in full', value: '2 of 3', sub: '1 PO closed with a shortfall', tone: 'amber' },
+          { label: 'Average lead time', value: '22 days', sub: 'From order to receipt', tone: 'teal' }
+        ],
+        cols: [{ label: 'PO' }, { label: 'Supplier' }, { label: 'Received at' }, { label: 'Ordered' }, { label: 'Completed' }, { label: 'Lines', right: true }, { label: 'Result' }],
+        rows: [
+          { id: 'po84', cells: [C('PO-2026-0084', 'link'), C('Zybio', 'strong'), C('Las Piñas'), C('1 Oct 2026'), C('28 Oct 2026', 'text', { sub: '27 days' }), C('4', 'num'), C('Received with variance', 'pill', { tone: 'amber' })],
+            detail: { eyebrow: 'PO-2026-0084', title: 'Zybio', pill: ['Received with variance', 'amber'], fields: [['Received at', 'Las Piñas'], ['Receiving report', 'RR-2026-0133', true], ['Ordered', '1 Oct 2026'], ['Completed', '28 Oct 2026']],
+              linesTitle: 'Received vs ordered', lines: [['HBA1C', 'G78', '20 of 20', 'green'], ['ZY Z3 Diluent (20 L)', '01.09.31.02.Z3.05', '10 of 10', 'green'], ['CY URIC ACID LIQUID 2X1', '', '12 of 12', 'green'], ['I-SMART CONTROL', '2 short', '8 of 10', 'amber']],
+              note: '2 units of I-SMART CONTROL were short on delivery. [Supplier credit or re-delivery status]', noteTone: 'amber', actions: ['View receiving report', 'Print PO'] } },
+          { id: 'po82', cells: [C('PO-2026-0082', 'link'), C('Vedalab', 'strong'), C('Naga'), C('25 Sep 2026'), C('14 Oct 2026', 'text', { sub: '19 days' }), C('3', 'num'), C('Received in full', 'pill', { tone: 'green' })],
+            detail: { eyebrow: 'PO-2026-0082', title: 'Vedalab', pill: ['Received in full', 'green'], fields: [['Received at', 'Naga'], ['Receiving report', 'RR-2026-0129', true], ['Ordered', '25 Sep 2026'], ['Completed', '14 Oct 2026']],
+              linesTitle: 'Received vs ordered', lines: [['FOB', 'J89', '24 of 24', 'green'], ['VEDA8900', 'F76 · analyzer', '1 of 1', 'green'], ['Reagent', '[ITEM]', '6 of 6', 'green']], actions: ['View receiving report', 'Print PO'] } },
+          { id: 'po79', cells: [C('PO-2026-0079', 'link'), C('Zybio', 'strong'), C('Las Piñas'), C('18 Sep 2026'), C('9 Oct 2026', 'text', { sub: '21 days' }), C('5', 'num'), C('Received in full', 'pill', { tone: 'green' })],
+            detail: { eyebrow: 'PO-2026-0079', title: 'Zybio', pill: ['Received in full', 'green'], fields: [['Received at', 'Las Piñas'], ['Receiving report', 'RR-2026-0124', true], ['Ordered', '18 Sep 2026'], ['Completed', '9 Oct 2026']],
+              linesTitle: 'Received vs ordered', lines: [['HBA1C', 'G78', '16 of 16', 'green'], ['EXC200', 'H80 · analyzer', '1 of 1', 'green'], ['ZYBIO Z5 CONTROL', '', '10 of 10', 'green'], ['ZY CRP 25 T/kit', '', '12 of 12', 'green'], ['ZY Probe Cleanser (50 mL)', '', '20 of 20', 'green']], actions: ['View receiving report', 'Print PO'] } }
+        ]
+      },
+      transfers: {
+        title: 'Transfers', intro: 'Stock moving between Las Piñas and Naga. Stock leaves the sending branch on dispatch and is added to the receiving branch when someone confirms receipt.',
+        placeholder: 'Transfer no. or item', actions: ['New transfer'], minW: 860,
+        stats: [
+          { label: 'Transfers in progress', value: '2', sub: 'Between Las Piñas and Naga', tone: 'blue' },
+          { label: 'In transit', value: '1', sub: 'Dispatched 11 Nov · awaiting receipt', tone: 'blue' },
+          { label: 'Awaiting dispatch', value: '1', sub: 'Requested today', tone: 'amber' }
+        ],
+        cols: [{ label: 'Transfer' }, { label: 'From → To' }, { label: 'Requested' }, { label: 'Items' }, { label: 'Status' }, { label: '', right: true }],
+        rows: [
+          { id: 'tr41', cells: [C('TR-2026-0041', 'link'), C('Las Piñas → Naga', 'strong'), C('10 Nov 2026', 'text', { sub: 'Dispatched 11 Nov' }), C('3 lines · 13 units'), C('In transit', 'pill', { tone: 'blue' }), C('Confirm receipt', 'btn')],
+            detail: { eyebrow: 'TR-2026-0041', title: 'Las Piñas → Naga', pill: ['In transit', 'blue'], fields: [['Requested', '10 Nov 2026'], ['Dispatched', '11 Nov 2026'], ['Requested by', '[STAFF]'], ['Courier', '[COURIER]']],
+              linesTitle: 'Items', lines: [['HBA1C', 'Lot 678923 · exp 30 Jun 2027', '× 1', 'blue'], ['FOB', 'Lot 218289 · exp 28 Feb 2027', '× 2', 'blue'], ['ZY Z3 Diluent (20 L)', 'Lot 260116 · exp 19 Jan 2028', '× 10', 'blue']],
+              note: 'Naga confirms the quantity of each lot on arrival. Any difference is logged as a transfer variance.', noteTone: 'blue', actions: ['Confirm receipt', 'Print transfer slip'] } },
+          { id: 'tr42', cells: [C('TR-2026-0042', 'link'), C('Naga → Las Piñas', 'strong'), C('12 Nov 2026', 'text', { sub: 'Today' }), C('1 line · 4 units'), C('Awaiting dispatch', 'pill', { tone: 'amber' }), C('Dispatch', 'btn')],
+            detail: { eyebrow: 'TR-2026-0042', title: 'Naga → Las Piñas', pill: ['Awaiting dispatch', 'amber'], fields: [['Requested', '12 Nov 2026'], ['Dispatched', '—'], ['Requested by', '[STAFF]'], ['Reason', 'Las Piñas low on stock']],
+              linesTitle: 'Items', lines: [['ZYBIO Z5 CONTROL', 'Lot [LOT] · exp [EXPIRY]', '× 4', 'amber']], actions: ['Dispatch', 'Edit', 'Cancel transfer'] } }
+        ]
+      },
+      demo: {
+        title: 'Demo requests', intro: 'Analyzers and kits lent to clients for a demo, who has them, and when they are due back.',
+        placeholder: 'Client or unit', actions: ['Request demo'],
+        stats: [
+          { label: 'Open requests', value: '0', sub: 'Nothing waiting for approval', tone: 'green' },
+          { label: 'Units out on demo', value: '0', sub: 'All demo units are in stock', tone: 'teal' }
+        ],
+        cols: [{ label: 'Request' }, { label: 'Client' }, { label: 'Unit' }, { label: 'Out' }, { label: 'Due back' }, { label: 'Status' }],
+        rows: [], empty: ['No demo requests', 'When sales asks to lend an analyzer or kits to a client, the request shows here with the serial no., the client and the return date.']
+      },
+      rhist: {
+        title: 'Receiving history', intro: 'Every delivery received from suppliers, newest first, with any shortfall noted.',
+        placeholder: 'RR no., PO no. or supplier', actions: ['Export'], minW: 900,
+        stats: [
+          { label: 'Receipts in October', value: '3', sub: '12 lines received', tone: 'teal' },
+          { label: 'Received with variance', value: '1', sub: 'RR-2026-0133 · 2 units short', tone: 'amber' }
+        ],
+        cols: [{ label: 'Receiving report' }, { label: 'Date' }, { label: 'PO' }, { label: 'Supplier' }, { label: 'Branch' }, { label: 'Lines', right: true }, { label: 'Result' }],
+        rows: [
+          { id: 'rr133', cells: [C('RR-2026-0133', 'link'), C('28 Oct 2026'), C('PO-2026-0084', 'mono'), C('Zybio', 'strong'), C('Las Piñas'), C('4', 'num'), C('With variance', 'pill', { tone: 'amber' })],
+            detail: { eyebrow: 'RR-2026-0133', title: 'Zybio delivery', pill: ['With variance', 'amber'], fields: [['PO', 'PO-2026-0084', true], ['Branch', 'Las Piñas'], ['Received', '28 Oct 2026'], ['Received by', '[STAFF]']],
+              linesTitle: 'Lines', lines: [['HBA1C', 'Lot 272821 · exp 30 Sep 2027', '20', 'green'], ['ZY Z3 Diluent (20 L)', 'Lot 260116 · exp 19 Jan 2028', '10', 'green'], ['CY URIC ACID LIQUID 2X1', 'Lot [LOT]', '12', 'green'], ['I-SMART CONTROL', '2 short of 10', '8', 'amber']], actions: ['Print report', 'View PO'] } },
+          { id: 'rr129', cells: [C('RR-2026-0129', 'link'), C('14 Oct 2026'), C('PO-2026-0082', 'mono'), C('Vedalab', 'strong'), C('Naga'), C('3', 'num'), C('Complete', 'pill', { tone: 'green' })],
+            detail: { eyebrow: 'RR-2026-0129', title: 'Vedalab delivery', pill: ['Complete', 'green'], fields: [['PO', 'PO-2026-0082', true], ['Branch', 'Naga'], ['Received', '14 Oct 2026'], ['Received by', '[STAFF]']],
+              linesTitle: 'Lines', lines: [['FOB', 'Lot [LOT]', '24', 'green'], ['VEDA8900', 'Serial [SERIAL]', '1', 'green'], ['Reagent', '[ITEM]', '6', 'green']], actions: ['Print report', 'View PO'] } },
+          { id: 'rr124', cells: [C('RR-2026-0124', 'link'), C('9 Oct 2026'), C('PO-2026-0079', 'mono'), C('Zybio', 'strong'), C('Las Piñas'), C('5', 'num'), C('Complete', 'pill', { tone: 'green' })],
+            detail: { eyebrow: 'RR-2026-0124', title: 'Zybio delivery', pill: ['Complete', 'green'], fields: [['PO', 'PO-2026-0079', true], ['Branch', 'Las Piñas'], ['Received', '9 Oct 2026'], ['Received by', '[STAFF]']],
+              linesTitle: 'Lines', lines: [['HBA1C', 'Lot 678923 · exp 30 Jun 2027', '16', 'green'], ['EXC200', 'Serial 838920930409', '1', 'green'], ['ZYBIO Z5 CONTROL', 'Lot [LOT]', '10', 'green'], ['ZY CRP 25 T/kit', 'Lot [LOT]', '12', 'green'], ['ZY Probe Cleanser (50 mL)', 'Lot [LOT]', '20', 'green']], actions: ['Print report', 'View PO'] } }
+        ]
+      },
+      thist: {
+        title: 'Transfer history', intro: 'Completed transfers between branches, newest first.',
+        placeholder: 'Transfer no. or item', actions: ['Export'], minW: 820,
+        stats: [
+          { label: 'Completed in the last 30 days', value: '3', sub: '2 to Naga · 1 to Las Piñas', tone: 'teal' },
+          { label: 'Received short', value: '1', sub: 'TR-2026-0035 · 1 unit', tone: 'amber' }
+        ],
+        cols: [{ label: 'Transfer' }, { label: 'From → To' }, { label: 'Completed' }, { label: 'Items' }, { label: 'Result' }],
+        rows: [
+          { id: 'tr39', cells: [C('TR-2026-0039', 'link'), C('Las Piñas → Naga', 'strong'), C('30 Oct 2026'), C('2 lines · 8 units'), C('Complete', 'pill', { tone: 'green' })],
+            detail: { eyebrow: 'TR-2026-0039', title: 'Las Piñas → Naga', pill: ['Complete', 'green'], fields: [['Dispatched', '29 Oct 2026'], ['Received', '30 Oct 2026'], ['Sent by', '[STAFF]'], ['Received by', '[STAFF]']],
+              linesTitle: 'Items', lines: [['HBA1C', 'Lot 272821', '2 of 2', 'green'], ['ZY Probe Cleanser (50 mL)', 'Lot [LOT]', '6 of 6', 'green']], actions: ['Print transfer slip'] } },
+          { id: 'tr37', cells: [C('TR-2026-0037', 'link'), C('Naga → Las Piñas', 'strong'), C('21 Oct 2026'), C('1 line · 5 units'), C('Complete', 'pill', { tone: 'green' })],
+            detail: { eyebrow: 'TR-2026-0037', title: 'Naga → Las Piñas', pill: ['Complete', 'green'], fields: [['Dispatched', '20 Oct 2026'], ['Received', '21 Oct 2026'], ['Sent by', '[STAFF]'], ['Received by', '[STAFF]']],
+              linesTitle: 'Items', lines: [['I-SMART CONTROL', 'Lot [LOT]', '5 of 5', 'green']], actions: ['Print transfer slip'] } },
+          { id: 'tr35', cells: [C('TR-2026-0035', 'link'), C('Las Piñas → Naga', 'strong'), C('12 Oct 2026'), C('3 lines · 15 units'), C('Received short', 'pill', { tone: 'amber' })],
+            detail: { eyebrow: 'TR-2026-0035', title: 'Las Piñas → Naga', pill: ['Received short', 'amber'], fields: [['Dispatched', '11 Oct 2026'], ['Received', '12 Oct 2026'], ['Sent by', '[STAFF]'], ['Received by', '[STAFF]']],
+              linesTitle: 'Items', lines: [['FOB', 'Lot 218289 · 1 missing', '5 of 6', 'amber'], ['HBA1C', 'Lot 678923', '4 of 4', 'green'], ['ZY Z3 Diluent (20 L)', 'Lot 260116', '5 of 5', 'green']],
+              note: '1 unit of FOB was missing on arrival and was logged as a stock adjustment.', noteTone: 'amber', actions: ['Print transfer slip', 'View adjustment'] } }
+        ]
+      }
+    };
+  }
+
+  gvVals(s, accent) {
+    const TONE = {
+      green: ['#2F8F6B', '#E6F3EC', '#17603F'], blue: ['#2B6CB0', '#E6EFFA', '#1E4E8C'],
+      amber: ['#D9A21B', '#FDF5DE', '#7A5300'], orange: ['#E07A2F', '#FDEEE3', '#8F3F07'],
+      red: ['#C0392B', '#FBE9E7', '#9B1C1C'], slate: ['#4A5565', '#ECEFF3', '#2F3946'], teal: [accent, '#E3EEF2', accent]
+    };
+    const dot = c => 'width:8px;height:8px;border-radius:99px;flex-shrink:0;display:inline-block;background:' + c + ';';
+    const pill = t => 'display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;white-space:nowrap;background:' + t[1] + ';color:' + t[2] + ';';
+    const btn = (primary, grow) => 'height:44px;padding:0 16px;border-radius:10px;font-size:14px;' + (grow ? 'flex:' + (primary ? '1 1 100%' : '1 1 110px') + ';' : '') + (primary ? 'border:1px solid ' + accent + ';background:' + accent + ';color:#FFFFFF;font-weight:700;' : 'border:1px solid #CBD3DB;background:#FFFFFF;color:#12202E;font-weight:600;');
+    const def = this.gdefs()[s.tab] || { title: '', intro: '', stats: [], actions: [], cols: [], rows: [], empty: ['', ''] };
+    const q = (s.gq || '').trim().toLowerCase();
+    const rows = def.rows.filter(r => !q || r.cells.map(c => c.text + ' ' + (c.sub || '')).join(' ').toLowerCase().includes(q));
+    const n = def.cols.length;
+    const pad = (i, v) => 'padding:' + v + ' ' + (i === n - 1 ? '20px' : '8px') + ' ' + v + ' ' + (i === 0 ? '20px' : '8px') + ';';
+    const gv = {
+      title: def.title, intro: def.intro, placeholder: def.placeholder || 'Search',
+      stats: def.stats.map(k => ({ label: k.label, value: k.value, sub: k.sub, dotStyle: dot(TONE[k.tone || 'teal'][0]) })),
+      actions: (def.actions || []).map((label, i) => ({ label, cls: i === 0 ? 'prim' : 'sec', style: btn(i === 0, false) })),
+      tableStyle: 'width:100%;min-width:' + (def.minW || 900) + 'px;border-collapse:collapse;font-size:14px;',
+      cols: def.cols.map((c, i) => ({ label: c.label, style: pad(i, '0') + 'height:44px;text-align:' + (c.right ? 'right' : 'left') + ';font-size:12px;font-weight:700;color:#4F5D6B;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;' })),
+      rows: rows.map(r => {
+        const pick = () => this.setState({ gsel: r.id });
+        return {
+          rowStyle: 'border-bottom:1px solid #EEF2F5;' + (s.gsel === r.id ? 'background:#EEF5F7;box-shadow:inset 3px 0 0 ' + accent + ';' : ''),
+          cells: r.cells.map((c, i) => {
+            const t = c.t || 'text';
+            const tone = TONE[c.tone || 'slate'];
+            const right = def.cols[i] && def.cols[i].right;
+            return {
+              text: String(c.text), sub: c.sub || '', hasSub: !!c.sub, pick,
+              isLink: t === 'link', isPill: t === 'pill', isBtn: t === 'btn', isText: ['link', 'pill', 'btn'].indexOf(t) < 0,
+              linkStyle: 'border:0;background:none;padding:0;text-align:left;color:#12202E;font-size:14px;font-weight:700;' + (c.plain ? '' : "font-family:'IBM Plex Mono',monospace;"),
+              textStyle: (t === 'mono' ? "font-family:'IBM Plex Mono',monospace;font-size:13px;" : '') + (t === 'num' ? 'font-weight:700;font-variant-numeric:tabular-nums;' : '') + (t === 'strong' ? 'font-weight:600;' : '') + 'color:' + (c.color || (t === 'muted' ? '#5B6876' : t === 'strong' || t === 'num' ? '#12202E' : '#24313E')) + ';',
+              pillStyle: pill(tone), dotStyle: dot(tone[0]),
+              subStyle: 'font-size:12px;margin-top:2px;' + (c.subColor ? 'font-weight:600;color:' + c.subColor + ';' : 'color:#5B6876;') + (c.subMono ? "font-family:'IBM Plex Mono',monospace;" : ''),
+              style: pad(i, '12px') + 'vertical-align:middle;' + (right ? 'text-align:right;' : '') + (t === 'btn' || t === 'pill' ? 'white-space:nowrap;' : '') + (c.wrap ? 'min-width:220px;' : '')
+            };
+          })
+        };
+      }),
+      isEmpty: rows.length === 0,
+      emptyTitle: def.rows.length ? 'Nothing matches your search' : def.empty[0],
+      emptyText: def.rows.length ? 'Try a different document number or client name.' : def.empty[1],
+      footer: def.rows.length ? 'Showing ' + rows.length + ' of ' + def.rows.length + (def.footer ? ' · ' + def.footer : '') : (def.footer || 'Nothing to show yet')
+    };
+    const sr = def.rows.find(r => r.id === s.gsel);
+    const d = sr ? sr.detail : null;
+    const P = d && d.pill ? TONE[d.pill[1]] : TONE.slate;
+    const N = TONE[(d && d.noteTone) || 'slate'];
+    const gs = {
+      eyebrow: d ? d.eyebrow || '' : '', title: d ? d.title || '' : '',
+      hasPill: !!(d && d.pill), pillText: d && d.pill ? d.pill[0] : '', pillStyle: pill(P), pillDot: dot(P[0]),
+      fields: d ? (d.fields || []).map(f => ({ label: f[0], value: f[1], style: 'margin:0;' + (f[2] ? "font-family:'IBM Plex Mono',monospace;font-size:13px;word-break:break-all;" : '') })) : [],
+      hasLines: !!(d && d.lines && d.lines.length), linesTitle: d ? d.linesTitle || '' : '',
+      lines: d ? (d.lines || []).map(l => ({ left: l[0], sub: l[1] || '', right: l[2] || '', dotStyle: dot(TONE[l[3] || 'slate'][0]) + 'margin-top:5px;' })) : [],
+      hasTotal: !!(d && d.total), totalLabel: d && d.total ? d.total[0] : '', totalValue: d && d.total ? d.total[1] : '',
+      hasNote: !!(d && d.note), note: d ? d.note || '' : '',
+      noteStyle: 'font-size:13px;line-height:1.45;border-radius:8px;padding:10px 12px;font-weight:600;background:' + N[1] + ';color:' + N[2] + ';',
+      actions: d ? (d.actions || []).map((label, i) => ({ label, cls: i === 0 ? 'prim' : 'sec', style: btn(i === 0, true) })) : []
+    };
+    return { gv, gs, gvHasSel: !!d, gq: s.gq || '', onGSearch: e => this.setState({ gq: e.target.value, gsel: null }), closeG: () => this.setState({ gsel: null }) };
+  }
+}
+</script>
+</body>
+</html>

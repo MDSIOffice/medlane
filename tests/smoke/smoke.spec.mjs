@@ -191,7 +191,7 @@ test("logging in only draws what's on screen, and skips the calls other sections
   const { problems, api } = await watch(page);
   await logIn(page);
   await page.waitForTimeout(1000);
-  expect(await page.locator("#inventory-table").innerHTML()).not.toContain("Glucose Reagent");
+  expect(await page.locator("#inventory-stock-list").innerHTML()).not.toContain("Glucose Reagent");
   expect(api.filter((call) => /\/api\/(logs|files|backups) /.test(call) && !call.startsWith("POST"))).toEqual([]);
   expect(problems).toEqual([]);
 });

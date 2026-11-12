@@ -66,17 +66,31 @@ const inventoryUrlParams = (() => {
 })();
 /** @type {any} */
 let inventoryWorkflowTab = INVENTORY_TABS.includes(inventoryUrlParams.get("tab")) ? inventoryUrlParams.get("tab") : "stocks";
-let inventoryCompactView = inventoryUrlParams.get("compact") === "1";
-/** @type {any} */
-let inventoryBranchView = inventoryUrlParams.get("branch") || "all"; // "all" or a branch name
-/** @type {any} */
-let inventoryStatusKey = INVENTORY_STATUS_KEYS.includes(inventoryUrlParams.get("status")) ? inventoryUrlParams.get("status") : "all";
-let inventorySearch = inventoryUrlParams.get("q") || "";
-/** @type {any} */
-let inventorySort = { key: INVENTORY_SORT_KEYS.includes(inventoryUrlParams.get("sort")) ? inventoryUrlParams.get("sort") : "expiry", dir: inventoryUrlParams.get("dir") === "desc" ? -1 : 1 };
-let inventoryPage = Math.max(0, (Number(inventoryUrlParams.get("page")) || 1) - 1);
-/** @type {any} */
-let inventorySelectedRef = null;
+// Stocks keeps its own filters; the other tabs share one generic view (inventoryTabView). The URL
+// params mean whichever of the two the current tab uses, so only seed the matching one.
+const inventoryStockParams = inventoryWorkflowTab === "stocks" ? inventoryUrlParams : new URLSearchParams();
+let inventoryCompactView = inventoryStockParams.get("compact") === "1";
+/** @type {string} */
+let inventoryBranchView = inventoryStockParams.get("branch") || "all"; // "all" or a branch name
+/** @type {string} */
+let inventoryStatusKey = INVENTORY_STATUS_KEYS.includes(inventoryStockParams.get("status")) ? /** @type {string} */ (inventoryStockParams.get("status")) : "all";
+let inventorySearch = inventoryStockParams.get("q") || "";
+/** @type {{ key: string, dir: number }} */
+let inventorySort = { key: INVENTORY_SORT_KEYS.includes(inventoryStockParams.get("sort")) ? /** @type {string} */ (inventoryStockParams.get("sort")) : "expiry", dir: inventoryStockParams.get("dir") === "desc" ? -1 : 1 };
+let inventoryPage = Math.max(0, (Number(inventoryStockParams.get("page")) || 1) - 1);
+/** @type {string | null} */
+let inventorySelectedRef = inventoryStockParams.get("sel") || null;
+/** View state for the non-Stocks inventory tabs; reset whenever the tab changes. */
+const inventoryTabParams = inventoryWorkflowTab !== "stocks" ? inventoryUrlParams : new URLSearchParams();
+/** @type {{ q: string, sel: string, sort: { key: string, dir: number } | null, page: number, branch: string, scope: string }} */
+let inventoryTabView = {
+  q: inventoryTabParams.get("q") || "",
+  sel: inventoryTabParams.get("sel") || "",
+  sort: inventoryTabParams.get("sort") ? { key: /** @type {string} */ (inventoryTabParams.get("sort")), dir: inventoryTabParams.get("dir") === "asc" ? 1 : -1 } : null,
+  page: Math.max(0, (Number(inventoryTabParams.get("page")) || 1) - 1),
+  branch: inventoryTabParams.get("branch") || "all",
+  scope: inventoryTabParams.get("status") || "",
+};
 let inventoryFocusQuery = "";
 /** @type {any} */
 let poViewMode = "table";
