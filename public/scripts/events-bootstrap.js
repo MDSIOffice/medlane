@@ -101,7 +101,7 @@ async function submitModal(event) {
   const values = formObject(form);
   // Masterlist text is stored trimmed so " Acme" and "Acme" can never become two records.
   if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) for (const key of Object.keys(values)) if (typeof values[key] === "string") values[key] = values[key].trim();
-  if (["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder"].includes(modalType)) {
+  if (["invoice", "purchaseOrder", "inventoryPurchaseOrder"].includes(modalType)) {
     try { values.itemsText = collectInvoiceEditorLines(); }
     catch (/** @type {any} */ error) { return toast(error.message); }
   }
@@ -235,30 +235,6 @@ async function submitModal(event) {
     renderAll();
     toast(`${modalConfigs[modalType].title} saved.`);
     return;
-  }
-  if (modalType === "cancelReplace") {
-    const oldSale = data.sales.find((sale) => sale.id === values.oldInvoice);
-    if (!oldSale || oldSale.status === "Cancelled") return toast("Original invoice is not available for cancellation.");
-    if (!(await confirmFinalSave(`Cancel and replace ${oldSale.documentNo || oldSale.id}?`))) return;
-    try {
-      restoreCancelledStock(oldSale);
-      const replacement = buildSale(values, oldSale.documentNo || oldSale.id);
-      oldSale.status = "Cancelled";
-      oldSale.cancelReason = values.reason;
-      oldSale.replacementId = replacement.documentNo;
-      oldSale.cancelledBy = currentUser?.name || "System User";
-      data.sales.push(replacement);
-      const saveResult = await persistRecords({ sales: [oldSale, replacement], inventory: [...inventoryTouchedBySale(oldSale), ...inventoryTouchedBySale(replacement)], purchaseOrders: purchaseOrdersTouchedBySales([oldSale, replacement]) });
-      if (!saveResult?.ok) return;
-      log("Cancelled and replaced invoice", "Invoicing", `${oldSale.documentNo || oldSale.id} -> ${replacement.documentNo}`, { save: false });
-      notify("Cancellation", `${oldSale.documentNo || oldSale.id} cancelled and replaced by ${replacement.documentNo}.`, "receivables-tracker", replacement.documentNo || replacement.id);
-      saveData(["notifications"]);
-      qs("#demo-modal").close();
-      form.reset();
-      renderAll();
-      toast(`${modalConfigs[modalType].title} saved.`);
-      return;
-    } catch (/** @type {any} */ error) { deductSaleStock(oldSale); return toast(error.message); }
   }
   if (modalType === "paymentRequest") {
     if (!values.cvNo?.trim()) return toast("CV number is required.");
@@ -1316,22 +1292,22 @@ qs("#collections-client-search-clear")?.addEventListener("click", () => {
   if (input) input.value = "";
   renderCollectionsClientHistoryPanel();
 });
-qs("#demo-modal").addEventListener("close", () => { cancelReplaceSaleId = null; editingExpenseId = null; });
+qs("#demo-modal").addEventListener("close", () => { editingExpenseId = null; });
 qs("#invoice-grid").addEventListener("click", (event) => {
   const printButton = closestEl(event.target, "[data-print-invoice]");
   const detailButton = closestEl(event.target, "[data-sale-detail]");
-  const cancelButton = closestEl(event.target, "[data-cancel-replace]");
+  const cancelButton = closestEl(event.target, "[data-cancel-invoice]");
   if (printButton) printInvoice(/** @type {string} */ (printButton.dataset.printInvoice));
   if (detailButton) showSaleDetail(/** @type {string} */ (detailButton.dataset.saleDetail));
-  if (cancelButton) openCancelReplaceModal(/** @type {string} */ (cancelButton.dataset.cancelReplace));
+  if (cancelButton) cancelInvoice(/** @type {string} */ (cancelButton.dataset.cancelInvoice));
 });
 qs("#invoice-table")?.addEventListener("click", (event) => {
   const printButton = closestEl(event.target, "[data-print-invoice]");
   const detailButton = closestEl(event.target, "[data-sale-detail]");
-  const cancelButton = closestEl(event.target, "[data-cancel-replace]");
+  const cancelButton = closestEl(event.target, "[data-cancel-invoice]");
   if (printButton) printInvoice(/** @type {string} */ (printButton.dataset.printInvoice));
   if (detailButton) showSaleDetail(/** @type {string} */ (detailButton.dataset.saleDetail));
-  if (cancelButton) openCancelReplaceModal(/** @type {string} */ (cancelButton.dataset.cancelReplace));
+  if (cancelButton) cancelInvoice(/** @type {string} */ (cancelButton.dataset.cancelInvoice));
 });
 qs("#invoice-grid").addEventListener("change", (event) => {
   const select = closestEl(event.target, ".delivery-status-select");
@@ -1485,9 +1461,9 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (["payable", "replenishment"].includes(modalType) && closestEl(event.target, ".payment-request-line-row")) syncFinancialRequestTotal();
   if (modalType === "payable" && ["withholdingTax1", "withholdingTax2"].includes(/** @type {AnyEl} */ (event.target).id)) syncFinancialRequestTotal();
   if (modalType === "paymentRequest" && /** @type {AnyEl} */ (event.target).id === "employee") { refreshPaymentRequestInvoiceRowOptions(); syncPaymentRequestDeductionDefaults(); syncPaymentRequestTotal(); }
-  if (/** @type {AnyEl} */ (event.target).id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders();
-  if (/** @type {AnyEl} */ (event.target).id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
-  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
+  if (/** @type {AnyEl} */ (event.target).id === "client" && modalType === "invoice") syncInvoicePurchaseOrders();
+  if (/** @type {AnyEl} */ (event.target).id === "po" && modalType === "invoice") syncInvoiceFromPurchaseOrder();
+  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && modalType === "invoice") syncInvoiceLinesForClient();
   if (/** @type {AnyEl} */ (event.target).id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (/** @type {AnyEl} */ (event.target).id === "companyName" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) syncProductIssueClientAddress();
   if (/** @type {AnyEl} */ (event.target).id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
@@ -1497,7 +1473,7 @@ qs("#modal-fields").addEventListener("input", (event) => {
   // A date typed by hand belongs to whatever lot is on the row now, so a later lot edit that
   // matches nothing in stock won't wipe it unless the lot actually changes again.
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-expiry-input")) /** @type {AnyEl} */ (event.target).dataset.expiryLot = /** @type {AnyEl} */ (closestEl(event.target, ".invoice-line-row")?.querySelector(".invoice-lot-input"))?.value.trim() || "";
-  if (["invoice", "cancelReplace"].includes(modalType)) renderInvoiceComputePreview();
+  if (modalType === "invoice") renderInvoiceComputePreview();
 });
 qs("#modal-fields").addEventListener("change", (event) => {
   if (/** @type {AnyEl} */ (event.target).name === "docsSelected") {
@@ -1516,9 +1492,9 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (/** @type {AnyEl} */ (event.target).id === "status" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) toggleProductIssueResolvedByField();
   if (/** @type {AnyEl} */ (event.target).id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
   if (/** @type {AnyEl} */ (event.target).id === "type") updateDocumentLabel();
-  if (/** @type {AnyEl} */ (event.target).id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
-  if (/** @type {AnyEl} */ (event.target).id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
-  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
+  if (/** @type {AnyEl} */ (event.target).id === "client" && modalType === "invoice") syncInvoicePurchaseOrders(true);
+  if (/** @type {AnyEl} */ (event.target).id === "po" && modalType === "invoice") syncInvoiceFromPurchaseOrder();
+  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && modalType === "invoice") syncInvoiceLinesForClient();
   if (/** @type {AnyEl} */ (event.target).id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (/** @type {AnyEl} */ (event.target).id === "skipPo" && modalType === "invoice") toggleInvoiceSkipPoField();
   if (/** @type {AnyEl} */ (event.target).id === "method" && modalType === "payable") togglePayableFields();
@@ -1534,10 +1510,10 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (/** @type {AnyEl} */ (event.target).id === "date" && modalType === "paymentRequest") qs("#cvNo").value = nextCvNumber(cvYear(/** @type {AnyEl} */ (event.target).value));
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-code-input")) syncInvoiceRowFromCode(event.target);
-  if (["invoice", "cancelReplace"].includes(modalType)) renderInvoiceComputePreview();
+  if (modalType === "invoice") renderInvoiceComputePreview();
 });
 qs("#modal-fields").addEventListener("blur", (event) => {
-  if (/** @type {AnyEl} */ (event.target).id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
+  if (/** @type {AnyEl} */ (event.target).id === "client" && modalType === "invoice") syncInvoicePurchaseOrders(true);
   if (/** @type {AnyEl} */ (event.target).classList.contains("payment-request-classification")) enforceExpenseClassification(event.target);
 }, true);
 qs("#modal-close").addEventListener("click", () => {

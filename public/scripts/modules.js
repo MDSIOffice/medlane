@@ -615,16 +615,12 @@ function findSaleByDocumentInput(value) {
 }
 
 // Lots an invoice line can draw from: on hand at the branch, not expired, earliest expiry first.
-// While a Cancel & Replace is open, the invoice being cancelled gives its stock back on save, so its
-// lots count with that quantity added — otherwise reusing the same lot would show nothing to pick.
 /** @param {any} item @param {string} branch */
 function invoiceSelectableLots(item, branch) {
   if (!item) return [];
-  const cancelling = cancelReplaceSaleId ? data.sales.find((sale) => sale.id === cancelReplaceSaleId && !sale.noPo) : null;
-  const returnedQty = (/** @type {StockRow} */ entry) => (cancelling?.lines || []).filter((line) => line.code === entry.code && (line.sourceBranch || line.branch) === entry.branch && line.lot === entry.lot).reduce((sum, line) => sum + Number(line.qty || 0), 0);
   return data.inventory
-    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.lot && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
-    .map((entry) => ({ lot: entry.lot, expiry: entry.expiry || "N/A", qty: Number(entry.qty || 0) + returnedQty(entry) }))
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.lot && (hasNoExpiry(entry.expiry) || !isExpiredDate(entry.expiry)))
+    .map((entry) => ({ lot: entry.lot, expiry: entry.expiry || "N/A", qty: Number(entry.qty || 0) }))
     .filter((entry) => entry.qty > 0)
     .sort((a, b) => daysUntil(hasNoExpiry(a.expiry) ? "2099-12-31" : a.expiry) - daysUntil(hasNoExpiry(b.expiry) ? "2099-12-31" : b.expiry));
 }
@@ -664,7 +660,7 @@ function itemStockLotTracked(item, branch) {
 function invoiceItemStockQty(item, branch) {
   if (!item) return 0;
   return data.inventory
-    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (hasNoExpiry(entry.expiry) || !isExpiredDate(entry.expiry)))
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
 }
 
@@ -678,7 +674,7 @@ function invoiceItemStockQtyForLot(item, branch, lot) {
   if (!item) return 0;
   const trimmedLot = String(lot || "").trim();
   if (!trimmedLot) return invoiceItemStockQty(item, branch);
-  const candidates = data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0) && (entry.lot === trimmedLot || !entry.lot));
+  const candidates = data.inventory.filter((entry) => (entry.code === item.code || entry.item === item.name) && (!branch || entry.branch === branch) && entry.qty > 0 && (hasNoExpiry(entry.expiry) || !isExpiredDate(entry.expiry)) && (entry.lot === trimmedLot || !entry.lot));
   return candidates.reduce((max, entry) => Math.max(max, Number(entry.qty || 0)), 0);
 }
 
@@ -744,7 +740,7 @@ function findClientByName(value) {
 /** @param {any} po @param {string} code */
 function poServedQty(po, code) {
   return data.sales
-    .filter((sale) => sale.po === po.id && sale.status !== "Cancelled" && sale.id !== cancelReplaceSaleId)
+    .filter((sale) => sale.po === po.id && sale.status !== "Cancelled")
     .flatMap((sale) => sale.lines || [])
     .filter((line) => line.code === code)
     .reduce((sum, line) => sum + Number(line.qty || 0), 0);
@@ -854,7 +850,7 @@ function collectInvoiceEditorLines() {
     const lot = qsIn(row, ".invoice-lot-input").value.trim();
     const item = findItemByCodeOrName(itemValue);
     const expiry = isEquipmentItem(item) ? "N/A" : qsIn(row, ".invoice-expiry-input").value;
-    if (expiry && expiry !== "N/A" && daysUntil(expiry) < 0) throw new Error("Expiry date cannot be in the past.");
+    if (isExpiredDate(expiry)) throw new Error("Expiry date cannot be in the past.");
     const discount = qsIn(row, ".invoice-discount-input")?.value || 0;
     return `${itemValue}|${brand}|${qty}|${uom}|${price}|${sourceBranch}|${lot}|${expiry}|${discount}`;
   }).filter((line) => line.split("|")[0]).join("\n");
@@ -938,7 +934,7 @@ function syncInvoiceRowItem(input, options = {}) {
   if (expiryInput) { expiryInput.required = !equipment; if (equipment) expiryInput.value = ""; }
   if (!qsIn(row, ".invoice-price-input").value) qsIn(row, ".invoice-price-input").value = "";
   const stock = data.inventory
-    .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (hasNoExpiry(entry.expiry) || daysUntil(entry.expiry) >= 0))
+    .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (hasNoExpiry(entry.expiry) || !isExpiredDate(entry.expiry)))
     .sort((a, b) => daysUntil(hasNoExpiry(a.expiry) ? "2099-12-31" : a.expiry) - daysUntil(hasNoExpiry(b.expiry) ? "2099-12-31" : b.expiry))[0];
   if (stock) {
     qsIn(row, ".invoice-lot-input").value = stock.lot || "";
@@ -955,7 +951,7 @@ function syncInvoiceLinesForClient() {
 
 /** @param {boolean} [allowPartial] */
 function syncInvoicePurchaseOrders(allowPartial = false) {
-  if (!["invoice", "cancelReplace"].includes(modalType)) return;
+  if (modalType !== "invoice") return;
   const clientInput = qs("#client");
   const poInput = qs("#po");
   if (!clientInput || !poInput) return;
@@ -969,7 +965,7 @@ function syncInvoicePurchaseOrders(allowPartial = false) {
 }
 
 function syncInvoiceFromPurchaseOrder() {
-  if (!["invoice", "cancelReplace"].includes(modalType)) return;
+  if (modalType !== "invoice") return;
   const po = data.purchaseOrders.find((entry) => entry.id === qs("#po")?.value);
   if (!po) return;
   qs("#client").value = po.client;
@@ -994,7 +990,7 @@ function collectInvoicePreviewLines() {
 
 function renderInvoiceComputePreview() {
   const preview = qs("#invoice-compute-preview");
-  if (!preview || !["invoice", "cancelReplace"].includes(modalType)) return;
+  if (!preview || modalType !== "invoice") return;
   const client = data.clients.find((entry) => entry.name === qs("#client")?.value);
   const type = qs("#type")?.value || "SI";
   const lines = collectInvoicePreviewLines();
@@ -1127,7 +1123,7 @@ function renderSettingsTutorial() {
       ["Create TS", "Creates Transmittal Slip for non-SI sales tracking.", "Choose TS and complete item/lot/expiry details.", "Use when items are transmitted but treated separately from SI billing."],
       ["Create DR", "Creates Delivery Receipt without prices and excludes it from Sales totals.", "Choose DR and complete item/lot/expiry details.", "Use for deliveries where pricing should not appear on the document."],
       ["Print Preview", "Shows data-only overlay for pre-printed SI/TS/DR forms.", "Open invoice card, click Print, then print from preview.", "Use Print Without Date if the physical form already has a date."],
-      ["Cancel & Replace", "Cancels wrong invoice and creates replacement document.", "Click Cancel & Replace and enter reason/new document details.", "Use for wrong document number, client, item, or tax setting after posting."],
+      ["Cancel", "Cancels a wrong invoice and returns its stock.", "Click Cancel and enter the reason, then create a new invoice if one is needed.", "Use for wrong document number, client, item, or tax setting after posting."],
     ] },
     { title: "Sales", role: "Sales personal; Accounting/Admin all", submodules: [
       ["Sales List", "Reviews SI/TS sales records and payment status.", "Filter by document type or status.", "Sales users see personal sales; Accounting/Admin sees all."],
@@ -1840,7 +1836,7 @@ function renderLogisticsDashboard() {
   table("#logistics-po-table", ["PO", "Supplier", "Branch", "Date", "Lines", "Status"], openPos.slice().reverse().slice(0, 12).map((po) => ({ focus: po.id, cells: [po.id, po.supplier || "-", po.branch || "-", po.date || "-", String((po.lines || []).length), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(poHasPendingReceipt(po) ? "Receipt Pending Approval" : po.status)}</span>`] })));
   qs("#logistics-stock-health").innerHTML = barRows(["Available", "Near Expiry", "Low Stock", "Critical", "Expired"].map((status) => [status, stock.filter((item) => inventoryStatus(item) === status).length]), (value) => `${value} lot${value === 1 ? "" : "s"}`, ["green", "orange", "orange", "red", "red"]);
   const expiring = stock.filter((item) => item.expiry && item.expiry !== "N/A" && Number(item.qty || 0) > 0).sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, 8);
-  qs("#logistics-expiry-list").innerHTML = expiring.map((item) => `<li><span>${escapeHtml(item.item)}<small>Lot ${escapeHtml(item.lot || "-")} · ${escapeHtml(item.branch)} · ${Number(item.qty || 0)} on hand</small></span><strong>${daysUntil(item.expiry) < 0 ? "Expired" : `${daysUntil(item.expiry)} days`}</strong></li>`).join("") || `<li><span>No dated lots on hand</span><strong>—</strong></li>`;
+  qs("#logistics-expiry-list").innerHTML = expiring.map((item) => `<li><span>${escapeHtml(item.item)}<small>Lot ${escapeHtml(item.lot || "-")} · ${escapeHtml(item.branch)} · ${Number(item.qty || 0)} on hand</small></span><strong>${isExpiredDate(item.expiry) ? "Expired" : `${daysUntil(item.expiry)} days`}</strong></li>`).join("") || `<li><span>No dated lots on hand</span><strong>—</strong></li>`;
   const alerts = [
     ...pendingReceipts.map((receipt) => ({ color: "orange", title: "Receipt awaiting approval", text: `${receipt.id}${receipt.poId ? ` for ${receipt.poId}` : ""} — ${(receipt.lines || []).length} line(s).`, section: "inventory", record: receipt.id })),
     ...forReceiving.map((po) => ({ color: "orange", title: `PO ${po.status.toLowerCase()}`, text: `${po.id} from ${po.supplier || "supplier"} is ready to receive.`, section: "inventory", record: po.id })),
@@ -3396,7 +3392,7 @@ async function saveStockSheet() {
   }).filter(Boolean));
   if (!rows.length) return toast("No stock rows to save.");
   if (rows.some((row) => !row.item || !row.branch || row.qty <= 0)) return toast("Complete all stock sheet fields before saving.");
-  if (rows.some((row) => row.expiry && row.expiry !== "N/A" && daysUntil(row.expiry) < 0)) return toast("Expiry date cannot be in the past.");
+  if (rows.some((row) => isExpiredDate(row.expiry))) return toast("Expiry date cannot be in the past.");
   const lines = rows.map(({ item, branch, lot, expiry, qty }) => ({ code: item.code, branch, lot, expiry, qty }));
   if (editingStockReceiptId) {
     const result = /** @type {OrApiError<StockReceiptResponse>} */ (await MedlaneAPI.editStockReceipt(editingStockReceiptId, lines, meta).catch((error) => ({ error })));
@@ -4140,7 +4136,7 @@ function renderInvoicing() {
   renderPendingCreditInvoices();
   const rows = invoicingVisibleSales().reverse();
   const deliveryControl = (/** @type {any} */ s) => canUpdateDeliveryStatus() ? `<select class="delivery-status-select" data-sale-id="${escapeHtml(s.id)}">${deliveryStatusOptions.map((option) => `<option ${option === (s.deliveryStatus || "Pending") ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>` : `<strong>${escapeHtml(s.deliveryStatus || "Pending")}</strong>`;
-  const actionCell = (/** @type {any} */ s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-replace="${escapeHtml(s.id)}" type="button">Cancel / Replace</button>`}</div>`;
+  const actionCell = (/** @type {any} */ s, compact = false) => `<div class="${compact ? "inline-actions" : "modal-actions"}"><button class="${compact ? "mini-button" : "ghost-button"}" data-sale-detail="${escapeHtml(s.id)}">View</button>${s.noPo ? "" : `<button class="${compact ? "mini-button" : "ghost-button"}" data-print-invoice="${escapeHtml(s.id)}">Print</button>`}<button class="${compact ? "mini-button" : "ghost-button"}" data-upload-copy="${escapeHtml(s.id)}" type="button">${attachedFilesFor("sale", s.id).length ? "Replace Upload" : compact ? "Upload" : "Upload Physical Copy"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="sale" data-record-id="${escapeHtml(s.id)}" data-rerender="invoicing" hidden />${s.status === "Cancelled" || Number(s.paid || 0) > 0 ? "" : `<button class="${compact ? "mini-button" : "ghost-button"} danger-button" data-cancel-invoice="${escapeHtml(s.id)}" type="button">Cancel</button>`}</div>`;
   qsa("#invoice-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.invoiceView === invoiceViewMode));
   qs("#invoice-table-view").hidden = invoiceViewMode !== "table";
   qs("#invoice-grid").hidden = invoiceViewMode !== "card";
@@ -5364,7 +5360,7 @@ function trackerCard(sale, detailed = false) {
       ["₱", "Payment posted", peso.format(sale.paid), payment ? `${payment.method} ${payment.receiptNo || "receipt"} via ${payment.bank || "cash"}` : "Waiting for collection posting", payment?.dateRecorded || "Waiting", sale.paid > 0 ? "done" : "pending", "collections", sale.documentNo || sale.id],
       ["AR", "Receivable status", balance ? `${peso.format(balance)} ${status}` : "Cleared", `Due ${due} · Terms ${sale.terms} days`, due, balance ? (status === "Overdue" ? "blocked" : "pending") : "done", "collections", sale.documentNo || sale.id],
     ];
-    if (sale.status === "Cancelled") steps.push(["↻", "Replacement", sale.replacementId || "No replacement", sale.cancelReason || "Cancellation review required", sale.date, sale.replacementId ? "done" : "blocked", "invoicing"]);
+    if (sale.status === "Cancelled") steps.push(["×", "Cancelled", sale.replacementId ? `Replaced by ${sale.replacementId}` : "Cancelled", sale.cancelReason || "No reason given", sale.cancelledAt || sale.date, "done", "invoicing"]);
     if (sale.cancelledFrom) steps.unshift(["×", "Cancelled Source", sale.cancelledFrom, "This document replaced a cancelled source invoice", sale.date, "done", "invoicing"]);
     const summaryCards = [["Salesperson", sale.salesperson], ["Client Area", sale.area], ["PO", sale.noPo ? "No PO" : (sale.po || "-")], ["Balance", peso.format(balance)]];
     const collectionHistoryButton = saleLinkedPaymentRequests(sale).length ? `<button class="ghost-button" data-view-collection-history="${escapeHtml(sale.id)}" type="button">View Collection</button>` : "";
@@ -6295,7 +6291,7 @@ function validateInventoryMigrationRows(rows) {
     if (!qtyText) issues.push("Missing quantity");
     else if (!/^\d+(\.\d+)?$/.test(qtyText) || Number(qtyText) <= 0) issues.push("Quantity must be a number greater than zero");
     if (!expiry.ok) issues.push("Invalid expiry date (use YYYY-MM-DD or DD/MM/YYYY)");
-    else if (expiry.value !== "N/A" && daysUntil(expiry.value) < 0) issues.push("Expiry date has already passed");
+    else if (isExpiredDate(expiry.value)) issues.push("Expiry date has already passed");
     if (item) {
       // Same identity the server stores stock under (code | branch | lot): an existing row must be
       // adjusted in Inventory → Stocks, not re-imported over.
@@ -7935,7 +7931,6 @@ function getReconciliationFindings(scope = getReconScope()) {
     // actually collected.
     const appliedPaymentsTotal = data.payments.filter((payment) => (payment.invoice === sale.documentNo || payment.invoice === sale.id) && payment.appliedToInvoice === true).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
     if (appliedPaymentsTotal - sale.paid > 1) findings.push(["Collection", sale.documentNo, `Approved payment(s) totaling ${peso.format(appliedPaymentsTotal)} marked applied but invoice paid is only ${peso.format(sale.paid)} — approval did not persist, needs manual correction`, "High", "collections", sale.documentNo]);
-    if (sale.status === "Cancelled" && !sale.replacementId) findings.push(["Cancellation", sale.documentNo, "Cancelled document has no replacement link", "Medium", "invoicing", sale.documentNo]);
     if (sale.replacementId && !scope.sales.some((/** @type {any} */ entry) => entry.documentNo === sale.replacementId) && !data.sales.some((entry) => entry.documentNo === sale.replacementId)) findings.push(["Cancellation", sale.documentNo, `Replacement ${sale.replacementId} not found`, "High", "invoicing", sale.documentNo]);
     (sale.lines || []).forEach((/** @type {any} */ line) => {
       if (!uomOptions.includes(normalizeUom(line.uom))) findings.push(["UOM", sale.documentNo, `${line.item} uses unsupported UOM ${line.uom}`, "Medium", "sales", sale.documentNo]);
@@ -8831,7 +8826,6 @@ const modalConfigs = {
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["birthday", "Birthday", "date"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist-optional", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["skipPo", "Skip PO — record-keeping only, this invoice won't be printed", "checkbox"], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
-  cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["preparedBy", "Collector", "datalist", () => activeEmployees().map((employee) => employee.name)], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Multiple Cheques", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
   payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
@@ -8846,11 +8840,10 @@ const modalConfigs = {
 function openModal(type, edit = null) {
   modalType = type;
   editingExpenseId = null;
-  cancelReplaceSaleId = type === "cancelReplace" ? edit?.oldInvoice || null : null;
   modalReadOnly = Boolean(edit?.readOnly);
   editContext = edit?.record && !modalReadOnly ? edit : null;
   const config = modalConfigs[type];
-  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "cancelReplace", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue", "instrumentalServiceReport", "paymentRequest", "payable", "replenishment"].includes(type));
+  qs("#demo-modal").classList.toggle("wide-modal", ["invoice", "purchaseOrder", "inventoryPurchaseOrder", "user", "productIssue", "instrumentalServiceReport", "paymentRequest", "payable", "replenishment"].includes(type));
   qs("#demo-modal").classList.toggle("inventory-po-modal", type === "inventoryPurchaseOrder");
   const isEditRecord = Boolean(edit?.record);
   qs("#modal-title").textContent = modalReadOnly ? "Collection History" : isEditRecord ? config.title.replace("Add", "Edit") : config.title;
@@ -8889,7 +8882,7 @@ function openModal(type, edit = null) {
   }).join("");
   editingPoId = type === "purchaseOrder" && edit?.poEdit ? edit.poEdit.id : null;
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor(edit?.poEdit?.lines?.length ? edit.poEdit.lines : [{}], { requireLot: false }));
-  if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
+  if (type === "invoice") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
   if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false, allowDiscount: true, showCode: true }));
   if (type === "purchaseOrder" && editingPoId) {
     const po = edit.poEdit;
@@ -8912,22 +8905,6 @@ function openModal(type, edit = null) {
     updateDocumentLabel();
     syncInvoicePurchaseOrders();
     toggleInvoiceSkipPoField();
-  }
-  if (type === "cancelReplace") {
-    const oldSale = data.sales.find((sale) => sale.id === edit?.oldInvoice);
-    qs("#oldInvoice").value = edit?.oldInvoice || "";
-    qs("#date").value = fmtDate(today);
-    qs("#sourceBranch").value = oldSale?.sourceBranch || oldSale?.lines?.[0]?.sourceBranch || inventoryBranchTab || platformBranches()[0] || "";
-    qs("#vatCode").value = oldSale?.vatCode || "VAT";
-    qs("#discount").value = oldSale?.discount || 0;
-    qs("#discountReason").required = false;
-    updateDocumentLabel();
-    if (oldSale) {
-      qs("#client").value = oldSale.client;
-      qs("#po").value = oldSale.po || "";
-      qs("#discountReason").value = oldSale.discountReason || "";
-      qs("#invoice-line-list").innerHTML = (oldSale.lines || []).map((line) => invoiceLineTemplate(line)).join("");
-    }
   }
   if (["payable", "replenishment"].includes(type)) {
     qs("#modal-fields").insertAdjacentHTML("beforeend", renderFinancialRequestEditor(edit?.record?.items?.length ? edit.record.items : [{}]));
@@ -9009,7 +8986,7 @@ function openModal(type, edit = null) {
       qs("#salary").required = false;
     }
   }
-  if (["invoice", "cancelReplace"].includes(type)) renderInvoiceComputePreview();
+  if (type === "invoice") renderInvoiceComputePreview();
   if (modalReadOnly) {
     qsa("#modal-fields input, #modal-fields select, #modal-fields textarea, #modal-fields button").forEach((el) => { el.disabled = true; });
     qs("#modal-submit").hidden = true;
@@ -9265,11 +9242,45 @@ async function restoreMasterlistRecord(type, index) {
   toast(`${label} restored.`);
 }
 
+// Cancel only — no replacement. Users raise a new invoice separately if one is needed.
 /** @param {string} invoiceId */
-function openCancelReplaceModal(invoiceId) {
+async function cancelInvoice(invoiceId) {
   const sale = data.sales.find((entry) => entry.id === invoiceId);
-  if (Number(sale?.paid || 0) > 0) return toast("This invoice already has a payment recorded — it can no longer be cancelled or replaced.");
-  openModal("cancelReplace", { oldInvoice: invoiceId });
+  if (!sale) return toast("Invoice not found.");
+  if (sale.status === "Cancelled") return toast(`${sale.documentNo || sale.id} is already cancelled.`);
+  if (Number(sale.paid || 0) > 0) return toast("This invoice already has a payment recorded — it can no longer be cancelled.");
+  const label = sale.documentNo || sale.id;
+  const result = /** @type {{ ok: boolean, reason: string }} */ (await confirmDetailsModal({
+    eyebrow: "Cancel Invoice",
+    title: `Cancel ${label}?`,
+    fields: [["Client", sale.client], ["PO", sale.po || "-"], ["Net", peso.format(Number(sale.net || 0))]],
+    note: "Its stock goes back to inventory and the PO quantity reopens. Create a new invoice afterwards if one is needed.",
+    confirmLabel: "Cancel Invoice",
+    danger: true,
+    collectReason: true,
+    reasonLabel: "Cancellation Reason",
+  }));
+  if (!result.ok) return;
+  if (!result.reason) return toast("A cancellation reason is required.");
+  const previous = { status: sale.status, cancelReason: sale.cancelReason, cancelledBy: sale.cancelledBy, cancelledAt: sale.cancelledAt };
+  restoreCancelledStock(sale);
+  sale.status = "Cancelled";
+  sale.cancelReason = result.reason;
+  sale.cancelledBy = currentUser?.name || "System User";
+  sale.cancelledAt = fmtDate(today);
+  const saveResult = await persistRecords({ sales: [sale], inventory: inventoryTouchedBySale(sale), purchaseOrders: purchaseOrdersTouchedBySales([sale]) });
+  if (!saveResult?.ok && !saveResult?.queued) {
+    // Refused outright: undo locally so the screen matches the server.
+    deductSaleStock(sale);
+    Object.assign(sale, previous);
+    renderAll();
+    return;
+  }
+  log("Cancelled invoice", "Invoicing", `${label}: ${result.reason}`, { save: false });
+  notify("Cancellation", `${label} cancelled.`, "receivables-tracker", label);
+  saveData(["notifications"]);
+  renderAll();
+  toast(`${label} cancelled.`);
 }
 
 /** @param {any} form @returns {Record<string, any>} */
@@ -9503,7 +9514,7 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
   if (!skipPo && discountNeedsApproval(discount) && !canAuthorize) throw new Error("Discounts need Admin/CEO approval.");
   if (!skipPo) {
     for (const line of lines) {
-      if (line.expiry !== "N/A" && daysUntil(line.expiry) < 0) throw new Error(`Expired lot blocked for ${line.item}.`);
+      if (isExpiredDate(line.expiry)) throw new Error(`Expired lot blocked for ${line.item}.`);
       const stock = /** @type {StockRow} */ (matchInvoiceLineStock(line));
       if (!stock) {
         // The generic "No sufficient stock" message reads the same whether the item just has a

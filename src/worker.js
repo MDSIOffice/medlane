@@ -1111,10 +1111,18 @@ function saleStockLookupKey(code, branch, lot) {
 }
 
 /** @param {string} value */
-function daysUntilIso(value) {
-  const target = new Date(value);
-  if (Number.isNaN(target.getTime())) return Infinity;
-  return Math.floor((target.getTime() - Date.now()) / 86400000);
+// Shared expiry rule (mirrors isExpiredDate in public/scripts/ui-utils.js): a lot is expired once
+// its expiry date is BEFORE today's date in Manila — it can still be used on the expiry day itself.
+// Compared as YYYY-MM-DD strings so the UTC worker clock can't shift the cut-over to 8am Manila.
+/** @param {unknown} value */
+function isExpiredDate(value) {
+  const text = String(value ?? "").trim();
+  if (!text || text === "N/A") return false;
+  const iso = /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : (() => {
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+  })();
+  return Boolean(iso) && iso < shortDate();
 }
 
 /** @param {IncomingSale} sale @returns {IncomingSaleLine[]} */
@@ -1227,7 +1235,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows, incoming
   const stockCheckedCodes = new Set();
   for (const row of newSaleRows) {
     const sale = row.data || {};
-    if (sale.migrated || sale.noPo) continue;
+    if (sale.migrated || sale.noPo || String(sale.status || "").toLowerCase() === "cancelled") continue;
     const lines = Array.isArray(sale.lines) && sale.lines.length ? sale.lines : [{ code: sale.code }];
     for (const line of lines) if (line.code) stockCheckedCodes.add(String(line.code));
   }
@@ -1275,6 +1283,10 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows, incoming
   const canImport = ["Superadmin", "CEO"].includes(profile.role) || Boolean(profile.customPermissions?.edit?.includes("imports"));
   for (const row of newSaleRows) {
     const sale = row.data || {};
+    // A row that arrives already Cancelled moves no stock and adds no receivable (e.g. cancelling an
+    // invoice whose stored record key differs from the one the client sends), so the creation
+    // checks below — stock, expired lot, credit — don't apply.
+    if (String(sale.status || "").toLowerCase() === "cancelled") continue;
     assertSaleBasics(sale, sale.documentNo || row.record_key);
     // `migrated` skips the stock and amount checks below, and the client sets it, so it's limited to
     // the people who can actually run an import.
@@ -1328,7 +1340,7 @@ async function validateNewSaleRows(env, stateKey, profile, newSaleRows, incoming
       const price = Number(line.price);
       if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Invoice ${label}: invalid quantity for ${line.item || line.code || "a line item"}.`);
       if (!Number.isFinite(price) || price < 0) throw new Error(`Invoice ${label}: invalid price for ${line.item || line.code || "a line item"}.`);
-      if (line.expiry && line.expiry !== "N/A" && daysUntilIso(line.expiry) < 0) throw new Error(`Invoice ${label}: expired lot blocked for ${line.item || line.code || "a line item"}.`);
+      if (isExpiredDate(line.expiry)) throw new Error(`Invoice ${label}: expired lot blocked for ${line.item || line.code || "a line item"}.`);
     }
 
     if (sale.type === "DR") assertSaleNotNegative(sale, label);
@@ -5994,7 +6006,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (/** @type {any} */ error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: /.test(error.message) ? 422 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },

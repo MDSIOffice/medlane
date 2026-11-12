@@ -90,11 +90,6 @@ let currentSalesBreakdownDimension = null;
 let clientInvoicesReturnSection = "receivables-tracker";
 /** @type {any} */
 let editingPoId = null;
-// The invoice being cancelled while its Cancel & Replace modal is open. It still reads as active
-// until the save, but must not count against its own PO's pending qty or the client's credit,
-// or the replacement can never be raised against the same PO.
-/** @type {string | null} */
-let cancelReplaceSaleId = null;
 // Set while the maker edits an expense request that an approver returned to them.
 /** @type {string | null} */
 let editingExpenseId = null;
@@ -923,6 +918,25 @@ function saveData(keys = null) {
   }, 450);
 }
 
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let discardedSaveReloadTimer;
+// A queued change the server refuses for good (e.g. an invoice with an expired lot) is dropped
+// instead of retried forever. Tell the user why, then reload server data once the queue is empty
+// so the rejected record doesn't linger on screen looking saved.
+/** @param {string} reason */
+function notifyDiscardedQueuedSave(reason) {
+  if (typeof toast === "function") toast(`Not saved — the server rejected an unsent change: ${reason}`);
+  clearTimeout(discardedSaveReloadTimer);
+  discardedSaveReloadTimer = setTimeout(async () => {
+    if (Object.keys(readPendingSaveQueue() || {}).length) return;
+    const latest = await MedlaneAPI.loadAppState().catch(() => null);
+    if (!latest?.data || Object.keys(readPendingSaveQueue() || {}).length) return;
+    serverRevision = Number(latest.revision || 0);
+    data = normalizeData({ ...emptyProductionData(), ...latest.data });
+    if (typeof renderAll === "function") renderAll();
+  }, 500);
+}
+
 function flushPendingSaveQueue() {
   // This runs automatically on load/focus/reconnect, not from a user action — it
   // must never show the blocking "Saving your changes" overlay (that's reserved
@@ -973,6 +987,7 @@ function flushPendingSaveQueue() {
           if (isPermanentReject(innerError)) {
             console.warn(`Discarding queued "${key}" — server rejected it permanently:`, innerError.message);
             clearPendingSaveQueueKeys([key]);
+            notifyDiscardedQueuedSave(innerError.message);
           } else transient = true;
         }
       }
@@ -980,6 +995,7 @@ function flushPendingSaveQueue() {
     } else if (isPermanentReject(error)) {
       console.warn("Discarding queued save — server rejected it permanently:", error.message);
       writePendingSaveQueue({});
+      notifyDiscardedQueuedSave(error.message);
       setGlobalSaveStatus("saved", "Saved");
       return;
     }
@@ -1029,6 +1045,13 @@ async function persistRecords(records, recordKeys = {}) {
       }
       setGlobalSaveStatus("error", "Not saved", error.message);
       if (typeof toast === "function") toast("The system data was reset since this page loaded. Reloaded the latest data — please redo this change.");
+      return { ok: false, queued: false, error: error.message };
+    }
+    // Refused for good (validation/permission, e.g. an invoice with an expired lot): queueing it
+    // would only retry the same rejected payload forever. Report it and let the caller undo.
+    if ([400, 403, 404, 422].includes(Number(error.status)) && !/APP_STATE_CONFLICT/.test(error.message || "")) {
+      setGlobalSaveStatus("error", "Not saved", error.message);
+      if (typeof toast === "function") toast(`Not saved: ${error.message}`);
       return { ok: false, queued: false, error: error.message };
     }
     mergePendingSaveQueue(savePayloadForKeys(Object.keys(filtered)));

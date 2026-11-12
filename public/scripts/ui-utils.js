@@ -98,12 +98,24 @@ function downloadCsv(filename, rows) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+/**
+ * Shared expiry rule (mirrors isExpiredDate in src/worker.js): a lot is expired once its expiry
+ * date is BEFORE today's date in Manila — it can still be used on the expiry day itself.
+ * @param {unknown} expiry
+ */
+function isExpiredDate(expiry) {
+  const text = String(expiry ?? "").trim();
+  if (!text || text === "N/A") return false;
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10) < fmtDate(today);
+  const parsed = new Date(text);
+  return !Number.isNaN(parsed.getTime()) && fmtDate(parsed) < fmtDate(today);
+}
 /** @param {Record<string, any>} item */
 // Expiry comes first: a lot expiring within 6 calendar months is "Near Expiry" even when its
 // quantity is also low, so it is never hidden behind a Low Stock/Critical label.
 function inventoryStatus(item) {
   const hasExpiry = Boolean(item.expiry) && item.expiry !== "N/A";
-  if (hasExpiry && daysUntil(item.expiry) < 0) return "Expired";
+  if (hasExpiry && isExpiredDate(item.expiry)) return "Expired";
   if (hasExpiry && expiresWithinMonths(item.expiry, 6)) return "Near Expiry";
   if (item.qty <= Math.ceil(item.min * 0.5)) return "Critical";
   if (item.qty < item.min) return "Low Stock";
@@ -160,7 +172,7 @@ function contactStatusFromLabel(status) {
 }
 /** @param {string} clientName */
 function clientBalance(clientName) {
-  return data.sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled" && sale.id !== cancelReplaceSaleId).reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
+  return data.sales.filter((sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
 }
 /** @param {string} clientName @param {number} [pendingAmount] */
 function clientCreditState(clientName, pendingAmount = 0) {
@@ -290,7 +302,7 @@ function syncGeneratedNotifications() {
   const facts = workflowFacts();
   const openPurchaseOrders = data.purchaseOrders.filter((po) => poInvoiceable(po));
   const receivingPurchaseOrders = data.inventoryPurchaseOrders.filter((po) => !inventoryPoTerminalStatuses.includes(po.status));
-  const expiredStock = data.inventory.filter((item) => item.expiry !== "N/A" && daysUntil(item.expiry) < 0);
+  const expiredStock = data.inventory.filter((item) => isExpiredDate(item.expiry));
   const warrantyExpired = data.warranties.filter((item) => daysUntil(item.warrantyEnd) < 0 || String(item.status).toLowerCase().includes("expired"));
   const warrantySoon = data.warranties.filter((item) => daysUntil(item.warrantyEnd) >= 0 && daysUntil(item.warrantyEnd) <= 180);
   const bouncedCheques = data.payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
