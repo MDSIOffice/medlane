@@ -12,8 +12,8 @@ describe("role gates", () => {
     requireMemoAdmin: ["Superadmin", "CEO", "HR"],
     requireBackupAdmin: ["Superadmin", "CEO"],
     requireDigestAdmin: ["Superadmin", "CEO"],
-    requirePoApprover: ["Superadmin"],
-    requirePoReceiver: ["Superadmin", "Logistics"],
+    requirePoApprover: ["Superadmin", "CEO"],
+    requirePoReceiver: ["Superadmin", "CEO", "Logistics"],
     requirePaymentRequestApprover: ["Superadmin", "CEO"],
     requireStockReceiptApprover: ["Superadmin", "CEO"],
   };
@@ -72,7 +72,30 @@ describe("module access", () => {
     assert.equal(canAccessKey(as("Logistics", ["product-issues"]), "productIssues", "edit"), false);
     assert.equal(canAccessKey(as("Sales", ["product-issues"]), "productIssues", "edit"), true);
   });
-  for (const role of ["Engineering", "Product Specialist"]) {
+  test("role defaults match the agreed access list", () => {
+    const { moduleListsFor } = worker;
+    const accounting = moduleListsFor("Accounting", []);
+    assert.ok(accounting.view.includes("inventory"), "Accounting can view Inventory");
+    assert.ok(!accounting.edit.includes("inventory"), "Accounting Inventory is view-only");
+    for (const module of ["masterlists", "logs", "reports", "reconciliation", "analytics"]) assert.ok(!accounting.view.includes(module), `Accounting has no ${module} by default`);
+    for (const module of ["imports", "print-templates"]) assert.ok(accounting.edit.includes(module), `Accounting can use ${module}`);
+    const sales = moduleListsFor("Sales", []);
+    for (const module of ["analytics", "purchase-orders", "inventory"]) assert.ok(sales.view.includes(module), `Sales sees ${module}`);
+    for (const module of ["receivables-tracker", "purchase-history", "product-issues"]) assert.ok(!sales.view.includes(module), `Sales has no ${module}`);
+    for (const role of ["Sales", "Accounting", "Logistics", "Engineering", "Product Specialist", "HR"]) assert.ok(!moduleListsFor(role, []).view.includes("item-forecast"), `${role} has no Item Forecast`);
+    for (const role of ["Superadmin", "CEO", "Admin"]) assert.ok(moduleListsFor(role, []).view.includes("item-forecast"), `${role} has Item Forecast`);
+    const admin = moduleListsFor("Admin", []);
+    assert.ok(admin.view.includes("imports") && admin.view.includes("settings"));
+    assert.ok(!admin.view.includes("users") && !admin.view.includes("backup"));
+    for (const role of ["Logistics", "Engineering", "Product Specialist"]) {
+      for (const module of ["reports", "reconciliation", "analytics", "item-forecast"]) assert.ok(!moduleListsFor(role, []).view.includes(module), `${role} has no ${module}`);
+    }
+  });
+  test("a per-user grant can still give Accounting Masterlists", () => {
+    const { view } = worker.moduleListsFor("Accounting", [{ module_key: "masterlists", can_view: true, can_edit: false }, { module_key: "invoicing", can_view: true, can_edit: true }]);
+    assert.ok(view.includes("masterlists"));
+  });
+  for (const role of ["Sales", "Engineering", "Product Specialist"]) {
     test(`${role} can write demo requests but no other inventory`, () => {
       assert.equal(canAccessKey(as(role, ["inventory"]), "inventoryDemoRequests", "edit"), true);
       assert.equal(canAccessKey(as(role, ["inventory"]), "inventory", "edit"), false);
@@ -94,8 +117,10 @@ describe("demo requests", () => {
     assert.equal(worker.demoRequestInitialStatus(consumable), "For Logistics Approval");
   });
   test("only requester roles can file", async () => {
-    await assert.rejects(check(env, STATE, as("Sales"), [row("inventoryDemoRequests", "D1", { status: "For Management Approval" })]), /Only Engineering or Product Specialist/);
+    await assert.rejects(check(env, STATE, as("Logistics"), [row("inventoryDemoRequests", "D1", { status: "For Management Approval" })]), /Only Sales, Engineering or Product Specialist/);
+    await assert.rejects(check(env, STATE, as("Accounting"), [row("inventoryDemoRequests", "D1", { status: "For Management Approval" })]), /Only Sales, Engineering or Product Specialist/);
     await check(env, STATE, as("Engineering"), [row("inventoryDemoRequests", "D1", { status: "For Management Approval" })]);
+    await check(env, STATE, as("Sales"), [row("inventoryDemoRequests", "D1", { status: "For Management Approval" })]);
   });
   test("a new request can't skip its first step", async () => {
     await assert.rejects(check(env, STATE, as("Engineering"), [row("inventoryDemoRequests", "D1", { ...consumable, status: "For Management Approval" })]), /must start at For Logistics Approval/);

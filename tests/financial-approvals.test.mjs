@@ -93,14 +93,16 @@ describe("stock receipts", () => {
 });
 
 describe("inventory purchase orders", () => {
-  for (const role of ["CEO", "Admin", "Accounting", "Logistics"]) {
-    test(`${role} cannot approve (Superadmin only)`, async () => {
-      await assert.rejects(check(env, STATE, as(role), [row("inventoryPurchaseOrders", "PO1", { status: "APPROVED" })]), /Only Superadmin can approve purchase orders/);
+  for (const role of ["Admin", "Accounting", "Logistics"]) {
+    test(`${role} cannot approve (Superadmin/CEO only)`, async () => {
+      await assert.rejects(check(env, STATE, as(role), [row("inventoryPurchaseOrders", "PO1", { status: "APPROVED" })]), /Only Superadmin\/CEO can approve purchase orders/);
     });
   }
-  test("Superadmin can approve", async () => {
-    await check(env, STATE, as("Superadmin"), [row("inventoryPurchaseOrders", "PO1", { status: "Approved" })]);
-  });
+  for (const role of ["Superadmin", "CEO"]) {
+    test(`${role} can approve`, async () => {
+      await check(env, STATE, as(role), [row("inventoryPurchaseOrders", "PO1", { status: "Approved" })]);
+    });
+  }
   test("an already approved PO can be edited", async () => {
     mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Approved" })] });
     await check(env, STATE, as("CEO"), [row("inventoryPurchaseOrders", "PO1", { status: "Approved" })]);

@@ -380,7 +380,7 @@ function collectionStatusButtonsHtml(payment, buttonClass) {
   return `<button class="${buttonClass}" data-collection-status="${receiptNo}:Deposited">Deposited</button><button class="${buttonClass} danger-button" data-collection-status="${receiptNo}:Bounced">Bounced</button><button class="${buttonClass}" data-collection-status="${receiptNo}:Posted Date">Posted Date</button>`;
 }
 
-function canRedepositCollections() { return currentUser?.role === "Superadmin"; }
+function canRedepositCollections() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 
 /** @param {any} request */
 function paymentRequestHistory(request) {
@@ -1543,10 +1543,10 @@ function transferAuthorizationCell(transfer, index) {
   return `<div class="inline-actions"><small>${escapeHtml(transfer.receivedBy || transfer.status)}</small></div>`;
 }
 
-function canApproveInventoryChanges() { return ["Admin", "Superadmin"].includes(currentUser?.role); }
-function canApprovePurchaseOrders() { return currentUser?.role === "Superadmin"; }
+function canApproveInventoryChanges() { return ["Admin", "Superadmin", "CEO"].includes(currentUser?.role); }
+function canApprovePurchaseOrders() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 function canApprovePaymentRequests() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
-function canManagePoReceiving() { return ["Superadmin", "Logistics"].includes(currentUser?.role); }
+function canManagePoReceiving() { return ["Superadmin", "CEO", "Logistics"].includes(currentUser?.role); }
 function canApproveStockReceipts() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 function canApproveMigrations() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 
@@ -1608,7 +1608,7 @@ function replacePoRecord(po) {
 
 /** @param {any} index */
 async function approvePurchaseOrder(index) {
-  if (!canApprovePurchaseOrders()) return toast("Only Superadmin can approve purchase orders.");
+  if (!canApprovePurchaseOrders()) return toast("Only Superadmin/CEO can approve purchase orders.");
   const po = (data.inventoryPurchaseOrders || [])[index];
   if (!po || po.status !== "Pending Approval") return toast("This purchase order is not pending approval.");
   if (!confirm(`Approve ${po.id} for ${po.supplier}?`)) return;
@@ -1625,7 +1625,7 @@ async function approvePurchaseOrder(index) {
 
 /** @param {any} index */
 async function advancePurchaseOrderStatus(index) {
-  if (!canManagePoReceiving()) return toast("Only Logistics/Superadmin can update purchase order status.");
+  if (!canManagePoReceiving()) return toast("Only Logistics/Superadmin/CEO can update purchase order status.");
   const po = (data.inventoryPurchaseOrders || [])[index];
   const next = po && inventoryPoNextStatus[po.status];
   if (!next) return toast("This purchase order cannot be advanced right now.");
@@ -1641,7 +1641,7 @@ async function advancePurchaseOrderStatus(index) {
 
 /** @param {any} index */
 async function cancelPurchaseOrder(index) {
-  if (!canManagePoReceiving()) return toast("Only Logistics/Superadmin can cancel purchase orders.");
+  if (!canManagePoReceiving()) return toast("Only Logistics/Superadmin/CEO can cancel purchase orders.");
   const po = (data.inventoryPurchaseOrders || [])[index];
   if (!po || !inventoryPoCancellableStatuses.includes(po.status)) return toast("This purchase order cannot be cancelled right now.");
   const reason = (prompt(`Reason for cancelling ${po.id}:`, "") || "").trim();
@@ -2097,7 +2097,8 @@ function renderCalendarSection() {
 }
 
 function renderAnalytics() {
-  const visibleSales = byBranch(data.sales, "area");
+  // Same scope as the Sales page: Sales agents only see their assigned clients' figures.
+  const visibleSales = salesScopedDocuments();
   const visibleInventory = byBranch(data.inventory);
   const totalSales = visibleSales.reduce((sum, sale) => sum + sale.net, 0);
   const totalPaid = visibleSales.reduce((sum, sale) => sum + sale.paid, 0);
@@ -2141,7 +2142,7 @@ function renderAnalytics() {
   qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales, (/** @type {any} */ agent) => `Deposited ${peso.format(salespersonCollections[agent] || 0)}`);
   const branchSales = Object.entries(sumBy(visibleSales, "area", (sale) => sale.net));
   qs("#analytics-branch-sales").innerHTML = barRows(branchSales, (value) => peso.format(value), ["", "green"]) + graphNote("Computed from invoice net totals grouped by client sales area.");
-  const dealerClients = data.clients.filter((client) => client.dealer !== "Direct");
+  const dealerClients = data.clients.filter((client) => client.dealer !== "Direct" && salesClientVisible(client.name));
   const dealersByArea = Object.entries(sumBy(dealerClients, "area", () => 1)).sort((a, b) => b[1] - a[1]);
   qs("#analytics-dealers-area").innerHTML = barRows(dealersByArea, (value) => `${value} dealer${value === 1 ? "" : "s"}`, ["green", "orange"]) + graphNote("Computed from client masterlist records marked as dealer accounts by area.");
   const dealerSales = visibleSales.filter((sale) => sale.dealer !== "Direct").reduce((sum, sale) => sum + sale.net, 0);
@@ -2602,9 +2603,9 @@ function openDemoToSalesDialog(request) {
 // Specialists file demo requests; machines/spare parts go straight to Superadmin/CEO, anything
 // with a consumable line needs Logistics first. "For Sales Approval" is the retired first step,
 // kept so requests filed before the change can still move forward.
-const demoRequesterRoles = ["Engineering", "Product Specialist", "Superadmin", "CEO"];
+const demoRequesterRoles = ["Sales", "Engineering", "Product Specialist", "Superadmin", "CEO"];
 function canRequestDemo() { return demoRequesterRoles.includes(currentUser?.role); }
-function isDemoOnlyRole() { return ["Engineering", "Product Specialist"].includes(currentUser?.role); }
+function isDemoOnlyRole() { return ["Sales", "Engineering", "Product Specialist"].includes(currentUser?.role); }
 /** @param {any[]} lines */
 function demoRequestInitialStatus(lines) {
   return (lines || []).some((line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
@@ -3700,7 +3701,7 @@ async function saveDemoRequest() {
   if (!client) return toast("Client is required for a demo request.");
   if (!qs("#demo-sales-agent")?.value.trim()) return toast("Sales agent is required.");
   if (!qs("#demo-date")?.value || !qs("#demo-return-date")?.value) return toast("Demo date and expected return date are required.");
-  if (!canRequestDemo()) return toast("Only Engineering or Product Specialist can request a demo.");
+  if (!canRequestDemo()) return toast("Only Sales, Engineering or Product Specialist can request a demo.");
   if (!lines.length || lines.some((line) => !line.item || line.qty <= 0)) return toast("Add at least one complete machine, spare part, or consumable line.");
   const initialStatus = demoRequestInitialStatus(lines);
   if (!(await confirmFinalSave("Submit this demo request?"))) return;
@@ -6375,7 +6376,7 @@ function promptRedepositCheque(currentCheque, cheques = []) {
 
 /** @param {string} receiptNo */
 async function redepositCollectionPayment(receiptNo) {
-  if (!canRedepositCollections()) return toast("Only Superadmin can redeposit a bounced payment.");
+  if (!canRedepositCollections()) return toast("Only Superadmin/CEO can redeposit a bounced payment.");
   const payments = data.payments.filter((entry) => entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo);
   if (!payments.length) return toast("Collection not found.");
   if (!payments.every((payment) => payment.collectionStatus === "Bounced")) return toast("Only a Bounced payment can be redeposited.");
@@ -10860,7 +10861,7 @@ function syncInviteUserPermissions() {
   const groups = /** @type {[string, string[]][]} */ ([
     ["Core", ["dashboard", "analytics", "notifications", "user-settings"]],
     ["Master Data", ["masterlists", "users", "settings", "backup", "security", "logs", "print-templates"]],
-    ["Inventory & Orders", ["inventory", "purchase-orders", "warranty"]],
+    ["Inventory & Orders", ["inventory", "item-forecast", "purchase-orders", "warranty"]],
     ["Sales & Receivables", ["sales", "invoicing", "collections", "receivables-tracker", "purchase-history"]],
     ["Support", ["product-issues"]],
     ["Finance", ["payables", "replenishments", "reconciliation", "reports", "imports"]],

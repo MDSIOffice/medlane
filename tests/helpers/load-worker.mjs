@@ -6,7 +6,7 @@ import { registerHooks } from "node:module";
 
 const STUB_URL = "medlane-test:cloudflare-workers";
 const EXPOSED = [
-  "canWrite", "canAccessKey", "requireWriteAccess", "requireUserAdmin", "requireMemoAdmin", "requireBackupAdmin",
+  "canWrite", "canAccessKey", "moduleListsFor", "requireWriteAccess", "requireUserAdmin", "requireMemoAdmin", "requireBackupAdmin",
   "requireDigestAdmin", "requirePoApprover", "requirePoReceiver", "requirePaymentRequestApprover", "requireStockReceiptApprover",
   "authenticatedUser", "validateNewSaleRows", "assertFinancialApprovalAllowed", "assertCreditApprovalAllowed",
   "assertDemoRequestTransitionsAllowed", "assertSupportReportChangesAllowed", "assertPurchaseOrderClientsNotArchived",

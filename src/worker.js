@@ -36,12 +36,16 @@ function stampAssetUrls(page, env) {
 const roleModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   CEO: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
-  Admin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
-  Accounting: ["dashboard", "analytics", "masterlists", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "purchase-history", "payables", "replenishments", "reports", "reconciliation", "notifications", "user-settings", "logs"],
-  Sales: ["dashboard", "inventory", "sales", "receivables-tracker", "client-invoices", "purchase-history", "notifications", "user-settings", "product-issues"],
-  Logistics: ["dashboard", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings"],
-  "Product Specialist": ["dashboard", "analytics", "inventory", "item-forecast", "reports", "notifications", "user-settings", "product-issues"],
-  Engineering: ["dashboard", "analytics", "inventory", "reports", "notifications", "user-settings", "product-issues"],
+  // Admin: everything except Users and Backup.
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "settings", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  // Accounting sees Inventory read-only (ROLE_VIEW_ONLY_DEFAULTS). Masterlists isn't a default but
+  // can still be granted per user from the Users page when they need it.
+  Accounting: ["dashboard", "inventory", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "imports", "print-templates", "notifications", "user-settings"],
+  // Sales: Analytics is scoped to their assigned clients; Inventory is view + request demo only (DEMO_ONLY_ROLES).
+  Sales: ["dashboard", "analytics", "inventory", "purchase-orders", "sales", "client-invoices", "notifications", "user-settings"],
+  Logistics: ["dashboard", "inventory", "notifications", "user-settings"],
+  "Product Specialist": ["dashboard", "inventory", "notifications", "user-settings", "product-issues"],
+  Engineering: ["dashboard", "inventory", "notifications", "user-settings", "product-issues"],
   HR: ["dashboard", "analytics", "masterlists", "replenishments", "reports", "notifications", "user-settings"],
 };
 // Every role can view memos (audience targeting is enforced per-memo, not per-module); only
@@ -58,7 +62,18 @@ const ROLE_BLOCKED_MODULES = {
 // they keep read access to stock (for lot/serial pickers) but can write nothing in the
 // inventory group except inventoryDemoRequests. Enforced in canAccessKey().
 /** @type {AppRole[]} */
-const DEMO_ONLY_ROLES = ["Engineering", "Product Specialist"];
+const DEMO_ONLY_ROLES = ["Engineering", "Product Specialist", "Sales"];
+// Modules a role gets as view-only by default (no per-user module_permissions rows). A per-user
+// grant on the Users page can still give edit access.
+/** @type {Partial<Record<AppRole, string[]>>} */
+const ROLE_VIEW_ONLY_DEFAULTS = {
+  Accounting: ["inventory"],
+};
+/** @param {any} role @param {string[]} modules */
+function withoutViewOnlyDefaults(role, modules) {
+  const viewOnly = ROLE_VIEW_ONLY_DEFAULTS[/** @type {AppRole} */ (role)] || [];
+  return viewOnly.length ? modules.filter((module) => !viewOnly.includes(module)) : modules;
+}
 /** @type {AppRole[]} */
 const DEMO_REQUESTER_ROLES = [...DEMO_ONLY_ROLES, "Superadmin", "CEO"];
 
@@ -1269,7 +1284,7 @@ async function profileForUser(env, userId, email) {
 function moduleListsFor(role, permissions) {
   const fallback = roleModules[role] || roleModules.Sales;
   const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
-  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : fallback;
+  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : withoutViewOnlyDefaults(role, fallback);
   // Every role can view memos regardless of when their module_permissions rows were created —
   // this is a newer module that predates most existing users' explicit permission grants, and
   // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
@@ -1777,12 +1792,12 @@ function requireDigestAdmin(profile) {
 
 /** @param {Profile} profile */
 function requirePoApprover(profile) {
-  if (profile?.role !== "Superadmin") throw new Error("Only Superadmin can approve purchase orders");
+  if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can approve purchase orders");
 }
 
 /** @param {Profile} profile */
 function requirePoReceiver(profile) {
-  if (!["Superadmin", "Logistics"].includes(profile?.role)) throw new Error("Only Logistics/Superadmin can update purchase order receiving");
+  if (!["Superadmin", "CEO", "Logistics"].includes(profile?.role)) throw new Error("Only Logistics/Superadmin/CEO can update purchase order receiving");
 }
 
 /** @param {Profile} profile */
@@ -1876,7 +1891,7 @@ async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows)
     const next = row.data || {};
     const prev = storedByKey.get(row.record_key);
     if (!prev) {
-      if (!DEMO_REQUESTER_ROLES.includes(role)) throw new Error("Only Engineering or Product Specialist can request a demo");
+      if (!DEMO_REQUESTER_ROLES.includes(role)) throw new Error("Only Sales, Engineering or Product Specialist can request a demo");
       if (next.status !== demoRequestInitialStatus(next)) throw new Error(`New demo request ${row.record_key} must start at ${demoRequestInitialStatus(next)}`);
       continue;
     }
@@ -1977,27 +1992,27 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
     }
   }
 
-  // A bounced collection can only be moved on (redeposited) by a Superadmin — the client offers
+  // A bounced collection can only be moved on (redeposited) by a Superadmin or CEO — the client offers
   // that as the one action on a Bounced payment, but the plain record save would otherwise let
   // any collections user flip it straight back to For Deposit/Deposited.
-  if (role !== "Superadmin") {
+  if (!isManagement) {
     const paymentCandidates = rows.filter((row) => row.module_name === "payments" && lower(row.data?.collectionStatus) !== "bounced");
     if (paymentCandidates.length) {
       const stored = await fetchStored("payments", paymentCandidates);
       for (const row of paymentCandidates) {
-        if (lower(stored.get(row.record_key)?.collectionStatus) === "bounced") throw new Error("Only Superadmin can redeposit a bounced payment");
+        if (lower(stored.get(row.record_key)?.collectionStatus) === "bounced") throw new Error("Only Superadmin/CEO can redeposit a bounced payment");
       }
     }
   }
 
-  // Inventory purchase orders: approval is Superadmin-only (requirePoApprover) — CEO included.
-  if (role !== "Superadmin") {
+  // Inventory purchase orders: approval is Superadmin/CEO only (requirePoApprover).
+  if (!isManagement) {
     const poCandidates = rows.filter((row) => row.module_name === "inventoryPurchaseOrders" && lower(row.data?.status) === "approved");
     if (poCandidates.length) {
       const stored = await fetchStored("inventoryPurchaseOrders", poCandidates);
       for (const row of poCandidates) {
         if (lower(stored.get(row.record_key)?.status) === "approved") continue;
-        throw new Error("Only Superadmin can approve purchase orders");
+        throw new Error("Only Superadmin/CEO can approve purchase orders");
       }
     }
   }
@@ -2127,7 +2142,7 @@ function userFromProfileAndAuth(profile, authUser, permissions = []) {
   const role = profile?.role || authUser?.user_metadata?.role || "Sales";
   const fallback = roleModules[/** @type {AppRole} */ (role)] || roleModules.Sales;
   const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
-  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : roleEditableFallback(role, view);
+  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : withoutViewOnlyDefaults(role, roleEditableFallback(role, view));
   const email = cleanEmail(profile?.email || authUser?.email || "");
   return {
     id: profile?.id || authUser?.id || email,
@@ -2848,7 +2863,7 @@ const DIGEST_ROLE_RECIPIENTS = {
   thresholdInventory: ["Logistics", "Product Specialist"],
   thresholdCredit: ["Accounting", "Sales"],
   thresholdWarranty: ["Engineering", "Product Specialist"],
-  approvalPo: ["Superadmin"],
+  approvalPo: ["Superadmin", "CEO"],
   approvalPaymentRequest: ["Superadmin", "CEO"],
   approvalPayable: ["Superadmin", "CEO"],
   approvalDemoSales: ["Sales"],
