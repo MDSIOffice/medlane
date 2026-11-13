@@ -345,6 +345,8 @@ function editableModules() {
 }
 /** @param {string} sectionId */
 function canEditModule(sectionId) { return editableModules().includes(sectionId); }
+/** @param {string} sectionId */
+function canViewModule(sectionId) { return effectiveModules().includes(sectionId); }
 function canEditActiveSection() { return editableModules().includes(qs(".section.active")?.id || "dashboard"); }
 // Directly correcting a stored stock row's quantity / expiry / note is a higher bar than the
 // "inventory" module permission (which also covers receiving and transfers for Logistics et al.).

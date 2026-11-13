@@ -1334,6 +1334,18 @@ qs("#sales").addEventListener("click", (event) => {
     if (!canEditModule("purchase-orders")) return toast("Editing is disabled for Purchase Orders in User Settings.");
     return openModal("purchaseOrder");
   }
+  // Workflow assistant links: "tab|status|record" opens a tab with a status filter or a record selected.
+  const go = closestEl(target, "[data-sales-goto]");
+  if (go) {
+    const [tab, scope, sel] = String(go.dataset.salesGoto || "").split("|");
+    if (SALES_TAB_LABELS[tab]) salesTab = tab;
+    salesView = uiBlankViewState();
+    salesDocType = "all";
+    salesView.scope = scope || "";
+    salesView.sel = sel || "";
+    renderSales();
+    return document.getElementById("sales-tab-panel")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
   const type = closestEl(target, "[data-sales-type]");
   if (type) { salesDocType = /** @type {string} */ (type.dataset.salesType); salesView.page = 0; return renderSales(); }
   if (uiViewClick(target, "sales", { state: () => salesView, view: () => salesTabModel(salesTab), render: renderSales, extraReset: () => { salesDocType = "all"; } })) return;

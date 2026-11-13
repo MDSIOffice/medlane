@@ -432,7 +432,7 @@ function uiWorkflowAssistant({ key, recs, open }) {
     ? `<button class="ui-wa-toggle" type="button" data-wa-toggle="${escapeHtml(key)}" aria-expanded="${expanded}" aria-controls="ui-wa-list-${escapeHtml(key)}">${expanded ? "Hide" : "Show all"}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${expanded ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"}"/></svg></button>`
     : "";
   const list = expanded
-    ? `<div class="ui-wa-list" id="ui-wa-list-${escapeHtml(key)}">${recs.map((rec) => `<div class="ui-wa-rec">${uiDot(rec.tone || "amber")}<span class="ui-wa-text">${escapeHtml(rec.text)}</span>${uiButton(rec.action, rec.attrs, { size: "xs" })}</div>`).join("")}</div>`
+    ? `<div class="ui-wa-list" id="ui-wa-list-${escapeHtml(key)}">${recs.map((rec) => `<div class="ui-wa-rec">${uiDot(rec.tone || "amber")}<span class="ui-wa-text">${escapeHtml(rec.text)}</span>${rec.action ? uiButton(rec.action, rec.attrs, { size: "xs" }) : ""}</div>`).join("")}</div>`
     : "";
   return `<section class="ui-wa" aria-label="Workflow assistant"><div class="ui-wa-row">${icon}<span class="ui-wa-label">Workflow assistant</span><span class="ui-wa-summary" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="ui-wa-count${n ? " warn" : " ok"}">${n} recommendation${n === 1 ? "" : "s"}</span>${toggle}</div>${list}</section>`;
 }

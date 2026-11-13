@@ -142,7 +142,7 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"];
+const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -221,6 +221,52 @@ const WORKFLOW_RULES = {
       if (isDemoOnlyRole()) return null;
       const lots = data.inventory.filter((row) => inventoryStatus(row) === "Near Expiry");
       return lots.length ? { tone: "amber", text: `${plural(lots.length, "lot")} near expiry — dispatch these first (FEFO).`, action: "Show near expiry", attrs: { "data-inventory-filter": "near" } } : null;
+    } },
+  ],
+  sales: [
+    { id: "bounced-client-open-order", rule: () => {
+      const openOrders = salesOpenOrders();
+      const bounced = data.payments.filter((payment) => payment.collectionStatus === "Bounced" && !payment.voided && openOrders.some((po) => po.client === payment.client));
+      if (!bounced.length) return null;
+      const clients = [...new Set(bounced.map((payment) => payment.client))];
+      const order = openOrders.find((po) => po.client === clients[0]);
+      const money = bounced.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      return { tone: "red", money, text: `${clients.length === 1 ? clients[0] : plural(clients.length, "client")} ${clients.length === 1 ? "has" : "have"} an open order while a bounced check (${salesPesoShort(money)}) is not yet replaced.`, action: "Open order", attrs: { "data-sales-goto": `orders||${order?.id || ""}` } };
+    } },
+    { id: "orders-waiting-to-invoice", rule: () => {
+      const waiting = salesOpenOrders().filter((po) => poStatus(po) === "For Invoicing" && daysUntil(po.date) <= -2);
+      if (!waiting.length) return null;
+      const money = waiting.reduce((sum, po) => sum + salesOrderTotal(po), 0);
+      const oldest = waiting.reduce((a, b) => (String(a.date) <= String(b.date) ? a : b));
+      return { tone: "orange", money, text: `${plural(waiting.length, "order")} (${salesPesoShort(money)}) waiting 2+ days with nothing invoiced — oldest ${oldest.id}, ${-daysUntil(oldest.date)} days.`, action: "Show orders", attrs: { "data-sales-goto": "orders|For Invoicing|" } };
+    } },
+    { id: "orders-partly-invoiced", rule: () => {
+      const partial = salesOpenOrders().filter((po) => poStatus(po) === "Pending Orders");
+      if (!partial.length) return null;
+      return { tone: "amber", text: `${plural(partial.length, "order")} partly invoiced — the remaining lines still need an invoice or DR.`, action: "Show orders", attrs: { "data-sales-goto": "orders|Pending Orders|" } };
+    } },
+    { id: "not-delivered", rule: () => {
+      const docs = salesScopedDocuments().filter((sale) => sale.status !== "Cancelled" && (sale.deliveryStatus || "Pending") === "Pending" && daysUntil(sale.date) <= -3);
+      if (!docs.length) return null;
+      return { tone: "amber", text: `${plural(docs.length, "document")} still marked Pending delivery 3+ days after issue.`, action: "Show deliveries", attrs: { "data-sales-goto": "deliveries|Pending|" } };
+    } },
+    { id: "no-signed-copy", rule: () => {
+      const docs = salesScopedDocuments().filter((sale) => sale.status !== "Cancelled" && sale.deliveryStatus === "Document Delivered" && daysUntil(sale.date) <= -7);
+      if (!docs.length) return null;
+      return { tone: "blue", text: `${plural(docs.length, "delivered document")} with no signed copy back after 7+ days.`, action: "Show deliveries", attrs: { "data-sales-goto": "deliveries|Document Delivered|" } };
+    } },
+    { id: "missing-client-docs", rule: () => {
+      if (!canViewModule("masterlists")) return null;
+      const clients = [...new Set(salesOpenOrders().map((po) => po.client))].map((name) => data.clients.find((client) => client.name === name)).filter((client) => client && requiredClientDocs.some((doc) => !client.docs?.includes(doc)));
+      if (!clients.length) return null;
+      return { tone: "amber", text: `${plural(clients.length, "client")} with open orders ${clients.length === 1 ? "is" : "are"} missing required documents — check before invoicing.`, action: "Open masterlist", attrs: { "data-go-section": "masterlists", "data-focus-record": clients.map((client) => client?.name).join("|") } };
+    } },
+    { id: "sell-near-expiry-first", rule: () => {
+      const lots = byBranch(data.inventory).filter((row) => inventoryStatus(row) === "Near Expiry");
+      if (!lots.length) return null;
+      const names = lots.slice(0, 2).map((row) => row.item).join(", ");
+      const canOpen = canViewModule("inventory") && !isDemoOnlyRole();
+      return { tone: "amber", text: `Sell first: ${plural(lots.length, "lot")} near expiry (${names}${lots.length > 2 ? ", …" : ""}).`, action: canOpen ? "Show lots" : "", attrs: canOpen ? { "data-workflow-action": "inventory-status:near" } : {} };
     } },
   ],
 };
@@ -4455,6 +4501,8 @@ function salesLines(sale) {
 function salesBranches(record) {
   return [...new Set([record.sourceBranch, record.branch, ...(record.lines || []).map((/** @type {PoLine} */ line) => line.sourceBranch || line.branch)].filter(Boolean).map(String))];
 }
+/** Client orders this user may see that still have lines to serve. */
+function salesOpenOrders() { return byBranch(data.purchaseOrders || [], "area").filter((po) => salesClientVisible(po.client) && !PO_TERMINAL_STATUSES.includes(poStatus(po))); }
 /** @param {ClientPO} po */
 function salesOrderTotal(po) { return (po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0); }
 /** @param {ClientPO} po */
@@ -4741,14 +4789,7 @@ function renderSales() {
     invoices: docs.filter((sale) => ["SI", "TS"].includes(documentType(sale.type)) && ["Overdue", "Near Due"].includes(statusForSale(sale))).length,
   };
   qs("#sales-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(SALES_TAB_LABELS).map((key) => ({ key, label: SALES_TAB_LABELS[key], count: counts[key] })), active: salesTab, attr: "data-sales-tab" });
-  const nearExpiry = byBranch(data.inventory).filter((item) => inventoryStatus(item) === "Near Expiry");
-  const strip = qs("#near-expiry-sales-alert");
-  if (strip) {
-    strip.hidden = !nearExpiry.length;
-    strip.innerHTML = nearExpiry.length
-      ? `${uiDot("amber")}<span><strong>Sell first: ${inventoryPlural(nearExpiry.length, "lot")} near expiry.</strong> ${escapeHtml(nearExpiry.slice(0, 3).map((item) => `${item.item} (${inventoryBranchLabel(item.branch)}, ${uiDate(item.expiry)})`).join(" · "))}${nearExpiry.length > 3 ? " …" : ""}</span><button class="ui-btn xs" type="button" data-go-section="inventory" data-focus-record="${escapeHtml(nearExpiry[0].lot)}">View in Inventory</button>`
-      : "";
-  }
+  renderModuleAssistant("sales");
   uiRender(qs("#sales-tab-panel"), uiViewHtml(salesTabModel(salesTab), salesView, "sales"));
   syncSalesUrl();
 }
@@ -10704,6 +10745,11 @@ function handleWorkflowAction(action) {
     renderProductIssues();
     goToFocused("product-issues", record);
     return toast("Support report opened.");
+  }
+  if (action.startsWith("inventory-status:")) {
+    inventoryWorkflowTab = "stocks";
+    showSection("inventory");
+    return inventorySetStatus(action.slice("inventory-status:".length));
   }
   if (action === "filter-low-stock") {
     qs("#inventory-status").value = "Low Stock";
