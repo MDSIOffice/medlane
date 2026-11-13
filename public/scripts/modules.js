@@ -441,9 +441,10 @@ function workflowGoto(module, tab, scope, sel) {
 function workflowRecommendations(module) {
   const rules = WORKFLOW_RULES[module] || [];
   if (!rules.length) return [];
-  /** @type {Record<string, any>} */
+  /** @type {Record<string, unknown>} */
   const memo = {};
-  const lazy = (/** @type {string} */ key, /** @type {() => any} */ build) => (memo[key] ??= build());
+  /** @template T @param {string} key @param {() => T} build @returns {T} */
+  const lazy = (key, build) => /** @type {T} */ (memo[key] ??= build());
   /** @type {WorkflowRuleContext} */
   const ctx = {
     get lots() { return lazy("lots", () => data.inventory.map((row) => ({ row, status: inventoryStatus(row) }))); },
@@ -487,7 +488,7 @@ function itemStockCover(statusOf) {
   const sold = {};
   for (const sale of data.sales) {
     if (sale.status === "Cancelled" || !dateInRange(sale.date, from, to)) continue;
-    for (const line of /** @type {any[]} */ (sale.lines?.length ? sale.lines : [{ code: sale.code, item: sale.item, qty: sale.qty }])) {
+    for (const line of /** @type {PoLine[]} */ (sale.lines?.length ? sale.lines : [{ code: sale.code, item: sale.item, qty: sale.qty }])) {
       const code = line.code || data.items.find((item) => item.name === line.item)?.code;
       if (code) sold[code] = (sold[code] || 0) + Number(line.qty || 0);
     }
@@ -666,9 +667,10 @@ function uomSkipsExpiry(uom) {
   return normalizeUom(uom) === "unit";
 }
 
-/** Expiry is required on an invoice row unless the item is equipment or the row's unit is "unit". @param {any} row */
+/** Expiry is required on an invoice row unless the item is equipment or the row's unit is "unit". @param {Element | null} row */
 function syncInvoiceRowExpiryRequired(row) {
-  const expiryInput = row ? qsIn(row, ".invoice-expiry-input") : null;
+  if (!row) return;
+  const expiryInput = qsIn(row, ".invoice-expiry-input");
   if (!expiryInput || expiryInput.type === "hidden") return;
   const item = findItemByCodeOrName(qsIn(row, ".invoice-item-input")?.value);
   expiryInput.required = !isEquipmentItem(item) && !uomSkipsExpiry(qsIn(row, ".invoice-uom-input")?.value);
@@ -8897,6 +8899,7 @@ async function downloadBir2307(payableId) {
 // stock, invoices, payables, expense requests, and the expense budgets / recurring costs keys.
 // Client POs keep living in data.purchaseOrders and are worked from Sales → Sales orders.
 
+/** One line of a payable / expense request. @typedef {{ particulars?: string, item?: string, classification?: string, amount?: number | string }} FinancialLine */
 /** Payables with no due date are treated as due this many days after their date. */
 const PAYABLE_DEFAULT_TERMS_DAYS = 30;
 /** @param {unknown} value */
@@ -9638,7 +9641,7 @@ function payablesTabModel(tab) {
   const rows = list.map(/** @returns {UiViewRow} */ (fact) => {
     const { p } = fact;
     const state = PAYABLE_STATE[fact.state];
-    const items = /** @type {Record<string, any>[]} */ (p.items || []);
+    const items = /** @type {FinancialLine[]} */ (p.items || []);
     const key = `payable:${p.id}`;
     const actionHtml = fact.state === "approval" ? requestActions("payable", p.id)
       : fact.state === "approved" ? `${paymentConfirmActions("payable", p.id)}<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print voucher</button>${payable2307Cell(p)}`
@@ -9758,7 +9761,7 @@ function expenseState(r) {
 function expenseByCategory(r) {
   /** @type {Record<string, number>} */
   const out = {};
-  const items = /** @type {Record<string, any>[]} */ (r.items || []);
+  const items = /** @type {FinancialLine[]} */ (r.items || []);
   const itemTotal = items.reduce((s, item) => s + Number(item.amount || 0), 0);
   if (!items.length || itemTotal <= 0) { out[String(r.type || "Unclassified")] = Number(r.amount || 0); return out; }
   items.forEach((item) => { const key = String(item.classification || r.type || "Unclassified"); out[key] = (out[key] || 0) + Number(item.amount || 0); });
@@ -9979,7 +9982,7 @@ function expensesTabModel(tab) {
     const actionHtml = stateKey === "approval" || stateKey === "returned" ? requestActions("expense", r.id)
       : stateKey === "topay" ? `${paymentConfirmActions("expense", r.id)}<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print</button>`
         : `<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print</button>`;
-    const items = /** @type {Record<string, any>[]} */ (r.items || []);
+    const items = /** @type {FinancialLine[]} */ (r.items || []);
     const file = String(r.file || "").trim();
     return {
       id: r.id, branches: [], scopes: [stateKey, ...(["topay", "paid"].includes(stateKey) && !file.replace(/^[-\s]+$/, "") ? ["noreceipt"] : []), ...Object.keys(cats).map((cat) => `cat:${cat}`)],

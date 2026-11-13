@@ -201,7 +201,7 @@ for (const [section, selector, text] of [
   ["masterlists", "#masterlists", "Naga City Lab"],
   ["inventory", "#inventory", "Glucose Reagent"],
   ["sales", "#sales", "PO-1"], // opens on Sales orders (client POs); SI-1 is on the Invoices tab
-  ["purchase-orders", "#purchase-orders", "Invoiced 1"],
+  ["purchase-orders", "#purchase-orders", "Reagent Supply Co"], // supplier purchasing (client POs live in Sales → Sales orders)
   ["invoicing", "#invoicing", "SI-1"],
   ["collections", "#collections", "Naga City Lab"],
   ["payables", "#payables", "PAY-1"],
@@ -225,12 +225,12 @@ for (const [section, selector, text] of [
   });
 }
 
-test("a section's recommendations panel appears the first time it's opened", async ({ page }) => {
+test("a section's Workflow assistant appears the first time it's opened", async ({ page }) => {
   await watch(page);
   await logIn(page);
-  await expect(page.locator("#sales")).not.toContainText("Recommended next actions");
+  await expect(page.locator("#sales")).not.toContainText("Workflow assistant");
   await page.locator('.nav-item[data-section="sales"]').evaluate((element) => element.click());
-  await expect(page.locator("#sales")).toContainText("Recommended next actions");
+  await expect(page.locator("#sales")).toContainText("Workflow assistant");
 });
 
 test("the notification count shows on the dashboard without opening notifications", async ({ page }) => {

@@ -69,7 +69,7 @@ const DEMO_ONLY_ROLES = ["Engineering", "Product Specialist", "Sales"];
 const ROLE_VIEW_ONLY_DEFAULTS = {
   Accounting: ["inventory"],
 };
-/** @param {any} role @param {string[]} modules */
+/** @param {string | undefined} role @param {string[]} modules */
 function withoutViewOnlyDefaults(role, modules) {
   const viewOnly = ROLE_VIEW_ONLY_DEFAULTS[/** @type {AppRole} */ (role)] || [];
   return viewOnly.length ? modules.filter((module) => !viewOnly.includes(module)) : modules;
