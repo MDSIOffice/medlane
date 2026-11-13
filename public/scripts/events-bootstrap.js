@@ -1631,7 +1631,7 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (modalType === "paymentRequest" && /** @type {AnyEl} */ (event.target).id === "employee") { refreshPaymentRequestInvoiceRowOptions(); syncPaymentRequestDeductionDefaults(); syncPaymentRequestTotal(); }
   if (/** @type {AnyEl} */ (event.target).id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders();
   if (/** @type {AnyEl} */ (event.target).id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
-  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
+  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace", "purchaseOrder"].includes(modalType)) syncInvoiceLinesForClient();
   if (/** @type {AnyEl} */ (event.target).id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (/** @type {AnyEl} */ (event.target).id === "companyName" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) syncProductIssueClientAddress();
   if (/** @type {AnyEl} */ (event.target).id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
@@ -1663,7 +1663,9 @@ qs("#modal-fields").addEventListener("change", (event) => {
   if (/** @type {AnyEl} */ (event.target).id === "type") updateDocumentLabel();
   if (/** @type {AnyEl} */ (event.target).id === "client" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoicePurchaseOrders(true);
   if (/** @type {AnyEl} */ (event.target).id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
-  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceLinesForClient();
+  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && modalType === "purchaseOrder" && event.isTrusted) /** @type {AnyEl} */ (event.target).dataset.touched = "1";
+  if (/** @type {AnyEl} */ (event.target).id === "client" && modalType === "purchaseOrder") syncOrderShipsFromForClient();
+  if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace", "purchaseOrder"].includes(modalType)) syncInvoiceLinesForClient();
   if (/** @type {AnyEl} */ (event.target).id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (/** @type {AnyEl} */ (event.target).id === "skipPo" && modalType === "invoice") toggleInvoiceSkipPoField();
   if (/** @type {AnyEl} */ (event.target).id === "method" && modalType === "payable") togglePayableFields();

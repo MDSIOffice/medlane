@@ -1394,6 +1394,9 @@ function syncInvoiceFromPurchaseOrder() {
   const po = data.purchaseOrders.find((entry) => entry.id === qs("#po")?.value);
   if (!po) return;
   qs("#client").value = po.client;
+  // Stock comes from the branch the order ships from (still changeable on the invoice).
+  const shipsFrom = clientOrderShipsFrom(po);
+  if (qs("#sourceBranch") && platformBranches().includes(shipsFrom)) qs("#sourceBranch").value = shipsFrom;
   const pendingLines = (po.lines || []).map((line) => ({ ...line, qty: poLineStatus(po, line).pending })).filter((line) => line.qty > 0);
   if (pendingLines.length) {
     qs("#invoice-line-list").innerHTML = pendingLines.map((line) => invoiceLineTemplate(line)).join("");
@@ -1438,6 +1441,7 @@ function canRestoreSection(sectionId) {
 function showSection(sectionId, options = {}) {
   // The Purchase Orders page is supplier purchasing; roles that can't see supplier POs (and old
   // client-PO links) land on Sales → Sales orders, where client POs are worked.
+  // Roles without supplier purchasing (e.g. Sales) keep the Purchase Orders nav item; it opens their client orders.
   if (sectionId === "purchase-orders" && currentUser && !supplierPurchasingVisible()) { salesTab = "orders"; sectionId = "sales"; }
   document.body.dataset.activeSection = sectionId;
   // Keep the URL on the current page so a browser refresh stays here instead of bouncing to the
@@ -1472,7 +1476,7 @@ function applyRole() {
   qs("#login-screen").classList.add("hidden");
   renderUserMenu();
   qsa(".nav-item").forEach((button) => {
-    button.hidden = button.dataset.section === "security" || !effectiveModules().includes(/** @type {string} */ (button.dataset.section)) || (button.dataset.section === "purchase-orders" && !supplierPurchasingVisible());
+    button.hidden = button.dataset.section === "security" || !effectiveModules().includes(/** @type {string} */ (button.dataset.section));
   });
   renderBranchFilter();
   if (currentUser.branch !== "all") data.branch = currentUser.branch;
@@ -5995,6 +5999,21 @@ function renderFinancialSummary(target, heroCards, groups) {
     </div>`;
 }
 
+
+/** @param {string} poId */
+/** The branch a client order ships from: its own field, else its lines', else the client's area default. @param {ClientPO} po */
+function clientOrderShipsFrom(po) {
+  return String(po.sourceBranch || po.lines?.find((line) => line.sourceBranch || line.branch)?.sourceBranch || po.lines?.find((line) => line.branch)?.branch || warehouseForArea(po.area || findClientByName(po.client)?.area || ""));
+}
+/** New-order form: follow the client's area until the user picks a branch themselves. */
+function syncOrderShipsFromForClient() {
+  const select = /** @type {HTMLSelectElement | null} */ (qs("#sourceBranch"));
+  if (modalType !== "purchaseOrder" || !select || select.dataset.touched) return;
+  const client = findClientByName(qs("#client")?.value || "");
+  if (!client) return;
+  const branch = warehouseForArea(client.area);
+  if (platformBranches().includes(branch) && select.value !== branch) { select.value = branch; syncInvoiceLinesForClient(); }
+}
 
 /** @param {string} poId */
 function openInvoiceForPurchaseOrder(poId) {
@@ -12656,7 +12675,7 @@ const modalConfigs = {
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea-optional"]] },
   supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(activeItems().map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["birthday", "Birthday", "date"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
-  purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["date", "Purchase Order Date", "date"]] },
+  purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["sourceBranch", "Ships from", "select", () => platformBranches()], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist-optional", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["skipPo", "Skip PO — record-keeping only, this invoice won't be printed", "checkbox"], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["preparedBy", "Collector", "datalist", () => activeEmployees().map((employee) => employee.name)], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Multiple Cheques", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
@@ -12724,9 +12743,11 @@ function openModal(type, edit = null) {
     qs("#modal-kicker").textContent = "Admin Correction";
     if (qs("#id")) { qs("#id").value = po.id; qs("#id").readOnly = true; }
     if (qs("#client")) qs("#client").value = po.client || "";
+    if (qs("#sourceBranch")) { qs("#sourceBranch").value = clientOrderShipsFrom(po); qs("#sourceBranch").dataset.touched = "1"; }
     if (qs("#date")) qs("#date").value = po.date || fmtDate(today);
   } else if (type === "purchaseOrder") {
     qs("#date").value = fmtDate(today);
+    if (qs("#sourceBranch")) qs("#sourceBranch").value = platformBranches()[0] || "";
   }
   if (type === "inventoryPurchaseOrder") {
     qs("#date").value = fmtDate(today);
@@ -13274,7 +13295,9 @@ function buildPurchaseOrder(values, options = {}) {
   if (isArchived(client)) throw new Error(`${client.name} is archived and can no longer be used on a purchase order.`);
   const existing = options.editingId ? data.purchaseOrders.find((po) => po.id === options.editingId) : null;
   if (options.editingId && !existing) throw new Error("Purchase Order not found.");
-  const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false, allowArchivedItems: Boolean(existing) });
+  if (!platformBranches().includes(values.sourceBranch)) throw new Error("Choose the branch this order ships from.");
+  const shipsFrom = values.sourceBranch;
+  const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false, allowArchivedItems: Boolean(existing) }).map((line) => ({ ...line, sourceBranch: shipsFrom, branch: shipsFrom }));
   if (!lines.length) throw new Error("At least one purchase order line is required.");
   if (existing) {
     if (PO_TERMINAL_STATUSES.includes(poStatus(existing)) || poHasAnyServed(existing)) {
@@ -13288,6 +13311,7 @@ function buildPurchaseOrder(values, options = {}) {
       ...existing,
       client: client.name,
       area: client.area,
+      sourceBranch: shipsFrom,
       salesperson: existing.salesperson || by,
       date: values.date || existing.date || fmtDate(today),
       lines: lines.map(({ lot, expiry, ...line }) => line),
@@ -13297,7 +13321,7 @@ function buildPurchaseOrder(values, options = {}) {
   }
   const id = values.id?.trim() || nextPurchaseOrderId();
   if (data.purchaseOrders.some((po) => po.id === id)) throw new Error("Duplicate PO number detected.");
-  return { id, client: client.name, area: client.area, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
+  return { id, client: client.name, area: client.area, sourceBranch: shipsFrom, salesperson: currentUser?.name || "System User", date: values.date || fmtDate(today), lines: lines.map(({ lot, expiry, ...line }) => line), status: "For Invoicing" };
 }
 
 /** @param {Sale} sale */

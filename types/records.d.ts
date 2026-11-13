@@ -41,6 +41,8 @@ interface ClientPO {
   client: string;
   area: string;
   salesperson: string;
+  /** Branch the order ships from (stock is reserved there; invoices default to it). */
+  sourceBranch?: string;
   date: string;
   lines: PoLine[];
   status: string;
