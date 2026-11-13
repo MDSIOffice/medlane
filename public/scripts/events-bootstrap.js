@@ -185,7 +185,7 @@ async function submitModal(event) {
     catch (/** @type {any} */ error) {
       if (error instanceof CreditApprovalRequiredError) {
         if (!(await confirmFinalSave(`${error.message} Submit this invoice for Admin/CEO approval?`))) return;
-        const request = { id: `PCA-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, client: error.credit.client, requestedBy: currentUser?.name || "System User", requestedByRole: currentUser?.role, requestedAt: fmtDate(today), projected: error.credit.projected, limit: error.credit.limit, values: { ...values }, status: "Pending" };
+        const request = { id: `PCA-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, client: error.credit.client, requestedBy: currentUser?.name || "System User", requestedByUser: currentUser?.email || "", requestedByRole: currentUser?.role, requestedAt: fmtDate(today), projected: error.credit.projected, limit: error.credit.limit, values: { ...values }, status: "Pending" };
         data.pendingCreditInvoices.push(request);
         const saveResult = await persistRecords({ pendingCreditInvoices: [request] });
         if (!saveResult?.ok) return;

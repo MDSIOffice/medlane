@@ -10953,7 +10953,8 @@ async function approveCreditInvoice(id) {
   if (!saveResult?.ok) return;
   log("Approved credit invoice request", "Invoicing", `${request.id} -> ${sale.documentNo}`, { save: false });
   notify("Credit", `${currentUser.name} approved ${request.client}'s invoice over credit limit — ${sale.documentNo} created.`, "invoicing", sale.documentNo);
-  if (request.requestedBy) notify("Credit", `Your invoice request for ${request.client} was approved as ${sale.documentNo}.`, "notifications", sale.documentNo, null, request.requestedBy);
+  // Private notices are matched by email; requests made before requestedByUser existed only carry a name.
+  if (request.requestedByUser) notify("Credit", `Your invoice request for ${request.client} was approved as ${sale.documentNo}.`, "notifications", sale.documentNo, null, request.requestedByUser);
   saveData(["notifications"]); renderAll(); toast(`${sale.documentNo} created.`);
 }
 
@@ -10972,7 +10973,7 @@ async function rejectCreditInvoice(id) {
   if (!saveResult?.ok) return;
   log("Rejected credit invoice request", "Invoicing", request.id, { save: false });
   notify("Credit", `${currentUser.name} rejected ${request.client}'s credit request.`, "invoicing", request.id);
-  if (request.requestedBy) notify("Credit", `Your invoice request for ${request.client} was rejected${reason ? `: ${reason}` : "."}`, "notifications", request.id, null, request.requestedBy);
+  if (request.requestedByUser) notify("Credit", `Your invoice request for ${request.client} was rejected${reason ? `: ${reason}` : "."}`, "notifications", request.id, null, request.requestedByUser);
   saveData(["notifications"]); renderAll(); toast("Request rejected.");
 }
 

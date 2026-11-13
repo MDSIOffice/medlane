@@ -5275,7 +5275,9 @@ export default {
           }
           return json({ ok: true, savedRecords: rows.length, revision: Date.now(), stock: savedStockQty(rows) });
           };
-          return presentKeys.includes("inventory") ? withStockLock(env, stateKey, runStateSave) : runStateSave();
+          // `return await` (not a bare return) so a rejection lands in the catch below and gets its
+          // proper 403/409/422 status instead of escaping as a generic 500 the client would queue.
+          return await (presentKeys.includes("inventory") ? withStockLock(env, stateKey, runStateSave) : runStateSave());
         }
         return methodNotAllowed();
       }
@@ -5705,7 +5707,7 @@ export default {
         }
         return json({ ok: true, savedRecords: rows.length, revision: Date.now(), stock: savedStockQty(rows) });
         };
-        return rows.some((row) => row.module_name === "inventory") ? withStockLock(env, stateKey, runRecordSave) : runRecordSave();
+        return await (rows.some((row) => row.module_name === "inventory") ? withStockLock(env, stateKey, runRecordSave) : runRecordSave());
       }
 
       if (url.pathname.startsWith("/api/purchase-orders/")) {
@@ -5887,7 +5889,7 @@ export default {
         }
         if (receipt.status !== "Pending Approval") throw new Error(`Cannot approve a stock receipt with status "${receipt.status}"`);
         // Posting a receipt rewrites stock rows, so it holds the same stock lock as invoice saves.
-        return withStockLock(env, stateKey, async () => {
+        return await withStockLock(env, stateKey, async () => {
         // The PO lookup and the inventory lookup are independent reads — running them together
         // shaves a full round trip off every approval, which matters most on itemized receipts
         // where the extra latency made a transient network blip more likely to surface as
