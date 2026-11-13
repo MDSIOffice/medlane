@@ -8912,7 +8912,7 @@ function recentMonthKeys(count) {
 /** "Nov" for "2026-11". @param {string} key */
 function shortMonthLabel(key) { return new Date(`${key}-01T00:00:00`).toLocaleDateString("en-PH", { month: "short" }); }
 /** ₱1.30M above a million, else whole pesos. @param {number} value */
-function pesoCompact(value) {
+function pesoShort(value) {
   const sign = value < 0 ? "−" : "";
   const abs = Math.abs(value);
   return abs >= 1e6 ? `${sign}₱${(abs / 1e6).toFixed(2)}M` : `${sign}₱${Math.round(abs).toLocaleString("en-PH")}`;
@@ -8924,7 +8924,7 @@ function pesoAxis(value) {
   return abs >= 1e6 ? `${sign}₱${(abs / 1e6).toFixed(1)}M` : abs >= 1e3 ? `${sign}₱${Math.round(abs / 1e3)}K` : `${sign}₱${Math.round(abs)}`;
 }
 /** Whole days from `a` to `b` (both readable dates), or null. @param {unknown} a @param {unknown} b */
-function daysBetween(a, b) {
+function dayCount(a, b) {
   const from = inventoryDateValue(fmtDateSafe(a)), to = inventoryDateValue(fmtDateSafe(b));
   return from === null || to === null ? null : Math.round((to - from) / 86400000);
 }
@@ -8985,7 +8985,7 @@ function supplierPoFacts(po, index) {
   const base = PURCHASING_STATUS[po.status] || { label: po.status || "—", tone: /** @type {UiTone} */ ("slate") };
   const short = shortLines.reduce((sum, line) => sum + Number(line.qty || 0) - Number(line.receivedQty || 0), 0);
   const status = done && short > 0 ? { label: `Received · ${short} short`, tone: /** @type {UiTone} */ ("orange") } : base;
-  return { po, index, total: inventoryPoTotal(po), ordered, received, receivedValue, open: !cancelled && !done && !pending, pending, cancelled, done, receivedOn, leadDays: receivedOn ? daysBetween(po.date, receivedOn) : null, promised, onTime, lateOpenDays, shortLines, status };
+  return { po, index, total: inventoryPoTotal(po), ordered, received, receivedValue, open: !cancelled && !done && !pending, pending, cancelled, done, receivedOn, leadDays: receivedOn ? dayCount(po.date, receivedOn) : null, promised, onTime, lateOpenDays, shortLines, status };
 }
 function supplierPoFactsAll() { return (data.inventoryPurchaseOrders || []).map(supplierPoFacts); }
 
@@ -9118,8 +9118,8 @@ function purchasingOverviewHtml() {
 
   /** @type {UiKpi[]} */
   const kpis = [
-    { label: "Open purchase orders", value: pesoCompact(openValue), tone: "blue", sub: `${plural(openFacts.length, "PO")} ordered, in transit or arriving${pendingFacts.length ? ` · plus ${pendingFacts.length} awaiting approval (${pesoCompact(pendingValue)})` : ""}`, title: "Value still to be received on approved POs" },
-    { label: canApprovePurchaseOrders() ? "Waiting for your approval" : "Waiting for approval", value: String(pendingFacts.length), tone: "amber", change: pendingFacts.length ? { text: pesoCompact(pendingValue), good: null } : null, sub: pendingFacts[0] ? `${pendingFacts[0].po.id} to ${pendingFacts[0].po.supplier}${pendingFacts.length > 1 ? ` and ${pendingFacts.length - 1} more` : ""}` : "Nothing waiting" },
+    { label: "Open purchase orders", value: pesoShort(openValue), tone: "blue", sub: `${plural(openFacts.length, "PO")} ordered, in transit or arriving${pendingFacts.length ? ` · plus ${pendingFacts.length} awaiting approval (${pesoShort(pendingValue)})` : ""}`, title: "Value still to be received on approved POs" },
+    { label: canApprovePurchaseOrders() ? "Waiting for your approval" : "Waiting for approval", value: String(pendingFacts.length), tone: "amber", change: pendingFacts.length ? { text: pesoShort(pendingValue), good: null } : null, sub: pendingFacts[0] ? `${pendingFacts[0].po.id} to ${pendingFacts[0].po.supplier}${pendingFacts.length > 1 ? ` and ${pendingFacts.length - 1} more` : ""}` : "Nothing waiting" },
     timed.length
       ? { label: "On-time delivery", value: `${Math.round((timed.filter((fact) => fact.onTime).length / timed.length) * 100)}%`, tone: "accent", change: worst && (worst.onTime ?? 100) < 85 && perf.filter((entry) => entry.timed > 0).length > 1 ? { text: `${worst.name} ${worst.onTime}%`, good: false } : null, sub: `${timed.filter((fact) => fact.onTime).length} of ${plural(timed.length, "PO")} with a promised date, last 12 months` }
       : { label: "On-time delivery", value: "—", tone: "accent", sub: "Add the supplier's promised date to POs to track this" },
@@ -9135,24 +9135,24 @@ function purchasingOverviewHtml() {
     const heavyValue = heavy ? Number(heavy.line.qty || 0) * Number(heavy.line.price || 0) : 0;
     decisions.push({
       tone: "amber", money: fact.total,
-      title: `${canApprovePurchaseOrders() ? "Approve" : "Awaiting approval:"} ${fact.po.id} · ${pesoCompact(fact.total)}`,
-      text: heavy ? `It includes ${heavy.line.qty} × ${heavy.line.item} (${pesoCompact(heavyValue)}) while we hold about ${(heavy.row?.months || 0).toFixed(1)} months of it.` : `${fact.po.supplier} → ${inventoryBranchLabel(inventoryPoBranch(fact.po))}, ${plural((fact.po.lines || []).length, "line")}.`,
+      title: `${canApprovePurchaseOrders() ? "Approve" : "Awaiting approval:"} ${fact.po.id} · ${pesoShort(fact.total)}`,
+      text: heavy ? `It includes ${heavy.line.qty} × ${heavy.line.item} (${pesoShort(heavyValue)}) while we hold about ${(heavy.row?.months || 0).toFixed(1)} months of it.` : `${fact.po.supplier} → ${inventoryBranchLabel(inventoryPoBranch(fact.po))}, ${plural((fact.po.lines || []).length, "line")}.`,
       action: { label: "Review", attrs: goto("pos", "", fact.po.id) },
     });
   });
   supplierCostIncreases(facts).slice(0, 3).forEach((rise) => decisions.push({
     tone: "orange", money: rise.money,
     title: `${rise.fact.po.supplier} raised the cost of ${rise.line.item} ${rise.pct}%`,
-    text: `${pesoCompact(rise.before.price)} on ${rise.before.po} → ${pesoCompact(Number(rise.line.price))} on ${rise.fact.po.id}. Check the selling price still leaves enough margin, or renegotiate.`,
+    text: `${pesoShort(rise.before.price)} on ${rise.before.po} → ${pesoShort(Number(rise.line.price))} on ${rise.fact.po.id}. Check the selling price still leaves enough margin, or renegotiate.`,
     action: { label: "Open PO", attrs: goto("pos", "", rise.fact.po.id) },
   }));
-  facts.filter((fact) => fact.shortLines.length && fact.receivedOn && daysBetween(fact.receivedOn, fmtDate(today)) !== null && /** @type {number} */ (daysBetween(fact.receivedOn, fmtDate(today))) <= 90).forEach((fact) => {
+  facts.filter((fact) => fact.shortLines.length && fact.receivedOn && dayCount(fact.receivedOn, fmtDate(today)) !== null && /** @type {number} */ (dayCount(fact.receivedOn, fmtDate(today))) <= 90).forEach((fact) => {
     const missing = fact.shortLines.map((line) => ({ line, n: Number(line.qty || 0) - Number(line.receivedQty || 0) }));
     const money = missing.reduce((sum, entry) => sum + entry.n * Number(entry.line.price || 0), 0);
     decisions.push({
       tone: "orange", money,
       title: `${fact.po.id} arrived ${missing.reduce((sum, entry) => sum + entry.n, 0)} short`,
-      text: `${missing.map((entry) => `${entry.n} × ${entry.line.item}`).join(", ")} never arrived (${pesoCompact(money)}). Deduct it from ${fact.po.supplier}'s bill before paying.`,
+      text: `${missing.map((entry) => `${entry.n} × ${entry.line.item}`).join(", ")} never arrived (${pesoShort(money)}). Deduct it from ${fact.po.supplier}'s bill before paying.`,
       action: canViewModule("payables") ? { label: "Open payables", attrs: { "data-wa-goto": `payables|bills||` } } : { label: "Open PO", attrs: goto("pos", "", fact.po.id) },
     });
   });
@@ -9187,7 +9187,7 @@ function purchasingOverviewHtml() {
       {
         span: 2, title: "Purchases per month", sub: "Value of supplier stock received, last 12 months, by month received",
         body: uiBarChart({ labels: months.map(shortMonthLabel), series: [{ name: "Received", values: byMonth }], format: pesoAxis, partialLast: true, caption: "Value of stock received per month", height: 260 }),
-        takeaway: byMonth.some((value) => value > 0) ? `Over the last ${fullMonths.length} full months we received about ${pesoCompact(avgMonth)} of stock a month.${openValue > 0 ? ` ${pesoCompact(openValue)} more is already on order.` : ""}${partialDataNote("inventoryPurchaseOrders")}` : undefined,
+        takeaway: byMonth.some((value) => value > 0) ? `Over the last ${fullMonths.length} full months we received about ${pesoShort(avgMonth)} of stock a month.${openValue > 0 ? ` ${pesoShort(openValue)} more is already on order.` : ""}${partialDataNote("inventoryPurchaseOrders")}` : undefined,
       },
     ],
     [
@@ -9197,7 +9197,7 @@ function purchasingOverviewHtml() {
           [{ label: "Supplier" }, { label: "Spent", right: true }, { label: "POs", right: true }, { label: "On time", right: true }, { label: "Lead time", right: true }, { label: "Fill rate", right: true }, { label: "We owe", right: true }],
           perfRows.map((entry) => [
             `<span class="ui-strong">${escapeHtml(entry.name)}</span>`,
-            uiCellNum(pesoCompact(entry.spent)), uiCellNum(entry.pos),
+            uiCellNum(pesoShort(entry.spent)), uiCellNum(entry.pos),
             entry.onTime === null ? "—" : `<span class="ui-num tone-${entry.onTime < 85 ? "red" : "green"}">${entry.onTime}%</span>`,
             entry.lead === null ? "—" : uiCellNum(plural(entry.lead, "day")),
             entry.fill === null ? "—" : uiCellNum(`${entry.fill}%`),
@@ -9234,7 +9234,7 @@ function purchasingTabModel(tab) {
       stats: [
         { label: "Under 1 month of stock", value: plural(rows.length, "item"), sub: "At the current sales rate", tone: "amber" },
         { label: "Not on any order", value: plural(none.length, "item"), sub: none.slice(0, 2).map((row) => row.name).join(", ") || "Everything low is on order", tone: none.length ? "red" : "green", scope: "none" },
-        { label: "Suggested order value", value: pesoCompact(value), sub: "At the last price paid", tone: "blue" },
+        { label: "Suggested order value", value: pesoShort(value), sub: "At the last price paid", tone: "blue" },
       ],
       cols: [{ key: "id", label: "Item", sortable: true }, { key: "onHand", label: "On hand", align: "right", sortable: true }, { key: "onOrder", label: "On order", align: "right", sortable: true }, { key: "avg", label: "Sells / month", align: "right", sortable: true }, { key: "months", label: "Lasts", align: "right", sortable: true }, { key: "suggest", label: "Suggest", align: "right", sortable: true }, { key: "status", label: "Status" }, { key: "act", label: "", align: "right" }],
       csvName: "reorder-suggestions.csv",
@@ -9278,7 +9278,7 @@ function purchasingTabModel(tab) {
     return {
       title: "Suppliers", intro: "Spend, reliability and what we owe each supplier, from POs dated in the last 12 months.", placeholder: "Supplier", actions: [newPo].filter(Boolean), minWidth: 900,
       stats: [
-        { label: "Spent with suppliers", value: pesoCompact(total), sub: `Last 12 months${partialDataNote("inventoryPurchaseOrders") ? " (loaded POs)" : ""}`, tone: "accent" },
+        { label: "Spent with suppliers", value: pesoShort(total), sub: `Last 12 months${partialDataNote("inventoryPurchaseOrders") ? " (loaded POs)" : ""}`, tone: "accent" },
         { label: "Largest supplier", value: top && total ? `${top.name} · ${Math.round((top.spent / total) * 100)}%` : "—", sub: top && total && top.spent / total > 0.5 ? "High dependence on one source" : "Share of spend", tone: top && total && top.spent / total > 0.5 ? "orange" : "blue" },
         { label: "Late deliveries", value: timed ? `${late} of ${timed}` : "—", sub: timed ? (lateTop?.late ? `${lateTop.late} from ${lateTop.name}` : "None late") : "Needs promised dates on POs", tone: late ? "red" : "green" },
       ],
@@ -9293,7 +9293,7 @@ function purchasingTabModel(tab) {
           csv: [entry.name, entry.spent.toFixed(2), entry.pos, entry.onTime ?? "", entry.lead ?? "", entry.fill ?? "", entry.owe === null ? "" : entry.owe.toFixed(2)],
           cells: [
             uiCellDoc(entry.name, select(entry.name), [entry.supplier?.classification, entry.supplier?.brand].filter(Boolean).join(" · "), { plain: true }),
-            uiCellNum(entry.spent ? pesoCompact(entry.spent) : "—"), uiCellNum(entry.pos),
+            uiCellNum(entry.spent ? pesoShort(entry.spent) : "—"), uiCellNum(entry.pos),
             entry.onTime === null ? "—" : `<span class="ui-num tone-${reliable ? "green" : "red"}">${entry.onTime}%</span>`,
             entry.lead === null ? "—" : uiCellNum(plural(entry.lead, "day")), entry.fill === null ? "—" : uiCellNum(`${entry.fill}%`),
             entry.owe === null || entry.owe <= 0.005 ? "—" : uiCellNum(peso.format(entry.owe)),
@@ -9332,7 +9332,7 @@ function purchasingTabModel(tab) {
       ? `<button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button><button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View timeline</button>`
       : inventoryPoActionsCell(po, fact.index);
     const expected = fact.receivedOn
-      ? { text: uiDate(fact.receivedOn), sub: fact.onTime === null ? "Received" : fact.onTime ? "On time" : `${plural(/** @type {number} */ (daysBetween(fact.promised, fact.receivedOn)), "day")} late`, tone: fact.onTime === false ? /** @type {UiTone} */ ("red") : undefined }
+      ? { text: uiDate(fact.receivedOn), sub: fact.onTime === null ? "Received" : fact.onTime ? "On time" : `${plural(/** @type {number} */ (dayCount(fact.promised, fact.receivedOn)), "day")} late`, tone: fact.onTime === false ? /** @type {UiTone} */ ("red") : undefined }
       : fact.cancelled ? { text: "—", sub: "Cancelled" }
         : fact.promised ? { text: uiDate(fact.promised), sub: fact.lateOpenDays ? `${plural(fact.lateOpenDays, "day")} late` : `Promised · ${dueInText(daysUntil(fact.promised))}`, tone: fact.lateOpenDays ? /** @type {UiTone} */ ("red") : undefined }
           : { text: "—", sub: fact.pending ? "Not sent yet" : "No promised date" };
@@ -9383,8 +9383,8 @@ function purchasingTabModel(tab) {
     title: "Purchase orders", intro: "Every supplier PO from approval to received. A PO must be approved by Superadmin or CEO before it is sent to the supplier.",
     placeholder: "PO no., supplier or item", actions: [newPo].filter(Boolean), minWidth: 1000,
     stats: [
-      { label: "Open", value: pesoCompact(open.reduce((sum, fact) => sum + fact.total - fact.receivedValue, 0)), sub: `${plural(open.length, "PO")} ordered, in transit or arriving`, tone: "blue", scope: "open" },
-      { label: "Waiting for approval", value: pending.length, sub: pending.length ? pesoCompact(pending.reduce((sum, fact) => sum + fact.total, 0)) : "Nothing waiting", tone: "amber", scope: "approval" },
+      { label: "Open", value: pesoShort(open.reduce((sum, fact) => sum + fact.total - fact.receivedValue, 0)), sub: `${plural(open.length, "PO")} ordered, in transit or arriving`, tone: "blue", scope: "open" },
+      { label: "Waiting for approval", value: pending.length, sub: pending.length ? pesoShort(pending.reduce((sum, fact) => sum + fact.total, 0)) : "Nothing waiting", tone: "amber", scope: "approval" },
       { label: "Late or received short", value: problems.length, sub: problems.slice(0, 2).map((fact) => fact.po.id).join(", ") || "None", tone: problems.length ? "orange" : "green", scope: problems.some((fact) => fact.shortLines.length) && !problems.some((fact) => fact.lateOpenDays || fact.onTime === false) ? "short" : "late" },
     ],
     cols: [{ key: "id", label: "PO", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "date", label: "Created", sortable: true }, { key: "expected", label: "Expected / received", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "act", label: "", align: "right" }],
@@ -9461,7 +9461,7 @@ function supplierShortPosBySupplier() {
   /** @type {Map<string, PoFacts[]>} */
   const out = new Map();
   if (!canViewModule("inventory")) return out;
-  supplierPoFactsAll().filter((fact) => fact.shortLines.length && fact.receivedOn && (daysBetween(fact.receivedOn, fmtDate(today)) ?? 999) <= 90).forEach((fact) => out.set(fact.po.supplier, [...(out.get(fact.po.supplier) || []), fact]));
+  supplierPoFactsAll().filter((fact) => fact.shortLines.length && fact.receivedOn && (dayCount(fact.receivedOn, fmtDate(today)) ?? 999) <= 90).forEach((fact) => out.set(fact.po.supplier, [...(out.get(fact.po.supplier) || []), fact]));
   return out;
 }
 
@@ -9501,10 +9501,10 @@ function payablesOverviewHtml() {
 
   /** @type {UiKpi[]} */
   const kpis = [
-    { label: "We owe", value: pesoCompact(owe), tone: "blue", sub: `${plural(open.length, "bill")} · ${plural(new Set(open.map((fact) => fact.p.supplier)).size, "supplier")}` },
-    { label: "Overdue", value: pesoCompact(sum(overdue)), tone: "red", change: overdue.length ? { text: plural(overdue.length, "bill"), good: false } : null, sub: overdue.length ? `Oldest ${plural(Math.max(...overdue.map((fact) => -fact.days)), "day")} late` : "Nothing past due" },
-    { label: "Due in the next 7 days", value: pesoCompact(sum(dueSoon)), tone: "amber", sub: dueSoon.length ? plural(dueSoon.length, "bill") : "Nothing due this week" },
-    { label: canApprove ? "Waiting for your approval" : "Waiting for approval", value: String(approval.length), tone: "amber", change: approval.length ? { text: pesoCompact(approval.reduce((total, fact) => total + Number(fact.p.amount || 0), 0)), good: null } : null, sub: approval[0] ? `${approval[0].p.id} · ${approval[0].p.supplier}` : "Nothing waiting" },
+    { label: "We owe", value: pesoShort(owe), tone: "blue", sub: `${plural(open.length, "bill")} · ${plural(new Set(open.map((fact) => fact.p.supplier)).size, "supplier")}` },
+    { label: "Overdue", value: pesoShort(sum(overdue)), tone: "red", change: overdue.length ? { text: plural(overdue.length, "bill"), good: false } : null, sub: overdue.length ? `Oldest ${plural(Math.max(...overdue.map((fact) => -fact.days)), "day")} late` : "Nothing past due" },
+    { label: "Due in the next 7 days", value: pesoShort(sum(dueSoon)), tone: "amber", sub: dueSoon.length ? plural(dueSoon.length, "bill") : "Nothing due this week" },
+    { label: canApprove ? "Waiting for your approval" : "Waiting for approval", value: String(approval.length), tone: "amber", change: approval.length ? { text: pesoShort(approval.reduce((total, fact) => total + Number(fact.p.amount || 0), 0)), good: null } : null, sub: approval[0] ? `${approval[0].p.id} · ${approval[0].p.supplier}` : "Nothing waiting" },
   ];
 
   // 4-week cash forecast.
@@ -9529,9 +9529,9 @@ function payablesOverviewHtml() {
   const decisions = [];
   if (canApprove) approval.forEach((fact) => {
     const short = shortBySupplier.get(fact.p.supplier) || [];
-    decisions.push({ tone: "amber", money: Number(fact.p.amount || 0), title: `Approve ${fact.p.id} · ${pesoCompact(Number(fact.p.amount || 0))}`, text: `${fact.p.supplier}, due ${uiDate(fact.due)}${fact.estimated ? " (est.)" : ""}.${short.length ? ` Check first: ${short[0].po.id} from them arrived short.` : ""}`, action: { label: "Review", attrs: goto("bills", "", fact.p.id) } });
+    decisions.push({ tone: "amber", money: Number(fact.p.amount || 0), title: `Approve ${fact.p.id} · ${pesoShort(Number(fact.p.amount || 0))}`, text: `${fact.p.supplier}, due ${uiDate(fact.due)}${fact.estimated ? " (est.)" : ""}.${short.length ? ` Check first: ${short[0].po.id} from them arrived short.` : ""}`, action: { label: "Review", attrs: goto("bills", "", fact.p.id) } });
   });
-  overdue.filter((fact) => fact.state === "approved").forEach((fact) => decisions.push({ tone: "red", money: fact.balance, title: `${fact.p.id} to ${fact.p.supplier} is ${plural(-fact.days, "day")} late`, text: `${pesoCompact(fact.balance)} was due ${uiDate(fact.due)}${fact.estimated ? " (est. from 30-day terms)" : ""}. Pay it or agree a new date.`, action: { label: "Pay", attrs: goto("bills", "", fact.p.id) } }));
+  overdue.filter((fact) => fact.state === "approved").forEach((fact) => decisions.push({ tone: "red", money: fact.balance, title: `${fact.p.id} to ${fact.p.supplier} is ${plural(-fact.days, "day")} late`, text: `${pesoShort(fact.balance)} was due ${uiDate(fact.due)}${fact.estimated ? " (est. from 30-day terms)" : ""}. Pay it or agree a new date.`, action: { label: "Pay", attrs: goto("bills", "", fact.p.id) } }));
   facts.filter((fact) => fact.state === "approved" && (Number(fact.p.withholdingTax1 || 0) > 0 || Number(fact.p.withholdingTax2 || 0) > 0) && !data.suppliers.find((supplier) => supplier.name === fact.p.supplier)?.tin)
     .forEach((fact) => decisions.push({ tone: "slate", money: 0, title: `${fact.p.supplier} has no TIN on file`, text: `The 2307 for ${fact.p.id} can't be generated until the supplier's TIN is added in Masterlists.` }));
   decisions.sort((a, b) => (b.money || 0) - (a.money || 0));
@@ -9549,8 +9549,8 @@ function payablesOverviewHtml() {
   const horizon = fmtDate(addDays(new Date(`${fmtDate(today)}T00:00:00`), 14));
   /** @type {(UiInsight & { at: string })[]} */
   const coming = [
-    ...open.filter((fact) => fact.days >= 0 && fact.due <= horizon).map((fact) => ({ at: fact.due, tone: /** @type {UiTone} */ (fact.state === "approval" ? "amber" : "blue"), title: `${uiDate(fact.due)} · ${pesoCompact(fact.balance)}`, text: `${fact.p.supplier} (${fact.p.id})${fact.state === "approval" ? ", not approved yet" : ""}` })),
-    ...recurring.flatMap((cost) => recurringOccurrences(cost, fmtDate(today), horizon).map((at) => ({ at, tone: /** @type {UiTone} */ ("slate"), title: `${uiDate(at)} · ${pesoCompact(Number(cost.amount || 0))}`, text: `${cost.name} (recurring, ${String(cost.every || "Monthly").toLowerCase()})` }))),
+    ...open.filter((fact) => fact.days >= 0 && fact.due <= horizon).map((fact) => ({ at: fact.due, tone: /** @type {UiTone} */ (fact.state === "approval" ? "amber" : "blue"), title: `${uiDate(fact.due)} · ${pesoShort(fact.balance)}`, text: `${fact.p.supplier} (${fact.p.id})${fact.state === "approval" ? ", not approved yet" : ""}` })),
+    ...recurring.flatMap((cost) => recurringOccurrences(cost, fmtDate(today), horizon).map((at) => ({ at, tone: /** @type {UiTone} */ ("slate"), title: `${uiDate(at)} · ${pesoShort(Number(cost.amount || 0))}`, text: `${cost.name} (recurring, ${String(cost.every || "Monthly").toLowerCase()})` }))),
   ].sort((a, b) => a.at.localeCompare(b.at));
 
   return uiKpiCards(kpis) + uiDashboardGrid([
@@ -9565,12 +9565,12 @@ function payablesOverviewHtml() {
     [
       {
         span: 1, title: "How late are we", sub: "Unpaid bills by days past the due date",
-        body: uiStackBar({ segments: buckets.map(({ bucket, value }) => ({ label: bucket.label === "Current" ? "Not due yet" : bucket.label, value, display: pesoCompact(value), tone: bucket.tone })), caption: "Unpaid bills by lateness" }),
+        body: uiStackBar({ segments: buckets.map(({ bucket, value }) => ({ label: bucket.label === "Current" ? "Not due yet" : bucket.label, value, display: pesoShort(value), tone: bucket.tone })), caption: "Unpaid bills by lateness" }),
         takeaway: open.some((fact) => fact.estimated) ? "Bills without a due date are counted as due 30 days after their date." : undefined,
       },
       {
         span: 1, title: "Who we owe", sub: "Unpaid balance by supplier",
-        body: uiHBars({ items: payees.slice(0, 6).map((entry) => ({ label: entry.name, value: entry.total, display: pesoCompact(entry.total), sub: `${plural(entry.list.length, "bill")}${entry.late > 0.005 ? ` · ${pesoCompact(entry.late)} overdue` : ""}`, tone: entry.late > 0.005 ? /** @type {UiTone} */ ("red") : undefined })), caption: "Unpaid balance by supplier" }),
+        body: uiHBars({ items: payees.slice(0, 6).map((entry) => ({ label: entry.name, value: entry.total, display: pesoShort(entry.total), sub: `${plural(entry.list.length, "bill")}${entry.late > 0.005 ? ` · ${pesoShort(entry.late)} overdue` : ""}`, tone: entry.late > 0.005 ? /** @type {UiTone} */ ("red") : undefined })), caption: "Unpaid balance by supplier" }),
         link: { label: "Who we owe", attrs: goto("payees") },
       },
       { span: 1, title: "Coming up", sub: "Next 14 days", body: uiInsightList(coming.slice(0, 6), "Nothing falls due in the next 14 days."), link: { label: "All bills", attrs: goto("bills") } },
@@ -9604,9 +9604,9 @@ function payablesTabModel(tab) {
     return {
       title: "Who we owe", intro: "Unpaid balance per supplier, oldest due first.", placeholder: "Supplier", actions: [newBill].filter(Boolean), minWidth: 860,
       stats: [
-        { label: "Suppliers we owe", value: withBalance.length, sub: pesoCompact(total), tone: "blue", scope: "owed" },
-        { label: "With overdue bills", value: withBalance.filter((entry) => entry.late > 0.005).length, sub: pesoCompact(withBalance.reduce((s, entry) => s + entry.late, 0)), tone: "red", scope: "late" },
-        { label: "Largest balance", value: top ? top.name : "—", sub: top ? `${pesoCompact(top.total)} · ${Math.round((top.total / (total || 1)) * 100)}% of what we owe` : "Nothing owed", tone: "amber" },
+        { label: "Suppliers we owe", value: withBalance.length, sub: pesoShort(total), tone: "blue", scope: "owed" },
+        { label: "With overdue bills", value: withBalance.filter((entry) => entry.late > 0.005).length, sub: pesoShort(withBalance.reduce((s, entry) => s + entry.late, 0)), tone: "red", scope: "late" },
+        { label: "Largest balance", value: top ? top.name : "—", sub: top ? `${pesoShort(top.total)} · ${Math.round((top.total / (total || 1)) * 100)}% of what we owe` : "Nothing owed", tone: "amber" },
       ],
       cols: [{ key: "id", label: "Supplier", sortable: true }, { key: "bills", label: "Unpaid bills", align: "right", sortable: true }, { key: "total", label: "We owe", align: "right", sortable: true }, { key: "late", label: "Overdue", align: "right", sortable: true }, { key: "next", label: "Next due", sortable: true }, { key: "paid", label: "Paid, 12 mo", align: "right", sortable: true }],
       csvName: "payables-by-supplier.csv", csvHeader: ["Supplier", "Unpaid bills", "We owe", "Overdue", "Next due", "Paid last 12 months"],
@@ -9689,9 +9689,9 @@ function payablesTabModel(tab) {
     return {
       title: "Payments made", intro: "Bills marked paid, with how they were paid. Payments are made by cash, check or bank transfer.", placeholder: "Bill, supplier, check no. or bank", actions: [], minWidth: 820,
       stats: [
-        { label: "Paid, last 12 months", value: pesoCompact(recent.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), sub: `${plural(recent.length, "bill")} (by bill date)`, tone: "green" },
-        { label: "By check", value: pesoCompact(byMethod("Check")), sub: "Last 12 months", tone: "blue", scope: "Check" },
-        { label: "By bank transfer · cash", value: `${pesoCompact(byMethod("Bank transfer"))} · ${pesoCompact(byMethod("Cash"))}`, sub: "Last 12 months", tone: "accent" },
+        { label: "Paid, last 12 months", value: pesoShort(recent.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), sub: `${plural(recent.length, "bill")} (by bill date)`, tone: "green" },
+        { label: "By check", value: pesoShort(byMethod("Check")), sub: "Last 12 months", tone: "blue", scope: "Check" },
+        { label: "By bank transfer · cash", value: `${pesoShort(byMethod("Bank transfer"))} · ${pesoShort(byMethod("Cash"))}`, sub: "Last 12 months", tone: "accent" },
       ],
       cols: [{ key: "id", label: "Bill", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "date", label: "Bill date", sortable: true }, { key: "method", label: "Paid by", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "act", label: "", align: "right" }],
       csvName: "payments-made.csv", csvHeader: ["Bill", "Supplier", "Bill date", "Paid by", "Bank", "Check no.", "Check date", "Amount"],
@@ -9707,9 +9707,9 @@ function payablesTabModel(tab) {
   return {
     title: "Bills", intro: "Every supplier payable request, from approval to paid. Payables are approved by Superadmin or CEO.", placeholder: "Bill no., supplier or item", actions: [newBill].filter(Boolean), minWidth: 1000,
     stats: [
-      { label: "We owe", value: pesoCompact(open.reduce((s, fact) => s + fact.balance, 0)), sub: plural(open.length, "unpaid bill"), tone: "blue", scope: "approved" },
-      { label: "Overdue", value: pesoCompact(overdue.reduce((s, fact) => s + fact.balance, 0)), sub: plural(overdue.length, "bill"), tone: "red", scope: "overdue" },
-      { label: "To approve", value: approval.length, sub: pesoCompact(approval.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), tone: "amber", scope: "approval" },
+      { label: "We owe", value: pesoShort(open.reduce((s, fact) => s + fact.balance, 0)), sub: plural(open.length, "unpaid bill"), tone: "blue", scope: "approved" },
+      { label: "Overdue", value: pesoShort(overdue.reduce((s, fact) => s + fact.balance, 0)), sub: plural(overdue.length, "bill"), tone: "red", scope: "overdue" },
+      { label: "To approve", value: approval.length, sub: pesoShort(approval.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), tone: "amber", scope: "approval" },
     ],
     cols: [{ key: "id", label: "Bill", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "date", label: "Requested", sortable: true }, { key: "due", label: "Due", sortable: true }, { key: "amount", label: "Net amount", align: "right", sortable: true }, { key: "balance", label: "Balance", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "act", label: "", align: "right" }],
     csvName: "payables.csv", csvHeader: ["Bill", "Supplier", "Requested", "Due", "Due date basis", "Gross", "Net", "Balance", "Status"],
@@ -9814,10 +9814,10 @@ function expensesOverviewHtml() {
 
   /** @type {UiKpi[]} */
   const kpis = [
-    { label: "Spent this month", value: pesoCompact(spentNow), tone: "blue", change: totalBudget > 0 ? { text: `${Math.round((spentNow / totalBudget) * 100)}% of budget`, good: spentNow <= pace } : null, sub: totalBudget > 0 ? `Budget ${pesoCompact(totalBudget)} · day ${day} of ${daysInMonth}` : "No budgets set yet", title: "Approved and paid expenses dated this month" },
+    { label: "Spent this month", value: pesoShort(spentNow), tone: "blue", change: totalBudget > 0 ? { text: `${Math.round((spentNow / totalBudget) * 100)}% of budget`, good: spentNow <= pace } : null, sub: totalBudget > 0 ? `Budget ${pesoShort(totalBudget)} · day ${day} of ${daysInMonth}` : "No budgets set yet", title: "Approved and paid expenses dated this month" },
     { label: "Over budget last month", value: Object.keys(budgets).length ? String(overLast.length) : "—", tone: "red", sub: Object.keys(budgets).length ? overLast.slice(0, 2).join(", ") || "Every category within budget" : "Set budgets to track this" },
-    { label: "Waiting for approval", value: String(approval.length), tone: "amber", change: approval.length ? { text: pesoCompact(approval.reduce((s, r) => s + Number(r.amount || 0), 0)), good: null } : null, sub: approval[0] ? `${approval[0].id} · ${approval[0].requester || approval[0].employeeName || ""}` : "Nothing waiting" },
-    { label: "Missing receipts", value: String(missing.length), tone: "orange", sub: missing.length ? `${pesoCompact(missing.reduce((s, r) => s + Number(r.amount || 0), 0))} approved without a receipt on file` : "Every approved expense has one" },
+    { label: "Waiting for approval", value: String(approval.length), tone: "amber", change: approval.length ? { text: pesoShort(approval.reduce((s, r) => s + Number(r.amount || 0), 0)), good: null } : null, sub: approval[0] ? `${approval[0].id} · ${approval[0].requester || approval[0].employeeName || ""}` : "Nothing waiting" },
+    { label: "Missing receipts", value: String(missing.length), tone: "orange", sub: missing.length ? `${pesoShort(missing.reduce((s, r) => s + Number(r.amount || 0), 0))} approved without a receipt on file` : "Every approved expense has one" },
   ];
 
   // Last month vs budget.
@@ -9854,7 +9854,7 @@ function expensesOverviewHtml() {
     [
       {
         span: 2, title: `${new Date(`${lastMonth}-01T00:00:00`).toLocaleDateString("en-PH", { month: "long" })}: actual vs budget`, sub: "Approved and paid expenses by category. The black mark is the monthly budget.",
-        body: uiHBars({ items: cats.slice(0, 8).map((entry) => { const status = budgetStatus(entry.actual, entry.budget); return { label: entry.cat, value: entry.actual, target: entry.budget || undefined, display: entry.budget ? `${pesoCompact(entry.actual)} of ${pesoCompact(entry.budget)}` : `${pesoCompact(entry.actual)} · no budget`, tone: status.key === "over" ? /** @type {UiTone} */ ("red") : status.key === "near" ? /** @type {UiTone} */ ("amber") : undefined }; }), caption: "Actual vs budget by category", targetLabel: "Budget" }),
+        body: uiHBars({ items: cats.slice(0, 8).map((entry) => { const status = budgetStatus(entry.actual, entry.budget); return { label: entry.cat, value: entry.actual, target: entry.budget || undefined, display: entry.budget ? `${pesoShort(entry.actual)} of ${pesoShort(entry.budget)}` : `${pesoShort(entry.actual)} · no budget`, tone: status.key === "over" ? /** @type {UiTone} */ ("red") : status.key === "near" ? /** @type {UiTone} */ ("amber") : undefined }; }), caption: "Actual vs budget by category", targetLabel: "Budget" }),
         takeaway: !Object.keys(budgets).length ? "No budgets yet — set a monthly budget per category in the Budgets tab to see over/under." : overLast.length ? `${overLast.join(", ")} went over budget.` : "Every budgeted category stayed within budget.",
         link: { label: "Budgets", attrs: goto("budgets") },
       },
@@ -9864,15 +9864,15 @@ function expensesOverviewHtml() {
       {
         span: 2, title: "Last 6 months", sub: "Approved and paid expenses per month",
         body: uiBarChart({ labels: months.map(shortMonthLabel), series: [{ name: "Spent", values: trend }], format: pesoAxis, partialLast: true, caption: "Expenses per month" }),
-        takeaway: fullTrend.length ? `Over the last ${fullTrend.length} full months we spent about ${pesoCompact(fullTrend.reduce((a, b) => a + b, 0) / fullTrend.length)} a month on expenses.${totalBudget > 0 ? ` Total monthly budget is ${pesoCompact(totalBudget)}.` : ""}` : undefined,
+        takeaway: fullTrend.length ? `Over the last ${fullTrend.length} full months we spent about ${pesoShort(fullTrend.reduce((a, b) => a + b, 0) / fullTrend.length)} a month on expenses.${totalBudget > 0 ? ` Total monthly budget is ${pesoShort(totalBudget)}.` : ""}` : undefined,
       },
       {
         span: 1, title: "By office, this month", sub: "Approved and paid",
-        body: uiStackBar({ segments: offices.map((office, index) => { const value = thisMonthRows.filter((r) => String(r.office || "No office") === office).reduce((s, r) => s + Number(r.amount || 0), 0); return { label: office, value, display: pesoCompact(value), tone: officeTones[index % officeTones.length] }; }), caption: "Expenses by office this month" }),
+        body: uiStackBar({ segments: offices.map((office, index) => { const value = thisMonthRows.filter((r) => String(r.office || "No office") === office).reduce((s, r) => s + Number(r.amount || 0), 0); return { label: office, value, display: pesoShort(value), tone: officeTones[index % officeTones.length] }; }), caption: "Expenses by office this month" }),
       },
     ],
     [
-      { span: 1, title: "Largest this month", sub: "Approved and paid", body: uiInsightList(largest.map((r) => ({ tone: /** @type {UiTone} */ (EXPENSE_STATE[expenseState(r)].tone), title: `${pesoCompact(Number(r.amount || 0))} · ${Object.keys(expenseByCategory(r)).join(", ")}`, text: `${r.id} · ${r.requester || r.employeeName || "—"} · ${r.office || "—"}`, action: { label: "Open", attrs: goto("list", "", r.id) } })), "No approved expenses this month yet.") },
+      { span: 1, title: "Largest this month", sub: "Approved and paid", body: uiInsightList(largest.map((r) => ({ tone: /** @type {UiTone} */ (EXPENSE_STATE[expenseState(r)].tone), title: `${pesoShort(Number(r.amount || 0))} · ${Object.keys(expenseByCategory(r)).join(", ")}`, text: `${r.id} · ${r.requester || r.employeeName || "—"} · ${r.office || "—"}`, action: { label: "Open", attrs: goto("list", "", r.id) } })), "No approved expenses this month yet.") },
     ],
   ]);
 }
@@ -9897,7 +9897,7 @@ function expensesTabModel(tab) {
       title: "Budgets", intro: "A monthly budget per expense category. Status compares last month's approved and paid expenses with the budget: over 110% is red, over 100% amber.",
       placeholder: "Category", actions: [], minWidth: 860,
       stats: [
-        { label: "Monthly budget", value: total ? pesoCompact(total) : "—", sub: `${plural(entries.filter((entry) => entry.budget > 0).length, "category", "categories")} budgeted`, tone: "blue" },
+        { label: "Monthly budget", value: total ? pesoShort(total) : "—", sub: `${plural(entries.filter((entry) => entry.budget > 0).length, "category", "categories")} budgeted`, tone: "blue" },
         { label: "Over budget last month", value: entries.filter((entry) => budgetStatus(entry.last, entry.budget).key === "over").length, sub: "More than 110% of budget", tone: "red", scope: "over" },
         { label: "No budget yet", value: entries.filter((entry) => !entry.budget).length, sub: editPlanning ? "Open a category to set one" : "Superadmin, CEO or Admin sets budgets", tone: "slate", scope: "none" },
       ],
@@ -9937,8 +9937,8 @@ function expensesTabModel(tab) {
       title: "Recurring", intro: "Costs that repeat — rent, utilities, subscriptions — so the cash forecast and budgets can expect them. Marking one done moves it to its next due date; record the actual spend as an expense request.",
       placeholder: "Name, payee or category", actions: editPlanning ? [uiButton("Add recurring cost", { "data-expenses-recurring-new": "" }, { size: "sm", primary: true })] : [], minWidth: 860,
       stats: [
-        { label: "Per month", value: pesoCompact(active.reduce((s, cost) => s + monthlyEquivalent(cost), 0)), sub: `${plural(active.length, "active cost")} (yearly and quarterly spread per month)`, tone: "blue" },
-        { label: "Due in 14 days", value: soon.length, sub: pesoCompact(soon.reduce((s, cost) => s + Number(cost.amount || 0), 0)), tone: "amber", scope: "soon" },
+        { label: "Per month", value: pesoShort(active.reduce((s, cost) => s + monthlyEquivalent(cost), 0)), sub: `${plural(active.length, "active cost")} (yearly and quarterly spread per month)`, tone: "blue" },
+        { label: "Due in 14 days", value: soon.length, sub: pesoShort(soon.reduce((s, cost) => s + Number(cost.amount || 0), 0)), tone: "amber", scope: "soon" },
         { label: "Paused", value: costs.length - active.length, sub: "Not counted in forecasts", tone: "slate", scope: "paused" },
       ],
       cols: [{ key: "id", label: "Cost", sortable: true }, { key: "category", label: "Category", sortable: true }, { key: "office", label: "Office", sortable: true }, { key: "every", label: "Every", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "next", label: "Next due", sortable: true }, { key: "status", label: "Status" }],
@@ -10020,9 +10020,9 @@ function expensesTabModel(tab) {
     title: "Expenses", intro: "Petty cash, per diem, operating expenses and revolving fund requests, from request to paid.", placeholder: "ID, requester, category or item",
     actions: canEditModule("replenishments") ? [uiButton("New expense request", { "data-expenses-new": "" }, { size: "sm", primary: true })] : [], minWidth: 1000,
     stats: [
-      { label: "Spent this month", value: pesoCompact(rows.filter((r) => ["topay", "paid"].includes(expenseState(r)) && fmtDateSafe(r.date).slice(0, 7) === thisMonth).reduce((s, r) => s + Number(r.amount || 0), 0)), sub: "Approved and paid", tone: "blue" },
-      { label: "To approve", value: approval.length, sub: pesoCompact(approval.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "amber", scope: "approval" },
-      { label: "Approved · to pay", value: topay.length, sub: pesoCompact(topay.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "blue", scope: "topay" },
+      { label: "Spent this month", value: pesoShort(rows.filter((r) => ["topay", "paid"].includes(expenseState(r)) && fmtDateSafe(r.date).slice(0, 7) === thisMonth).reduce((s, r) => s + Number(r.amount || 0), 0)), sub: "Approved and paid", tone: "blue" },
+      { label: "To approve", value: approval.length, sub: pesoShort(approval.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "amber", scope: "approval" },
+      { label: "Approved · to pay", value: topay.length, sub: pesoShort(topay.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "blue", scope: "topay" },
     ],
     cols: [{ key: "id", label: "Expense", sortable: true }, { key: "who", label: "Requested by", sortable: true }, { key: "date", label: "Date", sortable: true }, { key: "office", label: "Office", sortable: true }, { key: "cat", label: "Category" }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "act", label: "", align: "right" }],
     csvName: "expenses.csv", csvHeader: ["ID", "Expense type", "Category", "Employee", "Requester", "Requested", "Approved", "Office", "Amount", "Receipt/File", "Status", "Payment"],
