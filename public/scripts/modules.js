@@ -282,7 +282,7 @@ function parseInvoiceLines(text, options = {}) {
     if (!qty || qty <= 0 || Number.isNaN(price) || price < 0) throw new Error(`Invalid qty or price for ${item.name}`);
     if (equipment && !Number.isInteger(qty)) throw new Error(`${item.name} is equipment — quantity must be a whole number.`);
     if (requireLot && !lotValue && itemStockLotTracked(item, sourceBranch)) throw new Error(`Missing lot number for ${item.name}`);
-    if (requireLot && !equipment && !expiryValue) throw new Error(`Missing expiry date for ${item.name}`);
+    if (requireLot && !equipment && !uomSkipsExpiry(uomValue || item.uom) && !expiryValue) throw new Error(`Missing expiry date for ${item.name}`);
     return { item: item.name, code: item.code, brand: brandValue || item.brand, qty, uom: uomValue || item.uom || "unit", price, sourceBranch, branch: sourceBranch, lot: lotValue || "", expiry: equipment ? "N/A" : expiryValue || "", discount: Number(discountValue || 0), discountReason: "" };
   });
 }
@@ -295,6 +295,19 @@ function parseInvoiceLines(text, options = {}) {
 /** @param {string} expiry */
 function hasNoExpiry(expiry) {
   return !expiry || expiry === "N/A";
+}
+
+/** Lines sold per "unit" (machines, instruments) carry no expiry, so it's optional there. @param {unknown} uom */
+function uomSkipsExpiry(uom) {
+  return normalizeUom(uom) === "unit";
+}
+
+/** Expiry is required on an invoice row unless the item is equipment or the row's unit is "unit". @param {any} row */
+function syncInvoiceRowExpiryRequired(row) {
+  const expiryInput = row ? qsIn(row, ".invoice-expiry-input") : null;
+  if (!expiryInput || expiryInput.type === "hidden") return;
+  const item = findItemByCodeOrName(qsIn(row, ".invoice-item-input")?.value);
+  expiryInput.required = !isEquipmentItem(item) && !uomSkipsExpiry(qsIn(row, ".invoice-uom-input")?.value);
 }
 
 /** @param {any} item */
@@ -727,7 +740,7 @@ function invoiceLineTemplate(line = {}, options = {}) {
       <div class="field qty-field"><label>Qty</label><input class="invoice-qty-input" type="number" min="0" step="any" value="${line.qty ? Number(line.qty) : ""}" required /></div>
       <div class="field unit-field"><label>Unit</label><select class="invoice-uom-input" required>${(uomOptions.includes(selectedUom) ? uomOptions : [...uomOptions, selectedUom]).map((uom) => `<option ${uom === selectedUom ? "selected" : ""}>${uom}</option>`).join("")}</select></div>
       <div class="field price-field"><label>Price</label><input class="invoice-price-input" type="number" min="0" step="any" value="${line.price || ""}" required /></div>
-      ${requireLot ? `<div class="field lot-field">${invoiceLotControlHtml(item, preferredBranch, lotTracked ? line.lot || stock.lot || "" : line.lot || "")}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" data-expiry-lot="${escapeHtml(line.lot || stock.lot || "")}" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment ? "" : "required"}${lotTracked ? " readonly" : ""} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
+      ${requireLot ? `<div class="field lot-field">${invoiceLotControlHtml(item, preferredBranch, lotTracked ? line.lot || stock.lot || "" : line.lot || "")}</div><div class="field expiry-field${equipment ? " equipment-expiry-field" : ""}"><label>Expiry</label><input class="invoice-expiry-input" type="date" data-expiry-lot="${escapeHtml(line.lot || stock.lot || "")}" min="${fmtDate(today)}" value="${escapeHtml(equipment ? "" : line.expiry && line.expiry !== "N/A" ? line.expiry : stock.expiry && stock.expiry !== "N/A" ? stock.expiry : "")}" ${equipment || uomSkipsExpiry(selectedUom) ? "" : "required"}${lotTracked ? " readonly" : ""} /></div>` : `<input class="invoice-lot-input" type="hidden" value="" /><input class="invoice-expiry-input" type="hidden" value="" />`}
       ${allowDiscount ? `<div class="field"><label>Discount</label><input class="invoice-discount-input" type="number" min="0" step="any" value="${line.discount || ""}" /></div>` : `<input class="invoice-discount-input" type="hidden" value="${line.discount || 0}" />`}
     </div>
     <button class="icon-button remove-invoice-line" type="button" aria-label="Remove item" title="Remove item">×</button>
@@ -936,7 +949,8 @@ function syncInvoiceRowItem(input, options = {}) {
   const expiryInput = qsIn(row, ".invoice-expiry-input");
   const equipment = isEquipmentItem(item);
   expiryField?.classList.toggle("equipment-expiry-field", equipment);
-  if (expiryInput) { expiryInput.required = !equipment; if (equipment) expiryInput.value = ""; }
+  if (expiryInput && equipment) expiryInput.value = "";
+  syncInvoiceRowExpiryRequired(row);
   if (!qsIn(row, ".invoice-price-input").value) qsIn(row, ".invoice-price-input").value = "";
   const stock = data.inventory
     .filter((entry) => (entry.code === item.code || entry.item === item.name) && entry.branch === warehouse && entry.qty > 0 && (hasNoExpiry(entry.expiry) || !isExpiredDate(entry.expiry)))

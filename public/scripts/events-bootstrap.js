@@ -1575,6 +1575,7 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (/** @type {AnyEl} */ (event.target).id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
   if (/** @type {AnyEl} */ (event.target).id === "role" && modalType === "user") syncInviteUserPermissions();
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
+  if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-uom-input")) syncInvoiceRowExpiryRequired(closestEl(event.target, ".invoice-line-row"));
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-lot-input")) syncInvoiceRowLot(event.target);
   // A date typed by hand belongs to whatever lot is on the row now, so a later lot edit that
   // matches nothing in stock won't wipe it unless the lot actually changes again.
