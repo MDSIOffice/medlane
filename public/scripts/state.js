@@ -624,6 +624,14 @@ function mergeLiveChanges(rows) {
   const pending = readPendingSaveQueue();
   for (const { module, key, data: record } of rows) {
     if (!module || pending[module] !== undefined || !record || typeof record !== "object") continue;
+    // The server sends a role that only sees some notifications its whole visible list at once.
+    if (module === "notifications" && key === "__all__") {
+      const value = (Array.isArray(record.value) ? record.value : []).filter((/** @type {AppNotification} */ notice) => !notice?.generated);
+      // Keep generated (client-side) notices; replace the stored ones.
+      const next = [...value, ...(data.notifications || []).filter((/** @type {AppNotification} */ notice) => notice?.generated)];
+      if (JSON.stringify(data.notifications) !== JSON.stringify(next)) { data.notifications = next; changed.add(module); }
+      continue;
+    }
     if (LIVE_SINGLETON_KEYS.includes(module)) {
       if (JSON.stringify(data[module]) !== JSON.stringify(record.value)) { data[module] = record.value; changed.add(module); }
       continue;

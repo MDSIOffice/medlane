@@ -2260,9 +2260,30 @@ function writableKeys(profile) {
   return persistedKeys.filter((key) => !genericStateBlockedKeys.has(key) && canAccessKey(profile, key, "edit"));
 }
 
+/**
+ * Whether one shared notice is meant for this person. Mirrors canSeeNotification() in
+ * public/scripts/ui-utils.js. Only used for roles without the Security/System module (the ones
+ * that could not read "notifications" at all), so they receive the notices addressed to them,
+ * their role or one of their modules — read-only: writing the list stays management-only
+ * because it is stored by position and every save rewrites it.
+ * @param {Profile} profile @param {{ targetUser?: string, section?: string, type?: string, message?: string, audience?: string[] } | null | undefined} notice
+ */
+function notificationVisibleTo(profile, notice) {
+  if (!notice || typeof notice !== "object") return false;
+  const email = String(profile?.email || "").toLowerCase();
+  if (notice.targetUser) return Boolean(email) && String(notice.targetUser).toLowerCase() === email;
+  const section = String(notice.section || "notifications");
+  if (["users", "settings", "backup", "security", "logs"].includes(section)) return false;
+  if (/user|account|permission|password|security|audit|login|logout|session/i.test(`${notice.type || ""} ${notice.message || ""}`)) return false;
+  if (Array.isArray(notice.audience) && !notice.audience.includes(profile?.role)) return false;
+  const modules = profile?.customPermissions?.view || [];
+  return section === "notifications" || modules.includes(section);
+}
+
 /** @param {AppRecordRow[]} records @param {Profile} profile @param {AccessMode} [mode] */
 function filterRecordsForProfile(records, profile, mode = "view") {
-  return records.filter((row) => canAccessKey(profile, row.module_name, mode));
+  return records.filter((row) => canAccessKey(profile, row.module_name, mode)
+    || (mode === "view" && row.module_name === "notifications" && notificationVisibleTo(profile, row.data)));
 }
 
 /** @param {string} key @param {any} value @param {number} index */
@@ -5037,9 +5058,21 @@ export default {
         if (!Number.isFinite(sinceMs)) return json({ error: "A valid `since` timestamp is required" }, { status: 400 });
         const since = new Date(sinceMs - 10000).toISOString();
         const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&updated_at=gte.${encodeURIComponent(since)}&module_name=not.in.${encodeURIComponent(postgrestIn([...NON_STATE_MODULES, "branch", "masterTab", "logs"]))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
-        const visible = filterRecordsForProfile(rows, profile, "view");
+        let visible = filterRecordsForProfile(rows, profile, "view");
         const cursor = rows.length ? rows[rows.length - 1].updated_at : new Date(sinceMs).toISOString();
-        return json({ rows: visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data: withStockBase(module_name, record_key, data) })), cursor });
+        /** @type {{ module: string, key: string, data: { value: unknown[] } }[]} */
+        const extra = [];
+        // Notifications are stored by position ("notifications-0" is newest) and every save
+        // rewrites the list. A role that only sees some of them can't merge positional rows into
+        // its shorter local list, so it gets its whole visible list instead (client: "__all__").
+        if (!canAccessKey(profile, "notifications", "view") && rows.some((/** @type {AppRecordRow} */ row) => row.module_name === "notifications")) {
+          visible = visible.filter((row) => row.module_name !== "notifications");
+          const all = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.notifications&select=record_key,data`));
+          const position = (/** @type {string} */ key) => { const n = Number(String(key).replace(/^notifications-/, "")); return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER; };
+          const list = all.sort((a, b) => position(a.record_key) - position(b.record_key)).map((row) => row.data).filter((notice) => notificationVisibleTo(profile, notice));
+          extra.push({ module: "notifications", key: "__all__", data: { value: list } });
+        }
+        return json({ rows: [...visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data: withStockBase(module_name, record_key, data) })), ...extra], cursor });
       }
 
       // "Load previous" — older records for one module that /api/modules/state trimmed out,
