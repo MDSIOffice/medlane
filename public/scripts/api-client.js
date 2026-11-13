@@ -476,6 +476,11 @@ const MedlaneAPI = (() => {
     return request(`/api/logs${query.toString() ? `?${query}` : ""}`);
   }
 
+  /** @param {number} [days] @returns {Promise<AuditSummaryResponse>} */
+  async function auditSummary(days = 7) {
+    return request(`/api/logs/summary?days=${encodeURIComponent(String(days))}`);
+  }
+
   /** @param {string} id @returns {Promise<DigestMessageResponse>} */
   async function getDigestMessage(id) {
     return request(`/api/logs/digest-message?id=${encodeURIComponent(id)}`);
@@ -716,5 +721,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
+  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();

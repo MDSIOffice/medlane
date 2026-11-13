@@ -1314,28 +1314,18 @@
         </article>
       </section>
 
-      <section class="section" id="logs">
-        <div class="section-header"><div><p class="eyebrow">Traceability</p><h2>Audit Trail For Data Accuracy</h2></div><button class="ghost-button" id="clear-logs">Clear Logs</button></div>
-        <div class="tabs" id="logs-tabs">
-          <button class="tab active" data-logs-tab="activity" type="button">User Activity</button>
-          <button class="tab" data-logs-tab="notifications" type="button">Discord &amp; Email</button>
-        </div>
-        <div class="logs-panel active" data-logs-panel="activity">
-          <div class="toolbar log-filter-toolbar">
-            <div class="field"><label for="logs-date-from">From</label><input id="logs-date-from" type="date" /></div>
-            <div class="field"><label for="logs-date-to">To</label><input id="logs-date-to" type="date" /></div>
-            <div class="field"><label for="logs-role-filter">Role</label><select id="logs-role-filter"><option value="all">All Roles</option></select></div>
-            <div class="field"><label for="logs-module-filter">Module</label><select id="logs-module-filter"><option value="all">All Modules</option></select></div>
-            <button class="ghost-button" id="clear-log-filters" type="button">Clear Filters</button>
+      <section class="section ui-scope" id="logs">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Audit Logs</h1></div>
+            <p class="ui-desc">Who did what, when and from where. Unusual or sensitive actions are pulled to the top so you don't have to read every line.</p>
           </div>
-          <div class="toolbar log-user-search-toolbar">
-            <div class="field"><label for="logs-user-search">Search User</label><input id="logs-user-search" name="logs-user-search" list="logs-user-options" placeholder="Type a user to filter..." autocomplete="off" /><datalist id="logs-user-options"></datalist></div>
-            <button class="primary-button" id="logs-user-search-button" type="button">View User's Activity Log</button>
-          </div>
-          <div class="table-card"><table id="logs-table"></table></div>
-          <div class="server-load-more-row"><button class="ghost-button" id="load-more-logs" type="button" hidden>Load More From Server</button></div>
+          <div class="ui-actions" id="logs-actions"></div>
         </div>
-        <div class="logs-panel" data-logs-panel="notifications">
+        <div class="ui-wa-host" data-wa-host="logs"></div>
+        <div class="ui-tabs" id="logs-tabs" role="tablist" aria-label="Audit log sections"></div>
+        <div id="logs-tab-panel"></div>
+        <div class="logs-notifications" id="logs-notifications-panel" hidden>
           <article class="panel">
             <div class="panel-header"><div><p class="eyebrow">Discord</p><h2>Digest</h2><p class="page-description">Daily digest sends weekdays only, 18:00 PHT. Weekly digest sends Fridays, 18:00 PHT. Use these to test the Discord post without waiting for the schedule.</p></div></div>
             <div class="inline-actions">

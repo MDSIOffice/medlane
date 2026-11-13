@@ -62,6 +62,13 @@ interface LogEntry {
   [detail: string]: unknown;
 }
 interface LogsResponse { entries: LogEntry[]; nextCursor: string | null }
+/** GET /api/logs/summary — the Audit Logs overview for the last `days` days. */
+interface AuditSummaryResponse {
+  days: number; total: number; today: number; failedSignIns: number; prevSensitive: number;
+  byDay: { day: string, count: number }[]; byModule: { module: string, count: number }[];
+  byUser: { user: string, role: string, events: number, sensitive: number, last: string }[];
+  sensitive: LogEntry[]; afterHours: LogEntry[]; signins: LogEntry[]; truncated: boolean;
+}
 interface DigestMessageResponse { html: string; subject: string; role: string; periodLabel: string; createdAt: string }
 
 // ---- Backups and storage ----

@@ -3633,7 +3633,9 @@ body[data-active-section="purchase-orders"] .topbar-title,
 body[data-active-section="payables"] .topbar-title,
 body[data-active-section="replenishments"] .topbar-title,
 body[data-active-section="analytics"] .topbar-title,
-body[data-active-section="purchase-history"] .topbar-title { display: none; }
+body[data-active-section="purchase-history"] .topbar-title,
+body[data-active-section="logs"] .topbar-title { display: none; }
+.ui-scope .logs-notifications { display: grid; gap: 16px; }
 .ui-scope .ui-client-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }
 .ui-scope .ui-client-picker .ui-select { min-width: 0; max-width: 100%; }
 .ui-scope .ui-client-picker .ui-select select { max-width: min(360px, 62vw); }

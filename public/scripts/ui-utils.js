@@ -481,7 +481,6 @@ function tableFullyRevealed(target) {
 // loadMoreTableRows() has nothing to call to fetch the next page from the server.
 /** @type {Record<string, any>} */
 const paginatedModuleButtons = {
-  "#logs-table": { button: "#load-more-logs", hasMore: () => Boolean(logsState.nextCursor), loadMore: () => loadMoreLogs() },
   "#notification-logs-table": { button: "#load-more-notification-logs", hasMore: () => Boolean(notificationLogsState.nextCursor), loadMore: () => loadMoreNotificationLogs() },
   "#collections-history-table": { button: "#load-more-collections-history", hasMore: () => Boolean(collectionsHistoryState.nextCursor), loadMore: () => loadMoreCollectionsHistory() },
 };

@@ -2304,6 +2304,166 @@ function stateFromRecords(records) {
   return next;
 }
 
+
+// ---- Audit trail: watched-field changes, sign-ins, weekly summary ---------------------------------
+/** @typedef {Record<string, unknown>} AuditRecord A stored record's data (any module). */
+/** @typedef {{ module_name: string, record_key: string, data: AuditRecord }} AuditRow */
+/** @typedef {{ field: string, from: string, to: string }} AuditChange */
+/** @typedef {Record<string, unknown> & { action?: string, user?: string, role?: string, module?: string, record?: string, event?: string, changes?: AuditChange[], updatedAt?: string, sensitive?: string }} AuditEntry */
+// Before → after for a short list of fields that move money, prices, stock or credit, worked out by
+// the server on every per-record save (so a client can't leave it out). Written as ordinary "logs"
+// entries with an extra `changes` array; nothing else about the log format changes.
+/** @type {Record<string, { action: string, module: string, fields: [string, string][], label: (record: AuditRecord, key: string) => string }>} */
+const AUDIT_WATCHED_FIELDS = {
+  items: { action: "Price changed", module: "Masterlists", fields: [["price", "Selling price"], ["cost", "Cost"]], label: (r, k) => [r.name, r.code].filter(Boolean).join(" · ") || k },
+  inventory: { action: "Stock adjusted", module: "Inventory", fields: [["qty", "Quantity"], ["expiry", "Expiry"]], label: (r, k) => [r.item || r.code, r.lot ? `Lot ${r.lot}` : "", r.branch].filter(Boolean).join(" · ") || k },
+  payments: { action: "Receipt edited", module: "Collections", fields: [["amount", "Amount"], ["dateCollected", "Date collected"], ["dateRecorded", "Receipt date"], ["chequeDate", "Check date"], ["invoice", "Applied to"]], label: (r, k) => String(r.receiptNo || k) },
+  sales: { action: "Invoice edited", module: "Invoicing", fields: [["discount", "Discount"], ["date", "Invoice date"], ["net", "Total"], ["terms", "Terms (days)"]], label: (r, k) => [r.documentNo || r.id || k, r.client].filter(Boolean).join(" · ") },
+  clients: { action: "Credit terms changed", module: "Masterlists", fields: [["creditLimit", "Credit limit"], ["terms", "Payment terms"]], label: (r, k) => String(r.name || k) },
+};
+/** @param {unknown} value */
+function auditValue(value) { return value === undefined || value === null || value === "" ? "—" : String(value).slice(0, 200); }
+/** Stored rows for the watched records a save touches (keyed module → record_key → data). @param {WorkerEnv} env @param {string} stateKey @param {AuditRow[]} rows */
+async function auditBeforeRows(env, stateKey, rows) {
+  /** @type {Record<string, string[]>} */
+  const keys = {};
+  rows.forEach((row) => { if (AUDIT_WATCHED_FIELDS[row.module_name]) (keys[row.module_name] ||= []).push(String(row.record_key)); });
+  const groups = await Promise.all(Object.entries(keys).map(async ([moduleName, list]) => {
+    const stored = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=in.${encodeURIComponent(postgrestIn(list))}&select=record_key,data`).catch(() => []);
+    return /** @type {[string, Map<string, AuditRecord>]} */ ([moduleName, new Map(stored.map((/** @type {AuditRow} */ row) => [String(row.record_key), row.data || {}]))]);
+  }));
+  return new Map(groups);
+}
+/**
+ * Audit entries (with `changes`) for watched fields that a save changed. Stock quantities are only
+ * audited for direct stock edits (inventory saved on its own), not for invoice/transfer movements.
+ * @param {AuditRow[]} rows @param {Map<string, Map<string, AuditRecord>>} before
+ */
+function auditChangeEntries(rows, before) {
+  const stockEditOnly = rows.every((row) => row.module_name === "inventory");
+  /** @type {{ action: string, module: string, record: string, changes: { field: string, from: string, to: string }[] }[]} */
+  const out = [];
+  for (const row of rows) {
+    const watch = AUDIT_WATCHED_FIELDS[row.module_name];
+    if (!watch || (row.module_name === "inventory" && !stockEditOnly)) continue;
+    const key = String(row.record_key);
+    const old = before.get(row.module_name)?.get(key);
+    const record = row.data || {};
+    if (!old) {
+      // New records are routine, except an invoice raised with a discount.
+      if (row.module_name === "sales" && Number(record.discount || 0) > 0) out.push({ action: "Discount applied", module: watch.module, record: watch.label(record, key), changes: [{ field: "Discount", from: "—", to: auditValue(record.discount) }, ...(record.discountReason ? [{ field: "Reason", from: "—", to: auditValue(record.discountReason) }] : [])] });
+      continue;
+    }
+    const changes = watch.fields.filter(([field]) => auditValue(old[field]) !== auditValue(record[field])).map(([field, label]) => ({ field: label, from: auditValue(old[field]), to: auditValue(record[field]) }));
+    if (!changes.length) continue;
+    if (row.module_name === "inventory") {
+      const history = /** @type {{ reason?: string }[]} */ (Array.isArray(record.history) ? record.history : []);
+      const oldHistory = /** @type {{ reason?: string }[]} */ (Array.isArray(old.history) ? old.history : []);
+      const latest = history[0];
+      if (latest && (history.length > oldHistory.length || JSON.stringify(latest) !== JSON.stringify(oldHistory[0]))) changes.push({ field: "Reason", from: "—", to: auditValue(latest.reason || "(none)") });
+    }
+    const action = row.module_name === "sales" && changes.every((change) => change.field === "Discount") ? "Discount changed" : watch.action;
+    out.push({ action, module: watch.module, record: watch.label(record, key), changes });
+  }
+  return out.slice(0, 50);
+}
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {string} userId @param {ReturnType<typeof auditContextForRequest>} context @param {AuditRow[]} rows @param {Map<string, Map<string, AuditRecord>>} before */
+async function writeChangeAudits(env, stateKey, profile, userId, context, rows, before) {
+  const entries = auditChangeEntries(rows, before);
+  if (!entries.length) return;
+  const actor = profile.name || profile.email || "System User";
+  const role = profile.previewOf ? `${profile.previewOf} (previewing ${profile.role})` : profile.role || "Unknown";
+  await Promise.all(entries.map((entry) => writeAuditTrace(env, stateKey, { actor, role, ...entry }, userId, context)));
+}
+
+/** Why an audit entry counts as sensitive ("" when routine). Shared by the list and summary endpoints. @param {AuditEntry} entry */
+function auditSensitivity(entry) {
+  const action = String(entry?.action || "");
+  if (entry?.event === "signin-failed" || /failed sign-in/i.test(action)) return "Failed sign-in";
+  if (Array.isArray(entry?.changes) && entry.changes.length) return "Changed a watched field";
+  if (/^(exported|downloaded)\b/i.test(action)) return "Export";
+  if (/price|discount|stock adjusted|edited stock|credit/i.test(action)) return "Money or stock";
+  if (/role|permission|superadmin|password|invited user|archived user|disabled user|enabled user|forced device logout/i.test(action)) return "Access";
+  if (/cancel|void|revert|restored|deleted|removed|clear/i.test(action)) return "Cancelled or removed";
+  return "";
+}
+/** Hour (0–23) in Manila for a stored timestamp. @param {string} iso */
+function manilaHour(iso) { return Number(new Date(iso).toLocaleString("en-US", { hour: "numeric", hourCycle: "h23", timeZone: "Asia/Manila" })) % 24; }
+/** YYYY-MM-DD in Manila. @param {string | number | Date} value */
+function manilaDay(value) { return new Date(value).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); }
+/** @param {AuditEntry} entry */
+function isSignInEntry(entry) { return entry?.event === "signin" || entry?.event === "signin-failed" || /^(logged in|signed in|failed sign-in)$/i.test(String(entry?.action || "")); }
+
+/** Login endpoint: one audit entry per sign-in or failed attempt (with the device it came from). @param {WorkerEnv} env @param {Request} request @param {{ ok: boolean, email: string, profile?: Profile, userId?: string }} options */
+async function recordSignInEvent(env, request, { ok, email, profile, userId }) {
+  const context = auditContextForRequest(request);
+  const stateKey = appStateKey(env);
+  const entry = {
+    date: manilaTimestamp(),
+    user: ok ? profile?.name || email : email || "Unknown",
+    role: ok ? profile?.role || "Unknown" : "—",
+    action: ok ? "Signed in" : "Failed sign-in",
+    module: "Authentication",
+    record: String(email || "").slice(0, 200),
+    event: ok ? "signin" : "signin-failed",
+    email: String(email || "").slice(0, 200),
+    device: context.device, browser: context.browser, ipAddress: context.ipAddress, userAgent: context.userAgent, serverCapturedAt: context.serverCapturedAt,
+  };
+  await supabaseFetch(env, "/rest/v1/app_records", {
+    method: "POST",
+    headers: { prefer: "return=minimal" },
+    body: JSON.stringify([{ state_key: stateKey, module_name: "logs", record_key: `logs-${crypto.randomUUID()}`, data: entry, updated_by: userId || null }]),
+  }).catch(() => null);
+}
+
+/** Counts behind the Audit Logs overview for the last `days` days (plus the same span before, for comparison). @param {WorkerEnv} env @param {number} days */
+async function auditSummary(env, days) {
+  const stateKey = appStateKey(env);
+  const now = Date.now();
+  const since = new Date(now - days * 86400000).toISOString();
+  const prevSince = new Date(now - 2 * days * 86400000).toISOString();
+  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(prevSince)}&select=data,updated_at&order=updated_at.desc`);
+  const today = manilaDay(now);
+  /** @type {Record<string, number>} */ const byDay = {};
+  /** @type {Record<string, number>} */ const byModule = {};
+  /** @type {Record<string, { user: string, role: string, events: number, sensitive: number, last: string }>} */ const byUser = {};
+  for (let i = days - 1; i >= 0; i -= 1) byDay[manilaDay(now - i * 86400000)] = 0;
+  /** @type {AuditEntry[]} */ const sensitive = [];
+  /** @type {AuditEntry[]} */ const afterHours = [];
+  /** @type {AuditEntry[]} */ const signins = [];
+  let total = 0, todayCount = 0, prevSensitive = 0, failed = 0;
+  for (const row of rows) {
+    const entry = { ...row.data, updatedAt: row.updated_at };
+    const reason = auditSensitivity(entry);
+    if (row.updated_at < since) { if (reason) prevSensitive += 1; continue; }
+    const system = entry.user === "System" || entry.module === "System";
+    if (isSignInEntry(entry)) {
+      if (signins.length < 300) signins.push(entry);
+      if (entry.event === "signin-failed" || /failed/i.test(entry.action)) failed += 1;
+    }
+    if (system) continue;
+    total += 1;
+    const day = manilaDay(row.updated_at);
+    if (day === today) todayCount += 1;
+    if (day in byDay) byDay[day] += 1;
+    byModule[entry.module || "Other"] = (byModule[entry.module || "Other"] || 0) + 1;
+    const who = String(entry.user || "Unknown");
+    const u = (byUser[who] ||= { user: who, role: String(entry.role || ""), events: 0, sensitive: 0, last: row.updated_at });
+    u.events += 1;
+    if (reason) { u.sensitive += 1; if (sensitive.length < 300) sensitive.push({ ...entry, sensitive: reason }); }
+    const hour = manilaHour(row.updated_at);
+    if ((hour >= 22 || hour < 6) && !isSignInEntry(entry)) { if (afterHours.length < 100) afterHours.push({ ...entry, sensitive: reason }); }
+  }
+  return {
+    days, total, today: todayCount, failedSignIns: failed, prevSensitive,
+    byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })),
+    byModule: Object.entries(byModule).map(([module, count]) => ({ module, count })).sort((a, b) => b.count - a.count),
+    byUser: Object.values(byUser).sort((a, b) => b.events - a.events),
+    sensitive, afterHours, signins,
+    truncated: rows.length >= 50000,
+  };
+}
+
 /** @param {Request} request */
 function auditContextForRequest(request) {
   const userAgent = request.headers.get("user-agent") || "";
@@ -2415,8 +2575,8 @@ function gameResolveSkin(requested, stored, level, badge) {
 // Writes directly to the "logs" module so a save's trail survives even if the
 // save that produced it gets rejected — never routed through the same
 // delete-then-insert path used for regular module state.
-/** @param {WorkerEnv} env @param {string} stateKey @param {{ actor: any, role: any, action: string, module: any, record: any }} options @param {string} userId @param {any} context */
-async function writeAuditTrace(env, stateKey, { actor, role, action, module, record }, userId, context) {
+/** @param {WorkerEnv} env @param {string} stateKey @param {{ actor: any, role: any, action: string, module: any, record: any, changes?: { field: string, from: string, to: string }[] }} options @param {string} userId @param {any} context */
+async function writeAuditTrace(env, stateKey, { actor, role, action, module, record, changes }, userId, context) {
   const entry = {
     date: manilaTimestamp(),
     user: actor || "System User",
@@ -2424,6 +2584,7 @@ async function writeAuditTrace(env, stateKey, { actor, role, action, module, rec
     action,
     module: module || "System",
     record: record || "",
+    ...(Array.isArray(changes) && changes.length ? { changes } : {}),
     device: context?.device,
     browser: context?.browser,
     ipAddress: context?.ipAddress,
@@ -4617,7 +4778,10 @@ export default {
         const session = await authResponse.json().catch(() => null);
         if (!authResponse.ok) {
           const authError = session?.error_description || session?.msg || session?.error || "Invalid email or password";
-          if (authResponse.status === 400 || authResponse.status === 401 || authResponse.status === 422) await loginThrottle(env, request, "fail", email);
+          if (authResponse.status === 400 || authResponse.status === 401 || authResponse.status === 422) {
+            await loginThrottle(env, request, "fail", email);
+            ctx.waitUntil(recordSignInEvent(env, request, { ok: false, email: String(email || "").trim().toLowerCase() }));
+          }
           const debug = url.searchParams.get("debug") === "1";
           console.error(JSON.stringify({ message: "Supabase login failed", authError, status: authResponse.status }));
           return json({ error: authError, ...(debug ? { supabaseStatus: authResponse.status, supabaseResponse: session, supabaseHost: new URL(env.SUPABASE_URL).hostname, supabasePath: new URL(env.SUPABASE_URL).pathname, authUrl: `${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, anonKeyHash: await shortHash(env.SUPABASE_ANON_KEY) } : {}) }, { status: 401 });
@@ -4625,6 +4789,7 @@ export default {
         await loginThrottle(env, request, "reset", email);
         const user = await profileForUser(env, session.user.id, email);
         const appSession = await createAppSession(env, request, session.user.id);
+        ctx.waitUntil(recordSignInEvent(env, request, { ok: true, email: String(email || "").trim().toLowerCase(), profile: user, userId: session.user.id }));
         return json({ session: { ...session, app_session_id: appSession?.id || null }, user });
       }
 
@@ -4810,6 +4975,13 @@ export default {
         return json({ html: snapshot.html, subject: snapshot.meta.subject || "", role: snapshot.meta.role || "", periodLabel: snapshot.meta.periodLabel || "", createdAt: snapshot.meta.createdAt || "" });
       }
 
+      if (url.pathname === "/api/logs/summary" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (!["Superadmin", "CEO"].includes(profile.role) && (!profile.customPermissions?.view?.includes("logs") || (ROLE_BLOCKED_MODULES[profile.role] || []).includes("logs"))) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
+        const days = Math.min(Math.max(Math.round(Number(url.searchParams.get("days")) || 7), 1), 30);
+        return json(await auditSummary(env, days));
+      }
+
       if (url.pathname === "/api/logs" && request.method === "GET") {
         const { profile } = await authenticatedProfile(request, env);
         if (!["Superadmin", "CEO"].includes(profile.role) && (!profile.customPermissions?.view?.includes("logs") || (ROLE_BLOCKED_MODULES[profile.role] || []).includes("logs"))) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
@@ -4843,6 +5015,8 @@ export default {
           if (!rows.length) { exhausted = true; break; }
           for (const row of rows) {
             const entry = { ...row.data, updatedAt: row.updated_at };
+            const reason = auditSensitivity(entry);
+            if (reason) entry.sensitive = reason;
             if (matchesFilters(entry)) entries.push(entry);
           }
           cursor = rows[rows.length - 1].updated_at;
@@ -5404,7 +5578,7 @@ export default {
         // needs a second, sequential read below — it only knows which sales rows to look for once
         // it knows which incoming PO rows are edits of an existing PO, i.e. once storedPoRows below
         // has resolved.)
-        const [saleScopedStock, existingSaleRows, storedPoRows, beforeRows, masterlistStoredRows, stockEditStoredStock] = await Promise.all([
+        const [saleScopedStock, existingSaleRows, storedPoRows, beforeRows, masterlistStoredRows, stockEditStoredStock, auditBefore] = await Promise.all([
           saleStockRows.length
             ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(saleStockRows.map((row) => row.record_key)))}&select=record_key,data`)
             : Promise.resolve([]),
@@ -5430,6 +5604,8 @@ export default {
           checkStockEdit
             ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(incomingStockRows.map((row) => row.record_key)))}&select=record_key,data`)
             : Promise.resolve([]),
+          // Stored copies of watched records, for the audit trail's before → after.
+          auditBeforeRows(env, stateKey, rows),
           incomingPoRows.length ? assertPurchaseOrderClientsNotArchived(env, stateKey, incomingPoRows) : Promise.resolve(),
           assertMasterlistUnique(env, stateKey, rows),
           assertFinancialApprovalAllowed(env, stateKey, profile, rows),
@@ -5525,6 +5701,7 @@ export default {
           // This is the shared save path for nearly every module, so this alone removes a
           // meaningful chunk of latency (and "Failed to fetch" exposure) from every itemized submit.
           ctx.waitUntil(postRecordEventsToDiscord(env, profile, beforeRows, rows));
+          ctx.waitUntil(writeChangeAudits(env, stateKey, profile, authUser.id, auditContextForRequest(request), rows, auditBefore).catch(() => null));
         }
         return json({ ok: true, savedRecords: rows.length, revision: Date.now(), stock: savedStockQty(rows) });
         };
@@ -6060,6 +6237,7 @@ export default {
           // would keep the user capped at their old module list despite role =
           // Superadmin. Clear it so they fall back to the full Superadmin module set.
           await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(target.id)}`, { method: "DELETE" }).catch(() => null);
+          ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Role changed", module: "Users", record: email, changes: [{ field: "Role", from: auditValue(target.role), to: "Superadmin" }] }, authUser.id, auditContextForRequest(request)));
           return json({ ok: true, granted: true, role: "Superadmin" });
         }
         const superadmins = await supabaseFetch(env, `/rest/v1/profiles?role=eq.Superadmin&select=id`);
@@ -6070,11 +6248,12 @@ export default {
           headers: { prefer: "return=minimal" },
           body: JSON.stringify({ role: restoredRole, base_role: null, is_superadmin: false }),
         });
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Role changed", module: "Users", record: email, changes: [{ field: "Role", from: auditValue(target.role), to: restoredRole }] }, authUser.id, auditContextForRequest(request)));
         return json({ ok: true, granted: false, role: restoredRole });
       }
 
       if (url.pathname === "/api/users/reset-permissions") {
-        const { profile } = await authenticatedProfile(request, env);
+        const { authUser: actingUser, profile } = await authenticatedProfile(request, env);
         if (request.method !== "POST") return methodNotAllowed();
         requireUserAdmin(profile);
         const { email: rawEmail } = await request.json();
@@ -6088,7 +6267,9 @@ export default {
         // picks up a module added to the role later (see roleModules). Clearing those rows
         // is how a user falls back onto the live role defaults — same trick already used
         // by the Superadmin grant above.
+        const priorModules = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(target.id)}&select=module_key,can_view`).catch(() => []);
         await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(target.id)}`, { method: "DELETE" }).catch(() => null);
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Reset user permissions to role defaults", module: "Users", record: `${email} · ${target.role}`, changes: [{ field: "Modules", from: priorModules.length ? auditValue(priorModules.filter((/** @type {{ module_key: string, can_view: boolean }} */ m) => m.can_view).map((/** @type {{ module_key: string, can_view: boolean }} */ m) => m.module_key).join(", ")) : "Role defaults", to: "Role defaults" }] }, actingUser.id, auditContextForRequest(request)));
         const authUser = await findAuthUserForProfileOrEmail(env, target, email);
         const updatedUser = userFromProfileAndAuth(target, authUser, []);
         return json({ user: updatedUser });

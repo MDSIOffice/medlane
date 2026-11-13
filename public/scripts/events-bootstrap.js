@@ -612,8 +612,6 @@ document.body.addEventListener("click", (event) => {
   if (clientInvoicesExportPdf) return printClientInvoicesReport();
   const clientInvoicesResetFilters = closestEl(event.target, "#client-invoices-reset-filters");
   if (clientInvoicesResetFilters) return resetClientInvoicesFilters();
-  const logDetail = closestEl(event.target, "[data-log-detail]");
-  if (logDetail) return showAuditLogDetail(Number(/** @type {string} */ (logDetail.dataset.logDetail)));
   const createSoa = closestEl(event.target, "[data-create-soa]");
   if (createSoa) return previewSoa(/** @type {string} */ (createSoa.dataset.createSoa));
   const invoiceFlow = closestEl(event.target, "[data-invoice-flow]");
@@ -918,7 +916,7 @@ async function resetUserPermissions(index) {
   const result = /** @type {OrApiError<ResetPermissionsResponse>} */ (await MedlaneAPI.resetUserPermissions(user.email).catch((error) => ({ error })));
   if (result.error) return toast(result.error.message || "Unable to reset permissions.");
   Object.assign(user, result.user);
-  log("Reset user permissions to role defaults", "Users", `${user.email} · ${user.role}`);
+  // The server writes this audit entry (with the module list before → after).
   saveData();
   renderUsers();
   toast(`${user.name || user.email}'s permissions reset to ${user.role} defaults.`);
@@ -945,7 +943,7 @@ qs("#users-table").addEventListener("change", async (event) => {
   user.role = result.role || user.role;
   user.superadminPermissions = granted;
   user.customPermissions = { enabled: false, view: [], edit: [] };
-  log("Changed user Superadmin permission", "Users", `${user.email || user.name}: ${granted ? "granted" : "removed"}`);
+  // The server writes this audit entry ("Role changed", with before → after).
   renderUsers();
   toast(`${user.name} Superadmin permissions ${granted ? "granted" : "removed"}.`);
 });
@@ -1488,6 +1486,23 @@ qs("#purchase-history").addEventListener("change", (event) => {
   if (pick instanceof HTMLSelectElement && pick.matches("[data-clienthist-pick]")) { clientHistoryClient = pick.value; renderPurchaseHistory(); }
 });
 qs("#purchase-history").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "clienthist", () => clientHistoryView, renderPurchaseHistory); });
+qs("#logs").addEventListener("click", (event) => {
+  const target = /** @type {Element} */ (event.target);
+  const tab = closestEl(target, "[data-logs-tab]");
+  if (tab) {
+    if (tab.dataset.logsTab !== logsTab) logsView = uiBlankViewState();
+    logsTab = /** @type {string} */ (tab.dataset.logsTab);
+    return renderLogs();
+  }
+  if (closestEl(target, "[data-logs-refresh]")) { auditSummaryState.at = 0; auditSummaryState.error = ""; logsState.loaded = false; return renderLogs(); }
+  if (closestEl(target, "[data-logs-load-more]")) return loadMoreLogs();
+  const user = closestEl(target, "[data-logs-user]");
+  if (user) return openUserAuditLog(/** @type {string} */ (user.dataset.logsUser));
+  const full = closestEl(target, "[data-logs-full]");
+  if (full) return showAuditLogDetail(auditEntryById.get(/** @type {string} */ (full.dataset.logsFull)));
+  if (["activity", "sensitive", "signins"].includes(logsTab)) uiViewClick(target, "logs", { state: () => logsView, view: () => logsTabModel(logsTab, auditSummaryState.data), render: renderLogs });
+});
+qs("#logs").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "logs", () => logsView, renderLogs); });
 qs("#payables").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "payables", () => payablesView, renderPayables); });
 qs("#replenishments").addEventListener("click", (event) => {
   const target = /** @type {AnyEl} */ (event.target);
@@ -1737,24 +1752,9 @@ qs("#recon-date-to").addEventListener("change", () => { selectedReconHistoryInde
 qs("#recon-period").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
 qs("#recon-area-filter").addEventListener("change", (event) => { reconciliationAreaFilter = /** @type {AnyEl} */ (event.target).value; renderReconciliation(); });
 qs("#clear-recon-dates").addEventListener("click", () => { selectedReconHistoryIndex = null; qs("#recon-date-from").value = ""; qs("#recon-date-to").value = ""; renderReconciliation(); toast("Reconciliation date scope reset."); });
-qs("#clear-logs").addEventListener("click", () => { log("Attempted to clear universal audit logs", "Audit Logs", currentUser?.email || currentUser?.name || "User"); notify("Audit Logs", "Universal audit logs cannot be cleared from the app.", "logs", currentUser?.email || currentUser?.name || "User"); saveData(); renderLogs(); toast("Universal audit logs cannot be cleared from the app."); });
-qs("#logs-date-from").addEventListener("change", renderLogs);
-qs("#logs-date-to").addEventListener("change", renderLogs);
-qs("#logs-role-filter").addEventListener("change", renderLogs);
-qs("#logs-module-filter").addEventListener("change", renderLogs);
-qs("#clear-log-filters").addEventListener("click", () => { qs("#logs-date-from").value = ""; qs("#logs-date-to").value = ""; qs("#logs-role-filter").value = "all"; qs("#logs-module-filter").value = "all"; renderLogs(); toast("Audit log filters cleared."); });
-qs("#load-more-logs").addEventListener("click", loadMoreLogs);
-qs("#logs-user-search-button").addEventListener("click", () => openUserAuditLog(qs("#logs-user-search").value));
-qs("#logs-user-search").addEventListener("keydown", (event) => {
-  if (event.key === "Enter") { event.preventDefault(); openUserAuditLog(qs("#logs-user-search").value); }
-});
 qs("#back-to-logs").addEventListener("click", () => showSection("logs"));
 qs("#load-more-user-logs").addEventListener("click", loadMoreUserAuditLog);
-qsa("#logs-tabs .tab").forEach((button) => button.addEventListener("click", () => {
-  qsa("#logs-tabs .tab").forEach((tab) => tab.classList.toggle("active", tab === button));
-  qsa(".logs-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.logsPanel === button.dataset.logsTab));
-  if (button.dataset.logsTab === "notifications") renderNotificationLogs();
-}));
+
 qs("#clear-notification-log-filters").addEventListener("click", () => { qs("#notification-logs-date-from").value = ""; qs("#notification-logs-date-to").value = ""; qs("#notification-logs-channel-filter").value = "all"; renderNotificationLogs(); toast("Filters cleared."); });
 qs("#load-more-notification-logs").addEventListener("click", loadMoreNotificationLogs);
 qs("#notification-logs-channel-filter").addEventListener("change", renderNotificationLogs);
@@ -2224,7 +2224,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
     toast(`Logged in, but server data sync failed: ${error.message}`);
   }
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
-  log("Logged in", "Authentication", currentUser.role);
+  // Sign-ins (and failed attempts) are recorded by the server's login endpoint.
   if (currentUser?.email) notify("Security", `New sign-in to your account (${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" })}).`, "notifications", "", null, currentUser.email);
   saveData(["notifications"]);
   playLoginSuccessSound();

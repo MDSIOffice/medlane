@@ -158,6 +158,12 @@ let clientHistoryPageTab = clientHistorySeed.tab;
 /** @type {UiViewState} */
 let clientHistoryView = clientHistorySeed.view;
 let clientHistoryClient = clientHistorySeed.params.get("client") || "";
+// Phase 6: Audit Logs (section id logs).
+const LOGS_TABS = ["overview", "activity", "sensitive", "signins", "notifications"];
+const logsSeed = moduleUrlSeed("logs", LOGS_TABS);
+let logsTab = logsSeed.tab;
+/** @type {UiViewState} */
+let logsView = logsSeed.view;
 /** Pre-fill for the next "New purchase order" form (from reorder suggestions). @type {{ supplier: string, lines: Record<string, any>[] } | null} */
 let inventoryPoPrefill = null;
 

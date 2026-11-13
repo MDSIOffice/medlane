@@ -165,6 +165,22 @@ const plural = (/** @type {number} */ n, /** @type {string} */ word, /** @type {
 
 /** @type {Record<string, WorkflowRule[]>} */
 const WORKFLOW_RULES = {
+  logs: [
+    { id: "failed-sign-ins", rule: () => {
+      const s = auditSummaryState.data;
+      const group = s ? auditFailedByAccount(s).find((entry) => entry.list.length >= 3) : undefined;
+      return group ? { tone: "red", text: `Possible password guessing: ${group.list.length} failed sign-ins on ${group.account} this week.`, action: "Sign-ins", attrs: { "data-wa-goto": "logs|signins|failed|" } } : null;
+    } },
+    { id: "after-hours-exports", rule: () => {
+      const late = (auditSummaryState.data?.afterHours || []).filter((entry) => entry.sensitive === "Export");
+      return late.length ? { tone: "orange", text: late.length === 1 ? `${late[0].user} exported data at ${auditWhen(late[0]).split(" · ")[1]} (${String(late[0].record || late[0].action).slice(0, 60)}).` : `${plural(late.length, "export")} made after hours this week.`, action: "Review", attrs: { "data-wa-goto": "logs|sensitive|Export|" } } : null;
+    } },
+    { id: "stock-without-reason", rule: () => {
+      const s = auditSummaryState.data;
+      const list = s ? auditStockWithoutReason(s) : [];
+      return list.length ? { tone: "amber", text: `${plural(list.length, "stock adjustment")} this week gave no reason.`, action: "Review", attrs: { "data-wa-goto": "logs|sensitive|Money or stock|" } } : null;
+    } },
+  ],
   analytics: [
     { id: "hold-orders", rule: (ctx) => {
       const risky = new Map(ctx.receivables.filter((entry) => entry.amounts[3] + entry.amounts[4] > 0.005 || entry.bounced.length).map((entry) => [entry.client, entry]));
@@ -465,6 +481,7 @@ function workflowGoto(module, tab, scope, sel) {
   else if (module === "purchase-orders") { if (PURCHASING_TAB_LABELS[tab]) purchasingTab = tab; purchasingView = view; }
   else if (module === "payables") { if (PAYABLES_TAB_LABELS[tab]) payablesTab = tab; payablesView = view; }
   else if (module === "replenishments") { if (EXPENSES_TAB_LABELS[tab]) expensesTab = tab; expensesView = view; }
+  else if (module === "logs") { if (LOGS_TAB_LABELS[tab]) logsTab = tab; logsView = view; }
   else if (module === "analytics") { if (ANALYTICS_TAB_LABELS[tab]) analyticsTab = tab; analyticsView = view; }
   else if (module === "purchase-history") {
     if (CLIENT_HISTORY_TAB_LABELS[tab]) clientHistoryPageTab = tab;
@@ -4935,6 +4952,7 @@ function sectionQueryString(sectionId) {
   if (sectionId === "payables") return payablesQueryString();
   if (sectionId === "replenishments") return expensesQueryString();
   if (sectionId === "analytics") return analyticsQueryString();
+  if (sectionId === "logs") return logsQueryString();
   if (sectionId === "purchase-history") return clientHistoryQueryString();
   return `section=${encodeURIComponent(sectionId)}`;
 }
@@ -12115,46 +12133,10 @@ function formatLogRecord(record) {
   const short = compact.length > 140 ? `${compact.slice(0, 137)}...` : compact;
   return `<span class="log-record" title="${escapeHtml(compact)}">${escapeHtml(short)}</span>`;
 }
-const auditLogModules = ["Add Bank", "Add Client", "Add Employee", "Add Item", "Add Supplier", "Add Warranty Record", "Audit Logs", "Authentication", "Backup", "Cancel Invoice And Make Replacement", "Collections", "Create PO", "Create Sales Invoice", "Expense Request", "Expenses", "Imports", "Inventory", "Inventory Purchase Order", "Invoicing", "Masterlists", "Payable Request", "Payables", "Payment Received", "Support Tracker", "Reconciliation", "Reports", "Settings", "System", "User Settings", "Users"];
-/** @param {any} entries */
-function visibleAuditLogEntries(entries) {
-  const selectedModule = qs("#logs-module-filter")?.value || "all";
-  return selectedModule === "all" ? entries.filter((/** @type {any} */ entry) => String(entry.module || "System").toLowerCase() !== "system") : entries;
-}
-function renderLogFilters() {
-  const selectedRole = qs("#logs-role-filter")?.value || "all";
-  const selectedModule = qs("#logs-module-filter")?.value || "all";
-  const roles = Object.keys(roleEditableModules).sort();
-  qs("#logs-role-filter").innerHTML = [`<option value="all">All Roles</option>`, ...roles.map((role) => `<option value="${escapeHtml(role)}">${escapeHtml(role)}</option>`)].join("");
-  qs("#logs-module-filter").innerHTML = [`<option value="all">All Modules</option>`, ...auditLogModules.map((module) => `<option value="${escapeHtml(module)}">${escapeHtml(module)}</option>`)].join("");
-  qs("#logs-role-filter").value = roles.includes(selectedRole) ? selectedRole : "all";
-  qs("#logs-module-filter").value = auditLogModules.includes(selectedModule) ? selectedModule : "all";
-  const userOptions = qs("#logs-user-options");
-  if (userOptions) userOptions.innerHTML = dedupedUsers().map((u) => `<option value="${escapeHtml(u.name)}"></option>`).join("");
-}
-/** @type {{ user?: string, entries: any[], nextCursor: any, loading: boolean }} */
+/** Activity tab rows (GET /api/logs pages). @type {{ entries: LogEntry[], nextCursor: string | null, loading: boolean, loaded?: boolean, error?: string }} */
 let logsState = { entries: [], nextCursor: null, loading: false };
-function logFilterParams() {
-  const from = qs("#logs-date-from")?.value || "";
-  const to = qs("#logs-date-to")?.value || "";
-  const role = qs("#logs-role-filter")?.value || "all";
-  const module = qs("#logs-module-filter")?.value || "all";
-  return {
-    dateFrom: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
-    dateTo: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
-    role: role === "all" ? "" : role,
-    module: module === "all" ? "" : module,
-  };
-}
-function renderLogTable() {
-  table("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address", "Details"], logsState.entries.map((l, index) => ({ focus: [l.record, l.action, l.user, l.ipAddress].filter(Boolean).join("|"), cells: [formatLogCell(l.date), formatLogCell(l.role), formatLogCell(l.user), formatLogCell(l.action), formatLogCell(l.module), formatLogRecord(l.record), formatLogCell(l.device || "-"), formatLogCell(l.browser || "-"), formatLogCell(l.ipAddress || "-"), `<button class="mini-button" data-log-detail="${index}">Details</button>`] })));
-  const loadMoreButton = qs("#load-more-logs");
-  if (loadMoreButton) loadMoreButton.hidden = !logsState.nextCursor || !tableFullyRevealed("#logs-table");
-}
-
-/** @param {any} index */
-function showAuditLogDetail(index) {
-  const entry = logsState.entries[index];
+/** @param {LogEntry | undefined} entry */
+function showAuditLogDetail(entry) {
   if (!entry) return toast("Audit log entry not found.");
   const dialog = document.createElement("dialog");
   dialog.className = "modal audit-detail-modal";
@@ -12165,7 +12147,7 @@ function showAuditLogDetail(index) {
   document.body.appendChild(dialog);
   qsIn(dialog, "[data-close-audit-detail]").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
-  qsIn(dialog, "[data-view-digest-message]")?.addEventListener("click", () => showDigestMessagePreview(entry.digestMessageId));
+  qsIn(dialog, "[data-view-digest-message]")?.addEventListener("click", () => showDigestMessagePreview(String(entry.digestMessageId)));
   dialog.showModal();
 }
 /** @param {string} id */
@@ -12192,33 +12174,303 @@ async function showDigestMessagePreview(id) {
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
 }
-async function renderLogs() {
-  defaultDateRangeIfEmpty("logs-date-from", "logs-date-to");
-  renderLogFilters();
-  logsState = { entries: [], nextCursor: null, loading: true };
-  tableSkeleton("#logs-table", ["Date", "Role", "User", "Action", "Module", "Record", "Device", "Browser", "IP Address", "Details"], 6);
+// ===== Audit Logs (module redesign, phase 6) ========================================================
+// Overview, Sensitive and Sign-ins come from GET /api/logs/summary (last 7 days, counted by the
+// server); Activity pages through GET /api/logs. "Sensitive" is decided by the server
+// (auditSensitivity in worker.js); before → after details come from the server's `changes`.
+const LOGS_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "Overview", activity: "Activity log", sensitive: "Sensitive actions", signins: "Sign-ins", notifications: "Discord & email" });
+/** @type {{ data: AuditSummaryResponse | null, loading: boolean, error: string, at: number }} */
+let auditSummaryState = { data: null, loading: false, error: "", at: 0 };
+/** Entries shown on the page, by row id, for the "Full details" dialog. @type {Map<string, LogEntry>} */
+const auditEntryById = new Map();
+function logsQueryString() { return moduleViewQueryString("logs", logsTab, "overview", logsView); }
+/** @param {LogEntry} entry */
+function auditManilaHour(entry) { return Number(new Date(entry.updatedAt).toLocaleString("en-US", { hour: "numeric", hourCycle: "h23", timeZone: "Asia/Manila" })) % 24; }
+/** @param {LogEntry} entry */
+function auditIsLate(entry) { const hour = auditManilaHour(entry); return hour >= 22 || hour < 6; }
+/** "13 Nov · 10:02" in Manila. @param {LogEntry} entry */
+function auditWhen(entry) {
+  const at = new Date(entry.updatedAt);
+  if (Number.isNaN(at.getTime())) return String(entry.date || "—");
+  return `${at.toLocaleDateString("en-PH", { day: "numeric", month: "short", timeZone: "Asia/Manila" })} · ${at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" })}`;
+}
+/** @param {LogEntry} entry @returns {{ field: string, from: string, to: string }[]} */
+function auditChanges(entry) { return Array.isArray(entry.changes) ? /** @type {{ field: string, from: string, to: string }[]} */ (entry.changes) : []; }
+/** @param {LogEntry} entry @returns {UiTone} */
+function auditTone(entry) {
+  const action = String(entry.action || "");
+  if (entry.event === "signin-failed" || /failed/i.test(action)) return "red";
+  if (/role|permission|superadmin|export|download/i.test(action)) return "orange";
+  if (entry.sensitive) return "amber";
+  if (/^created|^saved|^added|^submitted/i.test(action)) return "blue";
+  return "slate";
+}
+async function loadAuditSummary() {
+  if (auditSummaryState.loading) return;
+  auditSummaryState = { ...auditSummaryState, loading: true, error: "" };
   try {
-    const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50 });
-    logsState = { entries: visibleAuditLogEntries(result.entries || []), nextCursor: result.nextCursor || null, loading: false };
+    auditSummaryState = { data: await MedlaneAPI.auditSummary(7), loading: false, error: "", at: Date.now() };
   } catch (/** @type {any} */ error) {
-    logsState = { entries: [], nextCursor: null, loading: false };
-    toast(error.message || "Could not load audit logs.");
+    auditSummaryState = { ...auditSummaryState, loading: false, error: error?.message || "Could not load the audit summary.", at: Date.now() };
   }
-  renderLogTable();
+  if (document.body.dataset.activeSection === "logs") renderLogs();
+  else renderModuleAssistant("logs");
+}
+async function loadAuditActivity() {
+  if (logsState.loading) return;
+  logsState = { entries: [], nextCursor: null, loading: true };
+  try {
+    const result = await MedlaneAPI.listLogs({ limit: 200 });
+    logsState = { entries: result.entries || [], nextCursor: result.nextCursor || null, loading: false, loaded: true };
+  } catch (/** @type {any} */ error) {
+    logsState = { entries: [], nextCursor: null, loading: false, loaded: true, error: error?.message || "Could not load audit logs." };
+  }
+  if (document.body.dataset.activeSection === "logs") renderLogs();
 }
 async function loadMoreLogs() {
   if (!logsState.nextCursor || logsState.loading) return;
   logsState.loading = true;
   try {
-    const result = await MedlaneAPI.listLogs({ ...logFilterParams(), limit: 50, before: logsState.nextCursor });
-    logsState.entries = [...logsState.entries, ...visibleAuditLogEntries(result.entries || [])];
+    const result = await MedlaneAPI.listLogs({ limit: 200, before: logsState.nextCursor });
+    logsState.entries = [...logsState.entries, ...(result.entries || [])];
     logsState.nextCursor = result.nextCursor || null;
   } catch (/** @type {any} */ error) {
     toast(error.message || "Could not load more audit logs.");
   }
   logsState.loading = false;
-  renderLogTable();
+  renderLogs();
 }
+
+/** Failed sign-ins grouped by the account tried. @param {AuditSummaryResponse} s */
+function auditFailedByAccount(s) {
+  /** @type {Map<string, LogEntry[]>} */
+  const out = new Map();
+  s.signins.filter((entry) => entry.event === "signin-failed" || /failed/i.test(String(entry.action || ""))).forEach((entry) => {
+    const who = String(entry.email || entry.record || entry.user || "Unknown");
+    out.set(who, [...(out.get(who) || []), entry]);
+  });
+  return [...out.entries()].map(([account, list]) => ({ account, list })).sort((a, b) => b.list.length - a.list.length);
+}
+/** Stock adjustments that gave no reason. @param {AuditSummaryResponse} s */
+function auditStockWithoutReason(s) {
+  return s.sensitive.filter((entry) => {
+    if (entry.action !== "Stock adjusted") return false;
+    const reason = auditChanges(entry).find((change) => change.field === "Reason");
+    return !reason || /^(\(none\)|—)$/.test(reason.to);
+  });
+}
+/** Sign-ins with "new device" (not seen before for that account in the window) and "late" flags, newest first. @param {LogEntry[]} list */
+function auditSignInFacts(list) {
+  /** @type {Map<string, Set<string>>} */
+  const seen = new Map();
+  const facts = [...list].sort((a, b) => String(a.updatedAt).localeCompare(String(b.updatedAt))).map((entry) => {
+    const who = String(entry.email || entry.user || "").toLowerCase();
+    const device = [entry.device, entry.browser].filter(Boolean).join(" · ") || "Unknown device";
+    const failed = entry.event === "signin-failed" || /failed/i.test(String(entry.action || ""));
+    const known = seen.get(who);
+    const newDevice = Boolean(known && !known.has(device));
+    if (!failed) seen.set(who, new Set([...(known || []), device]));
+    return { entry, who, device, failed, newDevice, late: auditIsLate(entry) };
+  });
+  return facts.reverse();
+}
+
+/** @param {AuditSummaryResponse} s */
+function logsOverviewHtml(s) {
+  const goto = (/** @type {string} */ tab, /** @type {string} */ scope = "", /** @type {string} */ sel = "") => ({ "data-wa-goto": `logs|${tab}|${scope}|${sel}` });
+  const sensitiveCount = s.byUser.reduce((sum, user) => sum + user.sensitive, 0);
+  const failed = auditFailedByAccount(s);
+  const top = failed[0];
+  const delta = sensitiveCount - s.prevSensitive;
+  /** @type {UiKpi[]} */
+  const kpis = [
+    { label: "Events today", value: s.today.toLocaleString("en-PH"), tone: "accent", sub: `${s.total.toLocaleString("en-PH")} in the last 7 days` },
+    { label: "Sensitive actions · 7 days", value: String(sensitiveCount), tone: "amber", change: s.prevSensitive || sensitiveCount ? { text: `${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta)} vs last week`, good: delta <= 0 } : null, sub: "Prices, discounts, stock, receipts, access, exports, cancellations" },
+    { label: "Failed sign-ins · 7 days", value: String(s.failedSignIns), tone: "red", change: top && top.list.length >= 3 ? { text: `${top.list.length} on one account`, good: false } : null, sub: top ? top.account : "None" },
+    { label: "After-hours activity", value: String(s.afterHours.length), tone: "orange", sub: "Between 10 PM and 6 AM (Manila)" },
+  ];
+  /** @type {UiInsight[]} */
+  const worth = [];
+  failed.filter((group) => group.list.length >= 3).forEach((group) => {
+    const devices = [...new Set(group.list.map((entry) => [entry.device, entry.browser].filter(Boolean).join(" · ")).filter(Boolean))];
+    const times = group.list.map(auditWhen);
+    worth.push({ tone: "red", title: `${group.list.length} failed sign-ins on ${group.account}`, text: `${times.at(-1)} to ${times[0]}${devices.length ? ` from ${devices.slice(0, 2).join(", ")}` : ""}. If it wasn't them, reset the password in Users.`, action: { label: "View sign-ins", attrs: goto("signins", "failed") } });
+  });
+  s.afterHours.filter((entry) => entry.sensitive).slice(0, 3).forEach((entry) => worth.push({ tone: "orange", title: `${entry.action} at ${auditWhen(entry).split(" · ")[1]}`, text: `${entry.user} (${entry.role}) on ${auditWhen(entry).split(" · ")[0]}: ${String(entry.record || "").slice(0, 120)}` }));
+  const noReason = auditStockWithoutReason(s);
+  if (noReason.length) {
+    const users = [...new Set(noReason.map((entry) => String(entry.user)))];
+    worth.push({ tone: "amber", title: `${plural(noReason.length, "stock adjustment")} with no reason`, text: `By ${users.slice(0, 3).join(", ")}: ${noReason.slice(0, 3).map((entry) => String(entry.record || "")).join("; ")}.`, action: { label: "Review", attrs: goto("sensitive", "Money or stock") } });
+  }
+  s.sensitive.filter((entry) => auditChanges(entry).length && entry.action !== "Stock adjusted").slice(0, 4).forEach((entry) => {
+    const changes = auditChanges(entry);
+    worth.push({ tone: "amber", title: `${entry.action}: ${String(entry.record || "").slice(0, 60)}`, text: `${entry.user}, ${auditWhen(entry)}. ${changes.slice(0, 2).map((change) => `${change.field} ${change.from} → ${change.to}`).join("; ")}.` });
+  });
+  const exportsCount = s.sensitive.filter((entry) => entry.sensitive === "Export").length;
+  if (exportsCount) worth.push({ tone: "slate", title: `${plural(exportsCount, "export")} this week`, text: "Data taken out of the system as CSV or PDF.", action: { label: "Show", attrs: goto("sensitive", "Export") } });
+
+  const dayLabel = (/** @type {string} */ day) => new Date(`${day}T00:00:00`).toLocaleDateString("en-PH", { weekday: "short", day: "numeric" });
+  const weekend = s.byDay.filter((entry) => [0, 6].includes(new Date(`${entry.day}T00:00:00`).getDay())).reduce((sum, entry) => sum + entry.count, 0);
+  const users = s.byUser.slice(0, 10).map((user) => [
+    `<button class="ui-link" type="button" data-logs-user="${escapeHtml(user.user)}">${escapeHtml(user.user)}</button>`, escapeHtml(user.role || "—"),
+    `<span class="ui-num">${user.events.toLocaleString("en-PH")}</span>`, `<span class="ui-num${user.sensitive >= 2 ? " tone-red" : ""}">${user.sensitive}</span>`,
+    escapeHtml(auditWhen(/** @type {LogEntry} */ ({ updatedAt: user.last }))),
+  ]);
+  const topSensitive = [...s.byUser].sort((a, b) => b.sensitive - a.sensitive).filter((user) => user.sensitive > 0).slice(0, 2);
+  return uiKpiCards(kpis) + uiDashboardGrid([
+    [
+      { span: 2, title: "Worth a look", sub: "Unusual or sensitive activity this week, most serious first", body: uiInsightList(worth.slice(0, 7), "Nothing unusual this week.") },
+      { span: 1, title: "Activity by module", sub: "Events in the last 7 days", body: uiHBars({ items: s.byModule.slice(0, 8).map((entry) => ({ label: entry.module, value: entry.count, display: entry.count.toLocaleString("en-PH") })), caption: "Events by module" }) },
+    ],
+    [
+      { span: 1, title: "Events per day", sub: "Last 7 days. Today is in progress.", body: uiBarChart({ labels: s.byDay.map((entry) => dayLabel(entry.day)), series: [{ name: "Events", values: s.byDay.map((entry) => entry.count) }], format: (value) => String(Math.round(value)), partialLast: true, caption: "Events per day" }), takeaway: weekend ? `${weekend.toLocaleString("en-PH")} events on the weekend.` : undefined },
+      { span: 2, title: "Who did what", sub: "Last 7 days · select a name for their full activity log", body: uiMiniTable([{ label: "User" }, { label: "Role" }, { label: "Events", right: true }, { label: "Sensitive", right: true }, { label: "Last active" }], users, "Activity by user"), takeaway: topSensitive.length ? `${topSensitive.map((user) => `${user.user} (${user.sensitive})`).join(" and ")} account for ${topSensitive.reduce((sum, user) => sum + user.sensitive, 0)} of the ${sensitiveCount} sensitive actions.` : undefined },
+    ],
+  ]) + (s.truncated ? `<p class="ui-note t-slate">Very busy week: only the most recent 50,000 events were counted.</p>` : "");
+}
+
+/** One activity row (shared by Activity and Sensitive). @param {LogEntry} entry @param {string} id @param {string} prefix @returns {UiViewRow} */
+function auditActivityRow(entry, id, prefix) {
+  auditEntryById.set(id, entry);
+  const changes = auditChanges(entry);
+  const tone = auditTone(entry);
+  const late = auditIsLate(entry) && !isSignInLike(entry);
+  const changeText = changes.slice(0, 2).map((change) => `${change.field}: ${change.from} → ${change.to}`).join("; ");
+  const scopes = [...(entry.sensitive ? ["sensitive", String(entry.sensitive)] : []), ...(late ? ["late"] : []), ...(isSignInLike(entry) ? ["signin"] : []), ...(entry.module === "System" || entry.user === "System" ? ["system"] : ["people"])];
+  return {
+    id, branches: [], scopes,
+    search: [entry.user, entry.role, entry.module, entry.action, entry.record, entry.ipAddress, entry.device, changeText].filter(Boolean).join(" "),
+    sortValues: { id: String(entry.updatedAt || ""), user: String(entry.user || ""), module: String(entry.module || ""), action: String(entry.action || "") },
+    csv: [String(entry.updatedAt || ""), String(entry.user || ""), String(entry.role || ""), String(entry.module || ""), String(entry.action || ""), String(entry.record || ""), changes.map((change) => `${change.field}: ${change.from} -> ${change.to}`).join("; "), String(entry.sensitive || ""), String(entry.device || ""), String(entry.browser || ""), String(entry.ipAddress || "")],
+    cells: [
+      uiCellDoc(auditWhen(entry), uiViewSelect(prefix, id), entry.sensitive ? `Sensitive${late ? " · after hours" : ""}` : late ? "After hours" : "", { plain: true }),
+      uiCellText(String(entry.user || "—"), String(entry.role || ""), { strong: true }), escapeHtml(String(entry.module || "—")), uiPill(String(entry.action || "—"), tone),
+      uiCellText(String(entry.record || "—").slice(0, 120), changeText),
+    ],
+    detail: () => ({
+      eyebrow: auditWhen(entry), title: String(entry.action || "Recorded action"), pill: { text: entry.sensitive ? `Sensitive · ${entry.sensitive}` : "Routine", tone: entry.sensitive ? "amber" : "slate" }, closeAttrs: { [`data-${prefix}-close`]: "" }, label: "Audit entry",
+      fields: [
+        { label: "User", value: String(entry.user || "—"), sub: String(entry.role || "") }, { label: "Module", value: String(entry.module || "—") },
+        { label: "Record", value: String(entry.record || "—"), wide: true, mono: true },
+        { label: "Device", value: [entry.device, entry.browser].filter(Boolean).join(" · ") || "—" }, { label: "IP address", value: String(entry.ipAddress || "—"), mono: true },
+      ],
+      linesTitle: "What changed",
+      lines: changes.map((change) => ({ left: change.field, sub: `${change.from}  →  ${change.to}`, tone })),
+      note: late ? { text: "Done after hours (10 PM–6 AM Manila).", tone: "orange" } : undefined,
+      actions: [uiButton("Full details", { "data-logs-full": id }, { primary: true }), ...(entry.user && entry.user !== "System" ? [uiButton(`All of ${String(entry.user).split(" ")[0]}'s activity`, { "data-logs-user": String(entry.user) })] : [])],
+    }),
+  };
+}
+/** @param {LogEntry} entry */
+function isSignInLike(entry) { return entry.event === "signin" || entry.event === "signin-failed" || /^(logged in|signed in|failed sign-in)$/i.test(String(entry.action || "")); }
+
+/** @param {string} tab @param {AuditSummaryResponse | null} s @returns {UiView} */
+function logsTabModel(tab, s) {
+  const cols = [{ key: "id", label: "When", sortable: true }, { key: "user", label: "User", sortable: true }, { key: "module", label: "Module", sortable: true }, { key: "action", label: "Action", sortable: true }, { key: "record", label: "Record and change" }];
+  const csvHeader = ["When (UTC)", "User", "Role", "Module", "Action", "Record", "Changes", "Sensitive", "Device", "Browser", "IP address"];
+  if (tab === "signins") {
+    const facts = auditSignInFacts(s?.signins || []);
+    const failedFacts = facts.filter((fact) => fact.failed);
+    const topFailed = s ? auditFailedByAccount(s)[0] : undefined;
+    const newDevices = facts.filter((fact) => fact.newDevice), late = facts.filter((fact) => fact.late);
+    return {
+      title: "Sign-ins", intro: "Successful and failed sign-ins in the last 7 days, with the device used. New devices and late-night sign-ins are highlighted.", placeholder: "User, email, device or IP", actions: [], minWidth: 900,
+      stats: [
+        { label: "Failed sign-ins · 7 days", value: failedFacts.length, sub: topFailed ? `${topFailed.list.length} on ${topFailed.account}` : "None", tone: "red", scope: "failed" },
+        { label: "New devices", value: newDevices.length, sub: newDevices[0] ? `${newDevices[0].entry.user} · ${auditWhen(newDevices[0].entry)}` : "None", tone: "orange", scope: "new" },
+        { label: "Late sign-ins", value: late.length, sub: late[0] ? `${late[0].entry.user} · ${auditWhen(late[0].entry)}` : "None between 10 PM and 6 AM", tone: "amber", scope: "late" },
+      ],
+      cols: [{ key: "id", label: "When", sortable: true }, { key: "user", label: "User", sortable: true }, { key: "device", label: "Device", sortable: true }, { key: "result", label: "Result", sortable: true }, { key: "ip", label: "IP address" }],
+      csvName: "sign-ins.csv", csvHeader: ["When (UTC)", "User", "Email", "Result", "Device", "IP address", "New device", "Late"],
+      rows: facts.map(/** @returns {UiViewRow} */ (fact, index) => {
+        const { entry } = fact;
+        const id = `s${index}`;
+        auditEntryById.set(id, entry);
+        const result = fact.failed ? { text: "Failed", tone: /** @type {UiTone} */ ("red") } : fact.newDevice ? { text: "Signed in · new device", tone: /** @type {UiTone} */ ("orange") } : fact.late ? { text: "Signed in · late", tone: /** @type {UiTone} */ ("amber") } : { text: "Signed in", tone: /** @type {UiTone} */ ("green") };
+        return {
+          id, branches: [], scopes: [...(fact.failed ? ["failed"] : ["ok"]), ...(fact.newDevice ? ["new"] : []), ...(fact.late ? ["late"] : [])],
+          search: [entry.user, entry.email, fact.device, entry.ipAddress, result.text].filter(Boolean).join(" "),
+          sortValues: { id: String(entry.updatedAt || ""), user: String(entry.user || ""), device: fact.device, result: result.text },
+          csv: [String(entry.updatedAt || ""), String(entry.user || ""), String(entry.email || ""), result.text, fact.device, String(entry.ipAddress || ""), fact.newDevice ? "yes" : "", fact.late ? "yes" : ""],
+          cells: [uiCellDoc(auditWhen(entry), uiViewSelect("logs", id), "", { plain: true }), uiCellText(String(entry.user || "—"), String(entry.email && entry.email !== entry.user ? entry.email : entry.role || ""), { strong: true }), escapeHtml(fact.device), uiPill(result.text, result.tone), `<span class="mono">${escapeHtml(String(entry.ipAddress || "—"))}</span>`],
+          detail: () => ({
+            eyebrow: auditWhen(entry), title: String(entry.user || "Sign-in"), pill: result, closeAttrs: { "data-logs-close": "" }, label: "Sign-in",
+            fields: [{ label: "Account", value: String(entry.email || entry.user || "—") }, { label: "Device", value: fact.device }, { label: "IP address", value: String(entry.ipAddress || "—"), mono: true }, { label: "Browser details", value: String(entry.userAgent || "—"), wide: true, mono: true }],
+            note: fact.failed ? { text: "Wrong password or unknown account. Several in a row from an unfamiliar device can mean someone is guessing the password.", tone: "red" } : fact.newDevice ? { text: "First sign-in from this device for this account in the last 7 days.", tone: "orange" } : fact.late ? { text: "Signed in between 10 PM and 6 AM (Manila).", tone: "amber" } : undefined,
+            actions: [uiButton("Full details", { "data-logs-full": id }, { primary: true }), ...(canViewModule("users") ? [uiButton("Open Users", { "data-go-section": "users" })] : [])],
+          }),
+        };
+      }),
+      empty: ["No sign-ins in the last 7 days", "Sign-ins are recorded from now on, including failed attempts."],
+      defaultSort: { key: "id", dir: -1 }, chips: [{ key: "failed", label: "Failed", tone: "red" }, { key: "new", label: "New device", tone: "orange" }, { key: "late", label: "Late", tone: "amber" }, { key: "ok", label: "Signed in", tone: "green" }], defaultScope: "",
+    };
+  }
+  if (tab === "sensitive") {
+    const list = s?.sensitive || [];
+    /** @type {Record<string, number>} */
+    const byUser = {};
+    list.forEach((entry) => { byUser[String(entry.user)] = (byUser[String(entry.user)] || 0) + 1; });
+    const most = Object.entries(byUser).sort((a, b) => b[1] - a[1])[0];
+    const reasons = ["Money or stock", "Changed a watched field", "Access", "Export", "Cancelled or removed", "Failed sign-in"];
+    return {
+      title: "Sensitive actions", intro: "Actions that change money, prices, stock or access, plus exports and cancellations, in the last 7 days. These are the ones to review every week.", placeholder: "User, record or action", actions: [], minWidth: 1040,
+      stats: [
+        { label: "This week", value: list.length, sub: s ? `${s.prevSensitive} the week before` : "", tone: "amber" },
+        { label: "Most by one user", value: most ? `${most[0]} · ${most[1]}` : "—", sub: most ? "Sensitive actions this week" : "None this week", tone: "orange" },
+        { label: "After hours", value: list.filter((entry) => auditIsLate(entry)).length, sub: "10 PM–6 AM", tone: "red", scope: "late" },
+      ],
+      cols, csvName: "sensitive-actions.csv", csvHeader,
+      rows: list.map((entry, index) => auditActivityRow(entry, `x${index}`, "logs")),
+      empty: ["No sensitive actions this week", "Price, discount, stock, receipt, access and export changes show here."],
+      defaultSort: { key: "id", dir: -1 }, chips: reasons.map((key) => ({ key, label: key, tone: /** @type {UiTone} */ (key === "Failed sign-in" ? "red" : key === "Access" || key === "Export" ? "orange" : "amber") })), defaultScope: "",
+    };
+  }
+  const entries = logsState.entries || [];
+  const people = entries.filter((entry) => entry.module !== "System" && entry.user !== "System");
+  return {
+    title: "Activity log", intro: "Every create, edit, approval, export and sign-in, newest first (last 30 days, older on request). Select an entry to see exactly what changed.", placeholder: "User, role, module, record or IP", actions: [], minWidth: 1040,
+    stats: [
+      { label: "Events loaded", value: entries.length.toLocaleString("en-PH"), sub: `${new Set(people.map((entry) => entry.user)).size} people${logsState.nextCursor ? " · older available" : ""}`, tone: "accent", scope: "people" },
+      { label: "Sensitive", value: entries.filter((entry) => entry.sensitive).length, sub: "Marked in the list", tone: "amber", scope: "sensitive" },
+      { label: "After hours", value: entries.filter((entry) => auditIsLate(entry) && !isSignInLike(entry)).length, sub: "10 PM–6 AM", tone: "orange", scope: "late" },
+    ],
+    cols, csvName: "activity-log.csv", csvHeader,
+    rows: entries.map((entry, index) => auditActivityRow(entry, `a${index}`, "logs")),
+    empty: logsState.error ? ["Couldn't load the activity log", logsState.error] : ["No activity yet", "Actions people take in the app show here."],
+    defaultSort: { key: "id", dir: -1 },
+    chips: [{ key: "people", label: "People", tone: "blue" }, { key: "sensitive", label: "Sensitive", tone: "amber" }, { key: "late", label: "After hours", tone: "orange" }, { key: "signin", label: "Sign-ins", tone: "green" }, { key: "system", label: "System", tone: "slate" }], defaultScope: "people",
+    after: (lastPage) => logsState.nextCursor && lastPage ? `<div class="ui-load-more">${uiButton(logsState.loading ? "Loading…" : "Load older", { "data-logs-load-more": "" }, { size: "sm", disabled: logsState.loading })}</div>` : "",
+  };
+}
+
+function renderLogs() {
+  if (!LOGS_TAB_LABELS[logsTab]) logsTab = "overview";
+  const s = auditSummaryState.data;
+  const stale = !s || Date.now() - auditSummaryState.at > 60000;
+  if (stale && !auditSummaryState.loading && !(auditSummaryState.error && Date.now() - auditSummaryState.at < 15000)) loadAuditSummary();
+  if (logsTab === "activity" && !logsState.loaded && !logsState.loading) loadAuditActivity();
+  const header = qs("#logs-actions");
+  if (header) header.innerHTML = uiButton("Refresh", { "data-logs-refresh": "" });
+  /** @type {Record<string, number | undefined>} */
+  const counts = { sensitive: s ? s.sensitive.length : undefined, signins: s ? s.failedSignIns || undefined : undefined };
+  qs("#logs-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(LOGS_TAB_LABELS).map((key) => ({ key, label: LOGS_TAB_LABELS[key], count: counts[key] })), active: logsTab, attr: "data-logs-tab" });
+  renderModuleAssistant("logs");
+  const panel = qs("#logs-tab-panel");
+  const notifications = qs("#logs-notifications-panel");
+  if (notifications) notifications.hidden = logsTab !== "notifications";
+  panel.hidden = logsTab === "notifications";
+  if (logsTab === "notifications") { if (!notificationLogsState.entries.length && !notificationLogsState.loading) renderNotificationLogs(); }
+  else {
+    const needsSummary = logsTab !== "activity";
+    const loadingHtml = (/** @type {string} */ text) => `<div class="ui-card ui-empty"><p class="ui-muted">${escapeHtml(text)}</p></div>`;
+    auditEntryById.clear();
+    if (needsSummary && !s) uiRender(panel, auditSummaryState.error && !auditSummaryState.loading ? `<div class="ui-card ui-empty"><p class="ui-muted">${escapeHtml(auditSummaryState.error)}</p>${uiButton("Try again", { "data-logs-refresh": "" }, { size: "sm" })}</div>` : loadingHtml("Loading the last 7 days…"));
+    else if (logsTab === "activity" && !logsState.loaded) uiRender(panel, loadingHtml("Loading activity…"));
+    else uiRender(panel, logsTab === "overview" && s ? logsOverviewHtml(s) : uiViewHtml(logsTabModel(logsTab, s), logsView, "logs", 50));
+  }
+  syncModuleUrl("logs", logsQueryString());
+}
+
 /** @type {{ user?: string, entries: any[], nextCursor: any, loading: boolean }} */
 let notificationLogsState = { entries: [], nextCursor: null, loading: false };
 function notificationLogFilterParams() {

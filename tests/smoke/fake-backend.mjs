@@ -35,6 +35,7 @@ const authedRoutes = {
   "GET /api/users": (role) => ({ users: [userFor(role)] }),
   "GET /api/files": () => ({ files: [] }),
   "GET /api/logs": () => ({ entries: [], nextCursor: null }),
+  "GET /api/logs/summary": () => ({ days: 7, total: 0, today: 0, failedSignIns: 0, prevSensitive: 0, byDay: [], byModule: [], byUser: [], sensitive: [], afterHours: [], signins: [], truncated: false }),
   "POST /api/logs": () => ({ ok: true }),
   "GET /api/backups": () => ({ backups: [] }),
   "GET /api/backups/status": () => ({ latest: null, ageHours: null, stale: true, message: "Fake backend" }),
