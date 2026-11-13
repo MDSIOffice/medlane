@@ -767,52 +767,17 @@
         </article>
       </section>
 
-      <section class="section" id="analytics">
-        <div class="section-header"><div><p class="eyebrow">Analytics</p><h2>Visual Business Insights</h2></div><button class="primary-button" id="print-analytics">Print Analytics</button></div>
-        <div class="tabs" id="analytics-tabs">
-          <button class="tab active" data-analytics-tab="current">Current Operations</button>
-          <button class="tab" data-analytics-tab="growth">Future Growth</button>
-          <button class="tab" data-analytics-tab="value">Proof of Value</button>
+      <section class="section ui-scope" id="analytics">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Analytics</h1></div>
+            <p class="ui-desc">How the business is doing, where cash is going and what needs a decision. Revenue is net of VAT; DRs (demo units) never count as revenue.</p>
+          </div>
+          <div class="ui-actions" id="analytics-actions"></div>
         </div>
-        <div class="analytics-grid analytics-panel active" data-analytics-panel="current">
-          <article class="panel chart-wide"><div class="panel-header"><div><p class="eyebrow">Trend</p><h2>Monthly Sales Line Graph</h2></div></div><div class="line-chart" id="analytics-sales-trend"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Sales Team</p><h2>Salesperson Bar Graph</h2></div></div><div class="vertical-bars" id="analytics-salesperson-bars"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Revenue</p><h2>Sales by Region / Dealer</h2></div></div><div class="chart-bars compact-chart" id="analytics-branch-sales"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Dealers</p><h2>Dealers per Area</h2></div></div><div class="chart-bars compact-chart" id="analytics-dealers-area"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Coverage</p><h2>Area vs Dealer Sales</h2></div></div><div class="donut-wrap" id="analytics-area-dealer"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Brands</p><h2>Top Brands</h2></div></div><div class="chart-bars compact-chart" id="analytics-top-brands"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Receivables</p><h2>AR Status Mix</h2></div></div><div class="donut-wrap" id="analytics-ar-mix"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Products</p><h2>Top Items Sold</h2></div></div><div class="chart-bars compact-chart" id="analytics-top-items"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Collections</p><h2>Collection Efficiency</h2></div></div><div class="collection-efficiency-card"><div><div class="big-number" id="analytics-collection-rate">0%</div><p id="analytics-collection-note"></p></div><div class="donut-wrap compact-donut" id="analytics-collection-pie"></div></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Inventory Risk</p><h2>Stock Health</h2></div></div><div class="chart-bars compact-chart" id="analytics-stock-health"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Support</p><h2>Support Tracker</h2></div></div><div class="chart-bars compact-chart" id="analytics-product-issues"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Demo Pipeline</p><h2>Inventory Demo Requests</h2></div></div><div class="chart-bars compact-chart" id="analytics-demo-requests"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Expenses</p><h2>Expense per Classification</h2></div></div><div class="chart-bars compact-chart" id="analytics-expense-classification"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Profitability</p><h2>Revenue vs Expenses</h2></div></div><div class="chart-bars compact-chart" id="analytics-revenue-expenses"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Management Notes</p><h2>Recommended Actions</h2></div></div><ul class="compact-list" id="analytics-insights"></ul></article>
-        </div>
-        <div class="analytics-grid analytics-panel" data-analytics-panel="growth">
-          <article class="panel chart-wide"><div class="panel-header"><div><p class="eyebrow">Forecast</p><h2>Projected Sales Growth</h2></div><span class="badge">Projection</span></div><div class="line-chart" id="growth-sales-forecast"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Pipeline</p><h2>Client Growth by Area</h2></div></div><div class="chart-bars compact-chart" id="growth-client-pipeline"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Opportunity</p><h2>Product Demand Outlook</h2></div></div><div class="vertical-bars" id="growth-product-demand"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Cashflow</p><h2>Collection Recovery Potential</h2></div></div><div class="donut-wrap" id="growth-collection-potential"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Risk</p><h2>Stock Coverage Forecast</h2></div></div><div class="chart-bars compact-chart" id="growth-stock-coverage"></div></article>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow">Recommendations</p><h2>Growth Plays</h2></div></div><ul class="compact-list" id="growth-recommendations"></ul></article>
-        </div>
-        <div class="analytics-grid analytics-panel" data-analytics-panel="value">
-          <article class="panel chart-wide">
-            <div class="panel-header"><div><p class="eyebrow">Proof of Value</p><h2>Workflow Speed vs. Manual Process</h2></div></div>
-            <div class="visual-grid" id="value-cycle-time-visuals"></div>
-          </article>
-          <article class="panel chart-wide">
-            <div class="panel-header"><div><p class="eyebrow">Proof of Value</p><h2>Caught Before It Cost You</h2></div></div>
-            <div class="visual-grid" id="value-savings-visuals"></div>
-          </article>
-          <article class="panel chart-wide">
-            <div class="panel-header"><div><p class="eyebrow">Proof of Value</p><h2>Adoption &amp; Reliability</h2></div><button class="ghost-button" id="print-value-report" type="button">Print System Value Report</button></div>
-            <div class="visual-grid" id="value-adoption-visuals"></div>
-          </article>
-        </div>
+        <div class="ui-wa-host" data-wa-host="analytics"></div>
+        <div class="ui-tabs" id="analytics-tabs" role="tablist" aria-label="Analytics sections"></div>
+        <div id="analytics-tab-panel"></div>
       </section>
 
       <section class="section" id="masterlists">
@@ -1097,9 +1062,17 @@
         <article class="panel" id="sale-detail-panel"></article>
       </section>
 
-      <section class="section" id="purchase-history">
-        <div class="section-header"><div><p class="eyebrow">Client History</p><h2>Client accounts grouped by Sales Agent</h2></div></div>
-        <div id="purchase-history-groups" class="purchase-history-groups"></div>
+      <section class="section ui-scope" id="purchase-history">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Client History</h1></div>
+            <p class="ui-desc">Everything about one client in one place: how much they buy, how they pay, what changed and what to do next.</p>
+          </div>
+          <div class="ui-actions" id="purchase-history-actions"></div>
+        </div>
+        <div class="ui-wa-host" data-wa-host="purchase-history"></div>
+        <div class="ui-tabs" id="purchase-history-tabs" role="tablist" aria-label="Client History sections"></div>
+        <div id="purchase-history-tab-panel"></div>
       </section>
 
       <section class="section" id="imports">

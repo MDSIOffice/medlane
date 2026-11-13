@@ -146,6 +146,18 @@ const expensesSeed = moduleUrlSeed("replenishments", EXPENSES_TABS);
 let expensesTab = expensesSeed.tab;
 /** @type {UiViewState} */
 let expensesView = expensesSeed.view;
+// Phase 5: Analytics and Client History (section ids analytics / purchase-history).
+const ANALYTICS_TABS = ["overview", "clients", "products", "value"];
+const analyticsSeed = moduleUrlSeed("analytics", ANALYTICS_TABS);
+let analyticsTab = analyticsSeed.tab;
+/** @type {UiViewState} */
+let analyticsView = analyticsSeed.view;
+const CLIENT_HISTORY_TABS = ["profile", "clients"];
+const clientHistorySeed = moduleUrlSeed("purchase-history", CLIENT_HISTORY_TABS);
+let clientHistoryPageTab = clientHistorySeed.tab;
+/** @type {UiViewState} */
+let clientHistoryView = clientHistorySeed.view;
+let clientHistoryClient = clientHistorySeed.params.get("client") || "";
 /** Pre-fill for the next "New purchase order" form (from reorder suggestions). @type {{ supplier: string, lines: Record<string, any>[] } | null} */
 let inventoryPoPrefill = null;
 
@@ -166,8 +178,6 @@ let editingExpenseId = null;
 let userStatusFilter = "all";
 /** @type {any} */
 let clientHistoryTab = "invoices";
-/** @type {Record<string, number>} */
-let purchaseHistoryVisibleCounts = {};
 let itemForecastMonths = 3;
 let itemForecastFilters = { brand: "", client: "", item: "", division: "", region: "", classification: "" };
 let transferRowUid = 0;

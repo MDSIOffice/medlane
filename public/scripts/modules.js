@@ -142,7 +142,7 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "warranty", "purchase-history", "imports", "reports", "reconciliation", "security", "users", "product-issues"];
+const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "masterlists", "warranty", "imports", "reports", "reconciliation", "security", "users", "product-issues"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -165,6 +165,40 @@ const plural = (/** @type {number} */ n, /** @type {string} */ word, /** @type {
 
 /** @type {Record<string, WorkflowRule[]>} */
 const WORKFLOW_RULES = {
+  analytics: [
+    { id: "hold-orders", rule: (ctx) => {
+      const risky = new Map(ctx.receivables.filter((entry) => entry.amounts[3] + entry.amounts[4] > 0.005 || entry.bounced.length).map((entry) => [entry.client, entry]));
+      const orders = salesOpenOrders().filter((po) => risky.has(po.client));
+      if (!orders.length) return null;
+      const first = orders[0];
+      const target = canViewModule("purchase-history") ? `purchase-history|profile||${first.client}` : "receivables-tracker|aging|risk|";
+      return { tone: "red", money: orders.reduce((sum, po) => sum + salesOrderTotal(po), 0), text: orders.length === 1 ? `${first.client} has an open order (${first.id}) while ${salesPesoShort(risky.get(first.client)?.overdue || 0)} is over 60 days overdue.` : `${plural(new Set(orders.map((po) => po.client)).size, "client")} with invoices over 60 days overdue still have open orders.`, action: "Open client", attrs: { "data-wa-goto": target } };
+    } },
+    { id: "collections-behind", rule: () => {
+      const facts = bizFacts();
+      const gross = facts.monthGross.slice(8, 11).reduce((a, b) => a + b, 0), got = facts.monthCollected.slice(8, 11).reduce((a, b) => a + b, 0);
+      if (!(gross > 0) || got >= gross * 0.85) return null;
+      return { tone: "amber", money: gross - got, text: `Collections were ${Math.round((1 - got / gross) * 100)}% below invoicing over the last 3 full months (${salesPesoShort(gross - got)}).`, action: "Receivables", attrs: { "data-wa-goto": "receivables-tracker|aging|risk|" } };
+    } },
+    { id: "products-running-out", rule: ({ cover }) => {
+      if (!canSeeMargins()) return null;
+      const short = cover.filter((row) => row.months !== null && row.months < 1 && row.onOrder <= 0);
+      return short.length ? { tone: "orange", text: `${plural(short.length, "product")} will run out within a month and ${short.length === 1 ? "is" : "are"} not on order.`, action: "Show", attrs: { "data-wa-goto": "analytics|products|short|" } } : null;
+    } },
+  ],
+  "purchase-history": [
+    { id: "risk-with-orders", rule: (ctx) => {
+      const risky = new Map(ctx.receivables.filter((entry) => entry.amounts[3] + entry.amounts[4] > 0.005 || entry.bounced.length).map((entry) => [entry.client, entry]));
+      const order = salesOpenOrders().find((po) => risky.has(po.client));
+      return order ? { tone: "red", money: salesOrderTotal(order), text: `${order.client}: ${order.id} is still open while older invoices are over 60 days overdue.`, action: "Open client", attrs: { "data-wa-goto": `purchase-history|profile||${order.client}` } } : null;
+    } },
+    { id: "slipping-clients", rule: () => {
+      const facts = bizFacts();
+      const down = clientSummaries(facts).filter((s) => s.trend !== null && s.trend <= -25 && s.rev12 > 0);
+      if (!down.length) return null;
+      return { tone: "orange", money: down.reduce((sum, s) => sum + ((s.biz?.revPrev || 0) - s.rev12), 0), text: `${plural(down.length, "client")} bought at least 25% less than the year before${down.length <= 2 ? `: ${down.map((s) => s.name).join(", ")}` : ""}.`, action: "Show", attrs: { "data-wa-goto": "purchase-history|clients|slipping-risk|" } };
+    } },
+  ],
   inventory: [
     { id: "expired-on-hand", rule: (ctx) => {
       if (isDemoOnlyRole()) return null;
@@ -431,6 +465,12 @@ function workflowGoto(module, tab, scope, sel) {
   else if (module === "purchase-orders") { if (PURCHASING_TAB_LABELS[tab]) purchasingTab = tab; purchasingView = view; }
   else if (module === "payables") { if (PAYABLES_TAB_LABELS[tab]) payablesTab = tab; payablesView = view; }
   else if (module === "replenishments") { if (EXPENSES_TAB_LABELS[tab]) expensesTab = tab; expensesView = view; }
+  else if (module === "analytics") { if (ANALYTICS_TAB_LABELS[tab]) analyticsTab = tab; analyticsView = view; }
+  else if (module === "purchase-history") {
+    if (CLIENT_HISTORY_TAB_LABELS[tab]) clientHistoryPageTab = tab;
+    if (clientHistoryPageTab === "profile") { if (sel) clientHistoryClient = sel; view.sel = ""; }
+    clientHistoryView = view;
+  }
   else return;
   if (document.body.dataset.activeSection !== module) showSection(module);
   else renderSection(module);
@@ -2463,146 +2503,6 @@ async function removeCalendarEvent(id) {
 function renderCalendarSection() {
   registerCalendarWidget("calendar-page", "#calendar-page-widget", false);
   renderCalendarWidget("calendar-page");
-}
-
-function renderAnalytics() {
-  // Same scope as the Sales page: Sales agents only see their assigned clients' figures.
-  const visibleSales = salesScopedDocuments();
-  const visibleInventory = byBranch(data.inventory);
-  const totalSales = visibleSales.reduce((sum, sale) => sum + sale.net, 0);
-  const totalPaid = visibleSales.reduce((sum, sale) => sum + sale.paid, 0);
-  const collectionRate = totalSales ? Math.round((totalPaid / totalSales) * 100) : 0;
-  const monthlySales = visibleSales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
-    const month = sale.date.slice(0, 7);
-    acc[month] = (acc[month] || 0) + sale.net;
-    return acc;
-  }, {});
-  qs("#analytics-sales-trend").innerHTML = lineChart(Object.entries(monthlySales).sort(([a], [b]) => a.localeCompare(b))) + graphNote("Computed from invoice net totals grouped by invoice month in the selected branch view.");
-  // Clients can be assigned an Admin/CEO as their "salesperson" (see the Assigned Sales Person
-  // dropdown in the client form), so grouping all visible sales by that field would mix Admin/CEO
-  // names into a chart meant to rank actual Sales-role agents. Scope to the Sales role here only.
-  const salesAgentNames = new Set(data.users.filter((user) => user.role === "Sales").map((user) => user.name));
-  // Credits a collection to whichever Sales agent the CLIENT is assigned to (client.salesperson),
-  // not the invoice's own salesperson field (set to whoever created the invoice, which can drift
-  // from the client's actual owner). Who approved the payment request is irrelevant — Superadmin/CEO
-  // approval is a segregation-of-duties step, not an attribution signal. Only counts once the money
-  // is actually confirmed collected (collectionStatus === "Deposited"); pending For Deposit/Posted
-  // Date and reversed Bounced/Cancelled payments don't count yet.
-  const visibleDocs = new Set(visibleSales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean)));
-  const depositedPayments = data.payments.filter((payment) => payment.collectionStatus === "Deposited" && visibleDocs.has(payment.invoice));
-  /** @type {Record<string, any>} */
-  const salespersonCollections = {};
-  depositedPayments.forEach((payment) => {
-    const agent = /** @type {string} */ (data.clients.find((client) => client.name === payment.client)?.salesperson);
-    if (!salesAgentNames.has(agent)) return;
-    salespersonCollections[agent] = (salespersonCollections[agent] || 0) + Number(payment.amount || 0);
-  });
-  // Total sales credited the same way as the collections above — by the client's assigned
-  // agent, not the invoice's own salesperson field — so the bar height reflects everything
-  // invoiced to that agent's accounts, not just what's been deposited so far.
-  /** @type {Record<string, number>} */
-  const salespersonTotalSales = {};
-  visibleSales.forEach((sale) => {
-    const agent = data.clients.find((client) => client.name === sale.client)?.salesperson;
-    if (!salesAgentNames.has(/** @type {string} */ (agent))) return;
-    salespersonTotalSales[/** @type {string} */ (agent)] = (salespersonTotalSales[/** @type {string} */ (agent)] || 0) + Number(sale.net || 0);
-  });
-  const salespersonSales = Object.entries(salespersonTotalSales).sort((a, b) => b[1] - a[1]);
-  qs("#analytics-salesperson-bars").innerHTML = verticalBars(salespersonSales, (/** @type {any} */ agent) => `Deposited ${peso.format(salespersonCollections[agent] || 0)}`);
-  const branchSales = Object.entries(sumBy(visibleSales, "area", (sale) => sale.net));
-  qs("#analytics-branch-sales").innerHTML = barRows(branchSales, (value) => peso.format(value), ["", "green"]) + graphNote("Computed from invoice net totals grouped by client sales area.");
-  const dealerClients = data.clients.filter((client) => client.dealer !== "Direct" && salesClientVisible(client.name));
-  const dealersByArea = Object.entries(sumBy(dealerClients, "area", () => 1)).sort((a, b) => b[1] - a[1]);
-  qs("#analytics-dealers-area").innerHTML = barRows(dealersByArea, (value) => `${value} dealer${value === 1 ? "" : "s"}`, ["green", "orange"]) + graphNote("Computed from client masterlist records marked as dealer accounts by area.");
-  const dealerSales = visibleSales.filter((sale) => sale.dealer !== "Direct").reduce((sum, sale) => sum + sale.net, 0);
-  const directSales = Math.max(totalSales - dealerSales, 0);
-  const dealerEnd = totalSales ? Math.round((directSales / totalSales) * 100) : 0;
-  qs("#analytics-area-dealer").innerHTML = `<div class="donut" style="--paid:${dealerEnd}%; --partial:${dealerEnd}%; --end:100%;" data-label="${totalSales ? Math.round((dealerSales / totalSales) * 100) : 0}%\ndealer"></div><div class="legend"><span class="green">Direct ${peso.format(directSales)}</span><span class="red">Dealer ${peso.format(dealerSales)}</span></div>${graphNote("Computed from invoice net totals split by client account type: Direct vs Dealer.")}`;
-  // "AR" entries are added purely to track receivable history, not actual sold items/brands.
-  const isTrackingOnlyAR = (/** @type {any} */ value) => String(value || "").trim().toUpperCase() === "AR" || isBookkeepingOnlyLine(value, "");
-  const topBrands = Object.entries(sumBy(visibleSales.filter((sale) => !isTrackingOnlyAR(sale.brand)), "brand", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  qs("#analytics-top-brands").innerHTML = barRows(topBrands, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Computed from invoice line subtotals grouped by item brand.");
-
-  const paidCount = visibleSales.filter((sale) => statusForSale(sale) === "Paid").length;
-  const partialCount = visibleSales.filter((sale) => statusForSale(sale) === "Partially Paid" || statusForSale(sale) === "Near Due").length;
-  const unpaidCount = Math.max(visibleSales.length - paidCount - partialCount, 0);
-  const totalCount = Math.max(visibleSales.length, 1);
-  const paidEnd = Math.round((paidCount / totalCount) * 100);
-  const partialEnd = Math.round(((paidCount + partialCount) / totalCount) * 100);
-  qs("#analytics-ar-mix").innerHTML = `<div class="donut" style="--paid:${paidEnd}%; --partial:${partialEnd}%; --end:100%;" data-label="${collectionRate}%\ncollected"></div><div class="legend"><span class="green">Paid ${paidCount}</span><span class="orange">Partial/Near due ${partialCount}</span><span class="red">Unpaid/Overdue ${unpaidCount}</span></div>${graphNote("Computed from invoice payment status using paid amount, net amount, due date, and terms.")}`;
-
-  const topItems = Object.entries(sumBy(visibleSales.filter((sale) => !isTrackingOnlyAR(sale.item)), "item", (sale) => sale.net)).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  qs("#analytics-top-items").innerHTML = barRows(topItems, (value) => peso.format(value), ["", "green", "orange", "red"]) + graphNote("Computed from invoice line subtotals grouped by item name.");
-  qs("#analytics-collection-rate").textContent = `${collectionRate}%`;
-  qs("#analytics-collection-note").textContent = `${peso.format(totalPaid)} collected out of ${peso.format(totalSales)} sales in the selected branch view.`;
-  const uncollected = Math.max(totalSales - totalPaid, 0);
-  const collectedEnd = totalSales ? Math.round((totalPaid / totalSales) * 100) : 0;
-  qs("#analytics-collection-pie").innerHTML = `<div class="donut" style="--paid:${collectedEnd}%; --partial:${collectedEnd}%; --end:100%;" data-label="${collectionRate}%\ncollected"></div><div class="legend"><span class="green">Collected ${peso.format(totalPaid)}</span><span class="red">Uncollected ${peso.format(uncollected)}</span></div>${graphNote("Computed from invoice paid amount versus remaining receivable balance in the selected branch view.")}`;
-
-  const stockCounts = ["Available", "Near Expiry", "Low Stock", "Critical", "Expired"].map((status) => [status, visibleInventory.filter((item) => inventoryStatus(item) === status).length]);
-  qs("#analytics-stock-health").innerHTML = barRows(stockCounts, (value) => `${value} records`, ["green", "orange", "red", "red", "red"]) + graphNote("Computed from inventory records using quantity vs minimum and expiry date rules. Lots past their expiry date are marked Expired; anything expiring within 6 months is Near Expiry.");
-  const visibleExpenses = byBranch(data.replenishments, "office");
-  const visiblePayables = data.payables || [];
-  const combinedExpenses = [
-    ...visibleExpenses.map((expense) => ({ label: expense.type || "Employee Expense", amount: Number(expense.amount || expense.total || 0), source: "Expense" })),
-    ...visiblePayables.map((payable) => ({ label: payable.supplier ? `Payable: ${payable.supplier}` : "Supplier Payable", amount: Number(payable.amount || payable.total || 0), source: "Payable" })),
-  ];
-  const expenseByClassification = Object.entries(combinedExpenses.reduce((/** @type {Record<string, any>} */ acc, expense) => { acc[expense.label] = (acc[expense.label] || 0) + expense.amount; return acc; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  const expenseBySource = Object.entries(combinedExpenses.reduce((/** @type {Record<string, any>} */ acc, expense) => { acc[expense.source] = (acc[expense.source] || 0) + expense.amount; return acc; }, {}));
-  qs("#analytics-expense-classification").innerHTML = barRows(expenseByClassification, (value) => peso.format(value), ["orange", "red", "", "green"]) + graphNote("Computed from employee expenses plus supplier payables, grouped by expense type or supplier.");
-  const totalExpenses = combinedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-  qs("#analytics-revenue-expenses").innerHTML = barRows([["Revenue", totalSales], ...expenseBySource, ["Net", totalSales - totalExpenses]], (value) => peso.format(value), ["green", "orange", "red", ""]) + graphNote("Computed as invoice revenue compared with all business expenses: supplier payables plus employee expense requests.");
-
-  const issueCounts = ["Open", "In Progress", "Pass to Product Specialist", "Pass to Engineering", "Resolved"].map((status) => [status, data.productIssues.filter((report) => report.status === status).length]);
-  const resolvedIssues = data.productIssues.filter((report) => report.status === "Resolved");
-  const avgIssueTurnaround = resolvedIssues.length ? Math.round(resolvedIssues.reduce((sum, report) => sum + (productIssueTurnaroundDays(report) || 0), 0) / resolvedIssues.length) : null;
-  qs("#analytics-product-issues").innerHTML = barRows(issueCounts, (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "purple", "orange", "orange", "green"]) + graphNote(`Computed from support report status across all logged cases.${avgIssueTurnaround === null ? "" : ` Average turnaround: ${avgIssueTurnaround} day${avgIssueTurnaround === 1 ? "" : "s"}.`}`);
-  const demoCounts = ["For Logistics Approval", "For Management Approval", "Approved", "Returned", "To Sales"].map((status) => [status, (data.inventoryDemoRequests || []).filter((request) => request.status === status).length]);
-  qs("#analytics-demo-requests").innerHTML = barRows(demoCounts, (value) => `${value} demo${value === 1 ? "" : "s"}`, ["orange", "red", "green", "", "green"]) + graphNote("Computed from inventory demo service orders, including approval, returned, and routed-to-sales outcomes.");
-
-  const overdue = visibleSales.filter((sale) => statusForSale(sale) === "Overdue");
-  const lowStock = visibleInventory.filter((item) => ["Low Stock", "Critical"].includes(inventoryStatus(item)));
-  const nearExpiry = visibleInventory.filter((item) => inventoryStatus(item) === "Near Expiry");
-  const forDisposal = visibleInventory.filter((item) => inventoryStatus(item) === "Expired");
-  const openIssues = data.productIssues.filter((report) => report.status === "Open").length;
-  const topClient = Object.entries(sumBy(visibleSales, "client", (sale) => sale.net)).sort((a, b) => b[1] - a[1])[0];
-  const insights = [
-    overdue.length ? `${overdue.length} overdue invoice/s need collection follow-up.` : "No overdue invoices in the selected view.",
-    lowStock.length ? `${lowStock.length} inventory record/s are low or critical. Reorder or transfer stock.` : "No low or critical stock records in the selected view.",
-    forDisposal.length ? `${forDisposal.length} expired inventory lot/s are Expired and blocked from invoicing.` : nearExpiry.length ? `${nearExpiry.length} reagent/item record/s are near expiry. Prioritize selling or replacement.` : "No near-expiry stock in the selected view.",
-    openIssues ? `${openIssues} open support report/s need action.` : "No open support reports.",
-    totalExpenses ? `Total business expenses include payables plus employee expenses: ${peso.format(totalExpenses)}.` : "No payables or expense requests recorded.",
-    topClient ? `Top client by sales: ${topClient[0]} at ${peso.format(topClient[1])}.` : "No sales data available.",
-  ];
-  qs("#analytics-insights").innerHTML = insights.map((text) => `<li><span>${escapeHtml(text)}</span></li>`).join("");
-  renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, totalPaid);
-  renderValueAnalytics();
-}
-
-/** @param {any} visibleSales @param {any} visibleInventory @param {any} totalSales @param {any} totalPaid */
-function renderGrowthAnalytics(visibleSales, visibleInventory, totalSales, totalPaid) {
-  const monthlySales = Object.entries(visibleSales.reduce((/** @type {Record<string, any>} */ acc, /** @type {Sale} */ sale) => { acc[sale.date.slice(0, 7)] = (acc[sale.date.slice(0, 7)] || 0) + sale.net; return acc; }, {})).sort(([a], [b]) => a.localeCompare(b));
-  const lastMonth = monthlySales.at(-1)?.[0] || fmtDate(today).slice(0, 7);
-  const base = monthlySales.at(-1)?.[1] || totalSales || 1;
-  const forecast = [...monthlySales, ...[1, 2, 3].map((step) => {
-    const d = new Date(`${lastMonth}-01T00:00:00`);
-    d.setMonth(d.getMonth() + step);
-    return [fmtDate(d).slice(0, 7), Math.round(base * (1 + step * 0.08))];
-  })];
-  qs("#growth-sales-forecast").innerHTML = lineChart(forecast) + graphNote("Projection starts from the latest monthly sales total and applies the configured growth step.");
-  qs("#growth-client-pipeline").innerHTML = barRows(Object.entries(sumBy(data.clients, "area", () => 1)).map(([area, count]) => [area, count + visibleSales.filter((/** @type {Sale} */ sale) => sale.area === area).length]), (value) => `${value} accounts/orders`, ["", "green", "orange"]);
-  const demand = Object.entries(sumBy(visibleSales.filter((/** @type {Sale} */ sale) => !isBookkeepingOnlyLine(sale.item)), "item", (sale) => sale.qty || (sale.lines || []).reduce((/** @type {number} */ sum, /** @type {any} */ line) => sum + Number(line.qty || 0), 0))).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  qs("#growth-product-demand").innerHTML = verticalBars(demand.map(([label, value]) => [label, value * 4200])) + graphNote("Computed from sold item quantities and configured unit pricing. Accounts Receivable bookkeeping lines are excluded — they aren't real product sales.");
-  const recoverable = Math.max(totalSales - totalPaid, 0);
-  const recoveryRate = totalSales ? Math.round((recoverable / totalSales) * 100) : 0;
-  qs("#growth-collection-potential").innerHTML = `<div class="donut" style="--paid:${Math.min(100, recoveryRate)}%; --partial:${Math.min(100, recoveryRate + 18)}%; --end:100%;" data-label="${recoveryRate}%\nAR upside"></div><div class="legend"><span class="orange">Recoverable ${peso.format(recoverable)}</span><span class="green">Collected ${peso.format(totalPaid)}</span></div>${graphNote("Computed from outstanding AR compared with collected payment totals.")}`;
-  const coverage = visibleInventory.map((/** @type {any} */ item) => [item.item, Math.max(0, item.qty - item.min)]).sort((/** @type {any} */ a, /** @type {any} */ b) => a[1] - b[1]).slice(0, 5);
-  qs("#growth-stock-coverage").innerHTML = barRows(coverage, (value) => `${value} over min`, ["red", "orange", "", "green"]);
-  qs("#growth-recommendations").innerHTML = [
-    "Prioritize near-expiry reagents in sales bundles before new procurement.",
-    "Push Region I repeat orders and dealer areas with open AR recovery.",
-    "Use low-stock signals to plan transfer or reorder quantities before quarterly demand spikes.",
-  ].map((text) => `<li><span>${escapeHtml(text)}</span></li>`).join("");
 }
 
 // ---- Proof of Value: cycle-time, savings-caught, and adoption/reliability analytics ----
@@ -5030,6 +4930,8 @@ function sectionQueryString(sectionId) {
   if (sectionId === "purchase-orders") return purchasingQueryString();
   if (sectionId === "payables") return payablesQueryString();
   if (sectionId === "replenishments") return expensesQueryString();
+  if (sectionId === "analytics") return analyticsQueryString();
+  if (sectionId === "purchase-history") return clientHistoryQueryString();
   return `section=${encodeURIComponent(sectionId)}`;
 }
 
@@ -8024,39 +7926,6 @@ function printItemForecast() {
   qs("#report-preview-modal").showModal();
 }
 
-/** @param {any} agent */
-function purchaseHistoryDefaultLimit(agent) { return agent === "Unassigned" ? 20 : 5; }
-
-function renderPurchaseHistory() {
-  const container = qs("#purchase-history-groups");
-  if (!container) return;
-  /** @type {Record<string, any>} */
-  const byAgent = purchaseHistoryVisibleClients().reduce((/** @type {Record<string, any>} */ acc, client) => {
-    const agent = client.salesperson || "Unassigned";
-    (acc[agent] ||= []).push(client);
-    return acc;
-  }, {});
-  const agentNames = Object.keys(byAgent).sort((a, b) => Number(a === "Unassigned") - Number(b === "Unassigned") || a.localeCompare(b));
-  container.innerHTML = agentNames.length ? agentNames.map((agent) => {
-    const agentClientStats = byAgent[agent].map((/** @type {Client} */ client) => {
-      const purchases = data.sales.filter((sale) => sale.client === client.name);
-      const total = purchases.reduce((sum, sale) => sum + sale.net, 0);
-      const last = purchases.map((sale) => sale.date).sort().at(-1) || "No purchase";
-      const items = [...new Set(purchases.map((sale) => sale.item))].join(", ") || "-";
-      const balance = purchases.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-      const credit = clientCreditState(client.name);
-      return { client, purchases, total, last, items, balance, credit };
-    }).sort((/** @type {any} */ a, /** @type {any} */ b) => b.total - a.total);
-    const agentTotal = agentClientStats.reduce((/** @type {number} */ sum, /** @type {any} */ stat) => sum + stat.total, 0);
-    const rowLimit = purchaseHistoryVisibleCounts[agent] || purchaseHistoryDefaultLimit(agent);
-    const visibleStats = agentClientStats.slice(0, rowLimit);
-    const remaining = agentClientStats.length - visibleStats.length;
-    const rows = visibleStats.map((/** @type {any} */ { client, purchases, total, last, items, balance, credit }) => `<tr data-focus-text="${escapeHtml(`${client.name} ${client.area || ""} ${items}`)}"><td data-label="Client"><button class="link-button dark" data-client-invoices="${escapeHtml(client.name)}">${escapeHtml(client.name)}</button></td><td data-label="Area">${escapeHtml(client.area || "-")}</td><td data-label="Orders">${purchases.length}</td><td data-label="Items Purchased">${escapeHtml(items)}</td><td data-label="Lifetime Value">${peso.format(total)}</td><td data-label="AR Balance">${peso.format(balance)}</td><td data-label="Credit Limit">${peso.format(credit.limit)}</td><td data-label="Credit Used">${peso.format(credit.used)}${credit.limit > 0 && credit.used > credit.limit ? ` <span class="credit-warning">Over limit</span>` : ""}</td><td data-label="Last Purchase">${escapeHtml(last)}</td></tr>`).join("");
-    const viewMoreButton = remaining > 0 ? `<button class="ghost-button" data-purchase-history-more="${escapeHtml(agent)}" type="button">View More (${remaining} more)</button>` : "";
-    return `<article class="panel purchase-history-agent"><div class="panel-header"><div><p class="eyebrow">Sales Agent</p><h2>${escapeHtml(agent)}</h2></div><span class="pill gray">${agentClientStats.length} client${agentClientStats.length === 1 ? "" : "s"} · ${peso.format(agentTotal)}</span></div><div class="table-card"><table><thead><tr><th>Client</th><th>Area</th><th>Orders</th><th>Items Purchased</th><th>Lifetime Value</th><th>AR Balance</th><th>Credit Limit</th><th>Credit Used</th><th>Last Purchase</th></tr></thead><tbody>${rows}</tbody></table></div>${viewMoreButton}</article>`;
-  }).join("") : `<article class="panel"><p>No clients found.</p></article>`;
-}
-
 function renderImports() {
   const canRevert = canApproveMigrations();
   table("#imports-table", ["Date", "Module", "Source", "Records", "Status", "Actions"], data.imports.map((item, index) => {
@@ -9507,22 +9376,6 @@ function payablesOverviewHtml() {
     { label: canApprove ? "Waiting for your approval" : "Waiting for approval", value: String(approval.length), tone: "amber", change: approval.length ? { text: pesoShort(approval.reduce((total, fact) => total + Number(fact.p.amount || 0), 0)), good: null } : null, sub: approval[0] ? `${approval[0].p.id} · ${approval[0].p.supplier}` : "Nothing waiting" },
   ];
 
-  // 4-week cash forecast.
-  const weeks = forecastWeeks();
-  const lastDay = weeks[3].end;
-  const canSeeReceivables = canViewModule("receivables-tracker") || canViewModule("invoicing");
-  const inflow = weeks.map((week) => canSeeReceivables
-    ? byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && salesBalance(sale) > 0.005).filter((sale) => { const due = fmtDateSafe(salesDueDate(sale)); return due >= week.start && due <= week.end; }).reduce((total, sale) => total + salesBalance(sale), 0)
-    : 0);
-  const expensesToPay = canViewModule("replenishments") ? (data.replenishments || []).filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed).reduce((total, r) => total + Number(r.amount || 0), 0) : 0;
-  const recurring = /** @type {RecurringCost[]} */ (data.recurringCosts || []);
-  const outflow = weeks.map((week, index) => {
-    const bills = open.filter((fact) => fact.p.requestStatus === "Approved" || fact.state === "approval").filter((fact) => (index === 0 && fact.due < week.start) || (fact.due >= week.start && fact.due <= week.end)).reduce((total, fact) => total + fact.balance, 0);
-    const fixed = recurring.reduce((total, cost) => total + recurringOccurrences(cost, week.start, week.end).length * Number(cost.amount || 0), 0);
-    return bills + fixed + (index === 0 ? expensesToPay : 0);
-  });
-  const net = weeks.map((_, index) => inflow[index] - outflow[index]);
-
   // Decisions.
   const shortBySupplier = supplierShortPosBySupplier();
   /** @type {UiInsight[]} */
@@ -9546,6 +9399,7 @@ function payablesOverviewHtml() {
   const payees = [...bySupplier.entries()].map(([name, list]) => ({ name, list, total: sum(list), late: sum(list.filter((fact) => fact.overdue)) })).sort((a, b) => b.total - a.total);
 
   // Coming up: next 14 days.
+  const recurring = /** @type {RecurringCost[]} */ (data.recurringCosts || []);
   const horizon = fmtDate(addDays(new Date(`${fmtDate(today)}T00:00:00`), 14));
   /** @type {(UiInsight & { at: string })[]} */
   const coming = [
@@ -9555,11 +9409,7 @@ function payablesOverviewHtml() {
 
   return uiKpiCards(kpis) + uiDashboardGrid([
     [
-      {
-        span: 2, title: "Cash in vs out, next 4 weeks", sub: canSeeReceivables ? "In = client invoices falling due. Out = bills due (overdue bills counted this week), approved expenses and recurring costs." : "Out = bills due (overdue counted this week), approved expenses and recurring costs.",
-        body: uiBarChart({ labels: weeks.map((week) => week.label), series: canSeeReceivables ? [{ name: "In", values: inflow }, { name: "Out", values: outflow }] : [{ name: "Out", values: outflow }], format: pesoAxis, net: canSeeReceivables ? net : undefined, caption: "Cash forecast by week" }),
-        takeaway: canSeeReceivables && outflow.some((value) => value > 0) ? (net.some((value) => value < 0) ? `Out is higher than In in ${plural(net.filter((value) => value < 0).length, "week")}. Collect overdue invoices or move a bill date before then.` : "Expected collections cover the bills due in each of the next 4 weeks.") + " Overdue client invoices are not counted as cash in." : undefined,
-      },
+      cashForecastCard(2),
       { span: 1, title: "Needs your decision", sub: "Ranked by money at stake", body: uiInsightList(decisions.slice(0, 5), "No bills need a decision right now.") },
     ],
     [
@@ -10156,6 +10006,695 @@ async function updateRecurringCost(id, action) {
   if (!(await saveRecurringCost(next))) return;
   log(action === "advance" ? "Advanced recurring cost" : next.active ? "Resumed recurring cost" : "Paused recurring cost", "Expenses", `${cost.name}${action === "advance" ? ` → ${next.nextDue}` : ""}`, { save: false });
   renderReplenishments();
+}
+
+// ===== Analytics and Client History (module redesign, phase 5) =====================================
+// Revenue = invoice amount net of VAT, from each invoice's own tax breakdown (saleTaxBreakdown: a
+// VAT-able SI is ÷1.12, a TS or no-VAT SI counts as recorded). DRs are demo/tracking documents and
+// cancelled invoices are void, so neither counts. Gross margin uses each item's cost (latest supplier
+// PO price, else the masterlist cost) and only covers lines whose cost is known. Nothing new is stored.
+
+const ANALYTICS_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "Overview", clients: "Clients", products: "Products", value: "System value" });
+const CLIENT_HISTORY_TAB_LABELS = /** @type {Record<string, string>} */ ({ profile: "Client profile", clients: "All clients" });
+const CLIENT_HEALTH = /** @type {Record<string, { label: string, tone: UiTone }>} */ ({
+  risk: { label: "At risk", tone: "red" },
+  slipping: { label: "Slipping", tone: "orange" },
+  steady: { label: "Steady", tone: "blue" },
+  growing: { label: "Growing", tone: "green" },
+  new: { label: "New", tone: "accent" },
+  quiet: { label: "No orders, 12 mo", tone: "slate" },
+});
+/** Margins, costs and stock value are for management and Accounting, not Sales. */
+function canSeeMargins() { return ["Superadmin", "CEO", "Admin", "Accounting"].includes(currentUser?.role); }
+/** Receipts that are money in hand (post-dated checks count once they are deposited). */
+function bizReceivedPayments() { return data.payments.filter((payment) => !payment.voided && !["Bounced", "Cancelled", "Posted Date"].includes(String(payment.collectionStatus || ""))); }
+/** @param {Payment} payment */
+function bizPaymentDate(payment) { return fmtDateSafe(payment.dateCollected || payment.dateRecorded || payment.date); }
+/** Unit cost per item code: the latest supplier PO price, else the masterlist cost. */
+function bizItemCosts() {
+  /** @type {Map<string, number>} */
+  const out = new Map();
+  data.items.forEach((item) => { if (Number(item.cost) > 0) out.set(item.code, Number(item.cost)); });
+  supplierLastPrices(supplierPoFactsAll()).forEach((list, code) => { const last = list.at(-1); if (last) out.set(code, last.price); });
+  return out;
+}
+/** % change, or null when there is nothing to compare with. @param {number} now @param {number} before */
+function bizTrend(now, before) { return before > 0.005 ? ((now - before) / before) * 100 : null; }
+/** "▲ 12%" / "▼ 4%". @param {number | null} pct @param {number} [digits] */
+function bizTrendText(pct, digits = 0) { return pct === null ? "" : `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(digits)}%`; }
+/** @param {number | null} pct */
+function bizTrendCell(pct) { return pct === null ? `<span class="ui-muted">—</span>` : `<span class="ui-num tone-${pct >= 0 ? "green" : "red"}">${escapeHtml(bizTrendText(pct))}</span>`; }
+/** Where an invoice's stock shipped from (legacy lines without a branch fall back to the client's area). @param {Sale} sale */
+function bizSaleBranch(sale) { return salesBranches(sale)[0] || warehouseForArea(sale.area); }
+
+/**
+ * @typedef {{ name: string, months: number[], rev12: number, revPrev: number, cost12: number, costedRev12: number,
+ *   lastSale: Sale | null, firstDate: string, items: Map<string, number>, payDays: number[], invoices12: number }} BizClient
+ * @typedef {{ key: string, code: string, name: string, brand: string, units12: number, unitsPrev: number, rev12: number, revPrev: number, cost12: number, costedRev12: number }} BizProduct
+ * @typedef {{ keys: string[], clients: Map<string, BizClient>, products: Map<string, BizProduct>, monthRev: number[], monthGross: number[], monthCollected: number[], monthCost: number[], monthCostedRev: number[], sales: Sale[], docs: Set<string> }} BizFacts
+ */
+/** Fully-paid date per invoice (when its receipts first add up to the invoice total). @param {Sale[]} sales */
+function bizPaidDates(sales) {
+  /** @type {Map<string, Payment[]>} */
+  const byDoc = new Map();
+  bizReceivedPayments().forEach((payment) => { const key = String(payment.invoice || ""); const list = byDoc.get(key); if (list) list.push(payment); else byDoc.set(key, [payment]); });
+  /** @type {Map<Sale, string>} */
+  const out = new Map();
+  for (const sale of sales) {
+    if (salesBalance(sale) > 0.005) continue;
+    const list = (byDoc.get(String(sale.documentNo || sale.id)) || []).slice().sort((a, b) => bizPaymentDate(a).localeCompare(bizPaymentDate(b)));
+    let sum = 0;
+    for (const payment of list) {
+      sum += Number(payment.amount || 0);
+      if (sum >= Number(sale.net || 0) - 0.01) { const at = bizPaymentDate(payment); if (at) out.set(sale, at); break; }
+    }
+  }
+  return out;
+}
+/** Revenue, cost and buying pattern per client and product over the last 24 months (this user's scope). @returns {BizFacts} */
+function bizFacts() {
+  const allKeys = recentMonthKeys(24);
+  const index = new Map(allKeys.map((key, i) => [key, i]));
+  const costs = bizItemCosts();
+  const codeByName = new Map(data.items.map((item) => [item.name, item.code]));
+  const sales = salesScopedDocuments().filter((sale) => sale.status !== "Cancelled" && documentType(sale.type) !== "DR");
+  const paidDates = bizPaidDates(sales);
+  const yearAgo = fmtDate(addMonthsToDate(today, -12));
+  /** @type {Map<string, BizClient>} */
+  const clients = new Map();
+  /** @type {Map<string, BizProduct>} */
+  const products = new Map();
+  const zero = () => /** @type {number[]} */ (Array(12).fill(0));
+  const monthRev = zero(), monthGross = zero(), monthCost = zero(), monthCostedRev = zero(), monthCollected = zero();
+  for (const sale of sales) {
+    const date = fmtDateSafe(sale.date);
+    let client = clients.get(sale.client);
+    if (!client) { client = { name: sale.client, months: zero(), rev12: 0, revPrev: 0, cost12: 0, costedRev12: 0, lastSale: null, firstDate: date, items: new Map(), payDays: [], invoices12: 0 }; clients.set(sale.client, client); }
+    if (date && (!client.firstDate || date < client.firstDate)) client.firstDate = date;
+    if (!client.lastSale || date > fmtDateSafe(client.lastSale.date)) client.lastSale = sale;
+    const paidOn = paidDates.get(sale);
+    if (paidOn && paidOn >= yearAgo) { const days = dayCount(date, paidOn); if (days !== null && days >= 0) client.payDays.push(days); }
+    const at = index.get(date.slice(0, 7));
+    if (at === undefined) continue;
+    const recent = at >= 12;
+    const slot = at - 12;
+    const net = saleTaxBreakdown(sale).amountNetVat;
+    if (recent) { client.rev12 += net; client.months[slot] += net; client.invoices12 += 1; monthRev[slot] += net; monthGross[slot] += Number(sale.net || 0); }
+    else client.revPrev += net;
+    const lines = salesLines(sale);
+    const lineSum = lines.reduce((sum, line) => sum + lineSubtotal(line), 0);
+    const factor = lineSum > 0 ? net / lineSum : 0;
+    for (const line of lines) {
+      if (isBookkeepingOnlyLine(line.item, "") || String(line.item || "").trim().toUpperCase() === "AR") continue;
+      const code = String(line.code || codeByName.get(String(line.item || "")) || "");
+      const key = code || `name:${line.item}`;
+      let product = products.get(key);
+      if (!product) {
+        const master = code ? data.items.find((item) => item.code === code) : undefined;
+        product = { key, code, name: String(master?.name || line.item || code || "Item"), brand: String(master?.brand || line.brand || ""), units12: 0, unitsPrev: 0, rev12: 0, revPrev: 0, cost12: 0, costedRev12: 0 };
+        products.set(key, product);
+      }
+      const qty = Number(line.qty || 0);
+      const rev = lineSubtotal(line) * factor;
+      if (!recent) { product.unitsPrev += qty; product.revPrev += rev; continue; }
+      product.units12 += qty; product.rev12 += rev;
+      client.items.set(product.name, (client.items.get(product.name) || 0) + rev);
+      const unitCost = code ? costs.get(code) : undefined;
+      if (unitCost) {
+        const cost = qty * unitCost;
+        product.cost12 += cost; product.costedRev12 += rev; client.cost12 += cost; client.costedRev12 += rev; monthCost[slot] += cost; monthCostedRev[slot] += rev;
+      }
+    }
+  }
+  const docs = new Set(sales.flatMap((sale) => [sale.id, sale.documentNo].filter(Boolean).map(String)));
+  for (const payment of bizReceivedPayments()) {
+    if (!docs.has(String(payment.invoice || ""))) continue;
+    const at = index.get(bizPaymentDate(payment).slice(0, 7));
+    if (at !== undefined && at >= 12) monthCollected[at - 12] += Number(payment.amount || 0);
+  }
+  return { keys: allKeys.slice(12), clients, products, monthRev, monthGross, monthCollected, monthCost, monthCostedRev, sales, docs };
+}
+/** Margin %, or null when known costs cover less than half the revenue. @param {number} costedRev @param {number} cost @param {number} rev */
+function bizMargin(costedRev, cost, rev) { return costedRev > 0.005 && costedRev >= rev * 0.5 ? ((costedRev - cost) / costedRev) * 100 : null; }
+/** @param {number | null} margin */
+function bizMarginText(margin) { return margin === null ? "—" : `${margin.toFixed(1)}%`; }
+
+/** @typedef {ReturnType<typeof receivablesByClient>[number]} ClientReceivable */
+/**
+ * @typedef {{ name: string, client: Client | undefined, biz: BizClient | undefined, ar: ClientReceivable | undefined, health: string,
+ *   rev12: number, trend: number | null, margin: number | null, payDays: number | null, terms: number, credit: { used: number, limit: number }, agent: string, area: string }} ClientSummary
+ */
+/** @param {BizClient | undefined} biz @param {ClientReceivable | undefined} ar */
+function clientHealthKey(biz, ar) {
+  const rev = biz?.rev12 || 0, prev = biz?.revPrev || 0;
+  if ((ar && (ar.amounts[4] > 0.005 || ar.bounced.length)) || (prev > 0 && rev < prev * 0.75)) return "risk";
+  if (rev <= 0.005) return "quiet";
+  if (prev <= 0.005) return "new";
+  if (rev >= prev * 1.1) return "growing";
+  if (rev <= prev * 0.9) return "slipping";
+  return "steady";
+}
+/** One summary per client this user may see. @param {BizFacts} facts @param {{ includeMasterlist?: boolean }} [options] @returns {ClientSummary[]} */
+function clientSummaries(facts, { includeMasterlist = false } = {}) {
+  const arMap = new Map(receivablesByClient().map((entry) => [entry.client, entry]));
+  const master = new Map(data.clients.map((client) => [client.name, client]));
+  const names = new Set([...facts.clients.keys(), ...arMap.keys(), ...(includeMasterlist ? data.clients.filter((client) => !client.archived).map((client) => client.name) : [])]);
+  return [...names].filter((name) => name && salesClientVisible(name)).map((name) => {
+    const biz = facts.clients.get(name), ar = arMap.get(name), client = master.get(name);
+    const credit = clientCreditState(name);
+    return {
+      name, client, biz, ar, health: clientHealthKey(biz, ar), rev12: biz?.rev12 || 0, trend: bizTrend(biz?.rev12 || 0, biz?.revPrev || 0),
+      margin: biz ? bizMargin(biz.costedRev12, biz.cost12, biz.rev12) : null,
+      payDays: biz?.payDays.length ? Math.round(biz.payDays.reduce((sum, days) => sum + days, 0) / biz.payDays.length) : null,
+      terms: Number(client?.terms ?? biz?.lastSale?.terms ?? 0), credit: { used: credit.used, limit: credit.limit },
+      agent: String(client?.salesperson || "Unassigned"), area: String(client?.area || ar?.area || biz?.lastSale?.area || ""),
+    };
+  });
+}
+/** @param {ClientSummary} s */
+function clientPayCell(s) {
+  if (s.payDays === null) return `<span class="ui-muted">—</span>`;
+  const late = s.payDays - s.terms;
+  return uiCellText(plural(s.payDays, "day"), `terms ${s.terms}`, { subTone: late > 10 ? "red" : undefined });
+}
+/** Things worth knowing about one client, worked out from invoices, receipts, orders and support. @param {ClientSummary} s @param {number | null} companyMargin @returns {UiInsight[]} */
+function clientInsights(s, companyMargin) {
+  /** @type {UiInsight[]} */
+  const out = [];
+  const biz = s.biz;
+  if (biz && s.trend !== null) {
+    const t = Math.round(s.trend);
+    if (t >= 10) out.push({ tone: "green", title: "Buying more than last year", text: `${pesoShort(biz.rev12)} in the last 12 months, up ${t}% from ${pesoShort(biz.revPrev)}.` });
+    else if (t <= -10) out.push({ tone: t <= -25 ? "red" : "orange", title: "Buying less than last year", text: `Down ${-t}%, from ${pesoShort(biz.revPrev)} to ${pesoShort(biz.rev12)}. Worth a visit to ask why.` });
+    else out.push({ tone: "blue", title: "Steady buyer", text: `${pesoShort(biz.rev12)} in the last 12 months (${t >= 0 ? "+" : ""}${t}% on the year before).` });
+  } else if (biz && biz.rev12 > 0) out.push({ tone: "accent", title: "New this year", text: `${pesoShort(biz.rev12)} so far; no purchases in the 12 months before.` });
+  if (s.payDays !== null) {
+    const late = s.payDays - s.terms;
+    if (late > 10) out.push({ tone: "amber", title: `Pays ${plural(late, "day")} past terms`, text: `Averages ${plural(s.payDays, "day")} on ${s.terms}-day terms (invoices fully paid in the last 12 months).` });
+    else if (late <= 0) out.push({ tone: "green", title: "Pays on time", text: `Averages ${plural(s.payDays, "day")} on ${s.terms}-day terms.` });
+  }
+  if (s.ar && s.ar.overdue > 0.005) {
+    const oldest = s.ar.invoices[0];
+    const pdc = s.ar.pdc.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    out.push({ tone: oldest && oldest.days > 90 ? "red" : "amber", title: `${pesoShort(s.ar.overdue)} overdue`, text: `${oldest ? `${oldest.doc} is ${plural(oldest.days, "day")} past due.` : ""}${pdc > 0.005 ? ` Post-dated checks of ${pesoShort(pdc)} cover ${Math.min(100, Math.round((pdc / s.ar.overdue) * 100))}% of it.` : ""}` });
+  }
+  if (s.ar?.bounced.length) out.push({ tone: "red", title: plural(s.ar.bounced.length, "bounced check"), text: s.ar.bounced.slice(0, 2).map((payment) => [payment.bank, payment.reference, peso.format(Number(payment.amount || 0))].filter(Boolean).join(" ")).join("; ") });
+  if (canSeeMargins() && s.margin !== null && companyMargin !== null) {
+    const diff = s.margin - companyMargin;
+    if (Math.abs(diff) >= 2) out.push({ tone: diff > 0 ? "green" : "slate", title: diff > 0 ? "Above-average margin" : "Lower margin than average", text: `${s.margin.toFixed(1)}% vs the ${companyMargin.toFixed(1)}% company average.` });
+  }
+  if (s.credit.limit > 0 && s.credit.used / s.credit.limit >= 0.8) out.push({ tone: s.credit.used > s.credit.limit ? "red" : "amber", title: `Credit ${Math.round((s.credit.used / s.credit.limit) * 100)}% used`, text: `${pesoShort(s.credit.used)} of a ${pesoShort(s.credit.limit)} limit.` });
+  const orders = salesOpenOrders().filter((po) => po.client === s.name);
+  if (orders.length) out.push({ tone: "blue", title: plural(orders.length, "open sales order"), text: orders.slice(0, 2).map((po) => `${po.id} (${pesoShort(salesOrderTotal(po))})`).join(", ") });
+  const support = (data.productIssues || []).filter((report) => report.companyName === s.name && report.status !== "Resolved");
+  if (support.length) out.push({ tone: "slate", title: plural(support.length, "open support report"), text: support.slice(0, 2).map((report) => `${report.id} · ${report.status || "Open"}`).join(", ") });
+  return out;
+}
+/** Orders, invoices, receipts, follow-ups, support and demos for one client, newest first. @param {string} name */
+function clientTimeline(name) {
+  /** @type {(UiInsight & { at: string })[]} */
+  const out = [];
+  data.sales.filter((sale) => sale.client === name).forEach((sale) => {
+    const dr = documentType(sale.type) === "DR";
+    out.push({ at: fmtDateSafe(sale.date), tone: sale.status === "Cancelled" ? "slate" : dr ? "blue" : "slate", title: sale.status === "Cancelled" ? "Invoice cancelled" : dr ? "Demo units delivered" : "Invoiced", text: `${salesDocNo(sale)}${dr ? "" : ` · ${peso.format(Number(sale.net || 0))}`}` });
+  });
+  data.payments.filter((payment) => payment.client === name && !payment.voided).forEach((payment) => {
+    const status = String(payment.collectionStatus || "");
+    out.push({ at: bizPaymentDate(payment), tone: status === "Bounced" ? "red" : status === "Posted Date" ? "blue" : "green", title: status === "Bounced" ? "Check bounced" : status === "Posted Date" ? "Post-dated check received" : "Payment received", text: [payment.receiptNo, paymentMethodLabel(payment.method), payment.bank, peso.format(Number(payment.amount || 0)), payment.invoice ? `on ${payment.invoice}` : "", status === "Posted Date" && payment.chequeDate ? `dated ${uiDate(payment.chequeDate)}` : ""].filter(Boolean).join(" · ") });
+  });
+  (data.purchaseOrders || []).filter((po) => po.client === name).forEach((po) => out.push({ at: fmtDateSafe(po.date), tone: "slate", title: "Sales order", text: `${po.id} · ${peso.format(salesOrderTotal(po))} · ${poStatus(po)}` }));
+  (data.productIssues || []).filter((report) => report.companyName === name).forEach((report) => out.push({ at: fmtDateSafe(report.startDate || report.date), tone: report.status === "Resolved" ? "green" : "amber", title: "Support report", text: `${report.id} · ${report.status || "Open"}` }));
+  (data.inventoryDemoRequests || []).filter((request) => request.client === name).forEach((request) => out.push({ at: fmtDateSafe(request.date || request.demoDate), tone: "blue", title: "Demo request", text: `${request.id} · ${request.status}` }));
+  const contact = (data.collectionContacts || []).find((entry) => entry.client === name);
+  if (contact && fmtDateSafe(contact.lastContact)) out.push({ at: fmtDateSafe(contact.lastContact), tone: "slate", title: "Collection follow-up", text: `${contactStatusLabel(contact.status)}${contact.notes ? ` · ${contact.notes}` : ""}` });
+  return out.filter((entry) => entry.at).sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** Expected cash in (client invoices falling due) and out (bills, approved expenses, recurring costs) over 4 weeks. */
+function cashForecast() {
+  const weeks = forecastWeeks();
+  const open = payableFactsAll().filter((fact) => fact.balance > 0.005);
+  const canSeeReceivables = canViewModule("receivables-tracker") || canViewModule("invoicing");
+  const inflow = weeks.map((week) => canSeeReceivables
+    ? byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && salesBalance(sale) > 0.005).filter((sale) => { const due = fmtDateSafe(salesDueDate(sale)); return due >= week.start && due <= week.end; }).reduce((total, sale) => total + salesBalance(sale), 0)
+    : 0);
+  const expensesToPay = canViewModule("replenishments") ? (data.replenishments || []).filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed).reduce((total, r) => total + Number(r.amount || 0), 0) : 0;
+  const recurring = /** @type {RecurringCost[]} */ (data.recurringCosts || []);
+  const outflow = weeks.map((week, index) => {
+    const bills = open.filter((fact) => fact.p.requestStatus === "Approved" || fact.state === "approval").filter((fact) => (index === 0 && fact.due < week.start) || (fact.due >= week.start && fact.due <= week.end)).reduce((total, fact) => total + fact.balance, 0);
+    const fixed = recurring.reduce((total, cost) => total + recurringOccurrences(cost, week.start, week.end).length * Number(cost.amount || 0), 0);
+    return bills + fixed + (index === 0 ? expensesToPay : 0);
+  });
+  return { weeks, inflow, outflow, net: weeks.map((_, index) => inflow[index] - outflow[index]), canSeeReceivables };
+}
+/** The cash-forecast dashboard card (shared by Payables and Analytics). @returns {UiDashCard} */
+function cashForecastCard(span = /** @type {1 | 2} */ (2)) {
+  const { weeks, inflow, outflow, net, canSeeReceivables } = cashForecast();
+  return {
+    span, title: "Cash in vs out, next 4 weeks", sub: canSeeReceivables ? "In = client invoices falling due. Out = bills due (overdue bills counted this week), approved expenses and recurring costs." : "Out = bills due (overdue counted this week), approved expenses and recurring costs.",
+    body: uiBarChart({ labels: weeks.map((week) => week.label), series: canSeeReceivables ? [{ name: "In", values: inflow }, { name: "Out", values: outflow }] : [{ name: "Out", values: outflow }], format: pesoAxis, net: canSeeReceivables ? net : undefined, caption: "Cash forecast by week" }),
+    takeaway: canSeeReceivables && outflow.some((value) => value > 0) ? (net.some((value) => value < 0) ? `Out is higher than In in ${plural(net.filter((value) => value < 0).length, "week")}. Collect overdue invoices or move a bill date before then.` : "Expected collections cover the bills due in each of the next 4 weeks.") + " Overdue client invoices are not counted as cash in." : undefined,
+  };
+}
+
+// ----- Analytics -------------------------------------------------------------------------------------
+function analyticsQueryString() { return moduleViewQueryString("analytics", analyticsTab, "overview", analyticsView); }
+/** Same day of last month (clamped to its length), for month-to-date comparisons. */
+function bizSamePointLastMonth() {
+  const key = fmtDate(today);
+  const start = fmtDate(addMonthsToDate(new Date(`${key.slice(0, 7)}-01T00:00:00`), -1));
+  const [y, m] = start.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { start, end: `${start.slice(0, 8)}${String(Math.min(Number(key.slice(8)), last)).padStart(2, "0")}` };
+}
+/** Stock value at cost (unexpired, on hand) and the part expired or expiring within 60 days, by branch. */
+function bizStockValue() {
+  const costs = bizItemCosts();
+  const horizon = fmtDate(addDays(new Date(`${fmtDate(today)}T00:00:00`), 60));
+  /** @type {Record<string, number>} */
+  const byBranchValue = {};
+  let value = 0, atRisk = 0, costed = 0, rows = 0;
+  byBranch(data.inventory).forEach((row) => {
+    const qty = Number(row.qty || 0);
+    if (qty <= 0) return;
+    rows += 1;
+    const cost = costs.get(row.code);
+    if (!cost) return;
+    costed += 1;
+    const amount = qty * cost;
+    const expiry = fmtDateSafe(row.expiry);
+    if (expiry && expiry <= horizon) atRisk += amount;
+    if (inventoryStatus(row) === "Expired") return;
+    value += amount;
+    byBranchValue[row.branch] = (byBranchValue[row.branch] || 0) + amount;
+  });
+  return { value, atRisk, costed, rows, byBranch: byBranchValue };
+}
+
+/** @param {BizFacts} facts @param {ClientSummary[]} summaries */
+function analyticsOverviewHtml(facts, summaries) {
+  const todayKey = fmtDate(today);
+  const monthStart = `${todayKey.slice(0, 7)}-01`;
+  const prev = bizSamePointLastMonth();
+  const inRange = (/** @type {string} */ date, /** @type {string} */ from, /** @type {string} */ to) => date >= from && date <= to;
+  const revenueIn = (/** @type {string} */ from, /** @type {string} */ to) => facts.sales.filter((sale) => inRange(fmtDateSafe(sale.date), from, to)).reduce((sum, sale) => sum + saleTaxBreakdown(sale).amountNetVat, 0);
+  const collectedIn = (/** @type {string} */ from, /** @type {string} */ to) => bizReceivedPayments().filter((payment) => facts.docs.has(String(payment.invoice || "")) && inRange(bizPaymentDate(payment), from, to)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const revNow = revenueIn(monthStart, todayKey), revThen = revenueIn(prev.start, prev.end);
+  const colNow = collectedIn(monthStart, todayKey), colThen = collectedIn(prev.start, prev.end);
+  const change = (/** @type {number} */ now, /** @type {number} */ then) => { const pct = bizTrend(now, then); return pct === null ? null : { text: bizTrendText(pct, 1), good: pct >= 0 }; };
+  const arTotal = summaries.reduce((sum, s) => sum + (s.ar?.total || 0), 0);
+  const arOverdue = summaries.reduce((sum, s) => sum + (s.ar?.overdue || 0), 0);
+  const ninety = fmtDate(addDays(new Date(`${todayKey}T00:00:00`), -89));
+  const recent = facts.sales.filter((sale) => inRange(fmtDateSafe(sale.date), ninety, todayKey));
+  const gross90 = recent.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  const dso = gross90 > 0.005 ? Math.round((arTotal / gross90) * 90) : null;
+  const avgTerms = recent.length ? Math.round(recent.reduce((sum, sale) => sum + Number(sale.terms || 0), 0) / recent.length) : null;
+  const margins = canSeeMargins();
+  const marginNow = bizMargin(facts.monthCostedRev[11], facts.monthCost[11], facts.monthRev[11]);
+  const marginLast = bizMargin(facts.monthCostedRev[10], facts.monthCost[10], facts.monthRev[10]);
+  const monthName = shortMonthLabel(facts.keys[10]);
+
+  /** @type {(UiKpi | null)[]} */
+  const kpis = [
+    { label: "Revenue · month to date", value: pesoShort(revNow), tone: "accent", change: change(revNow, revThen), sub: `vs ${pesoShort(revThen)} at this point in ${monthName} · net of VAT` },
+    margins ? { label: "Gross margin · this month", value: bizMarginText(marginNow), tone: "accent", change: marginNow !== null && marginLast !== null ? { text: `${marginNow >= marginLast ? "▲" : "▼"} ${Math.abs(marginNow - marginLast).toFixed(1)} pts`, good: marginNow >= marginLast } : null, sub: marginNow === null ? "Item costs are missing for most lines sold" : marginLast !== null ? `${monthName} closed at ${marginLast.toFixed(1)}%` : "Lines with a known item cost" } : null,
+    { label: "Collected · month to date", value: pesoShort(colNow), tone: "accent", change: change(colNow, colThen), sub: `vs ${pesoShort(colThen)} at this point in ${monthName}` },
+    { label: "Overdue receivables", value: pesoShort(arOverdue), tone: "red", sub: arTotal > 0.005 ? `${Math.round((arOverdue / arTotal) * 100)}% of the ${pesoShort(arTotal)} clients owe` : "Nothing owed" },
+    { label: "Days to collect (DSO)", value: dso === null ? "—" : plural(dso, "day"), tone: "amber", sub: dso === null ? "No invoices in the last 90 days" : `Open receivables ÷ last 90 days' invoices${avgTerms !== null ? ` · terms average ${avgTerms} days` : ""}` },
+  ];
+  if (margins && canViewModule("inventory")) {
+    const stock = bizStockValue();
+    kpis.push({ label: "Inventory value", value: stock.costed ? pesoShort(stock.value) : "—", tone: "blue", sub: !stock.costed ? "No item costs on file yet" : `${pesoShort(stock.atRisk)} is expired or expires within 60 days${stock.costed < stock.rows ? ` · ${plural(stock.rows - stock.costed, "stock row")} without a cost not counted` : ""}` });
+  }
+  if (canViewModule("payables")) {
+    const horizon = fmtDate(addDays(new Date(`${todayKey}T00:00:00`), 30));
+    const open = payableFactsAll().filter((fact) => fact.balance > 0.005 && fact.due <= horizon);
+    const late = open.filter((fact) => fact.overdue).reduce((sum, fact) => sum + fact.balance, 0);
+    kpis.push({ label: "Payables due in 30 days", value: pesoShort(open.reduce((sum, fact) => sum + fact.balance, 0)), tone: "orange", sub: late > 0.005 ? `${pesoShort(late)} of it is already overdue` : "Nothing overdue" });
+  }
+  if (canViewModule("replenishments")) {
+    const spentMap = expenseSpendByCategory(byBranch(data.replenishments, "office"), todayKey.slice(0, 7));
+    const spent = Object.values(spentMap).reduce((sum, value) => sum + value, 0);
+    const budget = Object.values(expenseBudgetMap()).reduce((sum, value) => sum + value, 0);
+    const [y, m, d] = todayKey.split("-").map(Number);
+    const gone = d / new Date(Date.UTC(y, m, 0)).getUTCDate();
+    kpis.push({ label: `Operating expenses · ${shortMonthLabel(facts.keys[11])}`, value: pesoShort(spent), tone: "accent", change: budget > 0 ? { text: spent / budget <= gone + 0.05 ? "On pace" : "Ahead of pace", good: spent / budget <= gone + 0.05 } : null, sub: budget > 0 ? `${Math.round((spent / budget) * 100)}% of ${pesoShort(budget)} budget, ${Math.round(gone * 100)}% of month gone` : "Approved and paid · no budgets set" });
+  }
+
+  // Needs your decision.
+  const goto = (/** @type {string} */ module, /** @type {string} */ tab, /** @type {string} */ scope = "", /** @type {string} */ sel = "") => ({ "data-wa-goto": `${module}|${tab}|${scope}|${sel}` });
+  const canHistory = canViewModule("purchase-history");
+  /** @type {UiInsight[]} */
+  const decisions = [];
+  const arByClient = new Map(summaries.map((s) => [s.name, s]));
+  salesOpenOrders().forEach((po) => {
+    const s = arByClient.get(po.client);
+    if (!s?.ar || !(s.ar.amounts[3] + s.ar.amounts[4] > 0.005 || s.ar.bounced.length)) return;
+    const total = salesOrderTotal(po);
+    decisions.push({ tone: "red", money: total + s.ar.overdue, title: `${po.client}: hold the new order?`, text: `${pesoShort(s.ar.overdue)} overdue${s.ar.invoices[0] ? ` (oldest ${plural(s.ar.invoices[0].days, "day")})` : ""}${s.ar.bounced.length ? `, ${plural(s.ar.bounced.length, "bounced check")}` : ""}, and ${po.id} (${pesoShort(total)}) is still open.`, action: { label: "Open client", attrs: canHistory ? goto("purchase-history", "profile", "", po.client) : goto("receivables-tracker", "aging", "risk", po.client) } });
+  });
+  if (canApprovePurchaseOrders() && supplierPurchasingVisible()) {
+    (data.inventoryPurchaseOrders || []).filter((po) => po.status === "Pending Approval").forEach((po) => decisions.push({ tone: "amber", money: inventoryPoTotal(po), title: `${po.id} to ${po.supplier} · ${pesoShort(inventoryPoTotal(po))}`, text: "Supplier purchase order waiting for approval.", action: { label: "Review PO", attrs: goto("purchase-orders", "pos", "approval", po.id) } }));
+  }
+  if (canViewModule("payables")) {
+    payableFactsAll().filter((fact) => fact.overdue).forEach((fact) => decisions.push({ tone: "amber", money: fact.balance, title: `${fact.p.supplier} bill ${plural(-fact.days, "day")} overdue · ${pesoShort(fact.balance)}`, text: `${fact.p.id} was due ${uiDate(fact.due)}${fact.estimated ? " (est.)" : ""}. Pay it or agree a date.`, action: { label: "Open payables", attrs: goto("payables", "bills", "", fact.p.id) } }));
+  }
+  if (canViewModule("replenishments")) {
+    const budgets = expenseBudgetMap();
+    const spentMap = expenseSpendByCategory(byBranch(data.replenishments, "office"), todayKey.slice(0, 7));
+    Object.keys(budgets).filter((cat) => (spentMap[cat] || 0) > budgets[cat] * 1.1).forEach((cat) => decisions.push({ tone: "orange", money: (spentMap[cat] || 0) - budgets[cat], title: `${cat} ${Math.round(((spentMap[cat] || 0) / budgets[cat] - 1) * 100)}% over budget`, text: `${pesoShort(spentMap[cat] || 0)} spent this month against ${pesoShort(budgets[cat])}.`, action: { label: "Open expenses", attrs: goto("replenishments", "budgets", "over", "") } }));
+  }
+  summaries.filter((s) => s.ar && s.ar.amounts[3] + s.ar.amounts[4] > 0.005 && !decisions.some((item) => item.title.startsWith(`${s.name}:`))).sort((a, b) => (b.ar?.overdue || 0) - (a.ar?.overdue || 0)).slice(0, 2)
+    .forEach((s) => decisions.push({ tone: "orange", money: s.ar?.overdue || 0, title: `${s.name}: ${pesoShort(s.ar?.overdue || 0)} overdue`, text: `Oldest invoice is ${plural(s.ar?.invoices[0]?.days || 0, "day")} past due. Send a statement and call.`, action: { label: "Statements", attrs: goto("receivables-tracker", "soa", "overdue", "") } }));
+  decisions.sort((a, b) => (b.money || 0) - (a.money || 0));
+
+  // Charts.
+  const labels = facts.keys.map(shortMonthLabel);
+  const gap = facts.monthGross.slice(0, 11).reduce((sum, value, i) => sum + Math.max(0, value - facts.monthCollected[i]), 0);
+  const trailing = facts.monthGross.slice(0, 11).filter((value, i) => facts.monthCollected[i] < value).length;
+  const top = [...summaries].filter((s) => s.rev12 > 0.005).sort((a, b) => b.rev12 - a.rev12);
+  const total12 = facts.monthRev.reduce((sum, value) => sum + value, 0);
+  const topShare = total12 > 0 ? Math.round((top.slice(0, 8).reduce((sum, s) => sum + s.rev12, 0) / total12) * 100) : 0;
+  const topCols = [{ label: "Client" }, { label: "Revenue", right: true }, { label: "vs last year", right: true }, ...(margins ? [{ label: "Margin", right: true }] : []), { label: "Days to pay", right: true }, { label: "Overdue", right: true }];
+  const topRows = top.slice(0, 8).map((s) => [
+    `<strong>${escapeHtml(s.name)}</strong>`, escapeHtml(pesoShort(s.rev12)), bizTrendCell(s.trend), ...(margins ? [escapeHtml(bizMarginText(s.margin))] : []),
+    s.payDays === null ? "—" : `<span class="ui-num${s.payDays - s.terms > 10 ? " tone-red" : ""}">${s.payDays} (terms ${s.terms})</span>`,
+    s.ar && s.ar.overdue > 0.005 ? `<span class="ui-num tone-red">${escapeHtml(peso.format(s.ar.overdue))}</span>` : "—",
+  ]);
+  const products = [...facts.products.values()];
+  const byProfit = products.filter((p) => bizMargin(p.costedRev12, p.cost12, p.rev12) !== null).map((p) => ({ p, gp: p.costedRev12 - p.cost12, m: /** @type {number} */ (bizMargin(p.costedRev12, p.cost12, p.rev12)) })).sort((a, b) => b.gp - a.gp);
+  const byRevenue = [...products].sort((a, b) => b.rev12 - a.rev12);
+  const productCard = margins && byProfit.length
+    ? { span: /** @type {1} */ (1), title: "Gross profit by product", sub: "Last 12 months · bar = gross profit, right = margin", body: uiHBars({ items: byProfit.slice(0, 6).map(({ p, gp, m }) => ({ label: p.name, value: Math.max(0, gp), display: `${pesoShort(gp)} · ${m.toFixed(0)}%`, tone: m < 20 ? /** @type {UiTone} */ ("red") : undefined })), caption: "Gross profit by product" }), link: { label: "All products", attrs: goto("analytics", "products") } }
+    : { span: /** @type {1} */ (1), title: "Top products", sub: "Revenue, last 12 months (net of VAT)", body: uiHBars({ items: byRevenue.slice(0, 6).map((p) => ({ label: p.name, value: p.rev12, display: pesoShort(p.rev12) })), caption: "Top products by revenue" }), link: { label: "All products", attrs: goto("analytics", "products") } };
+
+  // Branches (month to date).
+  const branches = platformBranches();
+  const mtd = facts.sales.filter((sale) => inRange(fmtDateSafe(sale.date), monthStart, todayKey));
+  const branchRev = (/** @type {string} */ branch) => mtd.filter((sale) => bizSaleBranch(sale) === branch).reduce((sum, sale) => sum + saleTaxBreakdown(sale).amountNetVat, 0);
+  const branchOverdue = (/** @type {string} */ branch) => summaries.reduce((sum, s) => sum + (s.ar?.invoices || []).filter((invoice) => invoice.days > 0 && bizSaleBranch(invoice.sale) === branch).reduce((acc, invoice) => acc + invoice.balance, 0), 0);
+  const stockByBranch = margins && canViewModule("inventory") ? bizStockValue().byBranch : null;
+  const expenseByOffice = canViewModule("replenishments") ? byBranch(data.replenishments, "office").filter((r) => ["topay", "paid"].includes(expenseState(r)) && fmtDateSafe(r.date).slice(0, 7) === todayKey.slice(0, 7)).reduce((/** @type {Record<string, number>} */ acc, r) => { acc[String(r.office || "")] = (acc[String(r.office || "")] || 0) + Number(r.amount || 0); return acc; }, {}) : null;
+  const branchRows = [
+    ["Revenue", ...branches.map((branch) => pesoShort(branchRev(branch)))],
+    ["Overdue receivables", ...branches.map((branch) => pesoShort(branchOverdue(branch)))],
+    ...(stockByBranch ? [["Stock value", ...branches.map((branch) => pesoShort(stockByBranch[branch] || 0))]] : []),
+    ...(expenseByOffice ? [["Operating expenses", ...branches.map((branch) => pesoShort(expenseByOffice[branch] || 0))]] : []),
+  ].map((row) => row.map((cell, i) => i === 0 ? `<strong>${escapeHtml(cell)}</strong>` : escapeHtml(cell)));
+
+  // Breakdowns kept from the old Current Operations tab.
+  const salesAgents = new Set(data.users.filter((user) => user.role === "Sales").map((user) => user.name));
+  /** @type {Record<string, number>} */
+  const byAgent = {};
+  /** @type {Record<string, number>} */
+  const byArea = {};
+  let dealer = 0, direct = 0;
+  summaries.forEach((s) => {
+    if (s.rev12 <= 0.005) return;
+    if (salesAgents.has(s.agent)) byAgent[s.agent] = (byAgent[s.agent] || 0) + s.rev12;
+    byArea[s.area || "No area"] = (byArea[s.area || "No area"] || 0) + s.rev12;
+    if (s.client?.dealer && s.client.dealer !== "Direct") dealer += s.rev12; else direct += s.rev12;
+  });
+  /** @type {Record<string, number>} */
+  const byBrand = {};
+  products.forEach((p) => { if (p.brand) byBrand[p.brand] = (byBrand[p.brand] || 0) + p.rev12; });
+  const hbarsOf = (/** @type {Record<string, number>} */ map, /** @type {string} */ caption, count = 6) => uiHBars({ items: Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, count).map(([label, value]) => ({ label, value, display: pesoShort(value) })), caption });
+
+  return uiKpiCards(/** @type {UiKpi[]} */ (kpis.filter(Boolean))) + uiDashboardGrid([
+    [
+      { span: 2, title: "Invoiced vs collected", sub: "Invoice totals (VAT included) vs cash received, last 12 months. The current month is in progress.", body: uiBarChart({ labels, series: [{ name: "Invoiced", values: facts.monthGross }, { name: "Collected", values: facts.monthCollected }], format: pesoAxis, partialLast: true, caption: "Invoiced vs collected by month" }), takeaway: trailing ? `Collections trailed invoicing in ${trailing} of the last 11 full months, ${pesoShort(gap)} in total. That gap is what builds up in receivables.${partialDataNote("sales")}` : undefined },
+      { span: 1, title: "Needs your decision", sub: "Ranked by money at stake", body: uiInsightList(decisions.slice(0, 5), "Nothing needs a decision right now.") },
+    ],
+    [
+      ...(canViewModule("payables") ? [cashForecastCard(1)] : []),
+      { span: 2, title: "Top clients", sub: `Last 12 months, net of VAT.${top.length ? ` These ${Math.min(8, top.length)} clients are ${topShare}% of revenue${top[0] && total12 > 0 ? `; ${top[0].name} alone is ${Math.round((top[0].rev12 / total12) * 100)}%` : ""}.` : ""}`, body: uiMiniTable(topCols, topRows, "Top clients"), link: { label: "All clients", attrs: goto("analytics", "clients") } },
+    ],
+    [
+      productCard,
+      { span: 1, title: "Branches", sub: `${shortMonthLabel(facts.keys[11])} to date · revenue by the branch stock shipped from`, body: uiMiniTable([{ label: "" }, ...branches.map((branch) => ({ label: branch, right: true }))], branchRows, "Branch comparison") },
+      { span: 1, title: "Revenue by sales agent", sub: "Last 12 months, by the client's assigned agent", body: hbarsOf(byAgent, "Revenue by sales agent") },
+    ],
+    [
+      { span: 1, title: "Revenue by area", sub: "Last 12 months, by client area", body: hbarsOf(byArea, "Revenue by area") },
+      { span: 1, title: "Direct vs dealer", sub: "Last 12 months", body: uiStackBar({ segments: [{ label: "Direct", value: direct, display: pesoShort(direct), tone: "blue" }, { label: "Dealer", value: dealer, display: pesoShort(dealer), tone: "orange" }], caption: "Direct vs dealer revenue" }) },
+      { span: 1, title: "Top brands", sub: "Last 12 months", body: hbarsOf(byBrand, "Revenue by brand", 5) },
+    ],
+  ]);
+}
+
+/** @param {string} tab @param {BizFacts} facts @param {ClientSummary[]} summaries @returns {UiView} */
+function analyticsTabModel(tab, facts, summaries) {
+  const select = (/** @type {string} */ id) => uiViewSelect("analytics", id);
+  const closeAttrs = { "data-analytics-close": "" };
+  const margins = canSeeMargins();
+  if (tab === "products") {
+    const cover = new Map(itemStockCover().map((row) => [row.code, row]));
+    const rows = [...facts.products.values()].filter((p) => p.rev12 > 0.005 || p.units12 > 0);
+    const lasts = (/** @type {BizProduct} */ p) => {
+      const c = p.code ? cover.get(p.code) : undefined;
+      if (!c || c.months === null) return { key: "", text: c && c.onHand > 0 ? "No recent sales" : "—", tone: /** @type {UiTone} */ ("slate"), months: c?.onHand ? 999 : -1 };
+      const text = `${c.months.toFixed(1)} mo${c.onOrder > 0 ? " · on order" : ""}`;
+      return c.months < 1 ? { key: "short", text, tone: /** @type {UiTone} */ (c.onOrder > 0 ? "amber" : "red"), months: c.months } : c.months > 3 ? { key: "over", text, tone: /** @type {UiTone} */ ("orange"), months: c.months } : { key: "ok", text, tone: /** @type {UiTone} */ ("green"), months: c.months };
+    };
+    const withMargin = rows.map((p) => ({ p, m: bizMargin(p.costedRev12, p.cost12, p.rev12), l: lasts(p) }));
+    const best = margins ? [...withMargin].filter((x) => x.m !== null).sort((a, b) => (b.p.costedRev12 - b.p.cost12) - (a.p.costedRev12 - a.p.cost12))[0] : [...withMargin].sort((a, b) => b.p.rev12 - a.p.rev12)[0];
+    const short = withMargin.filter((x) => x.l.key === "short"), over = withMargin.filter((x) => x.l.key === "over");
+    return {
+      title: "Products", intro: "What sells, what earns, and how long current stock lasts at the last 6 months' sales rate. Revenue is net of VAT.", placeholder: "Product, code or brand", actions: [], minWidth: margins ? 1040 : 860,
+      stats: [
+        { label: margins ? "Highest gross profit" : "Top seller", value: best ? best.p.name : "—", sub: best ? (margins ? `${pesoShort(best.p.costedRev12 - best.p.cost12)} · ${bizMarginText(best.m)} margin` : pesoShort(best.p.rev12)) : "No sales yet", tone: "accent" },
+        { label: "Running out (< 1 month)", value: plural(short.length, "item"), sub: short.slice(0, 3).map((x) => x.p.name).join(", ") || "None", tone: "red", scope: "short" },
+        { label: "Overstocked (> 3 months)", value: plural(over.length, "item"), sub: over.slice(0, 3).map((x) => x.p.name).join(", ") || "None", tone: "orange", scope: "over" },
+      ],
+      cols: [{ key: "id", label: "Product", sortable: true }, { key: "units", label: "Units 12 mo", align: "right", sortable: true }, { key: "rev", label: "Revenue", align: "right", sortable: true }, ...(margins ? [{ key: "gp", label: "Gross profit", align: /** @type {"right"} */ ("right"), sortable: true }, { key: "margin", label: "Margin", align: /** @type {"right"} */ ("right"), sortable: true }] : []), { key: "trend", label: "vs last year", align: "right", sortable: true }, { key: "lasts", label: "Stock lasts", sortable: true }],
+      csvName: "analytics-products.csv", csvHeader: ["Code", "Product", "Brand", "Units 12 mo", "Revenue 12 mo (net of VAT)", ...(margins ? ["Gross profit", "Margin %"] : []), "vs last year %", "Stock lasts"],
+      rows: withMargin.map(/** @returns {UiViewRow} */ ({ p, m, l }) => {
+        const trend = bizTrend(p.rev12, p.revPrev);
+        const gp = m === null ? null : p.costedRev12 - p.cost12;
+        return {
+          id: p.key, branches: [], scopes: l.key ? [l.key] : [],
+          search: [p.code, p.name, p.brand].filter(Boolean).join(" "),
+          sortValues: { id: p.name, units: p.units12, rev: p.rev12, gp: gp ?? -1e15, margin: m ?? -1e9, trend: trend ?? -1e9, lasts: l.months },
+          csv: [p.code, p.name, p.brand, p.units12, p.rev12.toFixed(2), ...(margins ? [gp === null ? "" : gp.toFixed(2), m === null ? "" : m.toFixed(1)] : []), trend === null ? "" : trend.toFixed(1), l.text],
+          cells: [uiCellDoc(p.name, select(p.key), [p.code, p.brand].filter(Boolean).join(" · "), { plain: true }), uiCellNum(p.units12.toLocaleString("en-PH")), uiCellNum(peso.format(p.rev12)), ...(margins ? [uiCellNum(gp === null ? "—" : peso.format(gp)), m !== null && m < 20 ? `<span class="ui-num tone-red">${escapeHtml(bizMarginText(m))}</span>` : uiCellNum(bizMarginText(m))] : []), bizTrendCell(trend), l.key ? uiPill(l.text, l.tone) : escapeHtml(l.text)],
+          detail: () => ({
+            eyebrow: [p.code, p.brand].filter(Boolean).join(" · ") || "Product", title: p.name, pill: l.key ? { text: `Stock lasts ${l.text}`, tone: l.tone } : undefined, closeAttrs, label: "Product details",
+            fields: [
+              { label: "Units sold, 12 months", value: p.units12.toLocaleString("en-PH"), sub: `${p.unitsPrev.toLocaleString("en-PH")} the year before` },
+              { label: "Revenue, 12 months", value: peso.format(p.rev12), sub: trend === null ? "" : `${bizTrendText(trend)} on last year` },
+              ...(margins ? [{ label: "Gross profit", value: gp === null ? "—" : peso.format(gp), sub: gp === null ? "Item cost not known" : p.costedRev12 < p.rev12 - 0.005 ? `${Math.round((p.costedRev12 / p.rev12) * 100)}% of revenue has a known cost` : "" }, { label: "Margin", value: bizMarginText(m) }] : []),
+            ],
+            actions: [uiButton("Open in Inventory", { "data-go-section": "inventory" }, { primary: true }), ...(p.code && canCreateSupplierPo() && supplierPurchasingVisible() ? [uiButton("Create purchase order", { "data-analytics-po": p.code })] : [])],
+          }),
+        };
+      }),
+      empty: ["No product sales yet", "Products show here once they are invoiced."],
+      defaultSort: { key: margins ? "gp" : "rev", dir: -1 }, chips: [{ key: "short", label: "Running out", tone: "red" }, { key: "over", label: "Overstocked", tone: "orange" }, { key: "ok", label: "Healthy", tone: "green" }], defaultScope: "",
+    };
+  }
+  const rows = summaries.filter((s) => s.rev12 > 0.005 || (s.ar?.total || 0) > 0.005);
+  const total = rows.reduce((sum, s) => sum + s.rev12, 0);
+  const top10 = [...rows].sort((a, b) => b.rev12 - a.rev12).slice(0, 10).reduce((sum, s) => sum + s.rev12, 0);
+  const late = rows.filter((s) => s.payDays !== null && s.payDays - s.terms > 10);
+  const shrinking = rows.filter((s) => s.trend !== null && s.trend < 0);
+  const companyMargin = canSeeMargins() ? bizMargin(facts.monthCostedRev.reduce((a, b) => a + b, 0), facts.monthCost.reduce((a, b) => a + b, 0), facts.monthRev.reduce((a, b) => a + b, 0)) : null;
+  return {
+    title: "Clients", intro: "Revenue (net of VAT), profitability and payment behaviour for every client over the last 12 months.", placeholder: "Client, area or agent", actions: [], minWidth: margins ? 1080 : 980,
+    stats: [
+      { label: "Revenue from top 10", value: pesoShort(top10), sub: total > 0 ? `${Math.round((top10 / total) * 100)}% of ${pesoShort(total)} total` : "No revenue yet", tone: "accent" },
+      { label: "Paying late", value: `${late.length} of ${rows.length}`, sub: "More than 10 days past terms", tone: "red", scope: "late" },
+      { label: "Shrinking", value: String(shrinking.length), sub: "Lower revenue than the year before", tone: "orange", scope: "shrinking" },
+    ],
+    cols: [{ key: "id", label: "Client", sortable: true }, { key: "rev", label: "Revenue 12 mo", align: "right", sortable: true }, { key: "trend", label: "vs last year", align: "right", sortable: true }, ...(margins ? [{ key: "margin", label: "Margin", align: /** @type {"right"} */ ("right"), sortable: true }] : []), { key: "pay", label: "Days to pay", align: "right", sortable: true }, { key: "overdue", label: "Overdue", align: "right", sortable: true }, { key: "last", label: "Last invoice", sortable: true }, { key: "health", label: "Health", sortable: true }],
+    csvName: "analytics-clients.csv", csvHeader: ["Client", "Area", "Sales agent", "Revenue 12 mo (net of VAT)", "Previous 12 mo", ...(margins ? ["Margin %"] : []), "Avg days to pay", "Terms", "Overdue", "Last invoice", "Health"],
+    rows: rows.map(/** @returns {UiViewRow} */ (s) => {
+      const health = CLIENT_HEALTH[s.health];
+      const last = s.biz?.lastSale ? fmtDateSafe(s.biz.lastSale.date) : "";
+      return {
+        id: s.name, branches: [], scopes: [s.health, ...(late.includes(s) ? ["late"] : []), ...(shrinking.includes(s) ? ["shrinking"] : [])],
+        search: [s.name, s.area, s.agent, health.label].join(" "),
+        sortValues: { id: s.name, rev: s.rev12, trend: s.trend ?? -1e9, margin: s.margin ?? -1e9, pay: s.payDays ?? -1, overdue: s.ar?.overdue || 0, last: inventoryDateValue(last), health: health.label },
+        csv: [s.name, s.area, s.agent, s.rev12.toFixed(2), (s.biz?.revPrev || 0).toFixed(2), ...(margins ? [s.margin === null ? "" : s.margin.toFixed(1)] : []), s.payDays ?? "", s.terms, (s.ar?.overdue || 0).toFixed(2), last, health.label],
+        cells: [uiCellDoc(s.name, select(s.name), [s.area, s.agent].filter(Boolean).join(" · "), { plain: true }), uiCellNum(peso.format(s.rev12)), bizTrendCell(s.trend), ...(margins ? [uiCellNum(bizMarginText(s.margin))] : []), clientPayCell(s), s.ar && s.ar.overdue > 0.005 ? `<span class="ui-num tone-red">${escapeHtml(peso.format(s.ar.overdue))}</span>` : "—", escapeHtml(last ? uiDate(last) : "—"), uiPill(health.label, health.tone)],
+        detail: () => ({
+          eyebrow: [s.area, s.agent].filter(Boolean).join(" · ") || "Client", title: s.name, pill: { text: health.label, tone: health.tone }, closeAttrs, label: "Client summary",
+          fields: [
+            { label: "Revenue, 12 months", value: peso.format(s.rev12), sub: "Net of VAT" }, { label: "Previous 12 months", value: peso.format(s.biz?.revPrev || 0) },
+            ...(margins ? [{ label: "Gross margin", value: bizMarginText(s.margin), sub: s.margin === null ? "Item costs missing" : "" }] : []),
+            { label: "Avg days to pay", value: s.payDays === null ? "—" : `${s.payDays} (terms ${s.terms})` },
+            { label: "Overdue", value: s.ar && s.ar.overdue > 0.005 ? peso.format(s.ar.overdue) : "—" }, { label: "Last invoice", value: last ? uiDate(last) : "—", sub: s.biz?.lastSale ? salesDocNo(s.biz.lastSale) : "" },
+          ],
+          linesTitle: "What to know",
+          lines: clientInsights(s, companyMargin).slice(0, 5).map((item) => ({ left: item.title, sub: item.text, tone: item.tone })),
+          actions: [
+            ...(canViewModule("purchase-history") ? [uiButton("Open client history", { "data-wa-goto": `purchase-history|profile||${s.name}` }, { primary: true })] : []),
+            ...(canViewModule("client-invoices") ? [uiButton("Invoices", { "data-client-invoices": s.name })] : []),
+          ],
+        }),
+      };
+    }),
+    empty: ["No client activity yet", "Clients show here once they are invoiced."],
+    defaultSort: { key: "rev", dir: -1 },
+    chips: Object.keys(CLIENT_HEALTH).filter((key) => key !== "quiet").map((key) => ({ key, label: CLIENT_HEALTH[key].label, tone: CLIENT_HEALTH[key].tone })), defaultScope: "",
+  };
+}
+
+/** The System value tab keeps the old Proof of Value panels (filled by renderValueAnalytics) plus the support and demo counts. */
+function analyticsValueHtml() {
+  const issueCounts = ["Open", "In Progress", "Pass to Product Specialist", "Pass to Engineering", "Resolved"].map((status) => ({ label: status, value: (data.productIssues || []).filter((report) => report.status === status).length }));
+  const demoCounts = ["For Logistics Approval", "For Management Approval", "Approved", "Returned", "To Sales"].map((status) => ({ label: status, value: (data.inventoryDemoRequests || []).filter((request) => request.status === status).length }));
+  const counts = (/** @type {{ label: string, value: number }[]} */ list, /** @type {string} */ unit, /** @type {string} */ caption) => uiHBars({ items: list.filter((entry) => entry.value > 0).map((entry) => ({ label: entry.label, value: entry.value, display: plural(entry.value, unit) })), caption });
+  return `<div class="ui-tab-intro"><div><h2 class="ui-h2">System value</h2><p class="ui-desc">How fast work moves, what the system caught before it cost money, and how much it is used. From recorded dates and statuses.</p></div><div class="ui-actions">${uiButton("Print system value report", { id: "print-value-report" }, { size: "sm" })}</div></div>`
+    + `<div class="ui-dash"><div class="ui-dash-row"><article class="ui-card ui-dash-card span-2"><header><h3>Workflow speed</h3><p>Average days from start to finish</p></header><div class="ui-dash-body"><div class="visual-grid" id="value-cycle-time-visuals"></div></div></article></div>`
+    + `<div class="ui-dash-row"><article class="ui-card ui-dash-card span-2"><header><h3>Caught before it cost you</h3></header><div class="ui-dash-body"><div class="visual-grid" id="value-savings-visuals"></div></div></article></div>`
+    + `<div class="ui-dash-row"><article class="ui-card ui-dash-card span-2"><header><h3>Adoption and reliability</h3></header><div class="ui-dash-body"><div class="visual-grid" id="value-adoption-visuals"></div></div></article></div>`
+    + `<div class="ui-dash-row"><article class="ui-card ui-dash-card span-1"><header><h3>Support reports</h3><p>By status, all logged cases</p></header><div class="ui-dash-body">${counts(issueCounts, "report", "Support reports by status")}</div></article><article class="ui-card ui-dash-card span-1"><header><h3>Demo requests</h3><p>By status</p></header><div class="ui-dash-body">${counts(demoCounts, "request", "Demo requests by status")}</div></article></div></div>`;
+}
+
+function renderAnalytics() {
+  if (!ANALYTICS_TAB_LABELS[analyticsTab]) analyticsTab = "overview";
+  const header = qs("#analytics-actions");
+  if (header) header.innerHTML = uiButton("Print", { "data-analytics-print": "" });
+  const facts = bizFacts();
+  const summaries = clientSummaries(facts);
+  /** @type {Record<string, number | undefined>} */
+  const counts = { clients: summaries.filter((s) => s.rev12 > 0.005 || (s.ar?.total || 0) > 0.005).length, products: [...facts.products.values()].filter((p) => p.rev12 > 0.005 || p.units12 > 0).length };
+  qs("#analytics-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(ANALYTICS_TAB_LABELS).map((key) => ({ key, label: ANALYTICS_TAB_LABELS[key], count: counts[key] })), active: analyticsTab, attr: "data-analytics-tab" });
+  renderModuleAssistant("analytics");
+  const panel = qs("#analytics-tab-panel");
+  if (analyticsTab === "overview") uiRender(panel, analyticsOverviewHtml(facts, summaries));
+  else if (analyticsTab === "value") { uiRender(panel, analyticsValueHtml()); renderValueAnalytics(); }
+  else uiRender(panel, uiViewHtml(analyticsTabModel(analyticsTab, facts, summaries), analyticsView, "analytics"));
+  syncModuleUrl("analytics", analyticsQueryString());
+}
+
+// ----- Client History --------------------------------------------------------------------------------
+function clientHistoryQueryString() { return moduleViewQueryString("purchase-history", clientHistoryPageTab, "profile", clientHistoryView, { client: clientHistoryPageTab === "profile" ? clientHistoryClient : "" }); }
+/** @param {ClientSummary[]} summaries */
+function clientHistoryPicked(summaries) {
+  const found = summaries.find((s) => s.name === clientHistoryClient);
+  if (found) return found;
+  const top = [...summaries].sort((a, b) => b.rev12 - a.rev12)[0];
+  if (top) clientHistoryClient = top.name;
+  return top;
+}
+/** @param {BizFacts} facts @param {ClientSummary[]} summaries */
+function clientProfileHtml(facts, summaries) {
+  const s = clientHistoryPicked(summaries);
+  if (!s) return `<div class="ui-card ui-empty"><p class="ui-muted">No clients yet. Add clients in Masterlists.</p></div>`;
+  const margins = canSeeMargins();
+  const health = CLIENT_HEALTH[s.health];
+  const companyMargin = margins ? bizMargin(facts.monthCostedRev.reduce((a, b) => a + b, 0), facts.monthCost.reduce((a, b) => a + b, 0), facts.monthRev.reduce((a, b) => a + b, 0)) : null;
+  const options = [...summaries].sort((a, b) => a.name.localeCompare(b.name)).map((entry) => `<option value="${escapeHtml(entry.name)}"${entry.name === s.name ? " selected" : ""}>${escapeHtml(entry.name)}</option>`).join("");
+  const since = s.biz?.firstDate ? s.biz.firstDate.slice(0, 4) : "";
+  const picker = `<div class="ui-client-picker"><label class="ui-select"><span>Client</span><select data-clienthist-pick aria-label="Choose a client">${options}</select></label><p class="ui-desc">${escapeHtml([s.area, since ? `client since ${since}` : "", s.agent, health.label].filter(Boolean).join(" · "))}</p></div>`;
+  const late = s.payDays === null ? null : s.payDays - s.terms;
+  const ar = s.ar;
+  /** @type {(UiKpi | null)[]} */
+  const kpis = [
+    { label: "Revenue · last 12 months", value: pesoShort(s.rev12), tone: "accent", change: s.trend === null ? null : { text: bizTrendText(s.trend), good: s.trend >= 0 }, sub: `vs ${pesoShort(s.biz?.revPrev || 0)} the year before · net of VAT` },
+    margins ? { label: "Gross margin", value: bizMarginText(s.margin), tone: "accent", change: s.margin !== null && companyMargin !== null ? { text: s.margin >= companyMargin ? "Above average" : "Below average", good: s.margin >= companyMargin } : null, sub: companyMargin !== null ? `Company average ${companyMargin.toFixed(1)}%` : "Item costs missing" } : null,
+    { label: "Average days to pay", value: s.payDays === null ? "—" : plural(s.payDays, "day"), tone: late !== null && late > 10 ? "red" : "green", change: late === null ? null : { text: late > 5 ? `${plural(late, "day")} late` : "On time", good: late <= 5 }, sub: `Terms: ${s.terms} days` },
+    { label: "Balance owed", value: pesoShort(ar?.total || 0), tone: ar && ar.overdue > 0.005 ? "orange" : "green", change: { text: ar && ar.overdue > 0.005 ? `${pesoShort(ar.overdue)} overdue` : "Nothing overdue", good: !(ar && ar.overdue > 0.005) }, sub: s.credit.limit > 0 ? `Credit used ${Math.round((s.credit.used / s.credit.limit) * 100)}% of ${pesoShort(s.credit.limit)}` : "No credit limit set" },
+  ];
+  const months = s.biz?.months || Array(12).fill(0);
+  const full = months.slice(0, 11);
+  const recent3 = full.slice(-3).reduce((a, b) => a + b, 0) / 3, before3 = full.slice(-6, -3).reduce((a, b) => a + b, 0) / 3;
+  const trendNote = !s.rev12 ? "" : before3 > 0.005 ? (recent3 >= before3 * 1.1 ? `The last 3 months average ${pesoShort(recent3)} a month, up from ${pesoShort(before3)} in the 3 before.` : recent3 <= before3 * 0.9 ? `The last 3 months average ${pesoShort(recent3)} a month, down from ${pesoShort(before3)} in the 3 before.` : `Steady at about ${pesoShort(recent3)} a month over the last 6 months.`) : "";
+  const lastPay = data.payments.filter((payment) => payment.client === s.name && !payment.voided && payment.collectionStatus !== "Bounced").sort((a, b) => bizPaymentDate(b).localeCompare(bizPaymentDate(a)))[0];
+  const pdc = ar?.pdc || data.payments.filter((payment) => payment.client === s.name && payment.collectionStatus === "Posted Date" && !payment.voided);
+  const facts12 = [
+    { label: "Area", value: s.area || "—" }, { label: "Account", value: s.client?.dealer && s.client.dealer !== "Direct" ? `Dealer · ${s.client.dealer}` : "Direct" },
+    { label: "Client since", value: since || "—", sub: since ? "First invoice on file" : "" }, { label: "Payment terms", value: `${s.terms} days` },
+    { label: "Credit limit", value: s.credit.limit > 0 ? peso.format(s.credit.limit) : "—" }, { label: "Sales agent", value: s.agent },
+    { label: "Last invoice", value: s.biz?.lastSale ? uiDate(s.biz.lastSale.date) : "—", sub: s.biz?.lastSale ? `${salesDocNo(s.biz.lastSale)} · ${peso.format(Number(s.biz.lastSale.net || 0))}` : "" },
+    { label: "Last payment", value: lastPay ? uiDate(bizPaymentDate(lastPay)) : "—", sub: lastPay ? peso.format(Number(lastPay.amount || 0)) : "" },
+    { label: "Post-dated checks", value: pdc.length ? peso.format(pdc.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)) : "None", sub: pdc.length ? pdc.map((payment) => payment.chequeDate ? `dated ${uiDate(payment.chequeDate)}` : "").filter(Boolean).slice(0, 2).join(", ") : "" },
+    { label: "Contact", value: s.client?.contact || "—", wide: true },
+  ];
+  const dl = `<dl class="ui-dl">${facts12.map((field) => `<div${field.wide ? ` class="wide"` : ""}><dt>${escapeHtml(field.label)}</dt><dd>${escapeHtml(field.value || "—")}${field.sub ? `<small>${escapeHtml(field.sub)}</small>` : ""}</dd></div>`).join("")}</dl>`;
+  const mix = [...(s.biz?.items || new Map()).entries()].sort((a, b) => b[1] - a[1]);
+  const mixTotal = mix.reduce((sum, [, value]) => sum + value, 0);
+  const mixItems = [...mix.slice(0, 5), ...(mix.length > 5 ? [["Other", mix.slice(5).reduce((sum, [, value]) => sum + value, 0)]] : [])].map(([label, value]) => ({ label: String(label), value: mixTotal ? (Number(value) / mixTotal) * 100 : 0, display: `${mixTotal ? Math.round((Number(value) / mixTotal) * 100) : 0}%` }));
+  const timeline = clientTimeline(s.name).slice(0, 8).map((entry) => ({ ...entry, title: `${uiDate(entry.at)} · ${entry.title}` }));
+  return picker + uiKpiCards(/** @type {UiKpi[]} */ (kpis.filter(Boolean))) + uiDashboardGrid([
+    [
+      { span: 2, title: "Monthly purchases", sub: "Invoiced each month, net of VAT, last 12 months. The current month is in progress.", body: uiBarChart({ labels: facts.keys.map(shortMonthLabel), series: [{ name: "Purchases", values: months }], format: pesoAxis, partialLast: true, caption: `${s.name} monthly purchases` }), takeaway: trendNote || undefined },
+      { span: 1, title: "Account", sub: s.name, body: dl, link: canViewModule("receivables-tracker") ? { label: "Open in Receivables", attrs: { "data-wa-goto": `receivables-tracker|aging||${s.name}` } } : undefined },
+    ],
+    [
+      { span: 1, title: "What to know", sub: "Worked out from invoices, receipts, orders and support", body: uiInsightList(clientInsights(s, companyMargin), "Nothing stands out for this client.") },
+      { span: 1, title: "What they buy", sub: "Share of revenue, last 12 months", body: uiHBars({ items: mixItems, caption: "Share of revenue by product" }) },
+      { span: 1, title: "Recent activity", sub: "Orders, invoices, payments, follow-ups and support", body: uiInsightList(timeline, "No activity on file yet."), link: canViewModule("client-invoices") ? { label: "All invoices", attrs: { "data-client-invoices": s.name } } : undefined },
+    ],
+  ]);
+}
+/** @param {BizFacts} facts @param {ClientSummary[]} summaries @returns {UiView} */
+function clientHistoryTabModel(facts, summaries) {
+  const select = (/** @type {string} */ id) => uiViewSelect("clienthist", id);
+  const companyMargin = canSeeMargins() ? bizMargin(facts.monthCostedRev.reduce((a, b) => a + b, 0), facts.monthCost.reduce((a, b) => a + b, 0), facts.monthRev.reduce((a, b) => a + b, 0)) : null;
+  const growing = summaries.filter((s) => s.health === "growing"), slipping = summaries.filter((s) => s.health === "slipping" || s.health === "risk");
+  const late = summaries.filter((s) => s.payDays !== null && s.payDays - s.terms > 10);
+  const names = (/** @type {ClientSummary[]} */ list) => list.sort((a, b) => b.rev12 - a.rev12).slice(0, 2).map((s) => s.name).join(", ") || "None";
+  return {
+    title: "All clients", intro: "Compare clients on growth and payment behaviour. Select a client for a summary; Open full profile shows everything.", placeholder: "Client, area or agent", actions: [], minWidth: 1060,
+    stats: [
+      { label: "Growing", value: String(growing.length), sub: names([...growing]), tone: "green", scope: "growing" },
+      { label: "Slipping or at risk", value: String(slipping.length), sub: names([...slipping]), tone: "red", scope: "slipping-risk" },
+      { label: "Paying more than 10 days late", value: String(late.length), sub: names([...late]), tone: "orange", scope: "late" },
+    ],
+    cols: [{ key: "id", label: "Client", sortable: true }, { key: "agent", label: "Sales agent", sortable: true }, { key: "rev", label: "Revenue 12 mo", align: "right", sortable: true }, { key: "trend", label: "vs last year", align: "right", sortable: true }, { key: "pay", label: "Days to pay", align: "right", sortable: true }, { key: "bal", label: "Balance", align: "right", sortable: true }, { key: "last", label: "Last invoice", sortable: true }, { key: "health", label: "Status", sortable: true }],
+    csvName: "client-history.csv", csvHeader: ["Client", "Area", "Sales agent", "Revenue 12 mo (net of VAT)", "Previous 12 mo", "Avg days to pay", "Terms", "Balance", "Overdue", "Credit limit", "Last invoice", "Status"],
+    rows: summaries.map(/** @returns {UiViewRow} */ (s) => {
+      const health = CLIENT_HEALTH[s.health];
+      const last = s.biz?.lastSale ? fmtDateSafe(s.biz.lastSale.date) : "";
+      const bal = s.ar?.total || 0, overdue = s.ar?.overdue || 0;
+      return {
+        id: s.name, branches: [], scopes: [s.health, ...(s.health === "slipping" || s.health === "risk" ? ["slipping-risk"] : []), ...(late.includes(s) ? ["late"] : [])],
+        search: [s.name, s.area, s.agent, health.label].join(" "),
+        sortValues: { id: s.name, agent: s.agent, rev: s.rev12, trend: s.trend ?? -1e9, pay: s.payDays ?? -1, bal, last: inventoryDateValue(last), health: health.label },
+        csv: [s.name, s.area, s.agent, s.rev12.toFixed(2), (s.biz?.revPrev || 0).toFixed(2), s.payDays ?? "", s.terms, bal.toFixed(2), overdue.toFixed(2), s.credit.limit.toFixed(2), last, health.label],
+        cells: [uiCellDoc(s.name, select(s.name), s.area, { plain: true }), escapeHtml(s.agent), uiCellNum(s.rev12 > 0.005 ? peso.format(s.rev12) : "—"), bizTrendCell(s.trend), clientPayCell(s), bal > 0.005 ? uiCellText(peso.format(bal), overdue > 0.005 ? `${peso.format(overdue)} overdue` : "", { subTone: "red" }) : "—", escapeHtml(last ? uiDate(last) : "—"), uiPill(health.label, health.tone)],
+        detail: () => ({
+          eyebrow: [s.area, s.agent].filter(Boolean).join(" · ") || "Client", title: s.name, pill: { text: health.label, tone: health.tone }, closeAttrs: { "data-clienthist-close": "" }, label: "Client summary",
+          fields: [
+            { label: "Revenue, 12 months", value: peso.format(s.rev12), sub: s.trend === null ? "Net of VAT" : `${bizTrendText(s.trend)} on last year` },
+            ...(canSeeMargins() ? [{ label: "Gross margin", value: bizMarginText(s.margin) }] : []),
+            { label: "Days to pay", value: s.payDays === null ? "—" : `${s.payDays} (terms ${s.terms})` },
+            { label: "Balance", value: peso.format(bal), sub: overdue > 0.005 ? `${peso.format(overdue)} overdue` : "" },
+            { label: "Credit limit", value: s.credit.limit > 0 ? peso.format(s.credit.limit) : "—", sub: s.credit.limit > 0 ? `${Math.round((s.credit.used / s.credit.limit) * 100)}% used` : "" },
+          ],
+          linesTitle: "What to know",
+          lines: clientInsights(s, companyMargin).slice(0, 5).map((item) => ({ left: item.title, sub: item.text, tone: item.tone })),
+          actions: [uiButton("Open full profile", { "data-clienthist-open": s.name }, { primary: true }), ...(canViewModule("client-invoices") ? [uiButton("Invoices", { "data-client-invoices": s.name })] : [])],
+        }),
+      };
+    }),
+    empty: ["No clients yet", "Add clients in Masterlists."],
+    defaultSort: { key: "rev", dir: -1 },
+    chips: Object.keys(CLIENT_HEALTH).map((key) => ({ key, label: CLIENT_HEALTH[key].label, tone: CLIENT_HEALTH[key].tone })), defaultScope: "",
+  };
+}
+/** CSV of one client's invoices (the profile's export). @param {string} name */
+function exportClientHistoryCsv(name) {
+  const rows = data.sales.filter((sale) => sale.client === name && salesClientVisible(sale.client));
+  if (!rows.length) return toast("This client has no invoices to export.");
+  const header = ["Document", "Type", "Date", "Due", "Status", "Total", "Net of VAT", "Paid", "Balance"];
+  const body = rows.map((sale) => [salesDocNo(sale), documentType(sale.type), sale.date, salesDueDate(sale), sale.status === "Cancelled" ? "Cancelled" : statusForSale(sale), Number(sale.net || 0).toFixed(2), saleTaxBreakdown(sale).amountNetVat.toFixed(2), Number(sale.paid || 0).toFixed(2), salesBalance(sale).toFixed(2)]);
+  downloadCsv(`client-history-${name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`, [header, ...body]);
+  log("Exported client history (CSV)", "Client History", name, { save: false });
+}
+function renderPurchaseHistory() {
+  if (!CLIENT_HISTORY_TAB_LABELS[clientHistoryPageTab]) clientHistoryPageTab = "profile";
+  const facts = bizFacts();
+  const summaries = clientSummaries(facts, { includeMasterlist: true });
+  const picked = clientHistoryPageTab === "profile" ? clientHistoryPicked(summaries) : undefined;
+  const header = qs("#purchase-history-actions");
+  if (header) header.innerHTML = picked ? [uiButton("Export client report", { "data-clienthist-export": picked.name }), ...(canViewModule("client-invoices") ? [uiButton("Invoices & statement", { "data-client-invoices": picked.name }, { primary: true })] : [])].join("") : "";
+  qs("#purchase-history-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(CLIENT_HISTORY_TAB_LABELS).map((key) => ({ key, label: CLIENT_HISTORY_TAB_LABELS[key], count: key === "clients" ? summaries.length : undefined })), active: clientHistoryPageTab, attr: "data-clienthist-tab" });
+  renderModuleAssistant("purchase-history");
+  uiRender(qs("#purchase-history-tab-panel"), clientHistoryPageTab === "profile" ? clientProfileHtml(facts, summaries) : uiViewHtml(clientHistoryTabModel(facts, summaries), clientHistoryView, "clienthist"));
+  syncModuleUrl("purchase-history", clientHistoryQueryString());
 }
 
 /** @param {any[]} [items] */

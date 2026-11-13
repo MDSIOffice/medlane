@@ -3631,7 +3631,13 @@ body[data-active-section="collections"] .topbar-title,
 body[data-active-section="receivables-tracker"] .topbar-title,
 body[data-active-section="purchase-orders"] .topbar-title,
 body[data-active-section="payables"] .topbar-title,
-body[data-active-section="replenishments"] .topbar-title { display: none; }
+body[data-active-section="replenishments"] .topbar-title,
+body[data-active-section="analytics"] .topbar-title,
+body[data-active-section="purchase-history"] .topbar-title { display: none; }
+.ui-scope .ui-client-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }
+.ui-scope .ui-client-picker .ui-select { min-width: 0; max-width: 100%; }
+.ui-scope .ui-client-picker .ui-select select { max-width: min(360px, 62vw); }
+.ui-scope .ui-client-picker .ui-desc { margin: 0; }
 @media (max-width: 1180px) {
   .topbar .tb-workspace { order: 10; }
 }

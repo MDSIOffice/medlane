@@ -982,12 +982,6 @@ document.addEventListener("click", (event) => {
   if (viewCollectionHistory) openCollectionHistoryModal(/** @type {string} */ (viewCollectionHistory.dataset.viewCollectionHistory));
   const clientHistoryTabButton = closestEl(event.target, "[data-client-history-tab]");
   if (clientHistoryTabButton) { clientHistoryTab = clientHistoryTabButton.dataset.clientHistoryTab; renderClientHistoryTabs(currentClientView || data.sales[0]?.client); }
-  const purchaseHistoryMoreButton = closestEl(event.target, "[data-purchase-history-more]");
-  if (purchaseHistoryMoreButton) {
-    const agent = /** @type {string} */ (purchaseHistoryMoreButton.dataset.purchaseHistoryMore);
-    purchaseHistoryVisibleCounts[agent] = (purchaseHistoryVisibleCounts[agent] || purchaseHistoryDefaultLimit(agent)) + purchaseHistoryDefaultLimit(agent);
-    renderPurchaseHistory();
-  }
 });
 document.addEventListener("change", (event) => {
   if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);
@@ -1460,6 +1454,40 @@ qs("#payables").addEventListener("click", (event) => {
   if (closestEl(target, "[data-payables-load-more]")) return loadMorePayables();
   if (payablesTab !== "overview") uiViewClick(target, "payables", { state: () => payablesView, view: () => payablesTabModel(payablesTab), render: renderPayables });
 });
+qs("#analytics").addEventListener("click", (event) => {
+  const target = /** @type {Element} */ (event.target);
+  const tab = closestEl(target, "[data-analytics-tab]");
+  if (tab) {
+    if (tab.dataset.analyticsTab !== analyticsTab) analyticsView = uiBlankViewState();
+    analyticsTab = /** @type {string} */ (tab.dataset.analyticsTab);
+    return renderAnalytics();
+  }
+  if (closestEl(target, "[data-analytics-print]")) return window.print();
+  if (closestEl(target, "#print-value-report")) return printSystemValueReport();
+  const po = closestEl(target, "[data-analytics-po]");
+  if (po) return openSupplierPoForm([/** @type {string} */ (po.dataset.analyticsPo)]);
+  if (analyticsTab === "clients" || analyticsTab === "products") uiViewClick(target, "analytics", { state: () => analyticsView, view: () => { const facts = bizFacts(); return analyticsTabModel(analyticsTab, facts, clientSummaries(facts)); }, render: renderAnalytics });
+});
+qs("#analytics").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "analytics", () => analyticsView, renderAnalytics); });
+qs("#purchase-history").addEventListener("click", (event) => {
+  const target = /** @type {Element} */ (event.target);
+  const tab = closestEl(target, "[data-clienthist-tab]");
+  if (tab) {
+    if (tab.dataset.clienthistTab !== clientHistoryPageTab) clientHistoryView = uiBlankViewState();
+    clientHistoryPageTab = /** @type {string} */ (tab.dataset.clienthistTab);
+    return renderPurchaseHistory();
+  }
+  const open = closestEl(target, "[data-clienthist-open]");
+  if (open) { clientHistoryClient = /** @type {string} */ (open.dataset.clienthistOpen); clientHistoryPageTab = "profile"; renderPurchaseHistory(); return window.scrollTo({ top: 0, behavior: "smooth" }); }
+  const exportButton = closestEl(target, "[data-clienthist-export]");
+  if (exportButton) return exportClientHistoryCsv(/** @type {string} */ (exportButton.dataset.clienthistExport));
+  if (clientHistoryPageTab === "clients") uiViewClick(target, "clienthist", { state: () => clientHistoryView, view: () => { const facts = bizFacts(); return clientHistoryTabModel(facts, clientSummaries(facts, { includeMasterlist: true })); }, render: renderPurchaseHistory });
+});
+qs("#purchase-history").addEventListener("change", (event) => {
+  const pick = /** @type {AnyEl} */ (event.target);
+  if (pick instanceof HTMLSelectElement && pick.matches("[data-clienthist-pick]")) { clientHistoryClient = pick.value; renderPurchaseHistory(); }
+});
+qs("#purchase-history").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "clienthist", () => clientHistoryView, renderPurchaseHistory); });
 qs("#payables").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "payables", () => payablesView, renderPayables); });
 qs("#replenishments").addEventListener("click", (event) => {
   const target = /** @type {AnyEl} */ (event.target);
@@ -1556,10 +1584,7 @@ qs("#master-suppliers-filter-clear")?.addEventListener("click", () => {
   qsa("#master-suppliers-filter-toolbar select").forEach((select) => { select.value = ""; });
   renderMasterlists();
 });
-qsa("#analytics-tabs .tab").forEach((button) => button.addEventListener("click", () => {
-  qsa("#analytics-tabs .tab").forEach((tab) => tab.classList.toggle("active", tab === button));
-  qsa(".analytics-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.analyticsPanel === button.dataset.analyticsTab));
-}));
+
 qs("#modal-form").addEventListener("submit", submitModal);
 qs("#modal-fields").addEventListener("click", (event) => {
   if (closestEl(event.target, "#add-payment-request-line")) {
@@ -1704,7 +1729,6 @@ qs("#product-issue-status").addEventListener("change", renderProductIssues);
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
 qs("#export-demo")?.addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export logged."); });
 qs("#print-report").addEventListener("click", () => window.print());
-qs("#print-analytics").addEventListener("click", () => window.print());
 qs("#run-reconciliation").addEventListener("click", runReconciliationWorkflow);
 qs("#recon-date-from").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
 qs("#recon-date-to").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
@@ -1757,7 +1781,6 @@ qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
 qs("#run-manual-digest-daily")?.addEventListener("click", () => runManualDigest("Daily"));
 qs("#run-manual-digest-weekly")?.addEventListener("click", () => runManualDigest("Weekly"));
 qs("#run-birthday-test")?.addEventListener("click", runManualBirthdayTest);
-qs("#print-value-report")?.addEventListener("click", printSystemValueReport);
 qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
 qs("#user-status-filter")?.addEventListener("change", (event) => { userStatusFilter = /** @type {AnyEl} */ (event.target).value; renderUsers(); });
 

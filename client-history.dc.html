@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Medlane OS — Client History</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F3F6F8}
+a{color:#1F5F74}a:hover{color:#163F4D}
+button,input,select{font-family:inherit}
+button{cursor:pointer}
+.nav:hover{background:#EEF3F6}
+.row:hover{background:#F7FAFB}
+.ghost:hover{background:#EEF3F6}
+.sec:hover{background:#F1F5F8;border-color:#B6C2CC}
+.prim:hover{filter:brightness(1.1)}
+.tab:hover{color:#12202E}
+.lnk:hover{text-decoration:underline}
+.field:focus-within{border-color:#1F5F74;box-shadow:0 0 0 3px rgba(31,95,116,.15)}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #1F5F74;outline-offset:2px}
+.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width: 860px){.side{display:none !important}}
+</style>
+</helmet>
+
+<div style="min-height: 100vh; display: flex; font-family: 'Manrope', system-ui, sans-serif; color: #12202E; background: #F3F6F8">
+
+  <nav class="side" aria-label="Medlane OS" style="width: 248px; flex-shrink: 0; background: #FFFFFF; border-right: 1px solid #DFE5EA; padding: 18px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 6px">
+      <div style="width: 40px; height: 40px; border-radius: 10px; background: #FFFFFF; border: 1px solid #E3E9EE; display: flex; align-items: center; justify-content: center">
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19L10 6l3 5" fill="none" stroke="#D9682B" stroke-width="2.2" stroke-linejoin="round"></path><path d="M7 19l7-11 7 11z" fill="none" stroke="#1F5F74" stroke-width="2.2" stroke-linejoin="round"></path></svg>
+      </div>
+      <div style="display: flex; flex-direction: column">
+        <span style="font-weight: 800; font-size: 15px; letter-spacing: -0.01em">Medlane OS</span>
+        <span style="font-size: 12px; color: #5B6876">Diagnostics Distribution</span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <sc-for list="{{appNav}}" as="n" hint-placeholder-count="12">
+        <a class="nav" href="{{n.href}}" aria-current="{{n.current}}" style="{{n.style}}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.d}}"></path></svg>
+          <span>{{n.label}}</span>
+        </a>
+      </sc-for>
+    </div>
+  </nav>
+
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+    <header style="min-height: 64px; background: #FFFFFF; border-bottom: 1px solid #DFE5EA; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 28px; box-sizing: border-box">
+      <label class="field" style="flex: 1 1 280px; max-width: 420px; height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #F6F8FA; border: 1px solid #DFE5EA; border-radius: 10px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B6876" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search Medlane OS</span>
+        <input type="search" placeholder="Search client, reagent, invoice" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 14px; color: #12202E; height: 100%">
+      </label>
+      <div style="flex: 1"></div>
+      <div role="group" aria-label="Workspace" style="display: flex; background: #EEF2F5; border-radius: 10px; padding: 3px; gap: 2px">
+        <button aria-pressed="true" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(18,32,46,.12); font-size: 13px; font-weight: 700; color: #12202E; display: flex; align-items: center; gap: 6px"><span style="width: 7px; height: 7px; border-radius: 99px; background: #2F8F6B"></span>Live</button>
+        <button aria-pressed="false" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; font-weight: 600; color: #3A4754">Sales</button>
+        <button aria-pressed="false" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; font-weight: 600; color: #3A4754">Warehouse</button>
+        <button aria-pressed="false" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; font-weight: 600; color: #3A4754">Accounting</button>
+      </div>
+      <button class="ghost" aria-label="Notifications" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: #3A4754; display: flex; align-items: center; justify-content: center">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>
+      </button>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="font-size: 14px; font-weight: 700">Geo</span>
+        <div style="width: 36px; height: 36px; border-radius: 999px; border: 2px solid #1F5F74; color: #1F5F74; font-size: 13px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-sizing: border-box">GD</div>
+      </div>
+    </header>
+
+    <main style="flex: 1; padding: 24px 28px 48px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; min-width: 0">
+
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 6px; max-width: 680px">
+          <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.025em">{{hdr.title}}</h1>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #4F5D6B">{{hdr.desc}}</p>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+          <sc-for list="{{hdr.actions}}" as="a" hint-placeholder-count="2">
+            <button class="{{a.cls}}" style="{{a.style}}">{{a.label}}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <section aria-label="Workflow assistant" style="background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 12px; overflow: hidden">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; min-height: 52px; box-sizing: border-box">
+          <span style="{{wa.iconStyle}}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{wa.iconPath}}"></path></svg>
+          </span>
+          <span style="font-size: 13px; font-weight: 700; color: #4F5D6B; white-space: nowrap">Workflow assistant</span>
+          <span class="trunc" style="flex: 1 1 220px; min-width: 0; font-size: 14px; color: #12202E">{{wa.summary}}</span>
+          <span style="{{wa.countStyle}}">{{wa.countLabel}}</span>
+          <sc-if value="{{wa.hasRecs}}" hint-placeholder-val="{{false}}">
+            <button class="ghost" onClick="{{wa.toggle}}" aria-expanded="{{wa.expanded}}" style="height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #1F5F74; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px">{{wa.toggleLabel}}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{wa.chevron}}"></path></svg>
+            </button>
+          </sc-if>
+        </div>
+        <sc-if value="{{wa.open}}" hint-placeholder-val="{{false}}">
+          <div style="border-top: 1px solid #EEF2F5">
+            <sc-for list="{{wa.recs}}" as="w" hint-placeholder-count="2">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-bottom: 1px solid #EEF2F5; font-size: 13px">
+                <span style="{{w.dotStyle}}"></span>
+                <span style="flex: 1 1 240px; min-width: 0; color: #24313E">{{w.text}}</span>
+                <a class="sec" href="{{w.href}}" style="height: 36px; padding: 0 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; text-decoration: none">{{w.action}}</a>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </section>
+
+      <div role="tablist" aria-label="Sections" style="display: flex; gap: 4px; border-bottom: 1px solid #DFE5EA; overflow-x: auto">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+          <button class="tab" role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="{{t.style}}">
+            {{t.label}}
+            <sc-if value="{{t.hasCount}}" hint-placeholder-val="{{false}}"><span style="{{t.countStyle}}">{{t.count}}</span></sc-if>
+          </button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{isOv}}" hint-placeholder-val="{{true}}">
+        <div style="display: flex; flex-direction: column; gap: 14px">
+          <sc-if value="{{ov.hasPicker}}" hint-placeholder-val="{{false}}">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; padding: 12px 16px">
+              <label for="ov-picker" style="font-size: 13px; font-weight: 700; color: #4F5D6B">{{ov.pickerLabel}}</label>
+              <select id="ov-picker" value="{{ov.pickerValue}}" onChange="{{ov.onPick}}" style="height: 44px; min-width: 260px; max-width: 100%; padding: 0 12px; border: 1px solid #CBD3DB; border-radius: 10px; background: #FFFFFF; font-size: 15px; font-weight: 700; color: #12202E">
+                <sc-for list="{{ov.options}}" as="o" hint-placeholder-count="6"><option value="{{o.value}}">{{o.label}}</option></sc-for>
+              </select>
+              <span style="font-size: 13px; color: #5B6876">{{ov.pickerNote}}</span>
+            </div>
+          </sc-if>
+          <sc-for list="{{ov.rows}}" as="row" hint-placeholder-count="3">
+            <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch">
+              <sc-for list="{{row.cards}}" as="c" hint-placeholder-count="3">
+                <section aria-label="{{c.title}}" style="{{c.cardStyle}}">
+                  <sc-if value="{{c.isKpi}}" hint-placeholder-val="{{false}}">
+                    <div style="display: flex; flex-direction: column; gap: 8px">
+                      <span style="font-size: 13px; font-weight: 700; color: #4F5D6B; display: flex; align-items: center; gap: 8px"><span style="{{c.dotStyle}}"></span>{{c.title}}</span>
+                      <span style="font-size: 28px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1.1">{{c.value}}</span>
+                      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: #4F5D6B">
+                        <sc-if value="{{c.hasDelta}}" hint-placeholder-val="{{false}}"><span style="{{c.deltaStyle}}">{{c.delta}}</span></sc-if>
+                        <span>{{c.sub}}</span>
+                      </div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{c.hasHead}}" hint-placeholder-val="{{true}}">
+                    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 8px 16px">
+                      <div style="min-width: 0; flex: 1 1 220px">
+                        <h2 style="margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.01em">{{c.title}}</h2>
+                        <p style="margin: 3px 0 0; font-size: 13px; line-height: 1.45; color: #4F5D6B">{{c.sub}}</p>
+                      </div>
+                      <sc-if value="{{c.hasLegend}}" hint-placeholder-val="{{false}}">
+                        <div style="display: flex; flex-wrap: wrap; gap: 12px">
+                          <sc-for list="{{c.legend}}" as="lg" hint-placeholder-count="2"><span style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #4F5D6B"><span style="{{lg.sw}}"></span>{{lg.label}}</span></sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{c.isBars}}" hint-placeholder-val="{{false}}">
+                    <div role="img" aria-label="{{c.plotAlt}}" style="display: flex; flex-direction: column; gap: 6px; padding-left: 46px">
+                      <div style="position: relative; height: 180px">
+                        <sc-for list="{{c.grid}}" as="g" hint-placeholder-count="3"><div style="{{g.style}}"><span style="{{g.labelStyle}}">{{g.label}}</span></div></sc-for>
+                        <div style="position: relative; height: 100%; display: flex; gap: 4px">
+                          <sc-for list="{{c.groups}}" as="gr" hint-placeholder-count="6">
+                            <div title="{{gr.tip}}" style="{{gr.style}}">
+                              <sc-for list="{{gr.bars}}" as="b" hint-placeholder-count="1"><span style="{{b.style}}"></span></sc-for>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </div>
+                      <div style="display: flex; gap: 4px">
+                        <sc-for list="{{c.groups}}" as="gr" hint-placeholder-count="6"><span style="{{gr.labelStyle}}">{{gr.label}}</span></sc-for>
+                      </div>
+                      <sc-if value="{{c.hasFoot}}" hint-placeholder-val="{{false}}">
+                        <div style="display: flex; gap: 4px; position: relative">
+                          <span style="position: absolute; left: -46px; width: 40px; text-align: right; font-size: 11px; font-weight: 700; color: #5B6876">{{c.footLabel}}</span>
+                          <sc-for list="{{c.groups}}" as="gr" hint-placeholder-count="6"><span style="{{gr.footStyle}}">{{gr.foot}}</span></sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{c.isHbars}}" hint-placeholder-val="{{false}}">
+                    <div style="display: flex; flex-direction: column">
+                      <sc-for list="{{c.items}}" as="it" hint-placeholder-count="4">
+                        <div title="{{it.tip}}" style="display: flex; flex-direction: column; gap: 6px; padding: 9px 0; border-bottom: 1px solid #EEF2F5">
+                          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px">
+                            <span style="min-width: 0"><span style="font-weight: 700; color: #12202E">{{it.label}}</span> <span style="color: #5B6876">{{it.sub}}</span></span>
+                            <span style="{{it.valueStyle}}">{{it.valueLabel}}</span>
+                          </div>
+                          <div style="position: relative; height: 8px; border-radius: 99px; background: #EEF2F5">
+                            <span style="{{it.barStyle}}"></span>
+                            <sc-if value="{{it.hasMark}}" hint-placeholder-val="{{false}}"><span style="{{it.markStyle}}"></span></sc-if>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{c.isStack}}" hint-placeholder-val="{{false}}">
+                    <div aria-hidden="true" style="display: flex; height: 14px; border-radius: 999px; overflow: hidden; gap: 2px; background: #EEF2F5">
+                      <sc-for list="{{c.segs}}" as="sg" hint-placeholder-count="4"><span style="{{sg.barStyle}}"></span></sc-for>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px">
+                      <sc-for list="{{c.segs}}" as="sg" hint-placeholder-count="4">
+                        <div style="display: flex; flex-direction: column; gap: 2px">
+                          <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #4F5D6B"><span style="{{sg.dotStyle}}"></span>{{sg.label}}</span>
+                          <span style="font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums">{{sg.valueLabel}}</span>
+                          <span style="font-size: 12px; color: #5B6876">{{sg.share}}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{c.isList}}" hint-placeholder-val="{{false}}">
+                    <div style="display: flex; flex-direction: column">
+                      <sc-for list="{{c.items}}" as="it" hint-placeholder-count="4">
+                        <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 12px; padding: 11px 0; border-bottom: 1px solid #EEF2F5">
+                          <sc-if value="{{it.hasMeta}}" hint-placeholder-val="{{false}}"><span style="width: 56px; flex-shrink: 0; font-size: 12px; font-weight: 700; color: #5B6876; padding-top: 2px">{{it.meta}}</span></sc-if>
+                          <span style="{{it.dotStyle}}"></span>
+                          <div style="flex: 1 1 200px; min-width: 0">
+                            <div style="font-size: 14px; font-weight: 700; color: #12202E">{{it.title}}</div>
+                            <div style="font-size: 13px; line-height: 1.45; color: #4F5D6B; margin-top: 2px">{{it.text}}</div>
+                          </div>
+                          <sc-if value="{{it.hasAction}}" hint-placeholder-val="{{false}}"><a class="sec" href="{{it.href}}" style="height: 36px; padding: 0 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; text-decoration: none; white-space: nowrap">{{it.action}}</a></sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{c.isTable}}" hint-placeholder-val="{{false}}">
+                    <div style="overflow-x: auto; margin: 0 -18px">
+                      <table style="width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13px">
+                        <thead><tr style="border-bottom: 1px solid #DFE5EA"><sc-for list="{{c.cols}}" as="h" hint-placeholder-count="5"><th scope="col" style="{{h.style}}">{{h.label}}</th></sc-for></tr></thead>
+                        <tbody><sc-for list="{{c.rows}}" as="tr" hint-placeholder-count="4"><tr style="border-bottom: 1px solid #EEF2F5"><sc-for list="{{tr.cells}}" as="x" hint-placeholder-count="5"><td style="{{x.style}}">{{x.text}}</td></sc-for></tr></sc-for></tbody>
+                      </table>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{c.isFacts}}" hint-placeholder-val="{{false}}">
+                    <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; font-size: 14px">
+                      <sc-for list="{{c.facts}}" as="f" hint-placeholder-count="6"><div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">{{f.label}}</dt><dd style="margin: 0; font-weight: 600">{{f.value}}</dd></div></sc-for>
+                    </dl>
+                  </sc-if>
+                  <sc-if value="{{c.hasNote}}" hint-placeholder-val="{{false}}">
+                    <p style="margin: 0; font-size: 13px; line-height: 1.45; color: #24313E; background: #F8FAFB; border-radius: 8px; padding: 10px 12px"><strong style="font-weight: 700">Takeaway:</strong> {{c.note}}</p>
+                  </sc-if>
+                  <sc-if value="{{c.hasLink}}" hint-placeholder-val="{{false}}">
+                    <a class="lnk" href="{{c.linkHref}}" style="margin-top: auto; font-size: 13px; font-weight: 700; color: #1F5F74; text-decoration: none; padding: 6px 0">{{c.linkLabel}} →</a>
+                  </sc-if>
+                </section>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isGv}}" hint-placeholder-val="{{false}}">
+        <div style="display: flex; flex-direction: column; gap: 20px">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px">
+            <sc-for list="{{gv.stats}}" as="k" hint-placeholder-count="3">
+              <div style="background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 8px">
+                <span style="font-size: 13px; font-weight: 700; color: #4F5D6B; display: flex; align-items: center; gap: 8px"><span style="{{k.dotStyle}}"></span>{{k.label}}</span>
+                <span style="font-size: 28px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1.1">{{k.value}}</span>
+                <span style="font-size: 13px; color: #4F5D6B">{{k.sub}}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <section aria-label="{{gv.title}}" style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px">
+              <div style="display: flex; flex-direction: column; gap: 4px; max-width: 640px">
+                <h2 style="margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.015em">{{gv.title}}</h2>
+                <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #4F5D6B">{{gv.intro}}</p>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+                <label class="field" style="width: 260px; max-width: 100%; height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #FFFFFF; border: 1px solid #CBD3DB; border-radius: 10px">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B6876" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+                  <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search {{gv.title}}</span>
+                  <input type="search" value="{{gq}}" onChange="{{onGSearch}}" placeholder="{{gv.placeholder}}" style="flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 14px; color: #12202E; height: 100%">
+                </label>
+                <sc-for list="{{gv.actions}}" as="a" hint-placeholder-count="1">
+                  <button class="{{a.cls}}" style="{{a.style}}">{{a.label}}</button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start">
+              <div style="flex: 999 1 640px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; overflow: hidden">
+                <div style="overflow-x: auto">
+                  <table style="{{gv.tableStyle}}">
+                    <thead>
+                      <tr style="background: #F8FAFB; border-bottom: 1px solid #DFE5EA">
+                        <sc-for list="{{gv.cols}}" as="c" hint-placeholder-count="6"><th scope="col" style="{{c.style}}">{{c.label}}</th></sc-for>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <sc-for list="{{gv.rows}}" as="r" hint-placeholder-count="4">
+                        <tr class="row" style="{{r.rowStyle}}">
+                          <sc-for list="{{r.cells}}" as="c" hint-placeholder-count="6">
+                            <td style="{{c.style}}">
+                              <sc-if value="{{c.isLink}}" hint-placeholder-val="{{false}}"><button class="lnk" onClick="{{c.pick}}" style="{{c.linkStyle}}">{{c.text}}</button></sc-if>
+                              <sc-if value="{{c.isText}}" hint-placeholder-val="{{true}}"><span style="{{c.textStyle}}">{{c.text}}</span></sc-if>
+                              <sc-if value="{{c.isPill}}" hint-placeholder-val="{{false}}"><span style="{{c.pillStyle}}"><span style="{{c.dotStyle}}"></span>{{c.text}}</span></sc-if>
+                              <sc-if value="{{c.isBtn}}" hint-placeholder-val="{{false}}"><button class="sec" onClick="{{c.pick}}" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #CBD3DB; background: #FFFFFF; color: #12202E; font-size: 13px; font-weight: 600">{{c.text}}</button></sc-if>
+                              <sc-if value="{{c.hasSub}}" hint-placeholder-val="{{false}}"><div style="{{c.subStyle}}">{{c.sub}}</div></sc-if>
+                            </td>
+                          </sc-for>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+                <sc-if value="{{gv.isEmpty}}" hint-placeholder-val="{{false}}">
+                  <div style="padding: 48px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px">
+                    <div style="font-size: 16px; font-weight: 700">{{gv.emptyTitle}}</div>
+                    <div style="font-size: 14px; color: #4F5D6B; max-width: 440px; line-height: 1.5">{{gv.emptyText}}</div>
+                  </div>
+                </sc-if>
+                <div style="padding: 10px 20px; border-top: 1px solid #DFE5EA; font-size: 13px; color: #4F5D6B">{{gv.footer}}</div>
+              </div>
+
+              <sc-if value="{{gvHasSel}}" hint-placeholder-val="{{false}}">
+                <aside aria-label="Details" style="flex: 1 1 320px; max-width: 400px; background: #FFFFFF; border: 1px solid #DFE5EA; border-radius: 14px; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+                  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                    <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-start">
+                      <span style="font-size: 13px; font-weight: 700; color: #5B6876; font-family: 'IBM Plex Mono', monospace">{{gs.eyebrow}}</span>
+                      <span style="font-size: 20px; font-weight: 800; letter-spacing: -0.015em">{{gs.title}}</span>
+                      <sc-if value="{{gs.hasPill}}" hint-placeholder-val="{{true}}"><span style="{{gs.pillStyle}}"><span style="{{gs.pillDot}}"></span>{{gs.pillText}}</span></sc-if>
+                    </div>
+                    <button class="ghost" onClick="{{closeG}}" aria-label="Close details" style="width: 40px; height: 40px; flex-shrink: 0; border: 0; border-radius: 8px; background: transparent; color: #4F5D6B; display: flex; align-items: center; justify-content: center">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+                    </button>
+                  </div>
+                  <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; font-size: 14px">
+                    <sc-for list="{{gs.fields}}" as="f" hint-placeholder-count="4">
+                      <div><dt style="font-size: 12px; color: #5B6876; margin-bottom: 2px">{{f.label}}</dt><dd style="{{f.style}}">{{f.value}}</dd></div>
+                    </sc-for>
+                  </dl>
+                  <sc-if value="{{gs.hasLines}}" hint-placeholder-val="{{true}}">
+                    <div style="border-top: 1px solid #EEF2F5; padding-top: 14px; display: flex; flex-direction: column; gap: 10px">
+                      <div style="font-size: 13px; font-weight: 700">{{gs.linesTitle}}</div>
+                      <sc-for list="{{gs.lines}}" as="l" hint-placeholder-count="2">
+                        <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 13px">
+                          <span style="{{l.dotStyle}}"></span>
+                          <div style="flex: 1; min-width: 0">
+                            <div style="font-weight: 600">{{l.left}}</div>
+                            <div style="color: #5B6876">{{l.sub}}</div>
+                          </div>
+                          <span style="font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap">{{l.right}}</span>
+                        </div>
+                      </sc-for>
+                      <sc-if value="{{gs.hasTotal}}" hint-placeholder-val="{{false}}">
+                        <div style="display: flex; justify-content: space-between; border-top: 1px solid #EEF2F5; padding-top: 10px; font-size: 15px; font-weight: 800"><span>{{gs.totalLabel}}</span><span style="font-variant-numeric: tabular-nums">{{gs.totalValue}}</span></div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{gs.hasNote}}" hint-placeholder-val="{{false}}">
+                    <div style="{{gs.noteStyle}}">{{gs.note}}</div>
+                  </sc-if>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                    <sc-for list="{{gs.actions}}" as="a" hint-placeholder-count="2">
+                      <button class="{{a.cls}}" style="{{a.style}}">{{a.label}}</button>
+                    </sc-for>
+                  </div>
+                </aside>
+              </sc-if>
+            </div>
+          </section>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1F5F74","options":["#1F5F74","#1E4E8C","#2F5D3A","#3D3D4E"]},"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'profile', gsel: null, gq: '', waOpen: false, pick: 'C' };
+  }
+
+  mod() {
+    const C = (text, t, x) => Object.assign({ text: text, t: t || 'text' }, x || {});
+    const pk = n => n >= 1e6 ? '₱' + (n / 1e6).toFixed(2) + 'M' : '₱' + Math.round(n / 1e3) + 'k';
+    const peso = n => '₱' + n.toLocaleString('en-PH');
+    const axK = v => v === 0 ? '0' : '₱' + Math.round(v / 1e3) + 'k';
+    const months = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov*'];
+    const CL = {
+      A: { name: 'Sample Hospital A', branch: 'Las Piñas', since: '2019', terms: 60, limit: 600000, rep: 'Rep 1', margin: 29, dtp: 71, bal: 339200, overdue: 126400,
+        lastOrder: '12 Nov 2026 · SO-2026-0431', lastPay: '28 Oct 2026 · ₱60,000', pdc: '₱100,000 · dated 5 Dec', health: ['Growing', 'green'], prev: 4.03,
+        monthly: [0.36, 0.31, 0.38, 0.42, 0.40, 0.39, 0.44, 0.41, 0.43, 0.38, 0.47, 0.12],
+        trendNote: 'Buying more every quarter. October was this client’s biggest month of the year.',
+        mix: [['HBA1C', 38], ['ZY Z3 Diluent (20 L)', 27], ['ZYBIO Z5 CONTROL', 14], ['ZY Probe Cleanser (50 mL)', 9], ['Other', 12]],
+        insights: [
+          ['green', 'Biggest client, still growing', '₱4.51M in 12 months, up 12%. 19% of company revenue.'],
+          ['amber', 'Pays 11 days past terms', 'Averages 71 days on 60-day terms. ₱126,400 on INV-2026-1088 is 55 days overdue.'],
+          ['blue', 'Overdue mostly covered', 'A ₱100,000 post-dated check dated 5 Dec covers 79% of the overdue amount.'],
+          ['slate', 'Lower margin than average', '29% vs the 32% company average, mostly HBA1C at volume pricing.']
+        ],
+        timeline: [
+          ['12 Nov', 'green', 'Post-dated check received', 'CR-2026-0590 · Security Bank 220173 · ₱100,000 dated 5 Dec'],
+          ['12 Nov', 'slate', 'Sales order drafted', 'SO-2026-0431 · ₱53,800 · from QT-2026-0217'],
+          ['10 Nov', 'slate', 'Collection call', 'Agreed to issue a post-dated check for the overdue balance'],
+          ['1 Nov', 'slate', 'Statement of account emailed', 'Balance ₱339,200'],
+          ['30 Oct', 'blue', 'Delivered', 'SO-2026-0412 · ZY Z3 Diluent × 3 · ₱69,000'],
+          ['28 Oct', 'green', 'Payment received', 'CR-2026-0571 · BPI transfer · ₱60,000 on INV-2026-1088']
+        ] },
+      B: { name: 'Sample Clinic B', branch: 'Naga', since: '2021', terms: 30, limit: 150000, rep: 'Rep 3', margin: 35, dtp: 38, bal: 68200, overdue: 34300,
+        lastOrder: '8 Nov 2026 · SO-2026-0425', lastPay: '4 Nov 2026 · ₱20,000', pdc: 'None', health: ['Steady', 'blue'], prev: 1.59,
+        monthly: [0.13, 0.12, 0.15, 0.14, 0.13, 0.16, 0.14, 0.15, 0.17, 0.13, 0.16, 0.07],
+        trendNote: 'Steady ₱120–170k a month with no seasonal dips.',
+        mix: [['I-SMART CONTROL', 31], ['FOB', 28], ['ZY Probe Cleanser (50 mL)', 22], ['Other', 19]],
+        insights: [
+          ['blue', 'Steady, reliable buyer', '₱1.65M in 12 months, up 4%. Orders every 2–3 weeks.'],
+          ['amber', 'Paying in parts', 'Paid ₱20,000 of ₱54,300 on INV-2026-1140; ₱34,300 is 28 days overdue.'],
+          ['amber', 'Open return', 'RT-2026-0024: 1 × I-SMART CONTROL damaged in transit. Credit memo drafted.'],
+          ['green', 'Above-average margin', '35% gross margin vs the 32% company average.']
+        ],
+        timeline: [
+          ['10 Nov', 'amber', 'Return received', 'RT-2026-0024 · I-SMART CONTROL × 1 · damaged'],
+          ['9 Nov', 'blue', 'Delivered', 'DR-2026-0516 · SO-2026-0425 · ₱36,000'],
+          ['7 Nov', 'slate', 'Invoiced', 'INV-2026-1191 · ₱33,900'],
+          ['4 Nov', 'green', 'Partial payment', 'CR-2026-0579 · Metrobank check · ₱20,000'],
+          ['15 Oct', 'slate', 'Statement of account emailed', 'Balance ₱54,300']
+        ] },
+      C: { name: 'Sample Lab C', branch: 'Naga', since: '2020', terms: 30, limit: 120000, rep: 'Rep 2', margin: 31, dtp: 74, bal: 38900, overdue: 38900,
+        lastOrder: '11 Nov 2026 · SO-2026-0430', lastPay: '8 Nov 2026 · ₱46,200 cash', pdc: 'None', health: ['At risk', 'red'], prev: 2.97,
+        monthly: [0.24, 0.22, 0.23, 0.21, 0.20, 0.19, 0.18, 0.15, 0.13, 0.12, 0.11, 0.04],
+        trendNote: 'Monthly purchases fell from ₱240k to about ₱110k over the year. They may be buying elsewhere — worth asking.',
+        mix: [['ZY Z3 Diluent (20 L)', 34], ['CY URIC ACID LIQUID 2X1', 26], ['ZY CRP 25 T/kit', 21], ['HBA1C', 19]],
+        insights: [
+          ['red', 'Bounced check not replaced', 'PNB 553901 for ₱38,900 bounced on 24 Oct. A visit is scheduled for 13 Nov.'],
+          ['red', '105 days overdue, new order going out', 'SO-2026-0430 (₱40,100) is due for delivery tomorrow. Consider holding it until the check is replaced.'],
+          ['orange', 'Buying 32% less than last year', 'Down from ₱2.97M to ₱2.02M. A visit from Rep 2 to ask why could recover it.'],
+          ['slate', 'Pays 44 days past terms', 'Averages 74 days on 30-day terms.']
+        ],
+        timeline: [
+          ['13 Nov', 'amber', 'Visit scheduled', 'Collect a replacement for the bounced check'],
+          ['11 Nov', 'slate', 'Sales order confirmed', 'SO-2026-0430 · ₱40,100'],
+          ['8 Nov', 'green', 'Payment received', 'CR-2026-0583 · cash · ₱46,200 on INV-2026-1178'],
+          ['4 Nov', 'slate', 'Return credited', 'RT-2026-0022 · HBA1C × 1 · CM-2026-0011 refunded'],
+          ['3 Nov', 'slate', 'Statement hand-delivered', 'Balance ₱38,900'],
+          ['24 Oct', 'red', 'Check bounced', 'PNB 553901 · ₱38,900 on INV-2026-1065']
+        ] },
+      D: { name: 'Sample Diagnostic D', branch: 'Las Piñas', since: '2018', terms: 45, limit: 300000, rep: 'Rep 1', margin: 33, dtp: 58, bal: 221250, overdue: 92750,
+        lastOrder: '10 Nov 2026 · SO-2026-0428', lastPay: '26 Sep 2026', pdc: '₱92,750 · dated 10 Dec', health: ['Slipping', 'orange'], prev: 3.90,
+        monthly: [0.34, 0.30, 0.33, 0.36, 0.31, 0.33, 0.30, 0.32, 0.29, 0.31, 0.27, 0.13],
+        trendNote: 'Down 8% on last year; October (₱270k) was the lowest month of the year.',
+        mix: [['HBA1C', 41], ['FOB', 22], ['ZY Z3 Diluent (20 L)', 21], ['ZY CRP 25 T/kit', 9], ['Other', 7]],
+        insights: [
+          ['amber', 'Overdue fully covered by a post-dated check', 'INV-2026-1102 (₱92,750, 62 days overdue) is matched by BDO check 004512 dated 10 Dec.'],
+          ['orange', 'Order stuck waiting for stock', '4 × ZY CRP 25 T/kit for SO-2026-0428 waits on PO-2026-0087, arriving 18 Nov.'],
+          ['orange', 'Buying less', '₱3.59M in 12 months, down 8%.'],
+          ['slate', 'No payment since 26 Sep', 'Next expected: the 10 Dec check.']
+        ],
+        timeline: [
+          ['12 Nov', 'green', 'Post-dated check received', 'CR-2026-0588 · BDO 004512 · ₱92,750 dated 10 Dec'],
+          ['11 Nov', 'blue', 'Partly delivered', 'DR-2026-0518 · HBA1C × 12, FOB × 10'],
+          ['10 Nov', 'slate', 'Sales order', 'SO-2026-0428 · ₱158,800'],
+          ['4 Nov', 'blue', 'Delivered', 'DR-2026-0514 · SO-2026-0419'],
+          ['3 Nov', 'slate', 'Invoiced', 'INV-2026-1185 · ₱128,500']
+        ] },
+      E: { name: 'Sample Medical E', branch: 'Naga', since: '2023', terms: 30, limit: 80000, rep: 'Rep 2', margin: 36, dtp: 29, bal: 15450, overdue: 0,
+        lastOrder: '6 Nov 2026 · SO-2026-0423', lastPay: '15 Oct 2026 · ₱12,300 cash', pdc: 'None', health: ['Steady', 'blue'], prev: 0.83,
+        monthly: [0.07, 0.06, 0.08, 0.07, 0.07, 0.08, 0.06, 0.07, 0.08, 0.07, 0.07, 0.03],
+        trendNote: 'Small but consistent: ₱60–80k every month.',
+        mix: [['FOB', 52], ['I-SMART CONTROL', 26], ['Other', 22]],
+        insights: [
+          ['green', 'Always pays on time', 'Averages 29 days on 30-day terms. A good candidate for a higher credit limit.'],
+          ['blue', 'Accepted quote not yet ordered', 'QT-2026-0214 (FOB × 8, ₱27,200) was accepted on 5 Nov.'],
+          ['green', 'Highest margin of the top clients', '36% gross margin.']
+        ],
+        timeline: [
+          ['13 Nov', 'blue', 'Delivery scheduled', 'DR-2026-0521 · FOB × 4'],
+          ['6 Nov', 'slate', 'Sales order', 'SO-2026-0423 · ₱13,600'],
+          ['5 Nov', 'blue', 'Quote accepted', 'QT-2026-0214 · ₱27,200'],
+          ['15 Oct', 'green', 'Payment received', 'CR-2026-0560 · cash · ₱12,300'],
+          ['14 Oct', 'slate', 'Invoiced', 'INV-2026-1170 · ₱15,450']
+        ] },
+      F: { name: 'Sample Clinic F', branch: 'Las Piñas', since: '2024', terms: 30, limit: 100000, rep: 'Rep 2', margin: 34, dtp: 36, bal: 58850, overdue: 27600,
+        lastOrder: '4 Nov 2026 · SO-2026-0415', lastPay: '11 Nov 2026 · ₱10,000 cash', pdc: 'None', health: ['Growing', 'green'], prev: 0.82,
+        monthly: [0.07, 0.08, 0.09, 0.09, 0.10, 0.10, 0.11, 0.11, 0.12, 0.12, 0.13, 0.08],
+        trendNote: 'Fastest-growing client: monthly purchases nearly doubled in a year.',
+        mix: [['HBA1C', 44], ['ZY CRP 25 T/kit', 31], ['ZY Probe Cleanser (50 mL)', 25]],
+        insights: [
+          ['green', 'Fastest-growing client', 'Up 46% to ₱1.20M. Worth a quarterly review visit.'],
+          ['amber', 'Never sent a statement', '₱27,600 on INV-2026-1151 is 18 days overdue. First statement scheduled 18 Nov.'],
+          ['slate', 'Cancelled order', 'SO-2026-0421 (HBA1C × 2) cancelled on 5 Nov. [REASON]'],
+          ['blue', 'Credit 59% used', '₱58,850 of ₱100,000. Review the limit if growth continues.']
+        ],
+        timeline: [
+          ['11 Nov', 'green', 'Payment received', 'CR-2026-0586 · cash · ₱10,000 on INV-2026-1196'],
+          ['10 Nov', 'slate', 'Invoiced', 'INV-2026-1196 · ₱41,250'],
+          ['9 Nov', 'blue', 'Quote sent', 'QT-2026-0216 · ₱37,500'],
+          ['5 Nov', 'red', 'Order cancelled', 'SO-2026-0421 · HBA1C × 2'],
+          ['4 Nov', 'slate', 'Sales order', 'SO-2026-0415 · ₱41,250']
+        ] }
+    };
+    const rev = c => c.monthly.reduce((a, b) => a + b, 0);
+    const trend = c => Math.round((rev(c) / c.prev - 1) * 100);
+    return {
+      nav: 'History',
+      title: 'Client History',
+      desc: 'Everything about one client in one place: how much they buy, how they pay, what changed, and what to do next. Sample data as of 13 Nov 2026.',
+      actions: ['Export client report', 'Log activity'],
+      tabs: [['profile', 'Client profile', null, 'ov'], ['clients', 'All clients', 6, 'gv']],
+      wa: [
+        { tone: 'red', text: 'Sample Lab C: SO-2026-0430 delivers tomorrow while a bounced check is still unreplaced.', action: 'Open Collections', href: 'Collections.dc.html' },
+        { tone: 'amber', text: 'Sample Clinic F has never been sent a statement of account.', action: 'Open Receivables', href: 'Receivables.dc.html' }
+      ],
+      ov: s => {
+        const c = CL[s.pick] || CL.A;
+        const r = rev(c), t = trend(c), late = c.dtp - c.terms;
+        return {
+          picker: { label: 'Client', value: s.pick, options: Object.keys(CL).map(k => [k, CL[k].name]), note: c.branch + ' · client since ' + c.since + ' · ' + c.rep + ' · ' + c.health[0], onPick: e => this.setState({ pick: e.target.value }) },
+          rows: [
+            [
+              { type: 'kpi', label: 'Revenue · last 12 months', value: '₱' + r.toFixed(2) + 'M', delta: (t >= 0 ? '▲ ' : '▼ ') + Math.abs(t) + '%', good: t >= 0, sub: 'vs ₱' + c.prev.toFixed(2) + 'M the year before', tone: 'teal' },
+              { type: 'kpi', label: 'Gross margin', value: c.margin + '%', delta: c.margin >= 32 ? 'Above average' : 'Below average', good: c.margin >= 32, sub: 'Company average 32%', tone: 'teal' },
+              { type: 'kpi', label: 'Average days to pay', value: c.dtp + ' days', delta: late > 5 ? late + ' days late' : 'On time', good: late <= 5, sub: 'Terms: ' + c.terms + ' days', tone: late > 10 ? 'red' : 'green' },
+              { type: 'kpi', label: 'Balance owed', value: pk(c.bal), delta: c.overdue ? pk(c.overdue) + ' overdue' : 'Nothing overdue', good: !c.overdue, sub: 'Credit used ' + Math.round(c.bal / c.limit * 100) + '% of ' + pk(c.limit), tone: c.overdue ? 'orange' : 'green' }
+            ],
+            [
+              { type: 'bars', span: 2, title: 'Monthly purchases', sub: 'Invoiced each month, last 12 months. *November is month to date.', axis: axK,
+                groups: months.map((m, i) => ({ label: m, values: [c.monthly[i] * 1e6], dim: i === 11, tip: m.replace('*', ' (to date)') + ' · ₱' + Math.round(c.monthly[i] * 1000) + 'k' })),
+                note: c.trendNote },
+              { type: 'facts', span: 1, title: 'Account', sub: c.name,
+                items: [['Branch', c.branch], ['Client since', c.since], ['Payment terms', c.terms + ' days'], ['Credit limit', peso(c.limit)], ['Sales rep', c.rep], ['Status', c.health[0]], ['Last order', c.lastOrder], ['Last payment', c.lastPay], ['Post-dated checks', c.pdc], ['Contact', '[CONTACT PERSON · PHONE]']],
+                link: ['Open in Receivables', 'Receivables.dc.html'] }
+            ],
+            [
+              { type: 'list', span: 1, title: 'What to know', sub: 'Worked out from orders, payments and returns',
+                items: c.insights.map(x => ({ tone: x[0], title: x[1], text: x[2] })) },
+              { type: 'hbars', span: 1, title: 'What they buy', sub: 'Share of revenue, last 12 months', max: 100,
+                items: c.mix.map(x => ({ label: x[0], value: x[1], valueLabel: x[1] + '%', color: '#1F5F74' })) },
+              { type: 'list', span: 1, title: 'Recent activity', sub: 'Orders, deliveries, payments and calls',
+                items: c.timeline.map(x => ({ meta: x[0], tone: x[1], title: x[2], text: x[3] })) }
+            ]
+          ]
+        };
+      },
+      gdefs: {
+        clients: {
+          title: 'All clients', intro: 'Compare clients on growth and payment behaviour. Select a client for a summary; use the Client profile tab for the full picture.', placeholder: 'Client name', actions: ['Export'], minW: 1020,
+          stats: [
+            { label: 'Growing', value: '2', sub: 'Sample Hospital A, Sample Clinic F', tone: 'green' },
+            { label: 'Slipping or at risk', value: '2', sub: 'Sample Diagnostic D, Sample Lab C', tone: 'red' },
+            { label: 'Paying more than 10 days late', value: '3', sub: 'Hospital A, Diagnostic D, Lab C', tone: 'orange' }
+          ],
+          cols: [{ label: 'Client' }, { label: 'Revenue 12 mo', right: true }, { label: 'vs last year', right: true }, { label: 'Days to pay', right: true }, { label: 'Balance', right: true }, { label: 'Last order' }, { label: 'Status' }],
+          rows: Object.keys(CL).map(k => { const c = CL[k]; const t = trend(c); return {
+            id: k,
+            cells: [C(c.name, 'link', { plain: true, sub: c.branch + ' · ' + c.rep }), C('₱' + rev(c).toFixed(2) + 'M', 'num'), C((t >= 0 ? '▲ ' : '▼ ') + Math.abs(t) + '%', 'num', { color: t >= 0 ? '#17603F' : '#9B1C1C' }), C(c.dtp + ' days', 'num', { sub: 'terms ' + c.terms, color: c.dtp - c.terms > 10 ? '#9B1C1C' : '#12202E' }), C(peso(c.bal), 'num', c.overdue ? { sub: peso(c.overdue) + ' overdue', subColor: '#9B1C1C' } : {}), C(c.lastOrder.split(' · ')[0]), C(c.health[0], 'pill', { tone: c.health[1] })],
+            detail: { eyebrow: c.branch + ' · since ' + c.since, title: c.name, pill: c.health, fields: [['Revenue, 12 months', '₱' + rev(c).toFixed(2) + 'M'], ['vs last year', (t >= 0 ? '+' : '') + t + '%'], ['Gross margin', c.margin + '%'], ['Days to pay', c.dtp + ' (terms ' + c.terms + ')'], ['Balance', peso(c.bal)], ['Overdue', c.overdue ? peso(c.overdue) : '—']],
+              linesTitle: 'What to know', lines: c.insights.map(x => [x[1], x[2], '', x[0]]), actions: ['Open full profile', 'Log activity'] } }; })
+        }
+      }
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const accent = this.props.accent ?? '#1F5F74';
+    const m = this.mod();
+    const cur = m.tabs.find(t => t[0] === s.tab) || m.tabs[0];
+    const btn = primary => 'height:44px;padding:0 16px;border-radius:10px;font-size:14px;' + (primary ? 'border:1px solid ' + accent + ';background:' + accent + ';color:#FFFFFF;font-weight:700;' : 'border:1px solid #CBD3DB;background:#FFFFFF;color:#12202E;font-weight:600;');
+    const tabs = m.tabs.map(([k, label, count]) => {
+      const on = cur[0] === k;
+      return {
+        label, count: count === null ? '' : count, hasCount: count !== null, on: on ? 'true' : 'false',
+        pick: () => this.setState({ tab: k, gsel: null, gq: '' }),
+        style: 'height:46px;padding:0 14px;border:0;background:transparent;white-space:nowrap;display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:-1px;' + (on ? 'font-weight:800;color:#12202E;border-bottom:2px solid ' + accent + ';' : 'font-weight:600;color:#4F5D6B;border-bottom:2px solid transparent;'),
+        countStyle: 'min-width:22px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:999px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;' + (on ? 'background:' + accent + ';color:#FFFFFF;' : 'background:#E3EEF2;color:#1F5F74;')
+      };
+    });
+    const last = m.actions.length - 1;
+    return Object.assign({
+      accent, appNav: this.appNav(m.nav, accent), tabs,
+      hdr: { title: m.title, desc: m.desc, actions: m.actions.map((label, i) => ({ label, cls: i === last ? 'prim' : 'sec', style: btn(i === last) })) },
+      isOv: cur[3] === 'ov', isGv: cur[3] !== 'ov'
+    }, this.waVals(s, m.wa), this.ovVals(s, accent, cur[3] === 'ov' ? m.ov(s) : null), this.gvVals(s, accent, m.gdefs, cur[0]));
+  }
+
+  waVals(s, recs) {
+    const TONE = { red: '#C0392B', amber: '#D9A21B', orange: '#E07A2F', blue: '#2B6CB0', green: '#2F8F6B', slate: '#4A5565' };
+    const n = recs.length, open = !!s.waOpen && n > 0;
+    const warn = 'background:#FDF5DE;color:#7A5300;', ok = 'background:#E6F3EC;color:#17603F;';
+    return { wa: {
+      hasRecs: n > 0, open: open, expanded: open ? 'true' : 'false',
+      summary: n ? recs[0].text + (n > 1 ? '  ·  +' + (n - 1) + ' more' : '') : 'All clear — no urgent tasks for this module.',
+      countLabel: n + (n === 1 ? ' recommendation' : ' recommendations'),
+      countStyle: 'font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px;white-space:nowrap;' + (n ? warn : ok),
+      iconStyle: 'width:28px;height:28px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;justify-content:center;' + (n ? warn : ok),
+      iconPath: n ? 'M12 9v4M12 16.5v.01M12 3l9.5 17h-19z' : 'M5 12l5 5L20 7',
+      toggleLabel: open ? 'Hide' : 'Show all', chevron: open ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6',
+      toggle: () => this.setState(p => ({ waOpen: !p.waOpen })),
+      recs: recs.map(r => ({ text: r.text, action: r.action, href: r.href || '#', dotStyle: 'width:8px;height:8px;border-radius:99px;flex-shrink:0;display:inline-block;background:' + (TONE[r.tone] || TONE.amber) + ';' }))
+    } };
+  }
+
+  ovVals(s, accent, def) {
+    const TONE = { green: '#2F8F6B', blue: '#2B6CB0', amber: '#D9A21B', orange: '#E07A2F', red: '#C0392B', slate: '#4A5565', teal: accent };
+    const dot = (c, sz) => 'width:' + (sz || 8) + 'px;height:' + (sz || 8) + 'px;border-radius:99px;flex-shrink:0;display:inline-block;background:' + c + ';';
+    if (!def) return { ov: { hasPicker: false, pickerLabel: '', pickerValue: '', pickerNote: '', options: [], onPick: () => {}, rows: [] } };
+    const SPAN = { 1: 'flex:1 1 260px;', 2: 'flex:2 1 540px;', 3: 'flex:1 1 100%;' };
+    const nice = raw => { const mag = Math.pow(10, Math.floor(Math.log10(raw || 1))); return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map(x => x * mag).find(x => x >= raw); };
+    const card = c => {
+      const v = {
+        title: c.title || c.label || '', sub: c.sub || '', cardStyle: 'background:#FFFFFF;border:1px solid #DFE5EA;border-radius:14px;padding:18px;box-sizing:border-box;min-width:0;display:flex;flex-direction:column;gap:12px;' + SPAN[c.span || 1],
+        isKpi: c.type === 'kpi', isBars: c.type === 'bars', isHbars: c.type === 'hbars', isStack: c.type === 'stack', isList: c.type === 'list', isTable: c.type === 'table', isFacts: c.type === 'facts',
+        hasHead: c.type !== 'kpi', hasLegend: false, legend: [], hasNote: !!c.note, note: c.note || '', hasLink: !!c.link, linkLabel: c.link ? c.link[0] : '', linkHref: c.link ? c.link[1] : '#',
+        value: '', delta: '', hasDelta: false, deltaStyle: '', dotStyle: '', plotAlt: '', grid: [], groups: [], hasFoot: false, footLabel: '', items: [], segs: [], cols: [], rows: [], facts: []
+      };
+      if (c.type === 'kpi') {
+        v.value = c.value; v.delta = c.delta || ''; v.hasDelta = !!c.delta; v.sub = c.sub || ''; v.dotStyle = dot(TONE[c.tone || 'teal']);
+        const g = c.good === true ? ['#E6F3EC', '#17603F'] : c.good === false ? ['#FBE9E7', '#9B1C1C'] : ['#ECEFF3', '#2F3946'];
+        v.deltaStyle = 'font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;background:' + g[0] + ';color:' + g[1] + ';';
+      }
+      if (c.type === 'bars') {
+        const series = c.series || [{ label: c.title, color: accent }];
+        const n = series.length;
+        const top = nice(Math.max.apply(null, c.groups.reduce((a, g) => a.concat(g.values), [])));
+        const fmt = c.axis || (x => String(x));
+        v.hasLegend = n > 1; v.legend = series.map(x => ({ label: x.label, sw: 'width:10px;height:10px;border-radius:3px;display:inline-block;background:' + x.color + ';' }));
+        v.grid = [0, top / 2, top].map(t => ({ label: fmt(t), style: 'position:absolute;left:0;right:0;bottom:' + (t / top * 100) + '%;border-top:1px solid ' + (t === 0 ? '#CBD3DB' : '#EEF2F5') + ';', labelStyle: 'position:absolute;left:-46px;top:-8px;width:40px;text-align:right;font-size:11px;color:#5B6876;font-variant-numeric:tabular-nums;' }));
+        v.groups = c.groups.map(g => ({
+          label: g.label, tip: g.tip || g.label, foot: g.foot || '',
+          style: 'flex:1 1 0;min-width:0;height:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px;',
+          bars: g.values.map((x, i) => ({ style: 'display:block;width:' + (n > 1 ? '40%' : '58%') + ';max-width:' + (n > 1 ? '16px' : '30px') + ';height:' + (x / top * 100) + '%;min-height:' + (x > 0 ? '2px' : '0') + ';border-radius:4px 4px 0 0;background:' + series[i].color + ';' + (g.dim ? 'opacity:.5;' : '') })),
+          labelStyle: 'flex:1 1 0;min-width:0;text-align:center;font-size:11px;color:#5B6876;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+          footStyle: 'flex:1 1 0;min-width:0;text-align:center;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:' + (g.footColor || '#24313E') + ';'
+        }));
+        v.hasFoot = c.groups.some(g => g.foot); v.footLabel = c.footLabel || '';
+        v.plotAlt = c.title + '. ' + c.groups.map(g => g.tip || g.label).join('; ');
+      }
+      if (c.type === 'hbars') {
+        const max = c.max || Math.max.apply(null, c.items.map(it => Math.max(it.value, it.mark || 0)));
+        v.items = c.items.map(it => ({
+          label: it.label, sub: it.sub || '', valueLabel: it.valueLabel, tip: it.tip || (it.label + ' · ' + it.valueLabel),
+          valueStyle: 'font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;color:' + (it.valueColor || '#12202E') + ';',
+          barStyle: 'position:absolute;left:0;top:0;bottom:0;border-radius:99px;width:' + Math.min(100, it.value / max * 100) + '%;background:' + (it.color || TONE[it.tone] || accent) + ';',
+          hasMark: !!it.mark, markStyle: 'position:absolute;top:-4px;bottom:-4px;width:2px;border-radius:2px;background:#12202E;left:' + Math.min(100, (it.mark || 0) / max * 100) + '%;'
+        }));
+        if (c.legend) { v.hasLegend = true; v.legend = c.legend.map(x => ({ label: x.label, sw: x.mark ? 'width:2px;height:12px;display:inline-block;background:#12202E;' : 'width:10px;height:10px;border-radius:3px;display:inline-block;background:' + x.color + ';' })); }
+      }
+      if (c.type === 'stack') {
+        const tot = c.segs.reduce((a, x) => a + x.value, 0) || 1;
+        v.segs = c.segs.map(x => ({ label: x.label, valueLabel: x.valueLabel, share: Math.round(x.value / tot * 100) + '% of total', dotStyle: dot(x.color), barStyle: 'display:block;height:100%;flex:' + x.value + ' 1 0;min-width:' + (x.value > 0 ? '4px' : '0') + ';background:' + x.color + ';' }));
+      }
+      if (c.type === 'list') {
+        v.items = c.items.map(it => ({ title: it.title, text: it.text || '', meta: it.meta || '', hasMeta: !!it.meta, hasAction: !!it.action, action: it.action || '', href: it.href || '#', dotStyle: dot(TONE[it.tone || 'slate'], 10) + 'margin-top:5px;' }));
+      }
+      if (c.type === 'table') {
+        const nc = c.cols.length;
+        const pad = i => 'padding:10px ' + (i === nc - 1 ? '18px' : '8px') + ' 10px ' + (i === 0 ? '18px' : '8px') + ';';
+        v.cols = c.cols.map((h, i) => ({ label: h.label, style: pad(i) + 'text-align:' + (h.right ? 'right' : 'left') + ';font-size:11px;font-weight:700;color:#4F5D6B;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;' }));
+        v.rows = c.rows.map(r => ({ cells: r.map((x, i) => { const o = typeof x === 'string' ? { text: x } : x; return { text: o.text, style: pad(i) + 'text-align:' + (c.cols[i] && c.cols[i].right ? 'right' : 'left') + ';white-space:nowrap;' + (o.num ? 'font-variant-numeric:tabular-nums;font-weight:600;' : '') + (o.bold ? 'font-weight:700;' : '') + (o.mono ? "font-family:'IBM Plex Mono',monospace;" : '') + 'color:' + (o.color || (o.bold ? '#12202E' : '#24313E')) + ';' }; }) }));
+      }
+      if (c.type === 'facts') v.facts = c.items.map(f => ({ label: f[0], value: f[1] }));
+      return v;
+    };
+    const p = def.picker;
+    return { ov: {
+      hasPicker: !!p, pickerLabel: p ? p.label : '', pickerValue: p ? p.value : '', pickerNote: p ? p.note || '' : '',
+      options: p ? p.options.map(o => ({ value: o[0], label: o[1] })) : [], onPick: p ? p.onPick : () => {},
+      rows: def.rows.map(r => ({ cards: r.map(card) }))
+    } };
+  }
+
+  gvVals(s, accent, defs, key) {
+    const TONE = {
+      green: ['#2F8F6B', '#E6F3EC', '#17603F'], blue: ['#2B6CB0', '#E6EFFA', '#1E4E8C'],
+      amber: ['#D9A21B', '#FDF5DE', '#7A5300'], orange: ['#E07A2F', '#FDEEE3', '#8F3F07'],
+      red: ['#C0392B', '#FBE9E7', '#9B1C1C'], slate: ['#4A5565', '#ECEFF3', '#2F3946'], teal: [accent, '#E3EEF2', accent]
+    };
+    const dot = c => 'width:8px;height:8px;border-radius:99px;flex-shrink:0;display:inline-block;background:' + c + ';';
+    const pill = t => 'display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;white-space:nowrap;background:' + t[1] + ';color:' + t[2] + ';';
+    const btn = (primary, grow) => 'height:44px;padding:0 16px;border-radius:10px;font-size:14px;' + (grow ? 'flex:' + (primary ? '1 1 100%' : '1 1 110px') + ';' : '') + (primary ? 'border:1px solid ' + accent + ';background:' + accent + ';color:#FFFFFF;font-weight:700;' : 'border:1px solid #CBD3DB;background:#FFFFFF;color:#12202E;font-weight:600;');
+    const def = defs[key] || { title: '', intro: '', stats: [], actions: [], cols: [], rows: [], empty: ['', ''] };
+    const q = (s.gq || '').trim().toLowerCase();
+    const rows = def.rows.filter(r => !q || r.cells.map(c => c.text + ' ' + (c.sub || '')).join(' ').toLowerCase().includes(q));
+    const n = def.cols.length;
+    const pad = (i, v) => 'padding:' + v + ' ' + (i === n - 1 ? '20px' : '8px') + ' ' + v + ' ' + (i === 0 ? '20px' : '8px') + ';';
+    const gv = {
+      title: def.title, intro: def.intro, placeholder: def.placeholder || 'Search',
+      stats: def.stats.map(k => ({ label: k.label, value: k.value, sub: k.sub, dotStyle: dot(TONE[k.tone || 'teal'][0]) })),
+      actions: (def.actions || []).map((label, i) => ({ label, cls: i === 0 ? 'prim' : 'sec', style: btn(i === 0, false) })),
+      tableStyle: 'width:100%;min-width:' + (def.minW || 900) + 'px;border-collapse:collapse;font-size:14px;',
+      cols: def.cols.map((c, i) => ({ label: c.label, style: pad(i, '0') + 'height:44px;text-align:' + (c.right ? 'right' : 'left') + ';font-size:12px;font-weight:700;color:#4F5D6B;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;' })),
+      rows: rows.map(r => {
+        const pick = () => this.setState({ gsel: r.id });
+        return {
+          rowStyle: 'border-bottom:1px solid #EEF2F5;' + (s.gsel === r.id ? 'background:#EEF5F7;box-shadow:inset 3px 0 0 ' + accent + ';' : ''),
+          cells: r.cells.map((c, i) => {
+            const t = c.t || 'text';
+            const tone = TONE[c.tone || 'slate'];
+            const right = def.cols[i] && def.cols[i].right;
+            return {
+              text: String(c.text), sub: c.sub || '', hasSub: !!c.sub, pick,
+              isLink: t === 'link', isPill: t === 'pill', isBtn: t === 'btn', isText: ['link', 'pill', 'btn'].indexOf(t) < 0,
+              linkStyle: 'border:0;background:none;padding:0;text-align:left;color:#12202E;font-size:14px;font-weight:700;' + (c.plain ? '' : "font-family:'IBM Plex Mono',monospace;"),
+              textStyle: (t === 'mono' ? "font-family:'IBM Plex Mono',monospace;font-size:13px;" : '') + (t === 'num' ? 'font-weight:700;font-variant-numeric:tabular-nums;' : '') + (t === 'strong' ? 'font-weight:600;' : '') + 'color:' + (c.color || (t === 'muted' ? '#5B6876' : t === 'strong' || t === 'num' ? '#12202E' : '#24313E')) + ';',
+              pillStyle: pill(tone), dotStyle: dot(tone[0]),
+              subStyle: 'font-size:12px;margin-top:2px;' + (c.subColor ? 'font-weight:600;color:' + c.subColor + ';' : 'color:#5B6876;') + (c.subMono ? "font-family:'IBM Plex Mono',monospace;" : ''),
+              style: pad(i, '12px') + 'vertical-align:middle;' + (right ? 'text-align:right;' : '') + (t === 'btn' || t === 'pill' ? 'white-space:nowrap;' : '') + (c.wrap ? 'min-width:220px;' : '')
+            };
+          })
+        };
+      }),
+      isEmpty: rows.length === 0,
+      emptyTitle: def.rows.length ? 'Nothing matches your search' : def.empty[0],
+      emptyText: def.rows.length ? 'Try a different name or document number.' : def.empty[1],
+      footer: def.rows.length ? 'Showing ' + rows.length + ' of ' + def.rows.length + (def.footer ? ' · ' + def.footer : '') : (def.footer || 'Nothing to show yet')
+    };
+    const sr = def.rows.find(r => r.id === s.gsel);
+    const d = sr ? sr.detail : null;
+    const P = d && d.pill ? TONE[d.pill[1]] : TONE.slate;
+    const N = TONE[(d && d.noteTone) || 'slate'];
+    const gs = {
+      eyebrow: d ? d.eyebrow || '' : '', title: d ? d.title || '' : '',
+      hasPill: !!(d && d.pill), pillText: d && d.pill ? d.pill[0] : '', pillStyle: pill(P), pillDot: dot(P[0]),
+      fields: d ? (d.fields || []).map(f => ({ label: f[0], value: f[1], style: 'margin:0;' + (f[2] ? "font-family:'IBM Plex Mono',monospace;font-size:13px;word-break:break-all;" : '') })) : [],
+      hasLines: !!(d && d.lines && d.lines.length), linesTitle: d ? d.linesTitle || '' : '',
+      lines: d ? (d.lines || []).map(l => ({ left: l[0], sub: l[1] || '', right: l[2] || '', dotStyle: dot(TONE[l[3] || 'slate'][0]) + 'margin-top:5px;' })) : [],
+      hasTotal: !!(d && d.total), totalLabel: d && d.total ? d.total[0] : '', totalValue: d && d.total ? d.total[1] : '',
+      hasNote: !!(d && d.note), note: d ? d.note || '' : '',
+      noteStyle: 'font-size:13px;line-height:1.45;border-radius:8px;padding:10px 12px;font-weight:600;background:' + N[1] + ';color:' + N[2] + ';',
+      actions: d ? (d.actions || []).map((label, i) => ({ label, cls: i === 0 ? 'prim' : 'sec', style: btn(i === 0, true) })) : []
+    };
+    return { gv, gs, gvHasSel: !!d, gq: s.gq || '', onGSearch: e => this.setState({ gq: e.target.value, gsel: null }), closeG: () => this.setState({ gsel: null }) };
+  }
+
+  appNav(active, accent) {
+    const NAV = [
+      ['Analytics', 'M12 3v9l7.8 4.5A9 9 0 1 1 12 3zM15 3.5A9 9 0 0 1 20.5 9H15z'],
+      ['Masterlists', 'M4 6h16M4 12h16M4 18h10'], ['Inventory', 'M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8'],
+      ['Item Forecast', 'M3 17l6-6 4 4 8-8M15 7h6v6'], ['Purchase Orders', 'M3 4h2l2.4 11h11L21 7H6.2M9 20h.01M18 20h.01'],
+      ['Sales', 'M4 19V11M10 19V5M16 19v-6M3 21h18'], ['Invoicing', 'M6 3h9l4 4v14H6zM9 12h7M9 16h7'],
+      ['Collections', 'M3 6h18v13H3zM3 10h18'], ['Receivables', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12h8M13 9l3 3-3 3'],
+      ['Warranty', 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'], ['Support Tracker', 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z'],
+      ['History', 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2'], ['Payables', 'M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 21h18'],
+      ['Expenses', 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h3'], ['Import', 'M12 15V3M7 8l5-5 5 5M5 21h14'],
+      ['Reports', 'M5 21V3h14v18zM9 8h6M9 12h6M9 16h6'], ['Recon', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12l3 3 5-6'],
+      ['Users', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6'],
+      ['Audit Logs', 'M9 3h6l1 2h3v16H5V5h3zM9 12l2 2 4-4'],
+      ['Settings', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1'],
+      ['Print Templates', 'M7 8V3h10v5M6 17H4v-7h16v7h-2M7 14h10v7H7z']
+    ];
+    const HREF = { Analytics: 'Analytics.dc.html', Inventory: 'Main.dc.html', 'Purchase Orders': 'PurchaseOrders.dc.html', Sales: 'Sales.dc.html', Invoicing: 'Invoicing.dc.html', Collections: 'Collections.dc.html', Receivables: 'Receivables.dc.html', History: 'ClientHistory.dc.html', Payables: 'Payables.dc.html', Expenses: 'Expenses.dc.html', 'Audit Logs': 'AuditLogs.dc.html' };
+    return NAV.map(([label, d]) => {
+      const on = label === active;
+      return {
+        label, d, href: HREF[label] || '#', current: on ? 'page' : 'false',
+        style: 'width:100%;height:38px;padding:0 10px;border-radius:8px;box-sizing:border-box;text-decoration:none;display:flex;align-items:center;gap:12px;font-size:14px;' + (on ? 'background:#E3EEF2;color:' + accent + ';font-weight:700;' : 'background:transparent;color:#2B3845;font-weight:600;')
+      };
+    });
+  }
+}
+</script>
+</body>
+</html>
