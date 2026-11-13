@@ -9328,7 +9328,7 @@ function renderPurchaseOrders() {
 const PAYABLES_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "Overview", bills: "Bills", payees: "Who we owe", paid: "Payments made" });
 const PAYABLE_STATE = /** @type {Record<string, { label: string, tone: UiTone }>} */ ({
   approval: { label: "To approve", tone: "amber" },
-  approved: { label: "Paid · method not recorded", tone: "green" },
+  approved: { label: "Paid · no method", tone: "green" },
   paid: { label: "Paid", tone: "green" },
   cancelled: { label: "Cancelled", tone: "slate" },
 });
@@ -9638,7 +9638,7 @@ const EXPENSES_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "
 const EXPENSE_STATE = /** @type {Record<string, { label: string, tone: UiTone }>} */ ({
   approval: { label: "To approve", tone: "amber" },
   returned: { label: "Returned", tone: "orange" },
-  topay: { label: "Paid · method not recorded", tone: "green" },
+  topay: { label: "Paid · no method", tone: "green" },
   paid: { label: "Paid", tone: "green" },
   cancelled: { label: "Cancelled", tone: "slate" },
 });
@@ -10830,7 +10830,7 @@ function openExpenseForResubmit(id) {
 }
 
 /** @param {any} type @param {string} id */
-function paymentConfirmActions(type, id) { return `<div class="inline-actions"><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cash">Cash</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Bank Transfer">Bank</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cheque">Cheque</button></div>`; }
+function paymentConfirmActions(type, id) { return `<div class="inline-actions"><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cash">Cash</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Bank Transfer">Bank transfer</button><button class="mini-button" data-confirm-payment="${type}:${escapeHtml(id)}:Cheque">Check</button></div>`; }
 
 /** @param {any} type @param {string} id */
 function requestRecord(type, id) { return type === "payable" ? data.payables.find((p) => p.id === id) : data.replenishments.find((r) => r.id === id); }
