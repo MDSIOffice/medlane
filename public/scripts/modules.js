@@ -142,10 +142,154 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "inventory", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"];
+const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "sales", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
+  Object.keys(WORKFLOW_RULES).forEach(renderModuleAssistant);
+}
+
+// ===== Workflow assistant (redesigned modules) =====================================================
+// Every recommendation on a redesigned page comes from a rule below: one place to add, drop or
+// re-word them. A rule returns null when it doesn't apply, or { text, action, attrs, tone, money }.
+// `attrs` must be data-* attributes an existing click handler understands (the assistant renders
+// inside the module's <section>, so module-scoped handlers such as data-inventory-filter work).
+// Recommendations are ranked by tone (red → green), then by money at stake.
+/** @typedef {{ id: string, rule: (ctx: WorkflowRuleContext) => UiRec | null }} WorkflowRule */
+/** @typedef {{ cover: StockCoverRow[] }} WorkflowRuleContext */
+
+/** @type {Record<string, boolean>} */
+const workflowAssistantOpen = {};
+const WORKFLOW_TONE_RANK = ["red", "orange", "amber", "blue", "slate", "accent", "green"];
+const plural = (/** @type {number} */ n, /** @type {string} */ word, /** @type {string} */ many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+
+/** @type {Record<string, WorkflowRule[]>} */
+const WORKFLOW_RULES = {
+  inventory: [
+    { id: "expired-on-hand", rule: () => {
+      if (isDemoOnlyRole()) return null;
+      // Same count as the Expired card on the Stocks tab.
+      const lots = data.inventory.filter((row) => inventoryStatus(row) === "Expired");
+      if (!lots.length) return null;
+      const units = lots.reduce((sum, row) => sum + Math.max(0, Number(row.qty || 0)), 0);
+      return { tone: "red", text: `${plural(lots.length, "expired lot")} (${units.toLocaleString("en-PH")} units) — pull them for disposal.`, action: "Show expired", attrs: { "data-inventory-filter": "disposal" } };
+    } },
+    { id: "critical-stock", rule: () => {
+      if (isDemoOnlyRole()) return null;
+      const lots = data.inventory.filter((row) => inventoryStatus(row) === "Critical");
+      return lots.length ? { tone: "red", text: `${plural(lots.length, "stock record")} at a critical level.`, action: "Show critical", attrs: { "data-inventory-filter": "critical" } } : null;
+    } },
+    { id: "receipts-to-approve", rule: () => {
+      if (!canApproveStockReceipts()) return null;
+      const n = (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval").length;
+      return n ? { tone: "amber", text: `${plural(n, "stock receipt")} waiting for your approval.`, action: "Review", attrs: { "data-inventory-workflow": "receipts" } } : null;
+    } },
+    { id: "transfers-to-dispatch", rule: () => {
+      if (!canApproveInventoryChanges()) return null;
+      const n = (data.pendingTransfers || []).filter((transfer) => transfer.status === "For Receiving").length;
+      return n ? { tone: "amber", text: `${plural(n, "transfer")} waiting to be dispatched.`, action: "Open transfers", attrs: { "data-inventory-workflow": "transfers" } } : null;
+    } },
+    { id: "transfers-in-transit", rule: () => {
+      if (isDemoOnlyRole()) return null;
+      const n = (data.pendingTransfers || []).filter((transfer) => ["In Transit", "Incomplete"].includes(transfer.status)).length;
+      return n ? { tone: "blue", text: `${plural(n, "transfer")} in transit — confirm when received.`, action: "Open transfers", attrs: { "data-inventory-workflow": "transfers" } } : null;
+    } },
+    { id: "under-one-month-no-order", rule: ({ cover }) => {
+      if (isDemoOnlyRole()) return null;
+      const short = cover.filter((row) => row.months !== null && row.months < 1 && row.onOrder <= 0).sort((a, b) => /** @type {number} */ (a.months) - /** @type {number} */ (b.months));
+      if (!short.length) return null;
+      const first = short[0];
+      const canOrder = canEditModule("inventory");
+      return {
+        tone: "orange",
+        text: `${plural(short.length, "item")} under 1 month of cover with nothing on order — ${first.name} has ${first.months === 0 ? "none left" : `${/** @type {number} */ (first.months).toFixed(1)} months left`}.`,
+        action: canOrder ? "New PO" : "Show item",
+        attrs: canOrder ? { "data-action": "open-modal", "data-type": "inventoryPurchaseOrder" } : { "data-workflow-action": `open-inventory:${first.code}` },
+      };
+    } },
+    { id: "low-stock", rule: () => {
+      if (isDemoOnlyRole()) return null;
+      const lots = data.inventory.filter((row) => inventoryStatus(row) === "Low Stock");
+      return lots.length ? { tone: "orange", text: `${plural(lots.length, "stock record")} below the minimum level.`, action: "Show low stock", attrs: { "data-inventory-filter": "low" } } : null;
+    } },
+    { id: "pos-to-receive", rule: () => {
+      if (!canManagePoReceiving()) return null;
+      const n = receivingPurchaseOrders().filter((po) => ["For Receiving", "Partially Received"].includes(po.status)).length;
+      return n ? { tone: "blue", text: `${plural(n, "purchase order")} ready to receive.`, action: "Receive", attrs: { "data-inventory-workflow": "receiving" } } : null;
+    } },
+    { id: "near-expiry-fefo", rule: () => {
+      if (isDemoOnlyRole()) return null;
+      const lots = data.inventory.filter((row) => inventoryStatus(row) === "Near Expiry");
+      return lots.length ? { tone: "amber", text: `${plural(lots.length, "lot")} near expiry — dispatch these first (FEFO).`, action: "Show near expiry", attrs: { "data-inventory-filter": "near" } } : null;
+    } },
+  ],
+};
+
+/** @param {string} module @returns {UiRec[]} */
+function workflowRecommendations(module) {
+  const rules = WORKFLOW_RULES[module] || [];
+  if (!rules.length) return [];
+  /** @type {WorkflowRuleContext} */
+  const ctx = { cover: itemStockCover() };
+  /** @type {UiRec[]} */
+  const recs = [];
+  for (const { rule } of rules) {
+    try { const rec = rule(ctx); if (rec) recs.push(rec); } catch (error) { console.warn("Workflow rule failed", error); }
+  }
+  const rank = (/** @type {UiRec} */ rec) => { const at = WORKFLOW_TONE_RANK.indexOf(rec.tone || "amber"); return at < 0 ? 99 : at; };
+  return recs.sort((a, b) => rank(a) - rank(b) || (b.money || 0) - (a.money || 0));
+}
+
+/** Draws a module's assistant into its `[data-wa-host]` slot. @param {string} module */
+function renderModuleAssistant(module) {
+  const host = document.querySelector(`[data-wa-host="${module}"]`);
+  if (!host) return;
+  host.innerHTML = uiWorkflowAssistant({ key: module, recs: workflowRecommendations(module), open: Boolean(workflowAssistantOpen[module]) });
+}
+
+/** @param {string} module */
+function toggleModuleAssistant(module) {
+  workflowAssistantOpen[module] = !workflowAssistantOpen[module];
+  renderModuleAssistant(module);
+  /** @type {HTMLElement | null} */ (document.querySelector(`[data-wa-toggle="${module}"]`))?.focus();
+}
+
+// ----- Stock cover -----
+// Cover (months) = on hand ÷ average monthly units sold over the last 6 months. On hand counts
+// unexpired lots only; on order is what open supplier POs still have to deliver. Units are the
+// invoice line quantities by item code, the same basis Item Forecast uses.
+/** @typedef {{ code: string, name: string, onHand: number, onOrder: number, avgMonthly: number, months: number | null }} StockCoverRow */
+/** @returns {StockCoverRow[]} */
+function itemStockCover() {
+  const from = fmtDate(addMonthsToDate(today, -6));
+  const to = fmtDate(today);
+  /** @type {Record<string, number>} */
+  const sold = {};
+  for (const sale of data.sales) {
+    if (sale.status === "Cancelled" || !dateInRange(sale.date, from, to)) continue;
+    for (const line of /** @type {any[]} */ (sale.lines?.length ? sale.lines : [{ code: sale.code, item: sale.item, qty: sale.qty }])) {
+      const code = line.code || data.items.find((item) => item.name === line.item)?.code;
+      if (code) sold[code] = (sold[code] || 0) + Number(line.qty || 0);
+    }
+  }
+  /** @type {Record<string, number>} */
+  const onHand = {};
+  for (const row of data.inventory) {
+    if (Number(row.qty) > 0 && inventoryStatus(row) !== "Expired") onHand[row.code] = (onHand[row.code] || 0) + Number(row.qty || 0);
+  }
+  /** @type {Record<string, number>} */
+  const onOrder = {};
+  for (const po of data.inventoryPurchaseOrders || []) {
+    if (inventoryPoTerminalStatuses.includes(po.status)) continue;
+    for (const line of po.lines || []) {
+      if (line.code) onOrder[line.code] = (onOrder[line.code] || 0) + Math.max(0, Number(line.qty || 0) - Number(line.receivedQty || 0));
+    }
+  }
+  return data.items.filter((item) => !isArchived(item) && !isEquipmentItem(item)).map((item) => {
+    const avgMonthly = (sold[item.code] || 0) / 6;
+    const have = onHand[item.code] || 0;
+    return { code: item.code, name: item.name, onHand: have, onOrder: onOrder[item.code] || 0, avgMonthly, months: avgMonthly > 0 ? have / avgMonthly : null };
+  });
 }
 
 /** @param {any} value */
@@ -2941,6 +3085,7 @@ function renderInventory() {
   renderInventoryAreaSelect();
   syncInventorySavedPill(...(() => { const el = qs("#save-status-indicator"); const s = el?.classList.contains("saving") ? "saving" : el?.classList.contains("error") ? "error" : "saved"; return /** @type {[string, string]} */ ([s, qs("#save-status-text")?.textContent]); })());
   ensureInventoryDatalists();
+  renderModuleAssistant("inventory");
   if (inventoryWorkflowTab === "stocks") renderInventoryStocks();
   else renderInventoryTab();
   // The modal transfer log (Transfer history → "Activity log") reads this table.

@@ -495,6 +495,8 @@ document.body.addEventListener("click", (event) => {
   if (sortButton) return sortTable(sortButton);
   if (!closestEl(event.target, ".notification-menu")) { qs("#notification-popover").hidden = true; qs("#notification-toggle").setAttribute("aria-expanded", "false"); }
   if (!closestEl(event.target, ".user-menu")) { qs("#user-popover").hidden = true; qs("#user-menu-toggle").setAttribute("aria-expanded", "false"); }
+  const assistantToggle = closestEl(event.target, "[data-wa-toggle]");
+  if (assistantToggle) return toggleModuleAssistant(/** @type {string} */ (assistantToggle.dataset.waToggle));
   const workflowAction = closestEl(event.target, "[data-workflow-action]");
   if (workflowAction) return handleWorkflowAction(/** @type {string} */ (workflowAction.dataset.workflowAction));
   const paymentRequestPreview = closestEl(event.target, "[data-payment-request-preview]");

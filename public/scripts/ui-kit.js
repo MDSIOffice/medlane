@@ -403,3 +403,132 @@ function uiExportView(view, state) {
   downloadCsv(view.csvName, [view.csvHeader, ...rows.map((row) => row.csv.map((cell) => String(cell ?? "")))]);
   log(`Exported ${view.title} (CSV)`, view.csvName.split("-")[0].replace(/^./, (c) => c.toUpperCase()), `${rows.length} records`, { save: false });
 }
+
+// ----- Management / dashboard building blocks ----------------------------------------------------
+//   uiWorkflowAssistant one-row recommendations strip (collapsed by default, "Show all" expands)
+//   uiKpiCards          KPI cards: dotted label, 28px value, change pill (good/bad/neutral), sub-line
+//   uiDashboardGrid     rows of 1- or 2-unit cards that wrap; each may end with a Takeaway + → link
+//   uiBarChart          vertical bars (1 or 2 series), 3 gridlines, partial last period, optional Net row
+//   uiHBars             horizontal bar list with an optional black target/budget marker
+//   uiStackBar          one segmented bar with a legend
+//   uiInsightList       dot + bold title + text + optional action, for "Needs your decision" lists
+
+/**
+ * A recommendation for the Workflow assistant. `attrs` are data-* attributes the app's delegated
+ * click handlers understand (usually `data-workflow-action`).
+ * @typedef {{ text: string, action: string, attrs: UiAttrs, tone?: UiTone, money?: number }} UiRec
+ */
+
+const UI_WA_ICON_WARN = "M12 9v4M12 16.5v.01M12 3l9.5 17h-19z";
+const UI_WA_ICON_OK = "M5 12l5 5L20 7";
+
+/** @param {{ key: string, recs: UiRec[], open: boolean }} options */
+function uiWorkflowAssistant({ key, recs, open }) {
+  const n = recs.length;
+  const expanded = open && n > 0;
+  const summary = n ? `${recs[0].text}${n > 1 ? `  ·  +${n - 1} more` : ""}` : "All clear — no urgent tasks for this module.";
+  const icon = `<span class="ui-wa-icon${n ? " warn" : " ok"}" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${n ? UI_WA_ICON_WARN : UI_WA_ICON_OK}"/></svg></span>`;
+  const toggle = n
+    ? `<button class="ui-wa-toggle" type="button" data-wa-toggle="${escapeHtml(key)}" aria-expanded="${expanded}" aria-controls="ui-wa-list-${escapeHtml(key)}">${expanded ? "Hide" : "Show all"}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${expanded ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"}"/></svg></button>`
+    : "";
+  const list = expanded
+    ? `<div class="ui-wa-list" id="ui-wa-list-${escapeHtml(key)}">${recs.map((rec) => `<div class="ui-wa-rec">${uiDot(rec.tone || "amber")}<span class="ui-wa-text">${escapeHtml(rec.text)}</span>${uiButton(rec.action, rec.attrs, { size: "xs" })}</div>`).join("")}</div>`
+    : "";
+  return `<section class="ui-wa" aria-label="Workflow assistant"><div class="ui-wa-row">${icon}<span class="ui-wa-label">Workflow assistant</span><span class="ui-wa-summary" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="ui-wa-count${n ? " warn" : " ok"}">${n} recommendation${n === 1 ? "" : "s"}</span>${toggle}</div>${list}</section>`;
+}
+
+/** @typedef {{ text: string, good?: boolean | null }} UiChange good: true = green, false = red, null/undefined = grey */
+/** @typedef {{ label: string, value: string, tone?: UiTone, change?: UiChange | null, sub?: string, title?: string }} UiKpi */
+
+/** @param {UiKpi[]} kpis */
+function uiKpiCards(kpis) {
+  return `<div class="ui-kpis">${kpis.map((kpi) => {
+    const change = kpi.change?.text ? `<span class="ui-change ${kpi.change.good === true ? "good" : kpi.change.good === false ? "bad" : "neutral"}">${escapeHtml(kpi.change.text)}</span>` : "";
+    return `<div class="ui-card ui-kpi"${kpi.title ? ` title="${escapeHtml(kpi.title)}"` : ""}><span class="ui-stat-label">${uiDot(kpi.tone || "accent")}${escapeHtml(kpi.label)}</span><span class="ui-kpi-value-row"><span class="ui-kpi-value ui-num">${escapeHtml(kpi.value)}</span>${change}</span>${kpi.sub ? `<span class="ui-stat-sub">${escapeHtml(kpi.sub)}</span>` : ""}</div>`;
+  }).join("")}</div>`;
+}
+
+/** @typedef {{ span?: 1 | 2, title: string, sub?: string, body: string, takeaway?: string, link?: { label: string, attrs: UiAttrs } }} UiDashCard */
+
+/** @param {UiDashCard[][]} rows */
+function uiDashboardGrid(rows) {
+  return `<div class="ui-dash">${rows.filter((row) => row.length).map((row) => `<div class="ui-dash-row">${row.map((card) => {
+    const foot = card.takeaway || card.link
+      ? `<div class="ui-dash-foot">${card.takeaway ? `<p><strong>Takeaway:</strong> ${escapeHtml(card.takeaway)}</p>` : ""}${card.link ? `<button class="ui-link" type="button"${uiAttrs(card.link.attrs)}>${escapeHtml(card.link.label)} →</button>` : ""}</div>`
+      : "";
+    return `<article class="ui-card ui-dash-card span-${card.span === 2 ? 2 : 1}"><header><h3>${escapeHtml(card.title)}</h3>${card.sub ? `<p>${escapeHtml(card.sub)}</p>` : ""}</header><div class="ui-dash-body">${card.body}</div>${foot}</article>`;
+  }).join("")}</div>`).join("")}</div>`;
+}
+
+const UI_SERIES_ONE = "#1F5F74";
+const UI_SERIES_TWO = ["#2a78d6", "#eb6834"];
+
+/**
+ * @param {{
+ *   labels: string[], series: { name: string, values: number[] }[], format: (value: number) => string,
+ *   partialLast?: boolean, net?: number[], caption: string, height?: number
+ * }} options
+ */
+function uiBarChart({ labels, series, format, partialLast = false, net, caption, height = 180 }) {
+  const values = series.flatMap((s) => s.values).filter((v) => Number.isFinite(v));
+  const max = Math.max(0, ...values);
+  if (!labels.length || max <= 0) return `<p class="ui-muted">No data for this period yet.</p>`;
+  const step = uiNiceStep(max / 3);
+  const top = step * 3;
+  const colors = series.length === 1 ? [UI_SERIES_ONE] : UI_SERIES_TWO;
+  const last = labels.length - 1;
+  const groups = labels.map((label, index) => {
+    const partial = partialLast && index === last;
+    const bars = series.map((s, si) => {
+      const value = Number(s.values[index] || 0);
+      const pct = top ? Math.max(0, (value / top) * 100) : 0;
+      return `<span class="ui-bar${partial ? " partial" : ""}" style="height:${pct.toFixed(2)}%;background:${colors[si] || colors[0]}" title="${escapeHtml(`${s.name} · ${label}${partial ? " (in progress)" : ""}: ${format(value)}`)}"></span>`;
+    }).join("");
+    return `<div class="ui-bar-group"><div class="ui-bar-stack">${bars}</div><span class="ui-bar-label">${escapeHtml(label)}${partial ? "*" : ""}</span></div>`;
+  }).join("");
+  const grid = [3, 2, 1].map((i) => `<span class="ui-grid-line" style="bottom:${(i / 3) * 100}%"><em>${escapeHtml(format(step * i))}</em></span>`).join("");
+  const legend = series.length > 1 ? `<div class="ui-legend">${series.map((s, i) => `<span><i style="background:${colors[i]}"></i>${escapeHtml(s.name)}</span>`).join("")}</div>` : "";
+  const netRow = net ? `<div class="ui-net-row"><span class="ui-net-head">Net</span>${net.map((value) => `<span class="ui-num ${value < 0 ? "neg" : ""}">${escapeHtml(format(value))}</span>`).join("")}</div>` : "";
+  const note = partialLast ? `<p class="ui-chart-note">* In progress</p>` : "";
+  const table = `<table class="sr-only"><caption>${escapeHtml(caption)}</caption><thead><tr><th scope="col">Period</th>${series.map((s) => `<th scope="col">${escapeHtml(s.name)}</th>`).join("")}${net ? `<th scope="col">Net</th>` : ""}</tr></thead><tbody>${labels.map((label, i) => `<tr><th scope="row">${escapeHtml(label)}${partialLast && i === last ? " (in progress)" : ""}</th>${series.map((s) => `<td>${escapeHtml(format(Number(s.values[i] || 0)))}</td>`).join("")}${net ? `<td>${escapeHtml(format(net[i] || 0))}</td>` : ""}</tr>`).join("")}</tbody></table>`;
+  return `<figure class="ui-chart">${legend}<div class="ui-bars" style="height:${height}px" aria-hidden="true">${grid}${groups}</div>${netRow}${note}${table}</figure>`;
+}
+
+/** Rounds a gridline step up to 1, 2, 2.5 or 5 × a power of ten. @param {number} raw */
+function uiNiceStep(raw) {
+  if (!(raw > 0)) return 1;
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  const unit = raw / pow;
+  return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10) * pow;
+}
+
+/** @typedef {{ label: string, value: number, display: string, target?: number, sub?: string, tone?: UiTone }} UiHBar */
+
+/** @param {{ items: UiHBar[], caption: string, targetLabel?: string }} options */
+function uiHBars({ items, caption, targetLabel = "Target" }) {
+  if (!items.length) return `<p class="ui-muted">Nothing to show yet.</p>`;
+  const max = Math.max(...items.map((item) => Math.max(item.value, item.target || 0)), 0) || 1;
+  const rows = items.map((item) => {
+    const marker = item.target ? `<span class="ui-hbar-target" style="left:${((item.target / max) * 100).toFixed(2)}%" title="${escapeHtml(`${targetLabel}: ${item.target}`)}"></span>` : "";
+    const color = item.tone ? `var(--ui-${uiTone(item.tone)})` : UI_SERIES_ONE;
+    return `<li><div class="ui-hbar-head"><span class="ui-hbar-label">${escapeHtml(item.label)}</span><b class="ui-num">${escapeHtml(item.display)}</b></div><div class="ui-hbar-track" title="${escapeHtml(`${item.label}: ${item.display}`)}"><span style="width:${((Math.max(0, item.value) / max) * 100).toFixed(2)}%;background:${color}"></span>${marker}</div>${item.sub ? `<small>${escapeHtml(item.sub)}</small>` : ""}</li>`;
+  }).join("");
+  const legend = items.some((item) => item.target) ? `<div class="ui-legend"><span><i class="marker"></i>${escapeHtml(targetLabel)}</span></div>` : "";
+  return `<figure class="ui-chart"><ul class="ui-hbars" aria-label="${escapeHtml(caption)}">${rows}</ul>${legend}</figure>`;
+}
+
+/** @param {{ segments: { label: string, value: number, display: string, tone: UiTone }[], caption: string }} options */
+function uiStackBar({ segments, caption }) {
+  const total = segments.reduce((sum, s) => sum + Math.max(0, s.value), 0);
+  if (!total) return `<p class="ui-muted">Nothing to show yet.</p>`;
+  const bar = segments.filter((s) => s.value > 0).map((s) => `<span style="width:${((s.value / total) * 100).toFixed(2)}%;background:var(--ui-${uiTone(s.tone)})" title="${escapeHtml(`${s.label}: ${s.display}`)}"></span>`).join("");
+  return `<figure class="ui-chart"><div class="ui-stack" role="img" aria-label="${escapeHtml(`${caption}: ${segments.map((s) => `${s.label} ${s.display}`).join(", ")}`)}">${bar}</div><ul class="ui-stack-legend">${segments.map((s) => `<li>${uiDot(s.tone)}<span>${escapeHtml(s.label)}</span><b class="ui-num">${escapeHtml(s.display)}</b></li>`).join("")}</ul></figure>`;
+}
+
+/** @typedef {{ title: string, text: string, tone?: UiTone, action?: { label: string, attrs: UiAttrs }, money?: number }} UiInsight */
+
+/** Items are shown in the order given; decision lists should be pre-sorted by money at stake. @param {UiInsight[]} items @param {string} [emptyText] */
+function uiInsightList(items, emptyText = "Nothing needs your attention here.") {
+  if (!items.length) return `<p class="ui-muted">${escapeHtml(emptyText)}</p>`;
+  return `<ul class="ui-insights">${items.map((item) => `<li>${uiDot(item.tone || "amber")}<div class="grow"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></div>${item.action ? uiButton(item.action.label, item.action.attrs, { size: "xs" }) : ""}</li>`).join("")}</ul>`;
+}
