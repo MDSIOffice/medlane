@@ -3427,8 +3427,8 @@ function financialDigestLines(state, sinceIso) {
   const newClientPos = purchaseOrders.filter((/** @type {any} */ po) => inPeriod(po.date));
   const openInventoryPos = inventoryPurchaseOrders.filter((/** @type {any} */ po) => !/completed|cancelled|received/i.test(po.status || ""));
   const inventoryPoTotal = openInventoryPos.reduce((/** @type {number} */ sum, /** @type {any} */ po) => sum + (po.lines || []).reduce((/** @type {any} */ lineSum, /** @type {any} */ line) => lineSum + Number(line.qty || 0) * Number(line.price || 0) - Number(line.discount || 0), 0), 0);
-  const openPayables = payables.filter((/** @type {Payable} */ payable) => !/paid|cancelled|rejected/i.test(payable.requestStatus || payable.status || ""));
-  const pendingExpenses = replenishments.filter((/** @type {Replenishment} */ expense) => !/paid|liquidated|cancelled|rejected/i.test(expense.requestStatus || expense.status || ""));
+  const openPayables = payables.filter((/** @type {Payable} */ payable) => !/paid|approved|cancelled|rejected/i.test(payable.requestStatus || payable.status || ""));
+  const pendingExpenses = replenishments.filter((/** @type {Replenishment} */ expense) => !/paid|approved|liquidated|cancelled|rejected/i.test(expense.requestStatus || expense.status || ""));
   const combinedExpenses = [...payables, ...replenishments];
   const activeDemos = demoRequests.filter((/** @type {any} */ request) => !/[Rr]eturned|To Sales|Cancelled/.test(request.status || ""));
   const newDemos = demoRequests.filter((/** @type {any} */ request) => inPeriod(request.date || request.demoDate));
@@ -3436,7 +3436,7 @@ function financialDigestLines(state, sinceIso) {
     `Client purchase orders open: ${openClientPos.length}`,
     `Client purchase orders created: ${newClientPos.length}`,
     `Inventory purchase orders open: ${openInventoryPos.length} (${money(inventoryPoTotal)})`,
-    `Payables open/for approval: ${openPayables.length} (${money(openPayables.reduce((/** @type {number} */ sum, /** @type {Payable} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
+    `Payables for approval (approved counts as paid): ${openPayables.length} (${money(openPayables.reduce((/** @type {number} */ sum, /** @type {Payable} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
     `Expenses pending/for approval: ${pendingExpenses.length} (${money(pendingExpenses.reduce((/** @type {number} */ sum, /** @type {Replenishment} */ item) => sum + Number(item.amount || item.total || 0), 0))})`,
     `All expenses booked (payables + expenses): ${combinedExpenses.length} (${money(combinedExpenses.reduce((sum, item) => sum + Number(item.amount || item.total || 0), 0))})`,
     `Demo requests active/created: ${activeDemos.length} active / ${newDemos.length} created`,

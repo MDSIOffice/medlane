@@ -438,7 +438,7 @@ const WORKFLOW_RULES = {
       const soon = payableFactsAll().filter((fact) => fact.balance > 0.005 && fact.days >= 0 && fact.days <= 7);
       if (!soon.length) return null;
       const money = soon.reduce((sum, fact) => sum + fact.balance, 0);
-      return { tone: "amber", money, text: `${plural(soon.length, "bill")} (${salesPesoShort(money)}) fall due within 7 days.`, action: "Show", attrs: { "data-wa-goto": "payables|bills|approved|" } };
+      return { tone: "amber", money, text: `${plural(soon.length, "bill")} (${salesPesoShort(money)}) fall due within 7 days and are not approved yet.`, action: "Show", attrs: { "data-wa-goto": "payables|bills|approval|" } };
     } },
   ],
   replenishments: [
@@ -460,11 +460,10 @@ const WORKFLOW_RULES = {
       const mine = (data.replenishments || []).filter((r) => expenseState(r) === "returned" && r.createdByUser && r.createdByUser === currentUser?.email);
       return mine.length ? { tone: "orange", text: `${plural(mine.length, "of your expense requests", "of your expense requests")} ${mine.length === 1 ? "was" : "were"} returned for changes.`, action: "Show", attrs: { "data-wa-goto": `replenishments|list|returned|${mine.length === 1 ? mine[0].id : ""}` } } : null;
     } },
-    { id: "expenses-to-pay", rule: () => {
+    { id: "expenses-no-method", rule: () => {
       const topay = byBranch(data.replenishments, "office").filter((r) => expenseState(r) === "topay");
       if (!topay.length) return null;
-      const money = topay.reduce((sum, r) => sum + Number(r.amount || 0), 0);
-      return { tone: "blue", money, text: `${plural(topay.length, "approved expense")} (${salesPesoShort(money)}) still to be paid out.`, action: "Show", attrs: { "data-wa-goto": "replenishments|list|topay|" } };
+      return { tone: "slate", text: `${plural(topay.length, "approved expense")} ${topay.length === 1 ? "has" : "have"} no payment method recorded. Approved expenses count as paid.`, action: "Show", attrs: { "data-wa-goto": "replenishments|list|topay|" } };
     } },
   ],
 };
@@ -9329,7 +9328,7 @@ function renderPurchaseOrders() {
 const PAYABLES_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "Overview", bills: "Bills", payees: "Who we owe", paid: "Payments made" });
 const PAYABLE_STATE = /** @type {Record<string, { label: string, tone: UiTone }>} */ ({
   approval: { label: "To approve", tone: "amber" },
-  approved: { label: "Approved · to pay", tone: "blue" },
+  approved: { label: "Paid · method not recorded", tone: "green" },
   paid: { label: "Paid", tone: "green" },
   cancelled: { label: "Cancelled", tone: "slate" },
 });
@@ -9342,17 +9341,25 @@ function paymentMethodLabel(method) {
   return value || "—";
 }
 
-/** @typedef {{ p: Payable, state: string, balance: number, due: string, estimated: boolean, days: number, overdue: boolean }} PayableFacts */
+/**
+ * Approval means paid: once a payable or expense is approved it counts as paid in every figure
+ * (nothing owed, out of the cash forecast), paid on its approval date. The "approved"/"topay"
+ * state only means nobody has recorded how it was paid yet (cash, check or bank transfer).
+ * @typedef {{ p: Payable, state: string, settled: boolean, paidOn: string, balance: number, due: string, estimated: boolean, days: number, overdue: boolean }} PayableFacts
+ */
 /** @param {Payable} p @returns {PayableFacts} */
 function payableFacts(p) {
   const status = String(p.requestStatus || p.status || "");
   const state = p.paymentConfirmed || p.status === "Paid" ? "paid" : status === "Cancelled" ? "cancelled" : status === "Approved" ? "approved" : "approval";
-  const balance = state === "approval" || state === "approved" ? Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0) : 0;
+  const settled = state === "paid" || state === "approved";
+  const balance = state === "approval" ? Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0) : 0;
   const stored = /^\d{4}-\d{2}-\d{2}$/.test(String(p.dueDate || "")) ? String(p.dueDate) : "";
   const due = stored || fmtDate(addDays(fmtDateSafe(p.date) || fmtDate(today), PAYABLE_DEFAULT_TERMS_DAYS));
   const days = daysUntil(due);
-  return { p, state, balance, due, estimated: !stored, days, overdue: balance > 0.005 && days < 0 };
+  return { p, state, settled, paidOn: settled ? fmtDateSafe(p.approvedAt) || fmtDateSafe(p.date) : "", balance, due, estimated: !stored, days, overdue: balance > 0.005 && days < 0 };
 }
+/** Amount counted as paid on a payable (the whole bill once approved). @param {Payable} p */
+function payablePaidAmount(p) { const fact = payableFacts(p); return fact.settled ? Number(p.amount || 0) : Math.min(Number(p.paid || 0), Number(p.amount || 0)); }
 function payableFactsAll() { return (data.payables || []).map(payableFacts); }
 /** Open (unpaid, not cancelled) payable balance per supplier. */
 function payableOpenBySupplier() {
@@ -9407,7 +9414,7 @@ function payablesOverviewHtml() {
 
   /** @type {UiKpi[]} */
   const kpis = [
-    { label: "We owe", value: pesoShort(owe), tone: "blue", sub: `${plural(open.length, "bill")} · ${plural(new Set(open.map((fact) => fact.p.supplier)).size, "supplier")}` },
+    { label: "We owe", value: pesoShort(owe), tone: "blue", sub: `${plural(open.length, "bill")} not approved yet · approved bills count as paid` },
     { label: "Overdue", value: pesoShort(sum(overdue)), tone: "red", change: overdue.length ? { text: plural(overdue.length, "bill"), good: false } : null, sub: overdue.length ? `Oldest ${plural(Math.max(...overdue.map((fact) => -fact.days)), "day")} late` : "Nothing past due" },
     { label: "Due in the next 7 days", value: pesoShort(sum(dueSoon)), tone: "amber", sub: dueSoon.length ? plural(dueSoon.length, "bill") : "Nothing due this week" },
     { label: canApprove ? "Waiting for your approval" : "Waiting for approval", value: String(approval.length), tone: "amber", change: approval.length ? { text: pesoShort(approval.reduce((total, fact) => total + Number(fact.p.amount || 0), 0)), good: null } : null, sub: approval[0] ? `${approval[0].p.id} · ${approval[0].p.supplier}` : "Nothing waiting" },
@@ -9421,8 +9428,9 @@ function payablesOverviewHtml() {
     const short = shortBySupplier.get(fact.p.supplier) || [];
     decisions.push({ tone: "amber", money: Number(fact.p.amount || 0), title: `Approve ${fact.p.id} · ${pesoShort(Number(fact.p.amount || 0))}`, text: `${fact.p.supplier}, due ${uiDate(fact.due)}${fact.estimated ? " (est.)" : ""}.${short.length ? ` Check first: ${short[0].po.id} from them arrived short.` : ""}`, action: { label: "Review", attrs: goto("bills", "", fact.p.id) } });
   });
-  overdue.filter((fact) => fact.state === "approved").forEach((fact) => decisions.push({ tone: "red", money: fact.balance, title: `${fact.p.id} to ${fact.p.supplier} is ${plural(-fact.days, "day")} late`, text: `${pesoShort(fact.balance)} was due ${uiDate(fact.due)}${fact.estimated ? " (est. from 30-day terms)" : ""}. Pay it or agree a new date.`, action: { label: "Pay", attrs: goto("bills", "", fact.p.id) } }));
-  facts.filter((fact) => fact.state === "approved" && (Number(fact.p.withholdingTax1 || 0) > 0 || Number(fact.p.withholdingTax2 || 0) > 0) && !data.suppliers.find((supplier) => supplier.name === fact.p.supplier)?.tin)
+  const noMethod = facts.filter((fact) => fact.state === "approved");
+  if (noMethod.length) decisions.push({ tone: "slate", money: 0, title: `${plural(noMethod.length, "approved bill")} with no payment method`, text: "Approved bills count as paid. Record whether each was paid by cash, check or bank transfer.", action: { label: "Show", attrs: goto("paid", "nomethod") } });
+  facts.filter((fact) => fact.settled && (Number(fact.p.withholdingTax1 || 0) > 0 || Number(fact.p.withholdingTax2 || 0) > 0) && !data.suppliers.find((supplier) => supplier.name === fact.p.supplier)?.tin)
     .forEach((fact) => decisions.push({ tone: "slate", money: 0, title: `${fact.p.supplier} has no TIN on file`, text: `The 2307 for ${fact.p.id} can't be generated until the supplier's TIN is added in Masterlists.` }));
   decisions.sort((a, b) => (b.money || 0) - (a.money || 0));
 
@@ -9483,7 +9491,7 @@ function payablesTabModel(tab) {
     const since = fmtDate(addMonthsToDate(today, -12));
     const entries = [...grouped.entries()].map(([name, list]) => {
       const open = list.filter((fact) => fact.balance > 0.005).sort((a, b) => a.due.localeCompare(b.due));
-      return { name, list, open, total: open.reduce((s, fact) => s + fact.balance, 0), late: open.filter((fact) => fact.overdue).reduce((s, fact) => s + fact.balance, 0), oldest: open.find((fact) => fact.overdue), next: open.find((fact) => !fact.overdue), paid12: list.filter((fact) => fact.state === "paid" && fmtDateSafe(fact.p.date) >= since).reduce((s, fact) => s + Number(fact.p.amount || 0), 0) };
+      return { name, list, open, total: open.reduce((s, fact) => s + fact.balance, 0), late: open.filter((fact) => fact.overdue).reduce((s, fact) => s + fact.balance, 0), oldest: open.find((fact) => fact.overdue), next: open.find((fact) => !fact.overdue), paid12: list.filter((fact) => fact.settled && fact.paidOn >= since).reduce((s, fact) => s + Number(fact.p.amount || 0), 0) };
     });
     const withBalance = entries.filter((entry) => entry.total > 0.005);
     const top = [...withBalance].sort((a, b) => b.total - a.total)[0];
@@ -9524,7 +9532,7 @@ function payablesTabModel(tab) {
   }
 
   const paidTab = tab === "paid";
-  const list = paidTab ? facts.filter((fact) => fact.state === "paid") : facts;
+  const list = paidTab ? facts.filter((fact) => fact.settled) : facts;
   const rows = list.map(/** @returns {UiViewRow} */ (fact) => {
     const { p } = fact;
     const state = PAYABLE_STATE[fact.state];
@@ -9533,15 +9541,15 @@ function payablesTabModel(tab) {
     const actionHtml = fact.state === "approval" ? requestActions("payable", p.id)
       : fact.state === "approved" ? `${paymentConfirmActions("payable", p.id)}<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print voucher</button>${payable2307Cell(p)}`
         : `<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print voucher</button>${fact.state === "paid" ? payable2307Cell(p) : ""}`;
-    const method = paymentMethodLabel(p.method);
-    const scopes = [fact.state, ...(fact.overdue ? ["overdue"] : [])];
+    const method = fact.state === "approved" ? "Not recorded" : paymentMethodLabel(p.method);
+    const scopes = [fact.state, ...(fact.settled ? ["paid"] : []), ...(fact.state === "approved" ? ["nomethod"] : []), ...(fact.overdue ? ["overdue"] : [])];
     return {
       id: p.id, branches: [], scopes,
       search: [p.id, p.supplier, state.label, method, p.cheque, p.bank, ...items.map((item) => item.particulars || item.item)].filter(Boolean).join(" "),
-      sortValues: { id: p.id, supplier: String(p.supplier || ""), date: inventoryDateValue(p.date), due: inventoryDateValue(fact.due), amount: Number(p.amount || 0), balance: fact.balance, status: state.label, method },
-      csv: paidTab ? [p.id, p.supplier, p.date || "", method, p.bank || "", p.cheque || "", p.chequeDate || "", Number(p.amount || 0).toFixed(2)] : [p.id, p.supplier, p.date || "", fact.due, fact.estimated ? "estimated" : "", Number(p.grossAmount || p.amount || 0).toFixed(2), Number(p.amount || 0).toFixed(2), fact.balance.toFixed(2), state.label],
+      sortValues: { id: p.id, supplier: String(p.supplier || ""), date: inventoryDateValue(paidTab ? fact.paidOn : p.date), due: inventoryDateValue(fact.due), amount: Number(p.amount || 0), balance: fact.balance, status: state.label, method },
+      csv: paidTab ? [p.id, p.supplier, p.date || "", fact.paidOn, method, p.bank || "", p.cheque || "", p.chequeDate || "", Number(p.amount || 0).toFixed(2)] : [p.id, p.supplier, p.date || "", fact.due, fact.estimated ? "estimated" : "", Number(p.grossAmount || p.amount || 0).toFixed(2), Number(p.amount || 0).toFixed(2), fact.balance.toFixed(2), state.label],
       cells: paidTab
-        ? [uiCellDoc(p.id, select(p.id), plural(items.length || 1, "item")), uiCellText(p.supplier, "", { strong: true }), escapeHtml(uiDate(p.date)), uiCellText(method, [p.bank, p.cheque ? `No. ${p.cheque}` : "", p.chequeDate ? uiDate(p.chequeDate) : ""].filter(Boolean).join(" · ")), uiCellNum(peso.format(Number(p.amount || 0))), inventoryNextStep(actionHtml)]
+        ? [uiCellDoc(p.id, select(p.id), plural(items.length || 1, "item")), uiCellText(p.supplier, "", { strong: true }), uiCellText(uiDate(fact.paidOn), `Bill ${uiDate(p.date)}`), uiCellText(method, [p.bank, p.cheque ? `No. ${p.cheque}` : "", p.chequeDate ? uiDate(p.chequeDate) : ""].filter(Boolean).join(" · ")), uiCellNum(peso.format(Number(p.amount || 0))), inventoryNextStep(actionHtml)]
         : [uiCellDoc(p.id, select(p.id), plural(items.length || 1, "item")), uiCellText(p.supplier, "", { strong: true }), escapeHtml(uiDate(p.date)), dueCell(fact), uiCellNum(peso.format(Number(p.amount || 0))), uiCellNum(fact.balance > 0.005 ? peso.format(fact.balance) : "—"), uiPill(fact.overdue ? `${state.label} · overdue` : state.label, fact.overdue ? "red" : state.tone), inventoryNextStep(actionHtml)],
       detail: /** @returns {UiDetail} */ () => {
         const { buttons, notes } = uiAdoptActions(actionHtml);
@@ -9556,35 +9564,37 @@ function payablesTabModel(tab) {
             { label: "Withholding", value: wht ? peso.format(wht) : "—", sub: [Number(p.withholdingTax1 || 0) ? "1%" : "", Number(p.withholdingTax2 || 0) ? "2%" : ""].filter(Boolean).join(" + ") },
             { label: "Net to pay", value: peso.format(Number(p.amount || 0)) },
             { label: "Approved by", value: p.approvedBy || "—", sub: p.approvedAt ? uiDate(p.approvedAt) : "" },
-            ...(fact.state === "paid" ? [{ label: "Paid by", value: paymentMethodLabel(p.method), sub: [p.bank, p.cheque ? `No. ${p.cheque}` : "", p.chequeDate ? uiDate(p.chequeDate) : ""].filter(Boolean).join(" · ") }] : []),
+            ...(fact.settled ? [{ label: "Paid", value: uiDate(fact.paidOn), sub: "Approval counts as payment" }, { label: "Paid by", value: method, sub: [p.bank, p.cheque ? `No. ${p.cheque}` : "", p.chequeDate ? uiDate(p.chequeDate) : ""].filter(Boolean).join(" · ") }] : []),
             ...(p.requestNote ? [{ label: "Notes", value: String(p.requestNote), wide: true }] : []),
           ],
           linesTitle: "Items / services",
           lines: items.map((item) => ({ left: String(item.particulars || item.item || "Item"), sub: item.classification ? String(item.classification) : "", right: peso.format(Number(item.amount || 0)) })),
           total: { label: "Net total", value: peso.format(Number(p.amount || 0)) },
-          note: short.length ? { text: `${short.map((entry) => entry.po.id).join(", ")} from ${p.supplier} arrived short. Deduct the missing items before paying.`, tone: "orange" } : notes[0] ? { text: notes[0], tone: "slate" } : fact.state === "approved" ? { text: "Pick how it was paid (cash, check or bank transfer) to mark it paid.", tone: "blue" } : undefined,
+          note: short.length ? { text: `${short.map((entry) => entry.po.id).join(", ")} from ${p.supplier} arrived short. Deduct the missing items before paying.`, tone: "orange" } : notes[0] ? { text: notes[0], tone: "slate" } : fact.state === "approved" ? { text: "Approved, so it counts as paid. Record how it was paid (cash, check or bank transfer).", tone: "blue" } : undefined,
           actions: buttons,
-          extra: fact.state === "approved" || fact.state === "paid" ? `<div class="ui-lines"><h4>Attachment</h4><div class="ui-btn-row">${payableAttachmentCell(p)}</div></div>` : "",
+          extra: fact.settled ? `<div class="ui-lines"><h4>Attachment</h4><div class="ui-btn-row">${payableAttachmentCell(p)}</div></div>` : "",
         };
       },
     };
   });
   if (paidTab) {
     const since = fmtDate(addMonthsToDate(today, -12));
-    const recent = list.filter((fact) => fmtDateSafe(fact.p.date) >= since);
-    const byMethod = (/** @type {string} */ name) => recent.filter((fact) => paymentMethodLabel(fact.p.method) === name).reduce((s, fact) => s + Number(fact.p.amount || 0), 0);
+    const recent = list.filter((fact) => fact.paidOn >= since);
+    const noMethod = list.filter((fact) => fact.state === "approved");
+    const byMethod = (/** @type {string} */ name) => recent.filter((fact) => fact.state === "paid" && paymentMethodLabel(fact.p.method) === name).reduce((s, fact) => s + Number(fact.p.amount || 0), 0);
     return {
-      title: "Payments made", intro: "Bills marked paid, with how they were paid. Payments are made by cash, check or bank transfer.", placeholder: "Bill, supplier, check no. or bank", actions: [], minWidth: 820,
+      title: "Payments made", intro: "Approved bills count as paid on their approval date. Payments are made by cash, check or bank transfer.", placeholder: "Bill, supplier, check no. or bank", actions: [], minWidth: 820,
       stats: [
-        { label: "Paid, last 12 months", value: pesoShort(recent.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), sub: `${plural(recent.length, "bill")} (by bill date)`, tone: "green" },
+        { label: "Paid, last 12 months", value: pesoShort(recent.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), sub: `${plural(recent.length, "bill")} (by date paid)`, tone: "green" },
         { label: "By check", value: pesoShort(byMethod("Check")), sub: "Last 12 months", tone: "blue", scope: "Check" },
         { label: "By bank transfer · cash", value: `${pesoShort(byMethod("Bank transfer"))} · ${pesoShort(byMethod("Cash"))}`, sub: "Last 12 months", tone: "accent" },
+        { label: "Method not recorded", value: noMethod.length, sub: pesoShort(noMethod.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), tone: "slate", scope: "nomethod" },
       ],
-      cols: [{ key: "id", label: "Bill", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "date", label: "Bill date", sortable: true }, { key: "method", label: "Paid by", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "act", label: "", align: "right" }],
-      csvName: "payments-made.csv", csvHeader: ["Bill", "Supplier", "Bill date", "Paid by", "Bank", "Check no.", "Check date", "Amount"],
-      rows: rows.map((row) => ({ ...row, scopes: [...row.scopes, paymentMethodLabel(/** @type {PayableFacts} */ (list.find((fact) => fact.p.id === row.id))?.p.method)] })),
-      empty: ["No payments yet", "Bills you mark paid by cash, check or bank transfer show here."],
-      defaultSort: { key: "date", dir: -1 }, chips: [{ key: "Cash", label: "Cash", tone: "green" }, { key: "Check", label: "Check", tone: "blue" }, { key: "Bank transfer", label: "Bank transfer", tone: "accent" }], defaultScope: "",
+      cols: [{ key: "id", label: "Bill", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "date", label: "Paid on", sortable: true }, { key: "method", label: "Paid by", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "act", label: "", align: "right" }],
+      csvName: "payments-made.csv", csvHeader: ["Bill", "Supplier", "Bill date", "Paid on", "Paid by", "Bank", "Check no.", "Check date", "Amount"],
+      rows: rows.map((row) => { const fact = list.find((entry) => entry.p.id === row.id); return { ...row, scopes: [...row.scopes, ...(fact?.state === "paid" ? [paymentMethodLabel(fact.p.method)] : [])] }; }),
+      empty: ["No payments yet", "Bills show here once approved."],
+      defaultSort: { key: "date", dir: -1 }, chips: [{ key: "nomethod", label: "Method not recorded", tone: "slate" }, { key: "Cash", label: "Cash", tone: "green" }, { key: "Check", label: "Check", tone: "blue" }, { key: "Bank transfer", label: "Bank transfer", tone: "accent" }], defaultScope: "",
       after: loadMore,
     };
   }
@@ -9592,9 +9602,9 @@ function payablesTabModel(tab) {
   const overdue = open.filter((fact) => fact.overdue);
   const approval = facts.filter((fact) => fact.state === "approval");
   return {
-    title: "Bills", intro: "Every supplier payable request, from approval to paid. Payables are approved by Superadmin or CEO.", placeholder: "Bill no., supplier or item", actions: [newBill].filter(Boolean), minWidth: 1000,
+    title: "Bills", intro: "Every supplier payable request. Payables are approved by Superadmin or CEO, and an approved bill counts as paid.", placeholder: "Bill no., supplier or item", actions: [newBill].filter(Boolean), minWidth: 1000,
     stats: [
-      { label: "We owe", value: pesoShort(open.reduce((s, fact) => s + fact.balance, 0)), sub: plural(open.length, "unpaid bill"), tone: "blue", scope: "approved" },
+      { label: "We owe", value: pesoShort(open.reduce((s, fact) => s + fact.balance, 0)), sub: `${plural(open.length, "bill")} not approved yet`, tone: "blue", scope: "approval" },
       { label: "Overdue", value: pesoShort(overdue.reduce((s, fact) => s + fact.balance, 0)), sub: plural(overdue.length, "bill"), tone: "red", scope: "overdue" },
       { label: "To approve", value: approval.length, sub: pesoShort(approval.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), tone: "amber", scope: "approval" },
     ],
@@ -9603,7 +9613,7 @@ function payablesTabModel(tab) {
     rows,
     empty: ["No payable requests yet", "Create a payable request for a supplier bill. It waits for Superadmin or CEO approval before it can be paid."],
     defaultSort: { key: "due", dir: 1 },
-    chips: [{ key: "approval", label: "To approve", tone: "amber" }, { key: "approved", label: "Approved · to pay", tone: "blue" }, { key: "overdue", label: "Overdue", tone: "red" }, { key: "paid", label: "Paid", tone: "green" }, { key: "cancelled", label: "Cancelled", tone: "slate" }],
+    chips: [{ key: "approval", label: "To approve", tone: "amber" }, { key: "overdue", label: "Overdue", tone: "red" }, { key: "paid", label: "Paid", tone: "green" }, { key: "nomethod", label: "Method not recorded", tone: "slate" }, { key: "cancelled", label: "Cancelled", tone: "slate" }],
     defaultScope: "",
     after: loadMore,
   };
@@ -9616,7 +9626,7 @@ function renderPayables() {
   if (header) header.innerHTML = canEditModule("payables") ? uiButton("New payable request", { "data-payables-new": "" }, { primary: true }) : "";
   const facts = payableFactsAll();
   /** @type {Record<string, number | undefined>} */
-  const counts = { bills: facts.filter((fact) => fact.state === "approval" || fact.overdue).length, payees: new Set(facts.filter((fact) => fact.balance > 0.005).map((fact) => fact.p.supplier)).size, paid: facts.filter((fact) => fact.state === "paid").length };
+  const counts = { bills: facts.filter((fact) => fact.state === "approval" || fact.overdue).length, payees: new Set(facts.filter((fact) => fact.balance > 0.005).map((fact) => fact.p.supplier)).size, paid: facts.filter((fact) => fact.settled).length };
   qs("#payables-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(PAYABLES_TAB_LABELS).map((key) => ({ key, label: PAYABLES_TAB_LABELS[key], count: counts[key] })), active: payablesTab, attr: "data-payables-tab" });
   renderModuleAssistant("payables");
   uiRender(qs("#payables-tab-panel"), payablesTab === "overview" ? payablesOverviewHtml() : uiViewHtml(payablesTabModel(payablesTab), payablesView, "payables"));
@@ -9628,7 +9638,7 @@ const EXPENSES_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "
 const EXPENSE_STATE = /** @type {Record<string, { label: string, tone: UiTone }>} */ ({
   approval: { label: "To approve", tone: "amber" },
   returned: { label: "Returned", tone: "orange" },
-  topay: { label: "Approved · to pay", tone: "blue" },
+  topay: { label: "Paid · method not recorded", tone: "green" },
   paid: { label: "Paid", tone: "green" },
   cancelled: { label: "Cancelled", tone: "slate" },
 });
@@ -9872,7 +9882,7 @@ function expensesTabModel(tab) {
     const items = /** @type {FinancialLine[]} */ (r.items || []);
     const file = String(r.file || "").trim();
     return {
-      id: r.id, branches: [], scopes: [stateKey, ...(["topay", "paid"].includes(stateKey) && !file.replace(/^[-\s]+$/, "") ? ["noreceipt"] : []), ...Object.keys(cats).map((cat) => `cat:${cat}`)],
+      id: r.id, branches: [], scopes: [stateKey, ...(stateKey === "topay" ? ["paid"] : []), ...(["topay", "paid"].includes(stateKey) && !file.replace(/^[-\s]+$/, "") ? ["noreceipt"] : []), ...Object.keys(cats).map((cat) => `cat:${cat}`)],
       search: [r.id, r.type, r.requester, r.employeeName, r.office, state.label, ...Object.keys(cats), ...items.map((item) => item.particulars)].filter(Boolean).join(" "),
       sortValues: { id: r.id, who: String(r.requester || ""), date: inventoryDateValue(r.date), office: String(r.office || ""), amount: Number(r.amount || 0), status: state.label },
       csv: [r.id, r.type || "", Object.keys(cats).join("; "), r.employeeName || "", r.requester || "", r.date || "", r.approvedAt || "", r.office || "", Number(r.amount || 0).toFixed(2), file, state.label, r.paymentConfirmed ? paymentMethodLabel(r.method) : ""],
@@ -9888,13 +9898,13 @@ function expensesTabModel(tab) {
             { label: "Date", value: uiDate(r.date) }, { label: "Office", value: r.office || "—" },
             { label: "Employee", value: r.employeeName || "—" }, { label: "Receipt / file", value: file || "—", sub: file ? "" : "Missing" },
             { label: "Approved by", value: r.approvedBy || "—", sub: r.approvedAt ? uiDate(r.approvedAt) : "" },
-            ...(stateKey === "paid" ? [{ label: "Paid by", value: paymentMethodLabel(r.method), sub: [r.bank, r.cheque ? `No. ${r.cheque}` : ""].filter(Boolean).join(" · ") }] : []),
+            ...(["topay", "paid"].includes(stateKey) ? [{ label: "Paid", value: uiDate(fmtDateSafe(r.approvedAt) || fmtDateSafe(r.date)), sub: "Approval counts as payment" }, { label: "Paid by", value: stateKey === "topay" ? "Not recorded" : paymentMethodLabel(r.method), sub: stateKey === "topay" ? "" : [r.bank, r.cheque ? `No. ${r.cheque}` : ""].filter(Boolean).join(" · ") }] : []),
             ...(r.returnReason ? [{ label: "Returned because", value: String(r.returnReason), wide: true }] : []),
           ],
           linesTitle: "Items",
           lines: items.map((item) => ({ left: String(item.particulars || item.item || "Item"), sub: item.classification ? String(item.classification) : "", right: peso.format(Number(item.amount || 0)) })),
           total: { label: "Total", value: peso.format(Number(r.amount || 0)) },
-          note: notes[0] ? { text: notes[0], tone: "slate" } : stateKey === "topay" ? { text: "Pick how it was paid (cash, check or bank transfer) to mark it paid.", tone: "blue" } : undefined,
+          note: notes[0] ? { text: notes[0], tone: "slate" } : stateKey === "topay" ? { text: "Approved, so it counts as paid. Record how it was paid (cash, check or bank transfer).", tone: "blue" } : undefined,
           actions: [...buttons, uiButton("Full details", { "data-expense-detail": r.id })],
         };
       },
@@ -9904,19 +9914,19 @@ function expensesTabModel(tab) {
   const approval = rows.filter((r) => expenseState(r) === "approval");
   const topay = rows.filter((r) => expenseState(r) === "topay");
   return {
-    title: "Expenses", intro: "Petty cash, per diem, operating expenses and revolving fund requests, from request to paid.", placeholder: "ID, requester, category or item",
+    title: "Expenses", intro: "Petty cash, per diem, operating expenses and revolving fund requests. An approved expense counts as paid.", placeholder: "ID, requester, category or item",
     actions: canEditModule("replenishments") ? [uiButton("New expense request", { "data-expenses-new": "" }, { size: "sm", primary: true })] : [], minWidth: 1000,
     stats: [
-      { label: "Spent this month", value: pesoShort(rows.filter((r) => ["topay", "paid"].includes(expenseState(r)) && fmtDateSafe(r.date).slice(0, 7) === thisMonth).reduce((s, r) => s + Number(r.amount || 0), 0)), sub: "Approved and paid", tone: "blue" },
+      { label: "Spent this month", value: pesoShort(rows.filter((r) => ["topay", "paid"].includes(expenseState(r)) && fmtDateSafe(r.date).slice(0, 7) === thisMonth).reduce((s, r) => s + Number(r.amount || 0), 0)), sub: "Approved (counts as paid)", tone: "blue" },
       { label: "To approve", value: approval.length, sub: pesoShort(approval.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "amber", scope: "approval" },
-      { label: "Approved · to pay", value: topay.length, sub: pesoShort(topay.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "blue", scope: "topay" },
+      { label: "Method not recorded", value: topay.length, sub: pesoShort(topay.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "slate", scope: "topay" },
     ],
     cols: [{ key: "id", label: "Expense", sortable: true }, { key: "who", label: "Requested by", sortable: true }, { key: "date", label: "Date", sortable: true }, { key: "office", label: "Office", sortable: true }, { key: "cat", label: "Category" }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "act", label: "", align: "right" }],
     csvName: "expenses.csv", csvHeader: ["ID", "Expense type", "Category", "Employee", "Requester", "Requested", "Approved", "Office", "Amount", "Receipt/File", "Status", "Payment"],
     rows: viewRows,
     empty: ["No expense requests yet", "Create an expense request for petty cash, per diem or an operating expense."],
     defaultSort: { key: "date", dir: -1 },
-    chips: [{ key: "approval", label: "To approve", tone: "amber" }, { key: "returned", label: "Returned", tone: "orange" }, { key: "topay", label: "Approved · to pay", tone: "blue" }, { key: "paid", label: "Paid", tone: "green" }, { key: "noreceipt", label: "Missing receipt", tone: "orange" }, { key: "cancelled", label: "Cancelled", tone: "slate" }, ...expenseCategories().map((cat) => ({ key: `cat:${cat}`, label: cat, tone: /** @type {UiTone} */ ("slate"), onlyWhenActive: true }))],
+    chips: [{ key: "approval", label: "To approve", tone: "amber" }, { key: "returned", label: "Returned", tone: "orange" }, { key: "paid", label: "Paid", tone: "green" }, { key: "topay", label: "Method not recorded", tone: "slate" }, { key: "noreceipt", label: "Missing receipt", tone: "orange" }, { key: "cancelled", label: "Cancelled", tone: "slate" }, ...expenseCategories().map((cat) => ({ key: `cat:${cat}`, label: cat, tone: /** @type {UiTone} */ ("slate"), onlyWhenActive: true }))],
     defaultScope: "",
   };
 }
@@ -10267,7 +10277,7 @@ function clientTimeline(name) {
   return out.filter((entry) => entry.at).sort((a, b) => b.at.localeCompare(a.at));
 }
 
-/** Expected cash in (client invoices falling due) and out (bills, approved expenses, recurring costs) over 4 weeks. */
+/** Expected cash in (client invoices falling due) and out (bills awaiting approval, recurring costs) over 4 weeks. Approved bills and expenses count as already paid. */
 function cashForecast() {
   const weeks = forecastWeeks();
   const open = payableFactsAll().filter((fact) => fact.balance > 0.005);
@@ -10275,12 +10285,11 @@ function cashForecast() {
   const inflow = weeks.map((week) => canSeeReceivables
     ? byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && salesBalance(sale) > 0.005).filter((sale) => { const due = fmtDateSafe(salesDueDate(sale)); return due >= week.start && due <= week.end; }).reduce((total, sale) => total + salesBalance(sale), 0)
     : 0);
-  const expensesToPay = canViewModule("replenishments") ? (data.replenishments || []).filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed).reduce((total, r) => total + Number(r.amount || 0), 0) : 0;
   const recurring = /** @type {RecurringCost[]} */ (data.recurringCosts || []);
   const outflow = weeks.map((week, index) => {
-    const bills = open.filter((fact) => fact.p.requestStatus === "Approved" || fact.state === "approval").filter((fact) => (index === 0 && fact.due < week.start) || (fact.due >= week.start && fact.due <= week.end)).reduce((total, fact) => total + fact.balance, 0);
+    const bills = open.filter((fact) => (index === 0 && fact.due < week.start) || (fact.due >= week.start && fact.due <= week.end)).reduce((total, fact) => total + fact.balance, 0);
     const fixed = recurring.reduce((total, cost) => total + recurringOccurrences(cost, week.start, week.end).length * Number(cost.amount || 0), 0);
-    return bills + fixed + (index === 0 ? expensesToPay : 0);
+    return bills + fixed;
   });
   return { weeks, inflow, outflow, net: weeks.map((_, index) => inflow[index] - outflow[index]), canSeeReceivables };
 }
@@ -10288,7 +10297,7 @@ function cashForecast() {
 function cashForecastCard(span = /** @type {1 | 2} */ (2)) {
   const { weeks, inflow, outflow, net, canSeeReceivables } = cashForecast();
   return {
-    span, title: "Cash in vs out, next 4 weeks", sub: canSeeReceivables ? "In = client invoices falling due. Out = bills due (overdue bills counted this week), approved expenses and recurring costs." : "Out = bills due (overdue counted this week), approved expenses and recurring costs.",
+    span, title: "Cash in vs out, next 4 weeks", sub: canSeeReceivables ? "In = client invoices falling due. Out = bills not yet approved, by due date (overdue counted this week), and recurring costs. Approved bills and expenses count as paid." : "Out = bills not yet approved, by due date (overdue counted this week), and recurring costs. Approved bills and expenses count as paid.",
     body: uiBarChart({ labels: weeks.map((week) => week.label), series: canSeeReceivables ? [{ name: "In", values: inflow }, { name: "Out", values: outflow }] : [{ name: "Out", values: outflow }], format: pesoAxis, net: canSeeReceivables ? net : undefined, caption: "Cash forecast by week" }),
     takeaway: canSeeReceivables && outflow.some((value) => value > 0) ? (net.some((value) => value < 0) ? `Out is higher than In in ${plural(net.filter((value) => value < 0).length, "week")}. Collect overdue invoices or move a bill date before then.` : "Expected collections cover the bills due in each of the next 4 weeks.") + " Overdue client invoices are not counted as cash in." : undefined,
   };
@@ -11185,8 +11194,8 @@ function reportHubPreviews() {
   const outstanding = openSales.reduce((sum, sale) => sum + reportBalance(sale.net, sale.paid), 0);
   const collected = openSales.reduce((sum, sale) => sum + Number(sale.paid || 0), 0);
 
-  const payableBalance = data.payables.reduce((sum, p) => sum + reportBalance(p.amount, p.paid), 0);
-  const payablePaid = data.payables.reduce((sum, p) => sum + Number(p.paid || 0), 0);
+  const payableBalance = data.payables.reduce((sum, p) => sum + payableFacts(p).balance, 0);
+  const payablePaid = data.payables.reduce((sum, p) => sum + payablePaidAmount(p), 0);
   const pendingPayables = data.payables.filter((p) => !["Approved", "Cancelled", "Paid"].includes(p.requestStatus || p.status)).length;
 
   const inventory = byBranch(data.inventory);
@@ -11539,8 +11548,8 @@ function renderSupplierPayablesReport() {
   const payables = data.payables.filter((p) => dateInRange(p.date, from, to));
   setupReportDetailToolbar({ statusLabel: "Status", statusOptions: [...new Set(payables.map((p) => p.requestStatus || p.status).filter(Boolean))], section: "payables", sectionLabel: "Payables" });
   const totalPayables = payables.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const totalPaid = payables.reduce((sum, p) => sum + Number(p.paid || 0), 0);
-  const totalBalance = payables.reduce((sum, p) => sum + reportBalance(p.amount, p.paid), 0);
+  const totalPaid = payables.reduce((sum, p) => sum + payablePaidAmount(p), 0);
+  const totalBalance = payables.reduce((sum, p) => sum + payableFacts(p).balance, 0);
   const pendingCount = payables.filter((p) => !["Approved", "Cancelled", "Paid"].includes(p.requestStatus || p.status)).length;
   renderReportKpis([
     ["Total Payables", peso.format(totalPayables)],
@@ -11551,8 +11560,8 @@ function renderSupplierPayablesReport() {
   setReportChart("#report-detail-chart-summary", { title: "Paid vs. outstanding", kind: "stack", html: reportStack([{ label: "Paid", value: totalPaid, tone: "green", display: pesoCompact(totalPaid) }, { label: "Outstanding", value: totalBalance, tone: "orange", display: pesoCompact(totalBalance) }]) });
   setReportTrend(reportMonthlyTotals(payables, (p) => p.date, (p) => p.amount), "Payables requested by month", "Monthly payable amount requested for the records in this view.");
   const bySupplier = /** @type {[string, number][]} */ (Object.entries(payables.reduce((/** @type {Record<string, number>} */ acc, p) => {
-    const balance = reportBalance(p.amount, p.paid);
-    if (balance) acc[p.supplier] = (acc[p.supplier] || 0) + balance;
+    const balance = payableFacts(p).balance;
+    if (balance > 0.005) acc[p.supplier] = (acc[p.supplier] || 0) + balance;
     return acc;
   }, {})).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 10));
   setReportChart("#report-detail-chart-primary", { title: "Largest balances by supplier", html: barRows(bySupplier, (value) => pesoCompact(value)), note: "Top 10 suppliers by outstanding balance." });
@@ -11563,7 +11572,7 @@ function renderSupplierPayablesReport() {
   }, {})).sort((a, b) => Number(b[1]) - Number(a[1])));
   setReportChart("#report-detail-chart-secondary", { title: "Requests by status", html: barRows(byStatus, (value) => `${value} request${value === 1 ? "" : "s"}`, byStatus.map(([label]) => reportStatusTone(label))), note: "Payable request count grouped by status." });
   const filtered = payables.filter((p) => (!status || (p.requestStatus || p.status) === status) && includesSearch(Object.values(p)));
-  reportTable("#report-detail-table", ["Supplier", "Item/Service", "Method", "Amount", "Paid", "Balance", "Status"], filtered.map((p) => ({ focus: p.id, cells: [p.supplier, itemizedSummary(p.items), p.method || "-", peso.format(p.amount), peso.format(p.paid), peso.format(reportBalance(p.amount, p.paid)), `<span class="pill ${statusClass(p.requestStatus || p.status)}">${escapeHtml(p.requestStatus || p.status || "-")}</span>`] })));
+  reportTable("#report-detail-table", ["Supplier", "Item/Service", "Method", "Amount", "Paid", "Balance", "Status"], filtered.map((p) => ({ focus: p.id, cells: [p.supplier, itemizedSummary(p.items), p.method || "-", peso.format(p.amount), peso.format(payablePaidAmount(p)), peso.format(payableFacts(p).balance), `<span class="pill ${statusClass(p.requestStatus || p.status)}">${escapeHtml(p.requestStatus || p.status || "-")}</span>`] })));
 }
 
 function renderServiceWarrantyReport() {
@@ -13277,7 +13286,7 @@ function masterlistRecordOpenActivity(type, record) {
   const openDemo = (/** @type {any} */ predicate) => (data.inventoryDemoRequests || []).some((demo) => !["Returned", "To Sales", "Cancelled"].includes(demo.status) && predicate(demo));
   const openPo = (/** @type {any} */ predicate) => (data.purchaseOrders || []).some((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po)) && predicate(po));
   const openInvPo = (/** @type {any} */ predicate) => (data.inventoryPurchaseOrders || []).some((po) => !inventoryPoTerminalStatuses.includes(po.status) && predicate(po));
-  const openPayable = (/** @type {any} */ predicate) => (data.payables || []).some((p) => !["Paid", "Cancelled"].includes(p.requestStatus || p.status) && !p.paymentConfirmed && predicate(p));
+  const openPayable = (/** @type {any} */ predicate) => (data.payables || []).some((p) => payableFacts(p).state === "approval" && predicate(p));
   const openCollection = (/** @type {any} */ predicate) => (data.paymentRequests || []).some((r) => !["Completed", "Cancelled"].includes(r.requestStatus || r.status) && predicate(r));
   const reasons = [];
   if (type === "client") {
@@ -13306,7 +13315,7 @@ function masterlistRecordOpenActivity(type, record) {
     if (openPayable((/** @type {any} */ p) => p.supplier === name)) reasons.push("an unpaid payable");
   } else if (type === "employee") {
     const name = record.name;
-    if ((data.replenishments || []).some((r) => (r.employeeName === name || r.requester === name) && !["Paid", "Completed", "Cancelled"].includes(r.requestStatus || r.status))) reasons.push("an open expense request");
+    if ((data.replenishments || []).some((r) => (r.employeeName === name || r.requester === name) && !["Paid", "Completed", "Cancelled", "Approved"].includes(r.requestStatus || r.status))) reasons.push("an open expense request");
     if (openDemo((/** @type {any} */ d) => d.salesAgent === name)) reasons.push("an active demo unit");
   } else if (type === "bank") {
     const name = record.name;

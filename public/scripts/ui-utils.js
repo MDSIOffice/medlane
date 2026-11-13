@@ -659,7 +659,7 @@ function workflowFacts() {
   const pendingContacts = data.collectionContacts.filter((contact) => contact.status === "Pending" || contact.status === "No Response" || contact.status === "Unreached" || contact.status === "Cheque Available");
   const pendingTransfers = data.pendingTransfers.filter((transfer) => transfer.status === "For Receiving");
   const pendingExpenses = data.replenishments.filter((item) => (item.requestStatus || item.status) !== "Approved" && (item.requestStatus || item.status) !== "Cancelled");
-  const duePayables = data.payables.filter((payable) => payable.amount > payable.paid);
+  const duePayables = data.payables.filter((payable) => payableFacts(payable).balance > 0.005);
   const chequeReviews = data.payments.filter((payment) => payment.method === "Cheque" && (!payment.bank || !payment.chequeDate));
   const duplicateClients = data.clients.filter((client, index) => { const tin = normalizeMasterTin(client.tin); return data.clients.findIndex((item) => item.name.toLowerCase() === client.name.toLowerCase() || (isUniqueClientTin(tin) && normalizeMasterTin(item.tin) === tin)) !== index; });
   const openIssues = data.productIssues.filter((report) => report.status === "Open");
