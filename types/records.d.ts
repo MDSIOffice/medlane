@@ -64,6 +64,8 @@ interface InventoryPO {
   receivingBranch?: string;
   approvedBy?: string;
   cancelledBy?: string;
+  /** Delivery date the supplier committed to (YYYY-MM-DD), for on-time %. */
+  promisedDate?: string;
   [extra: string]: any;
 }
 
@@ -248,6 +250,8 @@ interface MasterItem {
   uom?: string;
   price: number;
   cost?: number;
+  /** Supplier order multiple (units per pack/case); reorder suggestions round up to it. */
+  packSize?: number;
   category?: string;
   archived?: boolean;
   [extra: string]: any;
@@ -306,6 +310,11 @@ interface Payable {
   qty?: number;
   uom?: string;
   paymentConfirmed?: boolean;
+  /** When the supplier expects payment (YYYY-MM-DD). */
+  dueDate?: string;
+  requestNote?: string;
+  withholdingTax1?: number;
+  withholdingTax2?: number;
 }
 interface Replenishment {
   id: string;
@@ -352,6 +361,11 @@ interface PrintTemplate { type: string; [extra: string]: any }
 interface CreditInvoiceRequest { id: string; status: string; [extra: string]: any }
 
 /** The slices of app state that have precise types; every other collection stays loosely typed. */
+/** Monthly budget for one expense classification (optionally one office); Superadmin/CEO/Admin edit. */
+interface ExpenseBudget { id: string; category: string; office?: string; monthly: number; updatedBy?: string; updatedAt?: string }
+/** A cost that repeats (rent, utilities, subscriptions) so the cash forecast and budgets can expect it. */
+interface RecurringCost { id: string; name: string; category: string; office?: string; amount: number; every: "Monthly" | "Quarterly" | "Yearly"; nextDue: string; payee?: string; active?: boolean; updatedBy?: string; updatedAt?: string }
+
 interface AppData {
   purchaseOrders: ClientPO[];
   inventoryPurchaseOrders: InventoryPO[];
@@ -379,6 +393,8 @@ interface AppData {
   calendarEvents: CalendarEvent[];
   printTemplates: PrintTemplate[];
   pendingCreditInvoices: CreditInvoiceRequest[];
+  expenseBudgets: ExpenseBudget[];
+  recurringCosts: RecurringCost[];
   [collection: string]: any;
 }
 

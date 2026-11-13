@@ -118,7 +118,9 @@ const moduleRecordKeys = {
   history: ["sales", "purchaseOrders", "payments"],
   collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
   payables: ["payables"],
-  replenishments: ["replenishments"],
+  // Budgets and recurring costs sit with Expenses: anyone with Expenses can read them, but only
+  // Superadmin/CEO/Admin may change them (canAccessKey).
+  replenishments: ["replenishments", "expenseBudgets", "recurringCosts"],
   imports: ["imports"],
   reports: ["reports"],
   reconciliation: ["reconHistory"],
@@ -133,6 +135,8 @@ const moduleRecordKeys = {
   calendar: ["calendarEvents"],
 };
 
+/** Expense budgets / recurring costs: Superadmin, CEO and Admin set them; other Expenses users only read them. */
+const EXPENSE_PLANNING_KEYS = ["expenseBudgets", "recurringCosts"];
 const persistedKeys = [...new Set(Object.values(moduleRecordKeys).flat())];
 const genericStateBlockedKeys = new Set(["users", "branch", "masterTab"]);
 const defaultSeedSignature = { clients: 2, items: 4, suppliers: 3, employees: 1, banks: 2 };
@@ -2015,6 +2019,15 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
         throw new Error("Only Superadmin/CEO can approve purchase orders");
       }
     }
+    // A PO still awaiting approval may not be moved on (sent, received…) by a plain save either —
+    // the only ways out are approval (above / the approve endpoint) or cancelling it.
+    const pendingCandidates = rows.filter((row) => row.module_name === "inventoryPurchaseOrders" && !["pending approval", "approved", "cancelled"].includes(lower(row.data?.status)));
+    if (pendingCandidates.length) {
+      const stored = await fetchStored("inventoryPurchaseOrders", pendingCandidates);
+      for (const row of pendingCandidates) {
+        if (lower(stored.get(row.record_key)?.status) === "pending approval") throw new Error("A purchase order must be approved by Superadmin/CEO before it can move on");
+      }
+    }
   }
 }
 
@@ -2236,6 +2249,7 @@ function canAccessKey(profile, key, mode = "view") {
   // Engineering/Product Specialist may only update status (assertSupportReportChangesAllowed).
   if (mode === "edit" && key === "productIssues" && !["Sales", "Admin", "Engineering", "Product Specialist"].includes(profile?.role)) return false;
   if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
+  if (mode === "edit" && EXPENSE_PLANNING_KEYS.includes(key) && profile?.role !== "Admin") return false;
   const allowed = profile?.customPermissions?.[mode] || [];
   const modules = modulesForKey(key);
   return modules.some((module) => allowed.includes(module));

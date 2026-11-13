@@ -142,7 +142,7 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"];
+const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "warranty", "purchase-history", "imports", "reports", "reconciliation", "security", "users", "product-issues"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -345,6 +345,78 @@ const WORKFLOW_RULES = {
       return n ? { tone: "blue", text: `${plural(n, "client")} ${n === 1 ? "has a check" : "have checks"} ready for pickup.`, action: "Show", attrs: { "data-wa-goto": "receivables-tracker|followups|Cheque Available|" } } : null;
     } },
   ],
+  "purchase-orders": [
+    { id: "pos-to-approve", rule: () => {
+      if (!canApprovePurchaseOrders()) return null;
+      const waiting = (data.inventoryPurchaseOrders || []).filter((po) => po.status === "Pending Approval");
+      if (!waiting.length) return null;
+      const money = waiting.reduce((sum, po) => sum + inventoryPoTotal(po), 0);
+      const top = [...waiting].sort((a, b) => inventoryPoTotal(b) - inventoryPoTotal(a))[0];
+      return { tone: "amber", money, text: waiting.length === 1 ? `${top.id} (${salesPesoShort(money)}) is waiting for your approval.` : `${plural(waiting.length, "purchase order")} (${salesPesoShort(money)}) are waiting for your approval.`, action: "Review", attrs: { "data-wa-goto": `purchase-orders|pos|approval|${waiting.length === 1 ? top.id : ""}` } };
+    } },
+    { id: "not-on-order", rule: (ctx) => {
+      const none = supplierReorderRows(ctx.cover, supplierPoFactsAll()).filter((row) => row.state.key === "none");
+      if (!none.length) return null;
+      return { tone: "red", money: none.reduce((sum, row) => sum + row.suggest * row.cost, 0), text: `${none.slice(0, 2).map((row) => row.name).join(" and ")}${none.length > 2 ? ` and ${none.length - 2} more` : ""} ${none.length === 1 ? "is" : "are"} running out and not on any order.`, action: "Reorder", attrs: { "data-wa-goto": "purchase-orders|reorder|none|" } };
+    } },
+    { id: "late-deliveries", rule: () => {
+      const late = supplierPoFactsAll().filter((fact) => fact.lateOpenDays > 0);
+      if (!late.length) return null;
+      return { tone: "orange", money: late.reduce((sum, fact) => sum + fact.total, 0), text: late.length === 1 ? `${late[0].po.id} from ${late[0].po.supplier} is ${plural(late[0].lateOpenDays, "day")} past its promised date.` : `${plural(late.length, "purchase order")} are past the supplier's promised date.`, action: "Show", attrs: { "data-wa-goto": `purchase-orders|pos|late|${late.length === 1 ? late[0].po.id : ""}` } };
+    } },
+    { id: "arrived-to-receive", rule: () => {
+      if (!canManagePoReceiving()) return null;
+      const arrived = (data.inventoryPurchaseOrders || []).filter((po) => po.status === "For Receiving");
+      return arrived.length ? { tone: "blue", text: `${plural(arrived.length, "purchase order")} arrived and ${arrived.length === 1 ? "needs" : "need"} receiving.`, action: "Show", attrs: { "data-wa-goto": "purchase-orders|pos|open|" } } : null;
+    } },
+  ],
+  payables: [
+    { id: "overdue-bills", rule: () => {
+      const late = payableFactsAll().filter((fact) => fact.overdue);
+      if (!late.length) return null;
+      const money = late.reduce((sum, fact) => sum + fact.balance, 0);
+      return { tone: "red", money, text: `${plural(late.length, "bill")} (${salesPesoShort(money)}) ${late.length === 1 ? "is" : "are"} past due.`, action: "Show overdue", attrs: { "data-wa-goto": "payables|bills|overdue|" } };
+    } },
+    { id: "bills-to-approve", rule: () => {
+      if (!canApproveFinancialRequest("payable")) return null;
+      const waiting = payableFactsAll().filter((fact) => fact.state === "approval");
+      if (!waiting.length) return null;
+      const money = waiting.reduce((sum, fact) => sum + Number(fact.p.amount || 0), 0);
+      return { tone: "amber", money, text: `${plural(waiting.length, "payable request")} (${salesPesoShort(money)}) waiting for your approval.`, action: "Review", attrs: { "data-wa-goto": "payables|bills|approval|" } };
+    } },
+    { id: "due-this-week", rule: () => {
+      const soon = payableFactsAll().filter((fact) => fact.balance > 0.005 && fact.days >= 0 && fact.days <= 7);
+      if (!soon.length) return null;
+      const money = soon.reduce((sum, fact) => sum + fact.balance, 0);
+      return { tone: "amber", money, text: `${plural(soon.length, "bill")} (${salesPesoShort(money)}) fall due within 7 days.`, action: "Show", attrs: { "data-wa-goto": "payables|bills|approved|" } };
+    } },
+  ],
+  replenishments: [
+    { id: "over-budget", rule: () => {
+      const budgets = expenseBudgetMap();
+      const now = expenseSpendByCategory(byBranch(data.replenishments, "office"), recentMonthKeys(1)[0]);
+      const over = Object.keys(budgets).filter((cat) => (now[cat] || 0) > budgets[cat] * 1.1);
+      if (!over.length) return null;
+      return { tone: "red", money: over.reduce((sum, cat) => sum + (now[cat] || 0) - budgets[cat], 0), text: `${over.slice(0, 2).join(" and ")}${over.length > 2 ? ` and ${over.length - 2} more` : ""} ${over.length === 1 ? "is" : "are"} more than 10% over this month's budget.`, action: "Budgets", attrs: { "data-wa-goto": "replenishments|budgets|over|" } };
+    } },
+    { id: "expenses-to-approve", rule: () => {
+      if (!canApproveFinancialRequest("expense")) return null;
+      const waiting = byBranch(data.replenishments, "office").filter((r) => expenseState(r) === "approval");
+      if (!waiting.length) return null;
+      const money = waiting.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      return { tone: "amber", money, text: `${plural(waiting.length, "expense request")} (${salesPesoShort(money)}) waiting for approval.`, action: "Review", attrs: { "data-wa-goto": "replenishments|list|approval|" } };
+    } },
+    { id: "returned-to-me", rule: () => {
+      const mine = (data.replenishments || []).filter((r) => expenseState(r) === "returned" && r.createdByUser && r.createdByUser === currentUser?.email);
+      return mine.length ? { tone: "orange", text: `${plural(mine.length, "of your expense requests", "of your expense requests")} ${mine.length === 1 ? "was" : "were"} returned for changes.`, action: "Show", attrs: { "data-wa-goto": `replenishments|list|returned|${mine.length === 1 ? mine[0].id : ""}` } } : null;
+    } },
+    { id: "expenses-to-pay", rule: () => {
+      const topay = byBranch(data.replenishments, "office").filter((r) => expenseState(r) === "topay");
+      if (!topay.length) return null;
+      const money = topay.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      return { tone: "blue", money, text: `${plural(topay.length, "approved expense")} (${salesPesoShort(money)}) still to be paid out.`, action: "Show", attrs: { "data-wa-goto": "replenishments|list|topay|" } };
+    } },
+  ],
 };
 
 /** Opens a redesigned module on a tab with a status filter and/or a selected record (assistant links). @param {string} module @param {string} tab @param {string} scope @param {string} sel */
@@ -356,6 +428,9 @@ function workflowGoto(module, tab, scope, sel) {
   else if (module === "invoicing") { if (INVOICING_TAB_LABELS[tab]) invoicingTab = tab; invoicingView = view; }
   else if (module === "collections") { if (COLLECTIONS_TAB_LABELS[tab]) collectionsTab = tab; collectionsView = view; }
   else if (module === "receivables-tracker") { if (RECEIVABLES_TAB_LABELS[tab]) receivablesTab = tab; receivablesView = view; }
+  else if (module === "purchase-orders") { if (PURCHASING_TAB_LABELS[tab]) purchasingTab = tab; purchasingView = view; }
+  else if (module === "payables") { if (PAYABLES_TAB_LABELS[tab]) payablesTab = tab; payablesView = view; }
+  else if (module === "replenishments") { if (EXPENSES_TAB_LABELS[tab]) expensesTab = tab; expensesView = view; }
   else return;
   if (document.body.dataset.activeSection !== module) showSection(module);
   else renderSection(module);
@@ -1319,6 +1394,9 @@ function canRestoreSection(sectionId) {
 
 /** @param {string} sectionId @param {Record<string, any>} [options] */
 function showSection(sectionId, options = {}) {
+  // The Purchase Orders page is supplier purchasing; roles that can't see supplier POs (and old
+  // client-PO links) land on Sales → Sales orders, where client POs are worked.
+  if (sectionId === "purchase-orders" && currentUser && !supplierPurchasingVisible()) { salesTab = "orders"; sectionId = "sales"; }
   document.body.dataset.activeSection = sectionId;
   // Keep the URL on the current page so a browser refresh stays here instead of bouncing to the
   // dashboard. Detail pages keep whatever list page the user came from.
@@ -1352,7 +1430,7 @@ function applyRole() {
   qs("#login-screen").classList.add("hidden");
   renderUserMenu();
   qsa(".nav-item").forEach((button) => {
-    button.hidden = button.dataset.section === "security" || !effectiveModules().includes(/** @type {string} */ (button.dataset.section));
+    button.hidden = button.dataset.section === "security" || !effectiveModules().includes(/** @type {string} */ (button.dataset.section)) || (button.dataset.section === "purchase-orders" && !supplierPurchasingVisible());
   });
   renderBranchFilter();
   if (currentUser.branch !== "all") data.branch = currentUser.branch;
@@ -4947,6 +5025,9 @@ function sectionQueryString(sectionId) {
   if (sectionId === "invoicing") return invoicingQueryString();
   if (sectionId === "collections") return collectionsQueryString();
   if (sectionId === "receivables-tracker") return receivablesQueryString();
+  if (sectionId === "purchase-orders") return purchasingQueryString();
+  if (sectionId === "payables") return payablesQueryString();
+  if (sectionId === "replenishments") return expensesQueryString();
   return `section=${encodeURIComponent(sectionId)}`;
 }
 
@@ -6010,49 +6091,6 @@ function renderFinancialSummary(target, heroCards, groups) {
     </div>`;
 }
 
-function renderPurchaseOrders() {
-  defaultDateRangeIfEmpty("po-date-from", "po-date-to");
-  const from = qs("#po-date-from")?.value || "";
-  const to = qs("#po-date-to")?.value || "";
-  const visible = byBranch(data.purchaseOrders || [], "area")
-    .filter((po) => dateInRange(po.date, from, to))
-    .filter((po) => includesSearch([po.id, po.client, po.area, po.salesperson, poStatus(po), ...(po.lines || []).map((line) => line.item)]))
-    .reverse();
-  const pending = visible.filter((po) => poStatus(po) === "Pending Orders");
-  const forInvoicing = visible.filter((po) => poStatus(po) === "For Invoicing");
-  const invoiced = visible.filter((po) => PO_TERMINAL_STATUSES.includes(poStatus(po)));
-  const poVisualCardRowLimit = 5;
-  const pendingOverflowNote = pending.length > poVisualCardRowLimit ? `Showing the top ${poVisualCardRowLimit} of ${pending.length} partially served orders.` : "Computed as ordered quantity minus served invoice quantity per PO line.";
-  const forInvoicingOverflowNote = forInvoicing.length > poVisualCardRowLimit ? `Showing the top ${poVisualCardRowLimit} of ${forInvoicing.length} unserved POs.` : "Computed from POs with no served invoice quantity yet.";
-  qs("#purchase-order-visuals").innerHTML = [
-    visualCard("!", "Pending Orders", `${pending.length} PO${pending.length === 1 ? "" : "s"}`, pending.length ? barRows(pending.slice(0, poVisualCardRowLimit).map((po) => [po.id, (po.lines || []).reduce((sum, line) => sum + poLineStatus(po, line).pending, 0)]), (value) => `${value} pending qty`, ["orange", "red"]) : "<p>No partially served orders.</p>", pending.length ? "warning" : "success", pendingOverflowNote),
-    visualCard("▧", "For Invoicing", `${forInvoicing.length} unserved`, forInvoicing.length ? barRows(forInvoicing.slice(0, poVisualCardRowLimit).map((po) => [po.id, (po.lines || []).length]), (value) => `${value} line${value === 1 ? "" : "s"}`, ["", "green"]) : "<p>No unserved POs.</p>", "info", forInvoicingOverflowNote),
-    visualCard("✓", "Completed", `${invoiced.length} served`, "<p>Completed POs are tagged by the document that fully served them.</p>", "success", "Computed from POs whose ordered quantities are fully served by SI or TS."),
-  ].join("");
-  qsa("#po-workflow-tabs .tab").forEach((btn) => {
-    const tab = btn.dataset.poWorkflow;
-    btn.classList.toggle("active", tab === poWorkflowTab);
-    const count = tab === "invoiced" ? invoiced.length : pending.length + forInvoicing.length;
-    btn.innerHTML = `${tab === "invoiced" ? "Invoiced" : "Pending"} <span class="tab-count">${count}</span>`;
-  });
-  const tabbed = visible.filter((po) => (poWorkflowTab === "invoiced") === PO_TERMINAL_STATUSES.includes(poStatus(po)));
-  qsa("#po-view-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.poView === poViewMode));
-  qs("#purchase-order-table-view").hidden = poViewMode !== "table";
-  qs("#purchase-order-grid").hidden = poViewMode !== "card";
-  if (poViewMode === "table") {
-    table("#purchase-order-table", ["PO No.", "Client", "Area", "Date", "Status", "Total", "Actions"], tabbed.map((po) => ({ focus: po.id, cells: [po.id, po.client, po.area || "-", po.date, `<span class="pill ${statusClass(poStatus(po))}">${escapeHtml(poStatus(po))}</span>`, peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0)), `${poCanEdit(po) ? `<button class="mini-button" data-po-edit="${escapeHtml(po.id)}">Edit</button> ` : ""}<button class="mini-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button>`] })));
-  }
-  qs("#purchase-order-grid").innerHTML = tabbed.map((po) => {
-    const status = poStatus(po);
-    const lines = (po.lines || []).map((line) => {
-      const served = poLineStatus(po, line);
-      return `<li><span>${escapeHtml(line.item)}</span><strong>${served.served}/${line.qty} served · ${served.pending} pending</strong></li>`;
-    }).join("");
-    return `<details class="invoice-card collapsible-invoice" data-focus-record="${escapeHtml(po.id)}"><summary><div class="invoice-type-icon type-PO">PO</div><div class="invoice-headline"><div class="invoice-title-row"><strong class="invoice-number">${escapeHtml(po.client)}</strong><strong class="invoice-amount">${peso.format((po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0))}</strong></div><div class="invoice-subrow"><span class="pill ${statusClass(status)}">${escapeHtml(status)}</span><small class="invoice-client-line">${escapeHtml(po.id)}</small><small>${escapeHtml(po.date)}</small></div></div></summary><div class="invoice-details"><ul class="compact-list">${lines}</ul><div class="modal-actions">${poCanEdit(po) ? `<button class="ghost-button" data-po-edit="${escapeHtml(po.id)}">Edit PO</button>` : ""}<button class="ghost-button" data-create-invoice-po="${escapeHtml(po.id)}">Create invoice/DR</button></div></div></details>`;
-  }).join("");
-  const loadMorePurchaseOrdersButton = qs("#load-more-purchase-orders");
-  if (loadMorePurchaseOrdersButton) loadMorePurchaseOrdersButton.hidden = !modulePagination.purchaseOrders?.hasMore || !tableFullyRevealed("#purchase-order-table");
-}
 
 /** @param {string} poId */
 function openInvoiceForPurchaseOrder(poId) {
@@ -6071,7 +6109,7 @@ function editPurchaseOrder(poId) {
   const po = data.purchaseOrders.find((entry) => entry.id === poId);
   if (!po) return toast("Purchase Order not found.");
   if (!poCanEdit(po)) return toast("This PO can no longer be edited — it already has invoices/DRs against it or is fully served.");
-  showSection("purchase-orders");
+  showSection("sales");
   openModal("purchaseOrder", { poEdit: po });
 }
 
@@ -8638,39 +8676,6 @@ function payable2307Cell(payable) {
   return `<button class="ghost-button" data-generate2307="${escapeHtml(payable.id)}" type="button">Generate 2307</button>`;
 }
 
-function renderPayables() {
-  ensureUploadedFilesLoaded(renderPayables);
-  renderPayablesWorkflowTabs();
-  const requests = data.payables.filter((p) => p.requestStatus !== "Approved" && p.requestStatus !== "Cancelled");
-  const approved = data.payables.filter((p) => p.requestStatus === "Approved" && !p.paymentConfirmed);
-  const rows = data.payables.filter((p) => includesSearch(Object.values(p)));
-  // Summary totals should reflect live money, not requests that were cancelled — only the
-  // full #payables-table below keeps the full `rows` set (cancelled included) for audit history.
-  const activeRows = rows.filter((p) => (p.requestStatus || p.status) !== "Cancelled");
-  const totalPayables = activeRows.reduce((sum, payable) => sum + Number(payable.amount || 0), 0);
-  const totalPaid = activeRows.reduce((sum, payable) => sum + Number(payable.paid || 0), 0);
-  const balance = activeRows.reduce((sum, payable) => sum + Math.max(Number(payable.amount || 0) - Number(payable.paid || 0), 0), 0);
-  const pendingCount = activeRows.filter((payable) => !["Approved", "Cancelled", "Paid"].includes(payable.requestStatus || payable.status)).length;
-  const approvedCount = activeRows.filter((payable) => (payable.requestStatus || payable.status) === "Approved" && !payable.paymentConfirmed).length;
-  const paidCount = activeRows.filter((payable) => payable.paymentConfirmed || (payable.status || "") === "Paid").length;
-  const chequeCount = activeRows.filter((payable) => payable.method === "Cheque").length;
-  const largestPayable = activeRows.reduce((max, payable) => Math.max(max, Number(payable.amount || 0)), 0);
-  const averagePayable = activeRows.length ? Math.round(totalPayables / activeRows.length) : 0;
-  renderFinancialSummary("#payables-summary-grid", [
-    { tone: "primary", label: "Total displayed payables", value: peso.format(totalPayables), note: `${activeRows.length} payable${activeRows.length === 1 ? "" : "s"} in this view` },
-    { tone: "success", label: "Total paid", value: peso.format(totalPaid), note: `${paidCount} confirmed payment${paidCount === 1 ? "" : "s"}` },
-    { tone: "warning", label: "Outstanding balance", value: peso.format(balance), note: `${approvedCount} approved awaiting payment` },
-  ], [
-    { title: "Status Count", items: [{ label: "Pending", value: pendingCount }, { label: "Approved", value: approvedCount }, { label: "Paid", value: paidCount }] },
-    { title: "Payable Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averagePayable) }, { label: "Largest", value: peso.format(largestPayable) }] },
-    { title: "Payment Risk", kind: "pairs", items: [{ label: "Balance", value: peso.format(balance) }, { label: "Cheques", value: chequeCount }] },
-  ]);
-  table("#payable-requests-table", ["ID", "Supplier", "Requested", "Items", "Gross", "Withholding", "Net Total", "Status", "Actions"], requests.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", itemizedSummary(p.items), peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill ${statusClass(p.requestStatus)}">${p.requestStatus}</span>`, requestActions("payable", p.id)] })));
-  table("#final-payables-table", ["ID", "Supplier", "Requested", "Approved", "Gross", "Withholding", "Net Total", "Status", "Attachment", "2307", "Set payment type"], approved.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", p.approvedAt || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), `<span class="pill success">Approved</span>`, payableAttachmentCell(p), payable2307Cell(p), paymentConfirmActions("payable", p.id)] })));
-  table("#payables-table", ["ID", "Supplier", "Requested", "Approved", "Items/Service", "Method", "Gross", "Withholding", "Net Total", "Paid", "Balance", "Cheque Details", "Tag", "Attachment", "2307", "Voucher"], rows.map((p) => ({ focus: p.id, cells: [p.id, p.supplier, p.date || "-", p.approvedAt || "-", itemizedSummary(p.items), p.method || "-", peso.format(p.grossAmount || p.amount), payableWithholdingSummary(p), peso.format(p.amount), peso.format(p.paid), peso.format(p.amount - p.paid), p.method === "Cheque" ? `${p.cheque || "-"}<small>${p.bank || "No bank"}${p.chequeDate ? ` · ${p.chequeDate}` : ""}</small>` : "-", `<span class="pill ${statusClass(p.requestStatus || p.status)}">${p.requestStatus || p.status}</span>`, payableAttachmentCell(p), payable2307Cell(p), `<button class="ghost-button" data-request-preview="payable:${escapeHtml(p.id)}" type="button">Print Voucher</button>`] })));
-  const loadMorePayablesButton = qs("#load-more-payables");
-  if (loadMorePayablesButton) loadMorePayablesButton.hidden = !modulePagination.payables?.hasMore || !tableFullyRevealed("#payables-table");
-}
 
 /** @param {Record<string, any>} payable */
 function payableWithholdingSummary(payable) {
@@ -8884,68 +8889,1270 @@ async function downloadBir2307(payableId) {
   }
 }
 
-function renderPayablesWorkflowTabs() {
-  /** @type {Record<string, any>} */
-  const counts = {
-    requests: data.payables.filter((p) => p.requestStatus !== "Approved" && p.requestStatus !== "Cancelled").length,
-    payment: data.payables.filter((p) => p.requestStatus === "Approved" && !p.paymentConfirmed).length,
-    all: data.payables.length,
-  };
-  /** @type {Record<string, any>} */
-  const labels = { requests: "Requests", payment: "For Payment", all: "All Payables" };
-  qsaIn(qs("#payables-workflow-tabs"), "[data-payables-workflow]").forEach((button) => {
-    const tab = /** @type {string} */ (button.dataset.payablesWorkflow);
-    button.classList.toggle("active", tab === payablesWorkflowTab);
-    button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
+
+
+
+// ===== Purchase Orders (supplier purchasing), Payables, Expenses — module redesign, phase 4 =====
+// Every figure below is computed from real records: supplier POs (data.inventoryPurchaseOrders),
+// stock, invoices, payables, expense requests, and the expense budgets / recurring costs keys.
+// Client POs keep living in data.purchaseOrders and are worked from Sales → Sales orders.
+
+/** Payables with no due date are treated as due this many days after their date. */
+const PAYABLE_DEFAULT_TERMS_DAYS = 30;
+/** @param {unknown} value */
+function itemPackSizeValue(value) { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : undefined; }
+/** Last `count` month keys (YYYY-MM), oldest first, ending with the current Manila month. @param {number} count */
+function recentMonthKeys(count) {
+  const [year, month] = fmtDate(today).split("-").map(Number);
+  return Array.from({ length: count }, (_, index) => new Date(Date.UTC(year, month - 1 - (count - 1 - index), 1)).toISOString().slice(0, 7));
+}
+/** "Nov" for "2026-11". @param {string} key */
+function shortMonthLabel(key) { return new Date(`${key}-01T00:00:00`).toLocaleDateString("en-PH", { month: "short" }); }
+/** ₱1.30M above a million, else whole pesos. @param {number} value */
+function pesoCompact(value) {
+  const sign = value < 0 ? "−" : "";
+  const abs = Math.abs(value);
+  return abs >= 1e6 ? `${sign}₱${(abs / 1e6).toFixed(2)}M` : `${sign}₱${Math.round(abs).toLocaleString("en-PH")}`;
+}
+/** Chart axis label. @param {number} value */
+function pesoAxis(value) {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "−" : "";
+  return abs >= 1e6 ? `${sign}₱${(abs / 1e6).toFixed(1)}M` : abs >= 1e3 ? `${sign}₱${Math.round(abs / 1e3)}K` : `${sign}₱${Math.round(abs)}`;
+}
+/** Whole days from `a` to `b` (both readable dates), or null. @param {unknown} a @param {unknown} b */
+function daysBetween(a, b) {
+  const from = inventoryDateValue(fmtDateSafe(a)), to = inventoryDateValue(fmtDateSafe(b));
+  return from === null || to === null ? null : Math.round((to - from) / 86400000);
+}
+/** "in 5 days" / "today" / "6 days late". @param {number} days days until the date */
+function dueInText(days, lateWord = "late") {
+  if (days === 0) return "today";
+  if (days > 0) return `in ${plural(days, "day")}`;
+  return `${plural(-days, "day")} ${lateWord}`;
+}
+/** A small read-only table for a dashboard card. @param {{ label: string, right?: boolean }[]} cols @param {string[][]} rows @param {string} caption */
+function uiMiniTable(cols, rows, caption) {
+  if (!rows.length) return `<p class="ui-muted">Nothing to show yet.</p>`;
+  return `<div class="ui-table-scroll"><table class="ui-table compact" style="min-width:520px"><caption class="sr-only">${escapeHtml(caption)}</caption><thead><tr>${cols.map((col) => `<th scope="col"${col.right ? ` class="num"` : ""}>${escapeHtml(col.label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell, index) => `<td${cols[index]?.right ? ` class="num"` : ""}>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+/** Loaded-page note for paginated records. @param {string} key */
+function partialDataNote(key) { return modulePagination[key]?.hasMore ? " Older records not loaded yet are not counted." : ""; }
+
+// ----- Purchase Orders (supplier) -------------------------------------------------------------------
+const PURCHASING_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "Overview", pos: "Purchase orders", reorder: "Reorder suggestions", suppliers: "Suppliers" });
+/** Plain-language PO status (stored values are unchanged). */
+const PURCHASING_STATUS = /** @type {Record<string, { label: string, tone: UiTone }>} */ ({
+  "Pending Approval": { label: "Awaiting approval", tone: "amber" },
+  Approved: { label: "Approved", tone: "blue" },
+  "Sent to Supplier": { label: "Ordered", tone: "blue" },
+  "In Transit": { label: "In transit", tone: "blue" },
+  "For Receiving": { label: "Arrived · to receive", tone: "orange" },
+  "Partially Received": { label: "Partly received", tone: "amber" },
+  "Fully Received": { label: "Received", tone: "green" },
+  Cancelled: { label: "Cancelled", tone: "slate" },
+});
+
+/** Supplier purchasing is for roles that can see supplier POs (not the demo-only roles). */
+function supplierPurchasingVisible() { return canViewModule("purchase-orders") && canViewModule("inventory") && !isDemoOnlyRole(); }
+function canCreateSupplierPo() { return canEditModule("inventory") && !isDemoOnlyRole(); }
+
+/**
+ * Facts about one supplier PO used across the page.
+ * @typedef {{ po: InventoryPO, index: number, total: number, ordered: number, received: number, receivedValue: number,
+ *   open: boolean, pending: boolean, cancelled: boolean, done: boolean, receivedOn: string, leadDays: number | null,
+ *   promised: string, onTime: boolean | null, lateOpenDays: number, shortLines: PoLine[], status: { label: string, tone: UiTone } }} PoFacts
+ */
+/** @param {InventoryPO} po @param {number} index @returns {PoFacts} */
+function supplierPoFacts(po, index) {
+  const lines = po.lines || [];
+  const ordered = inventoryUnits(lines);
+  const received = lines.reduce((sum, line) => sum + Number(line.receivedQty || 0), 0);
+  const receivedValue = lines.reduce((sum, line) => sum + Math.min(Number(line.receivedQty || 0), Number(line.qty || 0)) * Number(line.price || 0), 0);
+  const history = po.history || [];
+  const receiptEntry = [...history].reverse().find((entry) => ["Fully Received", "Partially Received"].includes(String(entry.status)));
+  const receivedOn = fmtDateSafe(receiptEntry?.date || (po.status === "Fully Received" ? po.receivedAt : "")) || "";
+  const cancelled = po.status === "Cancelled";
+  const done = po.status === "Fully Received";
+  const pending = po.status === "Pending Approval";
+  const promised = /^\d{4}-\d{2}-\d{2}$/.test(String(po.promisedDate || "")) ? String(po.promisedDate) : "";
+  const onTime = promised && receivedOn ? receivedOn <= promised : null;
+  const lateOpenDays = promised && !done && !cancelled && !receivedOn ? Math.max(0, -daysUntil(promised)) : 0;
+  const shortLines = done ? lines.filter((line) => Number(line.receivedQty || 0) < Number(line.qty || 0)) : [];
+  const base = PURCHASING_STATUS[po.status] || { label: po.status || "—", tone: /** @type {UiTone} */ ("slate") };
+  const short = shortLines.reduce((sum, line) => sum + Number(line.qty || 0) - Number(line.receivedQty || 0), 0);
+  const status = done && short > 0 ? { label: `Received · ${short} short`, tone: /** @type {UiTone} */ ("orange") } : base;
+  return { po, index, total: inventoryPoTotal(po), ordered, received, receivedValue, open: !cancelled && !done && !pending, pending, cancelled, done, receivedOn, leadDays: receivedOn ? daysBetween(po.date, receivedOn) : null, promised, onTime, lateOpenDays, shortLines, status };
+}
+function supplierPoFactsAll() { return (data.inventoryPurchaseOrders || []).map(supplierPoFacts); }
+
+/** Previous price paid for an item code before a PO (by PO date), for cost-increase checks. @param {PoFacts[]} facts */
+function supplierLastPrices(facts) {
+  /** @type {Map<string, { price: number, po: string, date: string }[]>} */
+  const byCode = new Map();
+  facts.filter((fact) => !fact.cancelled).forEach((fact) => (fact.po.lines || []).forEach((line) => {
+    if (!line.code || !(Number(line.price) > 0)) return;
+    byCode.set(line.code, [...(byCode.get(line.code) || []), { price: Number(line.price), po: fact.po.id, date: fmtDateSafe(fact.po.date) }]);
+  }));
+  byCode.forEach((list) => list.sort((a, b) => a.date.localeCompare(b.date) || a.po.localeCompare(b.po)));
+  return byCode;
+}
+/** Cost increases (≥ 5%) on POs not yet received, vs the previous PO price for the same item. @param {PoFacts[]} facts */
+function supplierCostIncreases(facts) {
+  const prices = supplierLastPrices(facts);
+  /** @type {{ fact: PoFacts, line: PoLine, before: { price: number, po: string }, pct: number, money: number }[]} */
+  const out = [];
+  facts.filter((fact) => fact.pending || fact.open).forEach((fact) => (fact.po.lines || []).forEach((line) => {
+    const list = prices.get(String(line.code || "")) || [];
+    const at = list.findIndex((entry) => entry.po === fact.po.id);
+    const before = at > 0 ? list[at - 1] : null;
+    const now = Number(line.price || 0);
+    if (!before || !(now > before.price * 1.05)) return;
+    out.push({ fact, line, before, pct: Math.round(((now - before.price) / before.price) * 100), money: (now - before.price) * Number(line.qty || 0) });
+  }));
+  return out.sort((a, b) => b.money - a.money);
+}
+
+/** Reorder suggestion rows: items under one month of cover. @param {StockCoverRow[]} cover @param {PoFacts[]} facts */
+function supplierReorderRows(cover, facts) {
+  const prices = supplierLastPrices(facts);
+  /** @type {Map<string, string[]>} */
+  const openPoIds = new Map();
+  facts.filter((fact) => fact.open || fact.pending).forEach((fact) => (fact.po.lines || []).forEach((line) => {
+    if (line.code && Number(line.qty || 0) > Number(line.receivedQty || 0)) openPoIds.set(line.code, [...new Set([...(openPoIds.get(line.code) || []), fact.po.id])]);
+  }));
+  return cover.filter((row) => row.avgMonthly > 0 && (row.months ?? 0) < 1).map((row) => {
+    const item = data.items.find((entry) => entry.code === row.code);
+    const pack = itemPackSizeValue(item?.packSize) || 1;
+    const need = Math.max(0, 2 * row.avgMonthly - row.onHand - row.onOrder);
+    const suggest = need > 0 ? Math.ceil(need / pack - 1e-9) * pack : 0;
+    const last = prices.get(row.code)?.at(-1);
+    const cost = last?.price || Number(item?.cost || 0) || 0;
+    const pos = openPoIds.get(row.code) || [];
+    const covered = row.avgMonthly > 0 && (row.onHand + row.onOrder) / row.avgMonthly >= 1;
+    const state = !pos.length ? { key: "none", label: "Not on any order", tone: /** @type {UiTone} */ ("red") } : covered ? { key: "covered", label: `Covered by ${pos[0]}`, tone: /** @type {UiTone} */ ("green") } : { key: "short", label: `On ${pos[0]}, still short`, tone: /** @type {UiTone} */ ("amber") };
+    return { ...row, item, pack, hasPack: Boolean(itemPackSizeValue(item?.packSize)), suggest, cost, lastPo: last?.po || "", pos, state };
+  }).sort((a, b) => (a.months ?? 0) - (b.months ?? 0));
+}
+
+/** Supplier performance over the last 12 months (by PO date). @param {PoFacts[]} facts */
+function supplierPerformance(facts) {
+  const since = fmtDate(addMonthsToDate(today, -12));
+  const owe = canViewModule("payables") ? payableOpenBySupplier() : null;
+  /** @type {Map<string, PoFacts[]>} */
+  const bySupplier = new Map();
+  facts.filter((fact) => !fact.cancelled && fmtDateSafe(fact.po.date) >= since).forEach((fact) => bySupplier.set(fact.po.supplier || "—", [...(bySupplier.get(fact.po.supplier || "—") || []), fact]));
+  activeSuppliers().forEach((supplier) => { if (!bySupplier.has(supplier.name)) bySupplier.set(supplier.name, []); });
+  return [...bySupplier.entries()].map(([name, list]) => {
+    const spent = list.reduce((sum, fact) => sum + fact.total, 0);
+    const timed = list.filter((fact) => fact.onTime !== null);
+    const leads = list.map((fact) => fact.leadDays).filter((value) => value !== null && value >= 0);
+    const closed = list.filter((fact) => fact.done);
+    const ordered = closed.reduce((sum, fact) => sum + fact.ordered, 0);
+    const received = closed.reduce((sum, fact) => sum + Math.min(fact.received, fact.ordered), 0);
+    /** @type {Record<string, number>} */
+    const items = {};
+    list.forEach((fact) => (fact.po.lines || []).forEach((line) => { items[line.item] = (items[line.item] || 0) + Number(line.qty || 0) * Number(line.price || 0); }));
+    const supplier = data.suppliers.find((entry) => entry.name === name);
+    return {
+      name, supplier, list, spent, pos: list.length,
+      onTime: timed.length ? Math.round((timed.filter((fact) => fact.onTime).length / timed.length) * 100) : null, timed: timed.length, late: timed.filter((fact) => !fact.onTime).length,
+      lead: leads.length ? Math.round(/** @type {number[]} */ (leads).reduce((a, b) => a + b, 0) / leads.length) : null,
+      fill: ordered ? Math.round((received / ordered) * 1000) / 10 : null,
+      owe: owe ? owe.get(name) || 0 : null,
+      items: Object.entries(items).sort((a, b) => b[1] - a[1]),
+    };
+  }).sort((a, b) => b.spent - a.spent || a.name.localeCompare(b.name));
+}
+
+function purchasingQueryString() { return moduleViewQueryString("purchase-orders", purchasingTab, "overview", purchasingView); }
+
+/** Opens the New purchase order form, optionally pre-filled from reorder suggestions. @param {string[]} [codes] */
+function openSupplierPoForm(codes = []) {
+  if (!canCreateSupplierPo()) return toast("Creating supplier purchase orders needs Inventory edit access.");
+  const rows = codes.length ? supplierReorderRows(itemStockCover(), supplierPoFactsAll()).filter((row) => codes.includes(row.code)) : [];
+  inventoryPoPrefill = rows.length ? {
+    supplier: String(rows[0].item?.supplier || ""),
+    lines: rows.map((row) => ({ code: row.code, item: row.name, qty: row.suggest || row.pack, price: row.cost || "" })),
+  } : null;
+  openModal("inventoryPurchaseOrder");
+}
+
+/** Lets the PO's handler record the supplier's promised delivery date. @param {string} id */
+async function setSupplierPoPromisedDate(id) {
+  const po = (data.inventoryPurchaseOrders || []).find((entry) => entry.id === id);
+  if (!po) return toast("Purchase order not found.");
+  if (!(canManagePoReceiving() || canCreateSupplierPo())) return toast("Updating supplier purchase orders needs Inventory edit access.");
+  if (inventoryPoTerminalStatuses.includes(po.status)) return toast(`${po.id} is already ${po.status.toLowerCase()}.`);
+  const value = (prompt(`Delivery date ${po.supplier || "the supplier"} promised for ${po.id} (YYYY-MM-DD):`, po.promisedDate || "") || "").trim();
+  if (!value) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(new Date(value).getTime())) return toast("Enter the date as YYYY-MM-DD.");
+  const by = currentUser?.name || "System User";
+  const next = { ...po, promisedDate: value, history: [...(po.history || []), { date: poHistoryTimestamp(), status: po.status, note: `Supplier promised delivery by ${value}.`, by }] };
+  const saveResult = await persistRecords({ inventoryPurchaseOrders: [next] });
+  if (!saveResult?.ok) return;
+  replacePoRecord(next);
+  log("Set PO promised date", "Purchase Orders", `${po.id}: ${value}`, { save: false });
+  renderAll();
+  toast(`${po.id}: promised by ${uiDate(value)}.`);
+}
+
+function purchasingOverviewHtml() {
+  const facts = supplierPoFactsAll();
+  const cover = itemStockCover();
+  const since = fmtDate(addMonthsToDate(today, -12));
+  const openFacts = facts.filter((fact) => fact.open);
+  const pendingFacts = facts.filter((fact) => fact.pending).sort((a, b) => b.total - a.total);
+  const openValue = openFacts.reduce((sum, fact) => sum + fact.total - fact.receivedValue, 0);
+  const pendingValue = pendingFacts.reduce((sum, fact) => sum + fact.total, 0);
+  const recent = facts.filter((fact) => !fact.cancelled && fmtDateSafe(fact.po.date) >= since);
+  const timed = recent.filter((fact) => fact.onTime !== null);
+  const perf = supplierPerformance(facts);
+  const worst = perf.filter((entry) => entry.onTime !== null && entry.timed >= 2).sort((a, b) => (a.onTime ?? 100) - (b.onTime ?? 100))[0];
+  const leads = recent.map((fact) => fact.leadDays).filter((value) => value !== null && value >= 0);
+  const avgLead = leads.length ? Math.round(/** @type {number[]} */ (leads).reduce((a, b) => a + b, 0) / leads.length) : null;
+  const goto = (/** @type {string} */ tab, /** @type {string} */ scope = "", /** @type {string} */ sel = "") => ({ "data-wa-goto": `purchase-orders|${tab}|${scope}|${sel}` });
+
+  /** @type {UiKpi[]} */
+  const kpis = [
+    { label: "Open purchase orders", value: pesoCompact(openValue), tone: "blue", sub: `${plural(openFacts.length, "PO")} ordered, in transit or arriving${pendingFacts.length ? ` · plus ${pendingFacts.length} awaiting approval (${pesoCompact(pendingValue)})` : ""}`, title: "Value still to be received on approved POs" },
+    { label: canApprovePurchaseOrders() ? "Waiting for your approval" : "Waiting for approval", value: String(pendingFacts.length), tone: "amber", change: pendingFacts.length ? { text: pesoCompact(pendingValue), good: null } : null, sub: pendingFacts[0] ? `${pendingFacts[0].po.id} to ${pendingFacts[0].po.supplier}${pendingFacts.length > 1 ? ` and ${pendingFacts.length - 1} more` : ""}` : "Nothing waiting" },
+    timed.length
+      ? { label: "On-time delivery", value: `${Math.round((timed.filter((fact) => fact.onTime).length / timed.length) * 100)}%`, tone: "accent", change: worst && (worst.onTime ?? 100) < 85 && perf.filter((entry) => entry.timed > 0).length > 1 ? { text: `${worst.name} ${worst.onTime}%`, good: false } : null, sub: `${timed.filter((fact) => fact.onTime).length} of ${plural(timed.length, "PO")} with a promised date, last 12 months` }
+      : { label: "On-time delivery", value: "—", tone: "accent", sub: "Add the supplier's promised date to POs to track this" },
+    { label: "Average lead time", value: avgLead === null ? "—" : plural(avgLead, "day"), tone: "accent", sub: perf.filter((entry) => entry.lead !== null).length > 1 ? perf.filter((entry) => entry.lead !== null).slice(0, 3).map((entry) => `${entry.name} ${entry.lead}`).join(" · ") : "From order date to receipt, last 12 months" },
+  ];
+
+  // Needs your decision — ranked by money at stake.
+  /** @type {UiInsight[]} */
+  const decisions = [];
+  const coverByCode = new Map(cover.map((row) => [row.code, row]));
+  pendingFacts.forEach((fact) => {
+    const heavy = (fact.po.lines || []).map((line) => ({ line, row: coverByCode.get(String(line.code || "")) })).filter(({ row }) => row && row.months !== null && row.months > 3).sort((a, b) => Number(b.line.qty) * Number(b.line.price) - Number(a.line.qty) * Number(a.line.price))[0];
+    const heavyValue = heavy ? Number(heavy.line.qty || 0) * Number(heavy.line.price || 0) : 0;
+    decisions.push({
+      tone: "amber", money: fact.total,
+      title: `${canApprovePurchaseOrders() ? "Approve" : "Awaiting approval:"} ${fact.po.id} · ${pesoCompact(fact.total)}`,
+      text: heavy ? `It includes ${heavy.line.qty} × ${heavy.line.item} (${pesoCompact(heavyValue)}) while we hold about ${(heavy.row?.months || 0).toFixed(1)} months of it.` : `${fact.po.supplier} → ${inventoryBranchLabel(inventoryPoBranch(fact.po))}, ${plural((fact.po.lines || []).length, "line")}.`,
+      action: { label: "Review", attrs: goto("pos", "", fact.po.id) },
+    });
   });
-  qsa("[data-payables-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.payablesPanel === payablesWorkflowTab));
+  supplierCostIncreases(facts).slice(0, 3).forEach((rise) => decisions.push({
+    tone: "orange", money: rise.money,
+    title: `${rise.fact.po.supplier} raised the cost of ${rise.line.item} ${rise.pct}%`,
+    text: `${pesoCompact(rise.before.price)} on ${rise.before.po} → ${pesoCompact(Number(rise.line.price))} on ${rise.fact.po.id}. Check the selling price still leaves enough margin, or renegotiate.`,
+    action: { label: "Open PO", attrs: goto("pos", "", rise.fact.po.id) },
+  }));
+  facts.filter((fact) => fact.shortLines.length && fact.receivedOn && daysBetween(fact.receivedOn, fmtDate(today)) !== null && /** @type {number} */ (daysBetween(fact.receivedOn, fmtDate(today))) <= 90).forEach((fact) => {
+    const missing = fact.shortLines.map((line) => ({ line, n: Number(line.qty || 0) - Number(line.receivedQty || 0) }));
+    const money = missing.reduce((sum, entry) => sum + entry.n * Number(entry.line.price || 0), 0);
+    decisions.push({
+      tone: "orange", money,
+      title: `${fact.po.id} arrived ${missing.reduce((sum, entry) => sum + entry.n, 0)} short`,
+      text: `${missing.map((entry) => `${entry.n} × ${entry.line.item}`).join(", ")} never arrived (${pesoCompact(money)}). Deduct it from ${fact.po.supplier}'s bill before paying.`,
+      action: canViewModule("payables") ? { label: "Open payables", attrs: { "data-wa-goto": `payables|bills||` } } : { label: "Open PO", attrs: goto("pos", "", fact.po.id) },
+    });
+  });
+  const notOrdered = supplierReorderRows(cover, facts).filter((row) => row.state.key === "none");
+  if (notOrdered.length) decisions.push({
+    tone: "red", money: notOrdered.reduce((sum, row) => sum + row.suggest * row.cost, 0),
+    title: `${plural(notOrdered.length, "item")} will run out within a month and ${notOrdered.length === 1 ? "is" : "are"} not on any order`,
+    text: `${notOrdered.slice(0, 3).map((row) => row.name).join(", ")}${notOrdered.length > 3 ? ` and ${notOrdered.length - 3} more` : ""}.`,
+    action: { label: "Reorder suggestions", attrs: goto("reorder", "none") },
+  });
+  decisions.sort((a, b) => (b.money || 0) - (a.money || 0));
+
+  // Purchases per month: value received, by the month the PO was (last) received.
+  const months = recentMonthKeys(12);
+  const byMonth = months.map((key) => facts.filter((fact) => !fact.cancelled && fact.receivedOn.slice(0, 7) === key).reduce((sum, fact) => sum + fact.receivedValue, 0));
+  // Average over every full month shown (empty months count as zero).
+  const fullMonths = byMonth.slice(0, -1);
+  const avgMonth = fullMonths.reduce((a, b) => a + b, 0) / (fullMonths.length || 1);
+
+  // Supplier table.
+  const perfRows = perf.filter((entry) => entry.pos > 0).slice(0, 8);
+  const totalSpent = perf.reduce((sum, entry) => sum + entry.spent, 0);
+  const top = perfRows[0];
+  const lateTotal = perf.reduce((sum, entry) => sum + entry.late, 0);
+
+  // Running low.
+  const low = supplierReorderRows(cover, facts).slice(0, 8);
+
+  return uiKpiCards(kpis) + uiDashboardGrid([
+    [
+      { span: 1, title: "Needs your decision", sub: "Ranked by money at stake", body: uiInsightList(decisions.slice(0, 5), "Nothing needs a decision on purchasing right now.") },
+      {
+        span: 2, title: "Purchases per month", sub: "Value of supplier stock received, last 12 months, by month received",
+        body: uiBarChart({ labels: months.map(shortMonthLabel), series: [{ name: "Received", values: byMonth }], format: pesoAxis, partialLast: true, caption: "Value of stock received per month", height: 260 }),
+        takeaway: byMonth.some((value) => value > 0) ? `Over the last ${fullMonths.length} full months we received about ${pesoCompact(avgMonth)} of stock a month.${openValue > 0 ? ` ${pesoCompact(openValue)} more is already on order.` : ""}${partialDataNote("inventoryPurchaseOrders")}` : undefined,
+      },
+    ],
+    [
+      {
+        span: 2, title: "Supplier performance", sub: "POs dated in the last 12 months",
+        body: uiMiniTable(
+          [{ label: "Supplier" }, { label: "Spent", right: true }, { label: "POs", right: true }, { label: "On time", right: true }, { label: "Lead time", right: true }, { label: "Fill rate", right: true }, { label: "We owe", right: true }],
+          perfRows.map((entry) => [
+            `<span class="ui-strong">${escapeHtml(entry.name)}</span>`,
+            uiCellNum(pesoCompact(entry.spent)), uiCellNum(entry.pos),
+            entry.onTime === null ? "—" : `<span class="ui-num tone-${entry.onTime < 85 ? "red" : "green"}">${entry.onTime}%</span>`,
+            entry.lead === null ? "—" : uiCellNum(plural(entry.lead, "day")),
+            entry.fill === null ? "—" : uiCellNum(`${entry.fill}%`),
+            entry.owe === null || entry.owe <= 0.005 ? "—" : uiCellNum(peso.format(entry.owe)),
+          ]),
+          "Supplier performance"),
+        takeaway: top && totalSpent > 0 ? `${top.name} is ${Math.round((top.spent / totalSpent) * 100)}% of what we buy${lateTotal ? `; ${plural(lateTotal, "delivery", "deliveries")} came after the promised date` : ""}.` : undefined,
+        link: { label: "All suppliers", attrs: goto("suppliers") },
+      },
+      {
+        span: 1, title: "Running low", sub: "Months of stock left at the current sales rate",
+        body: uiHBars({ items: low.map((row) => ({ label: row.name, value: row.months || 0, display: `${(row.months || 0).toFixed(1)} mo`, target: 1, sub: row.state.label, tone: row.state.key === "none" ? /** @type {UiTone} */ ("red") : undefined })), caption: "Months of stock left", targetLabel: "1-month minimum" }),
+        takeaway: notOrdered.length ? `${plural(notOrdered.length, "item")} ${notOrdered.length === 1 ? "is" : "are"} not on any order yet.` : low.length ? "Everything running low is already on order." : undefined,
+        link: { label: "Reorder suggestions", attrs: goto("reorder") },
+      },
+    ],
+  ]);
+}
+
+/** @param {string} tab @returns {UiView} */
+function purchasingTabModel(tab) {
+  const select = (/** @type {string} */ id) => uiViewSelect("purchasing", id);
+  const closeAttrs = { "data-purchasing-close": "" };
+  const facts = supplierPoFactsAll();
+  const newPo = canCreateSupplierPo() ? uiButton("New purchase order", { "data-purchasing-new": "" }, { size: "sm", primary: true }) : "";
+
+  if (tab === "reorder") {
+    const rows = supplierReorderRows(itemStockCover(), facts);
+    const value = rows.reduce((sum, row) => sum + row.suggest * row.cost, 0);
+    const none = rows.filter((row) => row.state.key === "none");
+    return {
+      title: "Reorder suggestions", intro: "Items with less than one month of stock, from on-hand quantity, what is already on order and average monthly sales over the last 6 months. Suggested quantity = 2 months of sales − on hand − on order, rounded up to the pack size.",
+      placeholder: "Item or code", actions: canCreateSupplierPo() && none.length ? [uiButton(`Order the ${plural(none.length, "item")} not on order`, { "data-purchasing-reorder": none.map((row) => row.code).join(",") }, { size: "sm", primary: true })] : [], minWidth: 1000,
+      stats: [
+        { label: "Under 1 month of stock", value: plural(rows.length, "item"), sub: "At the current sales rate", tone: "amber" },
+        { label: "Not on any order", value: plural(none.length, "item"), sub: none.slice(0, 2).map((row) => row.name).join(", ") || "Everything low is on order", tone: none.length ? "red" : "green", scope: "none" },
+        { label: "Suggested order value", value: pesoCompact(value), sub: "At the last price paid", tone: "blue" },
+      ],
+      cols: [{ key: "id", label: "Item", sortable: true }, { key: "onHand", label: "On hand", align: "right", sortable: true }, { key: "onOrder", label: "On order", align: "right", sortable: true }, { key: "avg", label: "Sells / month", align: "right", sortable: true }, { key: "months", label: "Lasts", align: "right", sortable: true }, { key: "suggest", label: "Suggest", align: "right", sortable: true }, { key: "status", label: "Status" }, { key: "act", label: "", align: "right" }],
+      csvName: "reorder-suggestions.csv",
+      csvHeader: ["Code", "Item", "On hand", "On order", "Sells per month", "Months left", "Suggested qty", "Pack size", "Last cost", "Status"],
+      rows: rows.map(/** @returns {UiViewRow} */ (row) => ({
+        id: row.code, branches: [], scopes: [row.state.key],
+        search: [row.code, row.name, row.state.label, ...row.pos].join(" "),
+        sortValues: { id: row.name, onHand: row.onHand, onOrder: row.onOrder, avg: row.avgMonthly, months: row.months ?? 0, suggest: row.suggest },
+        csv: [row.code, row.name, row.onHand, row.onOrder, row.avgMonthly.toFixed(1), (row.months ?? 0).toFixed(2), row.suggest, row.hasPack ? row.pack : "", row.cost ? row.cost.toFixed(2) : "", row.state.label],
+        cells: [
+          uiCellDoc(row.name, select(row.code), row.code, { plain: true }), uiCellNum(row.onHand), uiCellNum(row.onOrder), uiCellNum(row.avgMonthly.toFixed(1)),
+          `<span class="ui-num${(row.months ?? 0) < 0.5 ? " tone-red" : ""}">${(row.months ?? 0).toFixed(1)} mo</span>`,
+          row.suggest ? uiCellText(String(row.suggest), row.cost ? peso.format(row.suggest * row.cost) : "") : "—",
+          uiPill(row.state.label, row.state.tone),
+          row.state.key === "none" && canCreateSupplierPo() ? uiButton("Add to PO", { "data-purchasing-reorder": row.code }, { size: "xs" }) : "",
+        ],
+        detail: () => ({
+          eyebrow: row.code, title: row.name, pill: { text: row.state.label, tone: row.state.tone }, closeAttrs, label: "Reorder details",
+          fields: [
+            { label: "On hand", value: String(row.onHand), sub: "Unexpired stock, all branches" }, { label: "On order", value: String(row.onOrder), sub: row.pos.join(", ") },
+            { label: "Sells per month", value: row.avgMonthly.toFixed(1), sub: "Average of the last 6 months" }, { label: "Stock lasts", value: `${(row.months ?? 0).toFixed(1)} months` },
+            { label: "Suggested qty", value: row.suggest ? String(row.suggest) : "—", sub: row.hasPack ? `Packs of ${row.pack}` : "No pack size set on the item" },
+            { label: "Last cost", value: row.cost ? peso.format(row.cost) : "—", sub: row.lastPo || (row.cost ? "Item cost" : "") },
+          ],
+          note: row.state.key === "none" ? { text: "At the current rate this runs out before a new order is likely to arrive. Add it to a PO today.", tone: "red" } : undefined,
+          actions: row.state.key !== "covered" && canCreateSupplierPo() ? [uiButton("Add to a new PO", { "data-purchasing-reorder": row.code }, { primary: true })] : [],
+        }),
+      })),
+      empty: ["Nothing is running low", "Items with less than a month of stock at the current sales rate show here."],
+      defaultSort: { key: "months", dir: 1 }, chips: [{ key: "none", label: "Not on any order", tone: "red" }, { key: "short", label: "On order, still short", tone: "amber" }, { key: "covered", label: "Covered", tone: "green" }], defaultScope: "",
+    };
+  }
+
+  if (tab === "suppliers") {
+    const perf = supplierPerformance(facts);
+    const total = perf.reduce((sum, entry) => sum + entry.spent, 0);
+    const top = perf[0];
+    const timed = perf.reduce((sum, entry) => sum + entry.timed, 0);
+    const late = perf.reduce((sum, entry) => sum + entry.late, 0);
+    const lateTop = [...perf].sort((a, b) => b.late - a.late)[0];
+    return {
+      title: "Suppliers", intro: "Spend, reliability and what we owe each supplier, from POs dated in the last 12 months.", placeholder: "Supplier", actions: [newPo].filter(Boolean), minWidth: 900,
+      stats: [
+        { label: "Spent with suppliers", value: pesoCompact(total), sub: `Last 12 months${partialDataNote("inventoryPurchaseOrders") ? " (loaded POs)" : ""}`, tone: "accent" },
+        { label: "Largest supplier", value: top && total ? `${top.name} · ${Math.round((top.spent / total) * 100)}%` : "—", sub: top && total && top.spent / total > 0.5 ? "High dependence on one source" : "Share of spend", tone: top && total && top.spent / total > 0.5 ? "orange" : "blue" },
+        { label: "Late deliveries", value: timed ? `${late} of ${timed}` : "—", sub: timed ? (lateTop?.late ? `${lateTop.late} from ${lateTop.name}` : "None late") : "Needs promised dates on POs", tone: late ? "red" : "green" },
+      ],
+      cols: [{ key: "id", label: "Supplier", sortable: true }, { key: "spent", label: "Spent 12 mo", align: "right", sortable: true }, { key: "pos", label: "POs", align: "right", sortable: true }, { key: "ontime", label: "On time", align: "right", sortable: true }, { key: "lead", label: "Lead time", align: "right", sortable: true }, { key: "fill", label: "Fill rate", align: "right", sortable: true }, { key: "owe", label: "We owe", align: "right", sortable: true }],
+      csvName: "suppliers.csv", csvHeader: ["Supplier", "Spent 12 months", "POs", "On time %", "Lead time days", "Fill rate %", "We owe"],
+      rows: perf.map(/** @returns {UiViewRow} */ (entry) => {
+        const reliable = entry.onTime === null ? null : entry.onTime >= 85;
+        return {
+          id: entry.name, branches: [], scopes: [entry.onTime !== null && entry.onTime < 85 ? "late" : "ok"],
+          search: [entry.name, entry.supplier?.brand, entry.supplier?.classification, ...entry.items.map(([item]) => item)].filter(Boolean).join(" "),
+          sortValues: { id: entry.name, spent: entry.spent, pos: entry.pos, ontime: entry.onTime ?? -1, lead: entry.lead ?? -1, fill: entry.fill ?? -1, owe: entry.owe ?? 0 },
+          csv: [entry.name, entry.spent.toFixed(2), entry.pos, entry.onTime ?? "", entry.lead ?? "", entry.fill ?? "", entry.owe === null ? "" : entry.owe.toFixed(2)],
+          cells: [
+            uiCellDoc(entry.name, select(entry.name), [entry.supplier?.classification, entry.supplier?.brand].filter(Boolean).join(" · "), { plain: true }),
+            uiCellNum(entry.spent ? pesoCompact(entry.spent) : "—"), uiCellNum(entry.pos),
+            entry.onTime === null ? "—" : `<span class="ui-num tone-${reliable ? "green" : "red"}">${entry.onTime}%</span>`,
+            entry.lead === null ? "—" : uiCellNum(plural(entry.lead, "day")), entry.fill === null ? "—" : uiCellNum(`${entry.fill}%`),
+            entry.owe === null || entry.owe <= 0.005 ? "—" : uiCellNum(peso.format(entry.owe)),
+          ],
+          detail: () => ({
+            eyebrow: [entry.supplier?.classification, entry.supplier?.brand].filter(Boolean).join(" · ") || "Supplier", title: entry.name,
+            pill: reliable === null ? undefined : reliable ? { text: "Reliable", tone: "green" } : { text: "Often late", tone: "red" }, closeAttrs, label: "Supplier details",
+            fields: [
+              { label: "Spent, 12 months", value: entry.spent ? peso.format(entry.spent) : "—" }, { label: "Purchase orders", value: String(entry.pos) },
+              { label: "On time", value: entry.onTime === null ? "—" : `${entry.onTime}%`, sub: entry.timed ? `${entry.timed - entry.late} of ${entry.timed} with a promised date` : "No promised dates yet" },
+              { label: "Average lead time", value: entry.lead === null ? "—" : plural(entry.lead, "day") }, { label: "Fill rate", value: entry.fill === null ? "—" : `${entry.fill}%`, sub: "Units received ÷ ordered, closed POs" },
+              { label: "We owe", value: entry.owe === null ? "—" : peso.format(entry.owe) },
+              ...(entry.supplier?.tin ? [{ label: "TIN", value: String(entry.supplier.tin), mono: true }] : []),
+              ...(entry.supplier?.contact ? [{ label: "Contact", value: String(entry.supplier.contact), wide: true }] : []),
+            ],
+            linesTitle: "What we buy (12 months)",
+            lines: entry.items.slice(0, 8).map(([item, value]) => ({ left: item, right: peso.format(value), tone: /** @type {UiTone} */ ("accent") })),
+            actions: [
+              ...(canCreateSupplierPo() ? [uiButton("New purchase order", { "data-purchasing-new": "" }, { primary: true })] : []),
+              uiButton("Show POs", { "data-purchasing-supplier-pos": entry.name }),
+              ...(canViewModule("payables") ? [uiButton("Open payables", { "data-wa-goto": `payables|payees||${entry.name}` })] : []),
+            ],
+          }),
+        };
+      }),
+      empty: ["No suppliers yet", "Suppliers from the masterlist and from purchase orders show here."],
+      defaultSort: { key: "spent", dir: -1 }, chips: [], defaultScope: "",
+    };
+  }
+
+  // Purchase orders.
+  const rows = facts.map(/** @returns {UiViewRow} */ (fact) => {
+    const { po } = fact;
+    const branch = inventoryPoBranch(po);
+    const actionHtml = fact.done || fact.cancelled
+      ? `<button class="mini-button" data-inventory-po-print="${escapeHtml(po.id)}">Print PO</button><button class="mini-button" data-inventory-po-timeline="${escapeHtml(po.id)}">View timeline</button>`
+      : inventoryPoActionsCell(po, fact.index);
+    const expected = fact.receivedOn
+      ? { text: uiDate(fact.receivedOn), sub: fact.onTime === null ? "Received" : fact.onTime ? "On time" : `${plural(/** @type {number} */ (daysBetween(fact.promised, fact.receivedOn)), "day")} late`, tone: fact.onTime === false ? /** @type {UiTone} */ ("red") : undefined }
+      : fact.cancelled ? { text: "—", sub: "Cancelled" }
+        : fact.promised ? { text: uiDate(fact.promised), sub: fact.lateOpenDays ? `${plural(fact.lateOpenDays, "day")} late` : `Promised · ${dueInText(daysUntil(fact.promised))}`, tone: fact.lateOpenDays ? /** @type {UiTone} */ ("red") : undefined }
+          : { text: "—", sub: fact.pending ? "Not sent yet" : "No promised date" };
+    const scopes = [fact.pending ? "approval" : fact.open ? "open" : fact.cancelled ? "cancelled" : "received", ...(fact.lateOpenDays || fact.onTime === false ? ["late"] : []), ...(fact.shortLines.length ? ["short"] : [])];
+    return {
+      id: po.id, branches: [branch], scopes,
+      search: [po.id, po.supplier, branch, po.status, fact.status.label, ...(po.lines || []).map((line) => `${line.item} ${line.code}`)].join(" "),
+      sortValues: { id: po.id, supplier: String(po.supplier || ""), date: inventoryDateValue(po.date), expected: inventoryDateValue(fact.receivedOn || fact.promised), amount: fact.total, status: fact.status.label },
+      csv: [po.id, po.supplier, inventoryBranchLabel(branch), po.date, fact.promised, fact.receivedOn, fact.total.toFixed(2), fact.status.label],
+      cells: [
+        uiCellDoc(po.id, select(po.id), plural((po.lines || []).length, "line")), uiCellText(po.supplier, inventoryBranchLabel(branch), { strong: true }), escapeHtml(uiDate(po.date)),
+        uiCellText(expected.text, expected.sub, { subTone: expected.tone }), uiCellNum(peso.format(fact.total)), uiPill(fact.status.label, fact.status.tone), inventoryNextStep(actionHtml),
+      ],
+      detail: /** @returns {UiDetail} */ () => {
+        const { actions, note } = inventoryDetailActions(actionHtml);
+        const rises = supplierCostIncreases(facts).filter((rise) => rise.fact === fact);
+        const notes = [
+          ...(fact.shortLines.length ? [`${fact.shortLines.map((line) => `${Number(line.qty || 0) - Number(line.receivedQty || 0)} × ${line.item}`).join(", ")} never arrived. Deduct it from ${po.supplier}'s bill before paying.`] : []),
+          ...rises.map((rise) => `${rise.line.item} costs ${rise.pct}% more than on ${rise.before.po} (${peso.format(rise.before.price)} → ${peso.format(Number(rise.line.price))}).`),
+          ...(fact.lateOpenDays ? [`${plural(fact.lateOpenDays, "day")} past the promised date.`] : []),
+        ];
+        const canPromise = !fact.done && !fact.cancelled && (canManagePoReceiving() || canCreateSupplierPo());
+        return {
+          eyebrow: po.id, title: `${po.supplier || "Supplier"} → ${inventoryBranchLabel(branch)}`, pill: { text: fact.status.label, tone: fact.status.tone }, closeAttrs, label: "Purchase order details",
+          fields: [
+            { label: "Created", value: uiDate(po.date), sub: `${po.terms || 30}-day terms` },
+            { label: "Promised delivery", value: fact.promised ? uiDate(fact.promised) : "—" },
+            { label: "Received", value: fact.receivedOn ? uiDate(fact.receivedOn) : "—", sub: fact.leadDays !== null ? `${plural(fact.leadDays, "day")} after ordering` : "" },
+            { label: "Approved by", value: po.approvedBy || "—" },
+            { label: "Received", value: `${fact.received} of ${fact.ordered} units` },
+          ],
+          linesTitle: "Items",
+          lines: (po.lines || []).map((line) => {
+            const got = Number(line.receivedQty || 0), want = Number(line.qty || 0);
+            return { left: line.item, sub: `${want} × ${peso.format(Number(line.price || 0))}${got ? ` · ${got} received` : ""}`, right: peso.format(want * Number(line.price || 0) - Number(line.discount || 0)), tone: got >= want ? "green" : got > 0 ? "amber" : "accent" };
+          }),
+          total: { label: "Total", value: peso.format(fact.total) },
+          note: notes.length ? { text: notes.join(" "), tone: fact.shortLines.length || fact.lateOpenDays ? "orange" : "amber" } : note,
+          actions: [...actions, ...(canPromise ? [uiButton(fact.promised ? "Change promised date" : "Set promised date", { "data-purchasing-promised": po.id })] : [])],
+        };
+      },
+    };
+  });
+  const open = facts.filter((fact) => fact.open);
+  const pending = facts.filter((fact) => fact.pending);
+  const problems = facts.filter((fact) => fact.shortLines.length || fact.lateOpenDays || fact.onTime === false);
+  return {
+    title: "Purchase orders", intro: "Every supplier PO from approval to received. A PO must be approved by Superadmin or CEO before it is sent to the supplier.",
+    placeholder: "PO no., supplier or item", actions: [newPo].filter(Boolean), minWidth: 1000,
+    stats: [
+      { label: "Open", value: pesoCompact(open.reduce((sum, fact) => sum + fact.total - fact.receivedValue, 0)), sub: `${plural(open.length, "PO")} ordered, in transit or arriving`, tone: "blue", scope: "open" },
+      { label: "Waiting for approval", value: pending.length, sub: pending.length ? pesoCompact(pending.reduce((sum, fact) => sum + fact.total, 0)) : "Nothing waiting", tone: "amber", scope: "approval" },
+      { label: "Late or received short", value: problems.length, sub: problems.slice(0, 2).map((fact) => fact.po.id).join(", ") || "None", tone: problems.length ? "orange" : "green", scope: problems.some((fact) => fact.shortLines.length) && !problems.some((fact) => fact.lateOpenDays || fact.onTime === false) ? "short" : "late" },
+    ],
+    cols: [{ key: "id", label: "PO", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "date", label: "Created", sortable: true }, { key: "expected", label: "Expected / received", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "act", label: "", align: "right" }],
+    csvName: "purchase-orders.csv", csvHeader: ["PO", "Supplier", "Deliver to", "Created", "Promised", "Received", "Amount", "Status"],
+    rows,
+    empty: ["No supplier purchase orders yet", "Create a PO to order stock from a supplier. It waits for approval before it is sent."],
+    defaultSort: { key: "date", dir: -1 },
+    chips: [{ key: "approval", label: "Awaiting approval", tone: "amber" }, { key: "open", label: "Open", tone: "blue" }, { key: "late", label: "Late", tone: "red" }, { key: "short", label: "Received short", tone: "orange" }, { key: "received", label: "Received", tone: "green" }, { key: "cancelled", label: "Cancelled", tone: "slate" }],
+    defaultScope: "", branchOptions: inventoryBranchOptions(),
+    after: (lastPage) => modulePagination.inventoryPurchaseOrders?.hasMore && lastPage ? `<div class="ui-load-more">${uiButton("Load older POs", { "data-purchasing-load-more": "" }, { size: "sm" })}</div>` : "",
+  };
+}
+
+function renderPurchaseOrders() {
+  if (!PURCHASING_TAB_LABELS[purchasingTab]) purchasingTab = "overview";
+  const header = qs("#purchase-orders-actions");
+  if (header) header.innerHTML = [
+    canViewModule("purchase-orders") ? uiButton("Client orders", { "data-purchasing-client-orders": "" }) : "",
+    uiButton("Reorder suggestions", { "data-purchasing-tab": "reorder" }),
+    canCreateSupplierPo() ? uiButton("New purchase order", { "data-purchasing-new": "" }, { primary: true }) : "",
+  ].join("");
+  const facts = supplierPoFactsAll();
+  /** @type {Record<string, number | undefined>} */
+  const counts = {
+    pos: facts.filter((fact) => fact.pending || fact.open).length,
+    reorder: supplierReorderRows(itemStockCover(), facts).filter((row) => row.state.key !== "covered").length,
+    suppliers: supplierPerformance(facts).filter((entry) => entry.pos > 0).length,
+  };
+  qs("#purchasing-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(PURCHASING_TAB_LABELS).map((key) => ({ key, label: PURCHASING_TAB_LABELS[key], count: counts[key] })), active: purchasingTab, attr: "data-purchasing-tab" });
+  renderModuleAssistant("purchase-orders");
+  uiRender(qs("#purchase-orders-tab-panel"), purchasingTab === "overview" ? purchasingOverviewHtml() : uiViewHtml(purchasingTabModel(purchasingTab), purchasingView, "purchasing"));
+  syncModuleUrl("purchase-orders", purchasingQueryString());
+}
+
+// ----- Payables ---------------------------------------------------------------------------------------
+const PAYABLES_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "Overview", bills: "Bills", payees: "Who we owe", paid: "Payments made" });
+const PAYABLE_STATE = /** @type {Record<string, { label: string, tone: UiTone }>} */ ({
+  approval: { label: "To approve", tone: "amber" },
+  approved: { label: "Approved · to pay", tone: "blue" },
+  paid: { label: "Paid", tone: "green" },
+  cancelled: { label: "Cancelled", tone: "slate" },
+});
+/** Display names for stored payment methods (payments are cash, check or bank transfer only). @param {unknown} method */
+function paymentMethodLabel(method) {
+  const value = String(method || "");
+  if (/cheque|check/i.test(value)) return "Check";
+  if (/bank/i.test(value)) return "Bank transfer";
+  if (/cash/i.test(value)) return "Cash";
+  return value || "—";
+}
+
+/** @typedef {{ p: Payable, state: string, balance: number, due: string, estimated: boolean, days: number, overdue: boolean }} PayableFacts */
+/** @param {Payable} p @returns {PayableFacts} */
+function payableFacts(p) {
+  const status = String(p.requestStatus || p.status || "");
+  const state = p.paymentConfirmed || p.status === "Paid" ? "paid" : status === "Cancelled" ? "cancelled" : status === "Approved" ? "approved" : "approval";
+  const balance = state === "approval" || state === "approved" ? Math.max(Number(p.amount || 0) - Number(p.paid || 0), 0) : 0;
+  const stored = /^\d{4}-\d{2}-\d{2}$/.test(String(p.dueDate || "")) ? String(p.dueDate) : "";
+  const due = stored || fmtDate(addDays(fmtDateSafe(p.date) || fmtDate(today), PAYABLE_DEFAULT_TERMS_DAYS));
+  const days = daysUntil(due);
+  return { p, state, balance, due, estimated: !stored, days, overdue: balance > 0.005 && days < 0 };
+}
+function payableFactsAll() { return (data.payables || []).map(payableFacts); }
+/** Open (unpaid, not cancelled) payable balance per supplier. */
+function payableOpenBySupplier() {
+  /** @type {Map<string, number>} */
+  const owe = new Map();
+  payableFactsAll().forEach((fact) => { if (fact.balance > 0.005) owe.set(fact.p.supplier, (owe.get(fact.p.supplier) || 0) + fact.balance); });
+  return owe;
+}
+function payablesQueryString() { return moduleViewQueryString("payables", payablesTab, "overview", payablesView); }
+/** Recent supplier POs that arrived short, by supplier (to check before paying). */
+function supplierShortPosBySupplier() {
+  /** @type {Map<string, PoFacts[]>} */
+  const out = new Map();
+  if (!canViewModule("inventory")) return out;
+  supplierPoFactsAll().filter((fact) => fact.shortLines.length && fact.receivedOn && (daysBetween(fact.receivedOn, fmtDate(today)) ?? 999) <= 90).forEach((fact) => out.set(fact.po.supplier, [...(out.get(fact.po.supplier) || []), fact]));
+  return out;
+}
+
+/** Four weeks from this Monday: { start, end, label }. */
+function forecastWeeks() {
+  const base = new Date(`${fmtDate(today)}T00:00:00`);
+  const monday = addDays(base, -((base.getDay() + 6) % 7));
+  return [0, 1, 2, 3].map((index) => {
+    const start = fmtDate(addDays(monday, index * 7));
+    const end = fmtDate(addDays(monday, index * 7 + 6));
+    return { start, end, label: index === 0 ? "This week" : new Date(`${start}T00:00:00`).toLocaleDateString("en-PH", { day: "numeric", month: "short" }) };
+  });
+}
+/** Occurrences of a recurring cost between two dates (inclusive). @param {RecurringCost} cost @param {string} from @param {string} to */
+function recurringOccurrences(cost, from, to) {
+  if (cost.active === false || !/^\d{4}-\d{2}-\d{2}$/.test(String(cost.nextDue || ""))) return [];
+  const step = cost.every === "Yearly" ? 12 : cost.every === "Quarterly" ? 3 : 1;
+  const out = [];
+  let at = String(cost.nextDue);
+  for (let guard = 0; guard < 60 && at <= to; guard += 1) {
+    if (at >= from) out.push(at);
+    at = fmtDate(addMonthsToDate(new Date(`${at}T00:00:00`), step));
+  }
+  return out;
+}
+
+function payablesOverviewHtml() {
+  const facts = payableFactsAll();
+  const open = facts.filter((fact) => fact.balance > 0.005);
+  const owe = open.reduce((sum, fact) => sum + fact.balance, 0);
+  const overdue = open.filter((fact) => fact.overdue);
+  const dueSoon = open.filter((fact) => fact.days >= 0 && fact.days <= 7);
+  const approval = facts.filter((fact) => fact.state === "approval").sort((a, b) => Number(b.p.amount || 0) - Number(a.p.amount || 0));
+  const sum = (/** @type {PayableFacts[]} */ list) => list.reduce((total, fact) => total + fact.balance, 0);
+  const goto = (/** @type {string} */ tab, /** @type {string} */ scope = "", /** @type {string} */ sel = "") => ({ "data-wa-goto": `payables|${tab}|${scope}|${sel}` });
+  const canApprove = canApproveFinancialRequest("payable");
+
+  /** @type {UiKpi[]} */
+  const kpis = [
+    { label: "We owe", value: pesoCompact(owe), tone: "blue", sub: `${plural(open.length, "bill")} · ${plural(new Set(open.map((fact) => fact.p.supplier)).size, "supplier")}` },
+    { label: "Overdue", value: pesoCompact(sum(overdue)), tone: "red", change: overdue.length ? { text: plural(overdue.length, "bill"), good: false } : null, sub: overdue.length ? `Oldest ${plural(Math.max(...overdue.map((fact) => -fact.days)), "day")} late` : "Nothing past due" },
+    { label: "Due in the next 7 days", value: pesoCompact(sum(dueSoon)), tone: "amber", sub: dueSoon.length ? plural(dueSoon.length, "bill") : "Nothing due this week" },
+    { label: canApprove ? "Waiting for your approval" : "Waiting for approval", value: String(approval.length), tone: "amber", change: approval.length ? { text: pesoCompact(approval.reduce((total, fact) => total + Number(fact.p.amount || 0), 0)), good: null } : null, sub: approval[0] ? `${approval[0].p.id} · ${approval[0].p.supplier}` : "Nothing waiting" },
+  ];
+
+  // 4-week cash forecast.
+  const weeks = forecastWeeks();
+  const lastDay = weeks[3].end;
+  const canSeeReceivables = canViewModule("receivables-tracker") || canViewModule("invoicing");
+  const inflow = weeks.map((week) => canSeeReceivables
+    ? byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && salesBalance(sale) > 0.005).filter((sale) => { const due = fmtDateSafe(salesDueDate(sale)); return due >= week.start && due <= week.end; }).reduce((total, sale) => total + salesBalance(sale), 0)
+    : 0);
+  const expensesToPay = canViewModule("replenishments") ? (data.replenishments || []).filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed).reduce((total, r) => total + Number(r.amount || 0), 0) : 0;
+  const recurring = /** @type {RecurringCost[]} */ (data.recurringCosts || []);
+  const outflow = weeks.map((week, index) => {
+    const bills = open.filter((fact) => fact.p.requestStatus === "Approved" || fact.state === "approval").filter((fact) => (index === 0 && fact.due < week.start) || (fact.due >= week.start && fact.due <= week.end)).reduce((total, fact) => total + fact.balance, 0);
+    const fixed = recurring.reduce((total, cost) => total + recurringOccurrences(cost, week.start, week.end).length * Number(cost.amount || 0), 0);
+    return bills + fixed + (index === 0 ? expensesToPay : 0);
+  });
+  const net = weeks.map((_, index) => inflow[index] - outflow[index]);
+
+  // Decisions.
+  const shortBySupplier = supplierShortPosBySupplier();
+  /** @type {UiInsight[]} */
+  const decisions = [];
+  if (canApprove) approval.forEach((fact) => {
+    const short = shortBySupplier.get(fact.p.supplier) || [];
+    decisions.push({ tone: "amber", money: Number(fact.p.amount || 0), title: `Approve ${fact.p.id} · ${pesoCompact(Number(fact.p.amount || 0))}`, text: `${fact.p.supplier}, due ${uiDate(fact.due)}${fact.estimated ? " (est.)" : ""}.${short.length ? ` Check first: ${short[0].po.id} from them arrived short.` : ""}`, action: { label: "Review", attrs: goto("bills", "", fact.p.id) } });
+  });
+  overdue.filter((fact) => fact.state === "approved").forEach((fact) => decisions.push({ tone: "red", money: fact.balance, title: `${fact.p.id} to ${fact.p.supplier} is ${plural(-fact.days, "day")} late`, text: `${pesoCompact(fact.balance)} was due ${uiDate(fact.due)}${fact.estimated ? " (est. from 30-day terms)" : ""}. Pay it or agree a new date.`, action: { label: "Pay", attrs: goto("bills", "", fact.p.id) } }));
+  facts.filter((fact) => fact.state === "approved" && (Number(fact.p.withholdingTax1 || 0) > 0 || Number(fact.p.withholdingTax2 || 0) > 0) && !data.suppliers.find((supplier) => supplier.name === fact.p.supplier)?.tin)
+    .forEach((fact) => decisions.push({ tone: "slate", money: 0, title: `${fact.p.supplier} has no TIN on file`, text: `The 2307 for ${fact.p.id} can't be generated until the supplier's TIN is added in Masterlists.` }));
+  decisions.sort((a, b) => (b.money || 0) - (a.money || 0));
+
+  // How late are we.
+  const buckets = AGING_BUCKETS.map((bucket) => ({ bucket, value: open.filter((fact) => bucket.test(-fact.days)).reduce((total, fact) => total + fact.balance, 0) }));
+
+  // Who we owe.
+  /** @type {Map<string, PayableFacts[]>} */
+  const bySupplier = new Map();
+  open.forEach((fact) => bySupplier.set(fact.p.supplier, [...(bySupplier.get(fact.p.supplier) || []), fact]));
+  const payees = [...bySupplier.entries()].map(([name, list]) => ({ name, list, total: sum(list), late: sum(list.filter((fact) => fact.overdue)) })).sort((a, b) => b.total - a.total);
+
+  // Coming up: next 14 days.
+  const horizon = fmtDate(addDays(new Date(`${fmtDate(today)}T00:00:00`), 14));
+  /** @type {(UiInsight & { at: string })[]} */
+  const coming = [
+    ...open.filter((fact) => fact.days >= 0 && fact.due <= horizon).map((fact) => ({ at: fact.due, tone: /** @type {UiTone} */ (fact.state === "approval" ? "amber" : "blue"), title: `${uiDate(fact.due)} · ${pesoCompact(fact.balance)}`, text: `${fact.p.supplier} (${fact.p.id})${fact.state === "approval" ? ", not approved yet" : ""}` })),
+    ...recurring.flatMap((cost) => recurringOccurrences(cost, fmtDate(today), horizon).map((at) => ({ at, tone: /** @type {UiTone} */ ("slate"), title: `${uiDate(at)} · ${pesoCompact(Number(cost.amount || 0))}`, text: `${cost.name} (recurring, ${String(cost.every || "Monthly").toLowerCase()})` }))),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+
+  return uiKpiCards(kpis) + uiDashboardGrid([
+    [
+      {
+        span: 2, title: "Cash in vs out, next 4 weeks", sub: canSeeReceivables ? "In = client invoices falling due. Out = bills due (overdue bills counted this week), approved expenses and recurring costs." : "Out = bills due (overdue counted this week), approved expenses and recurring costs.",
+        body: uiBarChart({ labels: weeks.map((week) => week.label), series: canSeeReceivables ? [{ name: "In", values: inflow }, { name: "Out", values: outflow }] : [{ name: "Out", values: outflow }], format: pesoAxis, net: canSeeReceivables ? net : undefined, caption: "Cash forecast by week" }),
+        takeaway: canSeeReceivables && outflow.some((value) => value > 0) ? (net.some((value) => value < 0) ? `Out is higher than In in ${plural(net.filter((value) => value < 0).length, "week")}. Collect overdue invoices or move a bill date before then.` : "Expected collections cover the bills due in each of the next 4 weeks.") + " Overdue client invoices are not counted as cash in." : undefined,
+      },
+      { span: 1, title: "Needs your decision", sub: "Ranked by money at stake", body: uiInsightList(decisions.slice(0, 5), "No bills need a decision right now.") },
+    ],
+    [
+      {
+        span: 1, title: "How late are we", sub: "Unpaid bills by days past the due date",
+        body: uiStackBar({ segments: buckets.map(({ bucket, value }) => ({ label: bucket.label === "Current" ? "Not due yet" : bucket.label, value, display: pesoCompact(value), tone: bucket.tone })), caption: "Unpaid bills by lateness" }),
+        takeaway: open.some((fact) => fact.estimated) ? "Bills without a due date are counted as due 30 days after their date." : undefined,
+      },
+      {
+        span: 1, title: "Who we owe", sub: "Unpaid balance by supplier",
+        body: uiHBars({ items: payees.slice(0, 6).map((entry) => ({ label: entry.name, value: entry.total, display: pesoCompact(entry.total), sub: `${plural(entry.list.length, "bill")}${entry.late > 0.005 ? ` · ${pesoCompact(entry.late)} overdue` : ""}`, tone: entry.late > 0.005 ? /** @type {UiTone} */ ("red") : undefined })), caption: "Unpaid balance by supplier" }),
+        link: { label: "Who we owe", attrs: goto("payees") },
+      },
+      { span: 1, title: "Coming up", sub: "Next 14 days", body: uiInsightList(coming.slice(0, 6), "Nothing falls due in the next 14 days."), link: { label: "All bills", attrs: goto("bills") } },
+    ],
+  ]);
+}
+
+/** @param {string} tab @returns {UiView} */
+function payablesTabModel(tab) {
+  const select = (/** @type {string} */ id) => uiViewSelect("payables", id);
+  const closeAttrs = { "data-payables-close": "" };
+  const facts = payableFactsAll();
+  const newBill = canEditModule("payables") ? uiButton("New payable request", { "data-payables-new": "" }, { size: "sm", primary: true }) : "";
+  const loadMore = (/** @type {boolean} */ lastPage) => modulePagination.payables?.hasMore && lastPage ? `<div class="ui-load-more">${uiButton("Load older bills", { "data-payables-load-more": "" }, { size: "sm" })}</div>` : "";
+  const dueCell = (/** @type {PayableFacts} */ fact) => fact.balance > 0.005
+    ? uiCellText(uiDate(fact.due), `${fact.overdue ? `${plural(-fact.days, "day")} late` : `Due ${dueInText(fact.days)}`}${fact.estimated ? " · est." : ""}`, { subTone: fact.overdue ? "red" : fact.days <= 7 ? "amber" : undefined })
+    : uiCellText(uiDate(fact.due), fact.estimated ? "est." : "");
+
+  if (tab === "payees") {
+    /** @type {Map<string, PayableFacts[]>} */
+    const grouped = new Map();
+    facts.filter((fact) => fact.state !== "cancelled").forEach((fact) => grouped.set(fact.p.supplier, [...(grouped.get(fact.p.supplier) || []), fact]));
+    const since = fmtDate(addMonthsToDate(today, -12));
+    const entries = [...grouped.entries()].map(([name, list]) => {
+      const open = list.filter((fact) => fact.balance > 0.005).sort((a, b) => a.due.localeCompare(b.due));
+      return { name, list, open, total: open.reduce((s, fact) => s + fact.balance, 0), late: open.filter((fact) => fact.overdue).reduce((s, fact) => s + fact.balance, 0), oldest: open.find((fact) => fact.overdue), next: open.find((fact) => !fact.overdue), paid12: list.filter((fact) => fact.state === "paid" && fmtDateSafe(fact.p.date) >= since).reduce((s, fact) => s + Number(fact.p.amount || 0), 0) };
+    });
+    const withBalance = entries.filter((entry) => entry.total > 0.005);
+    const top = [...withBalance].sort((a, b) => b.total - a.total)[0];
+    const total = withBalance.reduce((s, entry) => s + entry.total, 0);
+    return {
+      title: "Who we owe", intro: "Unpaid balance per supplier, oldest due first.", placeholder: "Supplier", actions: [newBill].filter(Boolean), minWidth: 860,
+      stats: [
+        { label: "Suppliers we owe", value: withBalance.length, sub: pesoCompact(total), tone: "blue", scope: "owed" },
+        { label: "With overdue bills", value: withBalance.filter((entry) => entry.late > 0.005).length, sub: pesoCompact(withBalance.reduce((s, entry) => s + entry.late, 0)), tone: "red", scope: "late" },
+        { label: "Largest balance", value: top ? top.name : "—", sub: top ? `${pesoCompact(top.total)} · ${Math.round((top.total / (total || 1)) * 100)}% of what we owe` : "Nothing owed", tone: "amber" },
+      ],
+      cols: [{ key: "id", label: "Supplier", sortable: true }, { key: "bills", label: "Unpaid bills", align: "right", sortable: true }, { key: "total", label: "We owe", align: "right", sortable: true }, { key: "late", label: "Overdue", align: "right", sortable: true }, { key: "next", label: "Next due", sortable: true }, { key: "paid", label: "Paid, 12 mo", align: "right", sortable: true }],
+      csvName: "payables-by-supplier.csv", csvHeader: ["Supplier", "Unpaid bills", "We owe", "Overdue", "Next due", "Paid last 12 months"],
+      rows: entries.map(/** @returns {UiViewRow} */ (entry) => ({
+        id: entry.name, branches: [], scopes: [...(entry.total > 0.005 ? ["owed"] : []), ...(entry.late > 0.005 ? ["late"] : [])],
+        search: [entry.name, ...entry.list.map((fact) => fact.p.id)].join(" "),
+        sortValues: { id: entry.name, bills: entry.open.length, total: entry.total, late: entry.late, next: inventoryDateValue(entry.open[0]?.due), paid: entry.paid12 },
+        csv: [entry.name, entry.open.length, entry.total.toFixed(2), entry.late.toFixed(2), entry.open[0]?.due || "", entry.paid12.toFixed(2)],
+        cells: [
+          uiCellDoc(entry.name, select(entry.name), "", { plain: true }), uiCellNum(entry.open.length), uiCellNum(entry.total > 0.005 ? peso.format(entry.total) : "—"),
+          entry.late > 0.005 ? `<span class="ui-num tone-red">${escapeHtml(peso.format(entry.late))}</span>` : "—",
+          entry.open[0] ? uiCellText(uiDate(entry.open[0].due), entry.open[0].overdue ? `${plural(-entry.open[0].days, "day")} late` : `Due ${dueInText(entry.open[0].days)}`, { subTone: entry.open[0].overdue ? "red" : undefined }) : "—",
+          uiCellNum(entry.paid12 ? peso.format(entry.paid12) : "—"),
+        ],
+        detail: () => ({
+          eyebrow: "Supplier", title: entry.name, pill: entry.late > 0.005 ? { text: "Has overdue bills", tone: "red" } : entry.total > 0.005 ? { text: "Owed", tone: "blue" } : { text: "Nothing owed", tone: "green" }, closeAttrs, label: "Supplier balance",
+          fields: [{ label: "We owe", value: peso.format(entry.total) }, { label: "Overdue", value: peso.format(entry.late) }, { label: "Paid, last 12 months", value: peso.format(entry.paid12) }, { label: "Bills on file", value: String(entry.list.length) }],
+          linesTitle: "Unpaid bills",
+          lines: entry.open.map((fact) => ({ left: fact.p.id, sub: `${fact.overdue ? `${plural(-fact.days, "day")} late` : `Due ${uiDate(fact.due)}`}${fact.state === "approval" ? " · not approved" : ""}`, right: peso.format(fact.balance), tone: fact.overdue ? /** @type {UiTone} */ ("red") : fact.state === "approval" ? "amber" : "blue" })),
+          total: entry.open.length ? { label: "Total", value: peso.format(entry.total) } : undefined,
+          actions: [uiButton("Show bills", { "data-payables-bills-for": entry.name }, { primary: true }), ...(supplierPurchasingVisible() ? [uiButton("Supplier record", { "data-wa-goto": `purchase-orders|suppliers||${entry.name}` })] : [])],
+        }),
+      })),
+      empty: ["No supplier bills yet", "Suppliers with payable requests show here."],
+      defaultSort: { key: "total", dir: -1 }, chips: [{ key: "owed", label: "Owed", tone: "blue" }, { key: "late", label: "Overdue", tone: "red" }], defaultScope: "",
+      after: loadMore,
+    };
+  }
+
+  const paidTab = tab === "paid";
+  const list = paidTab ? facts.filter((fact) => fact.state === "paid") : facts;
+  const rows = list.map(/** @returns {UiViewRow} */ (fact) => {
+    const { p } = fact;
+    const state = PAYABLE_STATE[fact.state];
+    const items = /** @type {Record<string, any>[]} */ (p.items || []);
+    const key = `payable:${p.id}`;
+    const actionHtml = fact.state === "approval" ? requestActions("payable", p.id)
+      : fact.state === "approved" ? `${paymentConfirmActions("payable", p.id)}<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print voucher</button>${payable2307Cell(p)}`
+        : `<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print voucher</button>${fact.state === "paid" ? payable2307Cell(p) : ""}`;
+    const method = paymentMethodLabel(p.method);
+    const scopes = [fact.state, ...(fact.overdue ? ["overdue"] : [])];
+    return {
+      id: p.id, branches: [], scopes,
+      search: [p.id, p.supplier, state.label, method, p.cheque, p.bank, ...items.map((item) => item.particulars || item.item)].filter(Boolean).join(" "),
+      sortValues: { id: p.id, supplier: String(p.supplier || ""), date: inventoryDateValue(p.date), due: inventoryDateValue(fact.due), amount: Number(p.amount || 0), balance: fact.balance, status: state.label, method },
+      csv: paidTab ? [p.id, p.supplier, p.date || "", method, p.bank || "", p.cheque || "", p.chequeDate || "", Number(p.amount || 0).toFixed(2)] : [p.id, p.supplier, p.date || "", fact.due, fact.estimated ? "estimated" : "", Number(p.grossAmount || p.amount || 0).toFixed(2), Number(p.amount || 0).toFixed(2), fact.balance.toFixed(2), state.label],
+      cells: paidTab
+        ? [uiCellDoc(p.id, select(p.id), plural(items.length || 1, "item")), uiCellText(p.supplier, "", { strong: true }), escapeHtml(uiDate(p.date)), uiCellText(method, [p.bank, p.cheque ? `No. ${p.cheque}` : "", p.chequeDate ? uiDate(p.chequeDate) : ""].filter(Boolean).join(" · ")), uiCellNum(peso.format(Number(p.amount || 0))), inventoryNextStep(actionHtml)]
+        : [uiCellDoc(p.id, select(p.id), plural(items.length || 1, "item")), uiCellText(p.supplier, "", { strong: true }), escapeHtml(uiDate(p.date)), dueCell(fact), uiCellNum(peso.format(Number(p.amount || 0))), uiCellNum(fact.balance > 0.005 ? peso.format(fact.balance) : "—"), uiPill(fact.overdue ? `${state.label} · overdue` : state.label, fact.overdue ? "red" : state.tone), inventoryNextStep(actionHtml)],
+      detail: /** @returns {UiDetail} */ () => {
+        const { buttons, notes } = uiAdoptActions(actionHtml);
+        const short = fact.balance > 0.005 ? supplierShortPosBySupplier().get(p.supplier) || [] : [];
+        const wht = Number(p.withholdingTax1 || 0) + Number(p.withholdingTax2 || 0);
+        return {
+          eyebrow: p.id, title: p.supplier || "Supplier", pill: { text: fact.overdue ? `${state.label} · overdue` : state.label, tone: fact.overdue ? "red" : state.tone }, closeAttrs, label: "Bill details",
+          fields: [
+            { label: "Requested", value: uiDate(p.date), sub: p.createdByUser ? String(p.createdByUser) : "" },
+            { label: "Due", value: uiDate(fact.due), sub: fact.estimated ? "Estimated: 30 days after the date" : fact.balance > 0.005 ? (fact.overdue ? `${plural(-fact.days, "day")} late` : `Due ${dueInText(fact.days)}`) : "" },
+            { label: "Gross", value: peso.format(Number(p.grossAmount || p.amount || 0)) },
+            { label: "Withholding", value: wht ? peso.format(wht) : "—", sub: [Number(p.withholdingTax1 || 0) ? "1%" : "", Number(p.withholdingTax2 || 0) ? "2%" : ""].filter(Boolean).join(" + ") },
+            { label: "Net to pay", value: peso.format(Number(p.amount || 0)) },
+            { label: "Approved by", value: p.approvedBy || "—", sub: p.approvedAt ? uiDate(p.approvedAt) : "" },
+            ...(fact.state === "paid" ? [{ label: "Paid by", value: paymentMethodLabel(p.method), sub: [p.bank, p.cheque ? `No. ${p.cheque}` : "", p.chequeDate ? uiDate(p.chequeDate) : ""].filter(Boolean).join(" · ") }] : []),
+            ...(p.requestNote ? [{ label: "Notes", value: String(p.requestNote), wide: true }] : []),
+          ],
+          linesTitle: "Items / services",
+          lines: items.map((item) => ({ left: String(item.particulars || item.item || "Item"), sub: item.classification ? String(item.classification) : "", right: peso.format(Number(item.amount || 0)) })),
+          total: { label: "Net total", value: peso.format(Number(p.amount || 0)) },
+          note: short.length ? { text: `${short.map((entry) => entry.po.id).join(", ")} from ${p.supplier} arrived short. Deduct the missing items before paying.`, tone: "orange" } : notes[0] ? { text: notes[0], tone: "slate" } : fact.state === "approved" ? { text: "Pick how it was paid (cash, check or bank transfer) to mark it paid.", tone: "blue" } : undefined,
+          actions: buttons,
+          extra: fact.state === "approved" || fact.state === "paid" ? `<div class="ui-lines"><h4>Attachment</h4><div class="ui-btn-row">${payableAttachmentCell(p)}</div></div>` : "",
+        };
+      },
+    };
+  });
+  if (paidTab) {
+    const since = fmtDate(addMonthsToDate(today, -12));
+    const recent = list.filter((fact) => fmtDateSafe(fact.p.date) >= since);
+    const byMethod = (/** @type {string} */ name) => recent.filter((fact) => paymentMethodLabel(fact.p.method) === name).reduce((s, fact) => s + Number(fact.p.amount || 0), 0);
+    return {
+      title: "Payments made", intro: "Bills marked paid, with how they were paid. Payments are made by cash, check or bank transfer.", placeholder: "Bill, supplier, check no. or bank", actions: [], minWidth: 820,
+      stats: [
+        { label: "Paid, last 12 months", value: pesoCompact(recent.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), sub: `${plural(recent.length, "bill")} (by bill date)`, tone: "green" },
+        { label: "By check", value: pesoCompact(byMethod("Check")), sub: "Last 12 months", tone: "blue", scope: "Check" },
+        { label: "By bank transfer · cash", value: `${pesoCompact(byMethod("Bank transfer"))} · ${pesoCompact(byMethod("Cash"))}`, sub: "Last 12 months", tone: "accent" },
+      ],
+      cols: [{ key: "id", label: "Bill", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "date", label: "Bill date", sortable: true }, { key: "method", label: "Paid by", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "act", label: "", align: "right" }],
+      csvName: "payments-made.csv", csvHeader: ["Bill", "Supplier", "Bill date", "Paid by", "Bank", "Check no.", "Check date", "Amount"],
+      rows: rows.map((row) => ({ ...row, scopes: [...row.scopes, paymentMethodLabel(/** @type {PayableFacts} */ (list.find((fact) => fact.p.id === row.id))?.p.method)] })),
+      empty: ["No payments yet", "Bills you mark paid by cash, check or bank transfer show here."],
+      defaultSort: { key: "date", dir: -1 }, chips: [{ key: "Cash", label: "Cash", tone: "green" }, { key: "Check", label: "Check", tone: "blue" }, { key: "Bank transfer", label: "Bank transfer", tone: "accent" }], defaultScope: "",
+      after: loadMore,
+    };
+  }
+  const open = facts.filter((fact) => fact.balance > 0.005);
+  const overdue = open.filter((fact) => fact.overdue);
+  const approval = facts.filter((fact) => fact.state === "approval");
+  return {
+    title: "Bills", intro: "Every supplier payable request, from approval to paid. Payables are approved by Superadmin or CEO.", placeholder: "Bill no., supplier or item", actions: [newBill].filter(Boolean), minWidth: 1000,
+    stats: [
+      { label: "We owe", value: pesoCompact(open.reduce((s, fact) => s + fact.balance, 0)), sub: plural(open.length, "unpaid bill"), tone: "blue", scope: "approved" },
+      { label: "Overdue", value: pesoCompact(overdue.reduce((s, fact) => s + fact.balance, 0)), sub: plural(overdue.length, "bill"), tone: "red", scope: "overdue" },
+      { label: "To approve", value: approval.length, sub: pesoCompact(approval.reduce((s, fact) => s + Number(fact.p.amount || 0), 0)), tone: "amber", scope: "approval" },
+    ],
+    cols: [{ key: "id", label: "Bill", sortable: true }, { key: "supplier", label: "Supplier", sortable: true }, { key: "date", label: "Requested", sortable: true }, { key: "due", label: "Due", sortable: true }, { key: "amount", label: "Net amount", align: "right", sortable: true }, { key: "balance", label: "Balance", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "act", label: "", align: "right" }],
+    csvName: "payables.csv", csvHeader: ["Bill", "Supplier", "Requested", "Due", "Due date basis", "Gross", "Net", "Balance", "Status"],
+    rows,
+    empty: ["No payable requests yet", "Create a payable request for a supplier bill. It waits for Superadmin or CEO approval before it can be paid."],
+    defaultSort: { key: "due", dir: 1 },
+    chips: [{ key: "approval", label: "To approve", tone: "amber" }, { key: "approved", label: "Approved · to pay", tone: "blue" }, { key: "overdue", label: "Overdue", tone: "red" }, { key: "paid", label: "Paid", tone: "green" }, { key: "cancelled", label: "Cancelled", tone: "slate" }],
+    defaultScope: "",
+    after: loadMore,
+  };
+}
+
+function renderPayables() {
+  ensureUploadedFilesLoaded(renderPayables);
+  if (!PAYABLES_TAB_LABELS[payablesTab]) payablesTab = "overview";
+  const header = qs("#payables-actions");
+  if (header) header.innerHTML = canEditModule("payables") ? uiButton("New payable request", { "data-payables-new": "" }, { primary: true }) : "";
+  const facts = payableFactsAll();
+  /** @type {Record<string, number | undefined>} */
+  const counts = { bills: facts.filter((fact) => fact.state === "approval" || fact.overdue).length, payees: new Set(facts.filter((fact) => fact.balance > 0.005).map((fact) => fact.p.supplier)).size, paid: facts.filter((fact) => fact.state === "paid").length };
+  qs("#payables-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(PAYABLES_TAB_LABELS).map((key) => ({ key, label: PAYABLES_TAB_LABELS[key], count: counts[key] })), active: payablesTab, attr: "data-payables-tab" });
+  renderModuleAssistant("payables");
+  uiRender(qs("#payables-tab-panel"), payablesTab === "overview" ? payablesOverviewHtml() : uiViewHtml(payablesTabModel(payablesTab), payablesView, "payables"));
+  syncModuleUrl("payables", payablesQueryString());
+}
+
+// ----- Expenses ---------------------------------------------------------------------------------------
+const EXPENSES_TAB_LABELS = /** @type {Record<string, string>} */ ({ overview: "Overview", list: "Expenses", budgets: "Budgets", recurring: "Recurring" });
+const EXPENSE_STATE = /** @type {Record<string, { label: string, tone: UiTone }>} */ ({
+  approval: { label: "To approve", tone: "amber" },
+  returned: { label: "Returned", tone: "orange" },
+  topay: { label: "Approved · to pay", tone: "blue" },
+  paid: { label: "Paid", tone: "green" },
+  cancelled: { label: "Cancelled", tone: "slate" },
+});
+/** Superadmin and CEO, or an Admin with Expenses edit access (the server enforces the same). */
+function canEditExpensePlanning() { return ["Superadmin", "CEO"].includes(currentUser?.role) || (currentUser?.role === "Admin" && canEditModule("replenishments")); }
+function expensesQueryString() { return moduleViewQueryString("replenishments", expensesTab, "overview", expensesView); }
+/** @param {Replenishment} r */
+function expenseState(r) {
+  const status = String(r.requestStatus || r.status || "");
+  if (r.paymentConfirmed || r.status === "Paid") return "paid";
+  if (status === "Cancelled") return "cancelled";
+  if (status === "Returned") return "returned";
+  if (status === "Approved") return "topay";
+  return "approval";
+}
+/** Amount per classification on one expense (lines without a classification fall under its type). @param {Replenishment} r */
+function expenseByCategory(r) {
+  /** @type {Record<string, number>} */
+  const out = {};
+  const items = /** @type {Record<string, any>[]} */ (r.items || []);
+  const itemTotal = items.reduce((s, item) => s + Number(item.amount || 0), 0);
+  if (!items.length || itemTotal <= 0) { out[String(r.type || "Unclassified")] = Number(r.amount || 0); return out; }
+  items.forEach((item) => { const key = String(item.classification || r.type || "Unclassified"); out[key] = (out[key] || 0) + Number(item.amount || 0); });
+  return out;
+}
+/** Spent (approved or paid) per category in a month. @param {Replenishment[]} rows @param {string} monthKey */
+function expenseSpendByCategory(rows, monthKey) {
+  /** @type {Record<string, number>} */
+  const out = {};
+  rows.filter((r) => ["topay", "paid"].includes(expenseState(r)) && fmtDateSafe(r.date).slice(0, 7) === monthKey).forEach((r) => Object.entries(expenseByCategory(r)).forEach(([key, value]) => { out[key] = (out[key] || 0) + value; }));
+  return out;
+}
+/** Monthly budget per category (company-wide). */
+function expenseBudgetMap() {
+  /** @type {Record<string, number>} */
+  const out = {};
+  (/** @type {ExpenseBudget[]} */ (data.expenseBudgets || [])).forEach((budget) => { if (Number(budget.monthly) > 0) out[budget.category] = (out[budget.category] || 0) + Number(budget.monthly); });
+  return out;
+}
+/** @param {number} actual @param {number} budget @returns {{ label: string, tone: UiTone, key: string }} */
+function budgetStatus(actual, budget) {
+  if (!(budget > 0)) return { key: "none", label: "No budget", tone: "slate" };
+  const pct = actual / budget;
+  if (pct > 1.1) return { key: "over", label: `Over · ${Math.round(pct * 100)}%`, tone: "red" };
+  if (pct > 1) return { key: "near", label: `Slightly over · ${Math.round(pct * 100)}%`, tone: "amber" };
+  return { key: "ok", label: `${Math.round(pct * 100)}% used`, tone: "green" };
+}
+function expenseCategories() {
+  const seen = new Set([...EXPENSE_CLASSIFICATION_OPTIONS, ...Object.keys(expenseBudgetMap())]);
+  byBranch(data.replenishments, "office").forEach((r) => Object.keys(expenseByCategory(r)).forEach((key) => seen.add(key)));
+  return [...seen];
+}
+
+function expensesOverviewHtml() {
+  const rows = byBranch(data.replenishments, "office");
+  const months = recentMonthKeys(6);
+  const thisMonth = months[5], lastMonth = months[4];
+  const budgets = expenseBudgetMap();
+  const totalBudget = Object.values(budgets).reduce((a, b) => a + b, 0);
+  const spentNow = Object.values(expenseSpendByCategory(rows, thisMonth)).reduce((a, b) => a + b, 0);
+  const lastByCat = expenseSpendByCategory(rows, lastMonth);
+  const nowByCat = expenseSpendByCategory(rows, thisMonth);
+  const [year, month, day] = fmtDate(today).split("-").map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const pace = totalBudget * (day / daysInMonth);
+  const overLast = Object.keys(budgets).filter((cat) => (lastByCat[cat] || 0) > budgets[cat]);
+  const approval = rows.filter((r) => expenseState(r) === "approval");
+  const missing = rows.filter((r) => ["topay", "paid"].includes(expenseState(r)) && !String(r.file || "").replace(/^[-\s]+$/, "").trim());
+  const goto = (/** @type {string} */ tab, /** @type {string} */ scope = "", /** @type {string} */ sel = "") => ({ "data-wa-goto": `replenishments|${tab}|${scope}|${sel}` });
+
+  /** @type {UiKpi[]} */
+  const kpis = [
+    { label: "Spent this month", value: pesoCompact(spentNow), tone: "blue", change: totalBudget > 0 ? { text: `${Math.round((spentNow / totalBudget) * 100)}% of budget`, good: spentNow <= pace } : null, sub: totalBudget > 0 ? `Budget ${pesoCompact(totalBudget)} · day ${day} of ${daysInMonth}` : "No budgets set yet", title: "Approved and paid expenses dated this month" },
+    { label: "Over budget last month", value: Object.keys(budgets).length ? String(overLast.length) : "—", tone: "red", sub: Object.keys(budgets).length ? overLast.slice(0, 2).join(", ") || "Every category within budget" : "Set budgets to track this" },
+    { label: "Waiting for approval", value: String(approval.length), tone: "amber", change: approval.length ? { text: pesoCompact(approval.reduce((s, r) => s + Number(r.amount || 0), 0)), good: null } : null, sub: approval[0] ? `${approval[0].id} · ${approval[0].requester || approval[0].employeeName || ""}` : "Nothing waiting" },
+    { label: "Missing receipts", value: String(missing.length), tone: "orange", sub: missing.length ? `${pesoCompact(missing.reduce((s, r) => s + Number(r.amount || 0), 0))} approved without a receipt on file` : "Every approved expense has one" },
+  ];
+
+  // Last month vs budget.
+  const cats = [...new Set([...Object.keys(budgets), ...Object.keys(lastByCat)])].map((cat) => ({ cat, actual: lastByCat[cat] || 0, budget: budgets[cat] || 0 })).filter((entry) => entry.actual > 0 || entry.budget > 0).sort((a, b) => b.actual - a.actual);
+  // What stands out.
+  /** @type {UiInsight[]} */
+  const stands = [];
+  Object.keys(budgets).forEach((cat) => {
+    const now = nowByCat[cat] || 0;
+    const expected = budgets[cat] * (day / daysInMonth);
+    if (now > budgets[cat]) stands.push({ tone: "red", money: now - budgets[cat], title: `${cat} is already over this month's budget`, text: `${peso.format(now)} spent of ${peso.format(budgets[cat])}.`, action: { label: "Budgets", attrs: goto("budgets", "", cat) } });
+    else if (now > expected * 1.25 && now > 0) stands.push({ tone: "amber", money: now - expected, title: `${cat} is ahead of budget pace`, text: `${peso.format(now)} spent by day ${day}; the month's budget is ${peso.format(budgets[cat])}.`, action: { label: "Budgets", attrs: goto("budgets", "", cat) } });
+  });
+  const prior = months.slice(1, 4); // the three full months before last month
+  Object.keys(lastByCat).forEach((cat) => {
+    const avg = prior.reduce((s, key) => s + (expenseSpendByCategory(rows, key)[cat] || 0), 0) / 3;
+    const last = lastByCat[cat] || 0;
+    if (avg > 0 && last > avg * 1.3 && last - avg >= 5000) stands.push({ tone: "orange", money: last - avg, title: `${cat} jumped ${Math.round(((last - avg) / avg) * 100)}% last month`, text: `${peso.format(last)} vs about ${peso.format(avg)} a month before that.` });
+  });
+  const returned = rows.filter((r) => expenseState(r) === "returned");
+  if (returned.length) stands.push({ tone: "slate", money: 0, title: `${plural(returned.length, "request")} returned for changes`, text: "Waiting on the requester to edit and resubmit.", action: { label: "Show", attrs: goto("list", "returned") } });
+  const soon = (/** @type {RecurringCost[]} */ (data.recurringCosts || [])).flatMap((cost) => recurringOccurrences(cost, fmtDate(today), fmtDate(addDays(new Date(`${fmtDate(today)}T00:00:00`), 7))).map(() => cost));
+  if (soon.length) stands.push({ tone: "blue", money: 0, title: `${plural(soon.length, "recurring cost")} due in the next 7 days`, text: soon.slice(0, 3).map((cost) => `${cost.name} ${peso.format(Number(cost.amount || 0))}`).join(", "), action: { label: "Recurring", attrs: goto("recurring") } });
+  stands.sort((a, b) => (b.money || 0) - (a.money || 0));
+
+  const trend = months.map((key) => Object.values(expenseSpendByCategory(rows, key)).reduce((a, b) => a + b, 0));
+  const fullTrend = trend.slice(0, -1).some((value) => value > 0) ? trend.slice(0, -1) : [];
+  const offices = [...new Set(rows.map((r) => String(r.office || "No office")))];
+  const thisMonthRows = rows.filter((r) => ["topay", "paid"].includes(expenseState(r)) && fmtDateSafe(r.date).slice(0, 7) === thisMonth);
+  const officeTones = /** @type {UiTone[]} */ (["blue", "orange", "green", "amber", "slate"]);
+  const largest = [...thisMonthRows].sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0)).slice(0, 5);
+
+  return uiKpiCards(kpis) + uiDashboardGrid([
+    [
+      {
+        span: 2, title: `${new Date(`${lastMonth}-01T00:00:00`).toLocaleDateString("en-PH", { month: "long" })}: actual vs budget`, sub: "Approved and paid expenses by category. The black mark is the monthly budget.",
+        body: uiHBars({ items: cats.slice(0, 8).map((entry) => { const status = budgetStatus(entry.actual, entry.budget); return { label: entry.cat, value: entry.actual, target: entry.budget || undefined, display: entry.budget ? `${pesoCompact(entry.actual)} of ${pesoCompact(entry.budget)}` : `${pesoCompact(entry.actual)} · no budget`, tone: status.key === "over" ? /** @type {UiTone} */ ("red") : status.key === "near" ? /** @type {UiTone} */ ("amber") : undefined }; }), caption: "Actual vs budget by category", targetLabel: "Budget" }),
+        takeaway: !Object.keys(budgets).length ? "No budgets yet — set a monthly budget per category in the Budgets tab to see over/under." : overLast.length ? `${overLast.join(", ")} went over budget.` : "Every budgeted category stayed within budget.",
+        link: { label: "Budgets", attrs: goto("budgets") },
+      },
+      { span: 1, title: "What stands out", sub: "Ranked by money at stake", body: uiInsightList(stands.slice(0, 5), "Nothing unusual in expenses right now.") },
+    ],
+    [
+      {
+        span: 2, title: "Last 6 months", sub: "Approved and paid expenses per month",
+        body: uiBarChart({ labels: months.map(shortMonthLabel), series: [{ name: "Spent", values: trend }], format: pesoAxis, partialLast: true, caption: "Expenses per month" }),
+        takeaway: fullTrend.length ? `Over the last ${fullTrend.length} full months we spent about ${pesoCompact(fullTrend.reduce((a, b) => a + b, 0) / fullTrend.length)} a month on expenses.${totalBudget > 0 ? ` Total monthly budget is ${pesoCompact(totalBudget)}.` : ""}` : undefined,
+      },
+      {
+        span: 1, title: "By office, this month", sub: "Approved and paid",
+        body: uiStackBar({ segments: offices.map((office, index) => { const value = thisMonthRows.filter((r) => String(r.office || "No office") === office).reduce((s, r) => s + Number(r.amount || 0), 0); return { label: office, value, display: pesoCompact(value), tone: officeTones[index % officeTones.length] }; }), caption: "Expenses by office this month" }),
+      },
+    ],
+    [
+      { span: 1, title: "Largest this month", sub: "Approved and paid", body: uiInsightList(largest.map((r) => ({ tone: /** @type {UiTone} */ (EXPENSE_STATE[expenseState(r)].tone), title: `${pesoCompact(Number(r.amount || 0))} · ${Object.keys(expenseByCategory(r)).join(", ")}`, text: `${r.id} · ${r.requester || r.employeeName || "—"} · ${r.office || "—"}`, action: { label: "Open", attrs: goto("list", "", r.id) } })), "No approved expenses this month yet.") },
+    ],
+  ]);
+}
+
+/** @param {string} tab @returns {UiView} */
+function expensesTabModel(tab) {
+  const select = (/** @type {string} */ id) => uiViewSelect("expenses", id);
+  const closeAttrs = { "data-expenses-close": "" };
+  const rows = byBranch(data.replenishments, "office");
+  const months = recentMonthKeys(6);
+  const editPlanning = canEditExpensePlanning();
+
+  if (tab === "budgets") {
+    const budgets = expenseBudgetMap();
+    const stored = /** @type {ExpenseBudget[]} */ (data.expenseBudgets || []);
+    const now = expenseSpendByCategory(rows, months[5]);
+    const last = expenseSpendByCategory(rows, months[4]);
+    const avg3 = (/** @type {string} */ cat) => months.slice(2, 5).reduce((s, key) => s + (expenseSpendByCategory(rows, key)[cat] || 0), 0) / 3;
+    const entries = expenseCategories().map((cat) => ({ cat, budget: budgets[cat] || 0, now: now[cat] || 0, last: last[cat] || 0, avg: avg3(cat), record: stored.find((budget) => budget.category === cat) }));
+    const total = entries.reduce((s, entry) => s + entry.budget, 0);
+    return {
+      title: "Budgets", intro: "A monthly budget per expense category. Status compares last month's approved and paid expenses with the budget: over 110% is red, over 100% amber.",
+      placeholder: "Category", actions: [], minWidth: 860,
+      stats: [
+        { label: "Monthly budget", value: total ? pesoCompact(total) : "—", sub: `${plural(entries.filter((entry) => entry.budget > 0).length, "category", "categories")} budgeted`, tone: "blue" },
+        { label: "Over budget last month", value: entries.filter((entry) => budgetStatus(entry.last, entry.budget).key === "over").length, sub: "More than 110% of budget", tone: "red", scope: "over" },
+        { label: "No budget yet", value: entries.filter((entry) => !entry.budget).length, sub: editPlanning ? "Open a category to set one" : "Superadmin, CEO or Admin sets budgets", tone: "slate", scope: "none" },
+      ],
+      cols: [{ key: "id", label: "Category", sortable: true }, { key: "budget", label: "Monthly budget", align: "right", sortable: true }, { key: "now", label: "This month", align: "right", sortable: true }, { key: "last", label: "Last month", align: "right", sortable: true }, { key: "avg", label: "3-month avg", align: "right", sortable: true }, { key: "status", label: "Last month status", sortable: true }],
+      csvName: "expense-budgets.csv", csvHeader: ["Category", "Monthly budget", "This month", "Last month", "3-month average", "Status"],
+      rows: entries.map(/** @returns {UiViewRow} */ (entry) => {
+        const status = budgetStatus(entry.last, entry.budget);
+        return {
+          id: entry.cat, branches: [], scopes: [status.key],
+          search: entry.cat, sortValues: { id: entry.cat, budget: entry.budget, now: entry.now, last: entry.last, avg: entry.avg, status: status.label },
+          csv: [entry.cat, entry.budget.toFixed(2), entry.now.toFixed(2), entry.last.toFixed(2), entry.avg.toFixed(2), status.label],
+          cells: [uiCellDoc(entry.cat, select(entry.cat), "", { plain: true }), uiCellNum(entry.budget ? peso.format(entry.budget) : "—"), uiCellText(peso.format(entry.now), entry.budget ? `${Math.round((entry.now / entry.budget) * 100)}% so far` : ""), uiCellNum(peso.format(entry.last)), uiCellNum(peso.format(entry.avg)), uiPill(status.label, status.tone)],
+          detail: () => ({
+            eyebrow: "Expense category", title: entry.cat, pill: { text: status.label, tone: status.tone }, closeAttrs, label: "Budget details",
+            fields: [
+              { label: "Monthly budget", value: entry.budget ? peso.format(entry.budget) : "—", sub: entry.record?.updatedBy ? `Set by ${entry.record.updatedBy}${entry.record.updatedAt ? `, ${uiDate(entry.record.updatedAt)}` : ""}` : "" },
+              { label: "This month so far", value: peso.format(entry.now) }, { label: "Last month", value: peso.format(entry.last) }, { label: "3-month average", value: peso.format(entry.avg) },
+            ],
+            linesTitle: "Last 6 months",
+            lines: months.map((key) => { const value = expenseSpendByCategory(rows, key)[entry.cat] || 0; const s = budgetStatus(value, entry.budget); return { left: new Date(`${key}-01T00:00:00`).toLocaleDateString("en-PH", { month: "long", year: "numeric" }), right: peso.format(value), tone: entry.budget ? s.tone : /** @type {UiTone} */ ("slate") }; }),
+            extra: editPlanning ? `<div class="ui-lines"><h4>Set the monthly budget</h4><div class="ui-btn-row"><label class="ui-search"><span class="sr-only">Monthly budget for ${escapeHtml(entry.cat)}</span><input id="expense-budget-amount" type="number" min="0" step="any" inputmode="decimal" value="${entry.budget || ""}" placeholder="0.00" /></label>${uiButton("Save budget", { "data-expenses-budget-save": entry.cat }, { primary: true, size: "sm" })}</div></div>` : "",
+            actions: [uiButton("Show expenses", { "data-expenses-show-category": entry.cat })],
+          }),
+        };
+      }),
+      empty: ["No expense categories", "Categories come from the expense classifications."],
+      defaultSort: { key: "last", dir: -1 }, chips: [{ key: "over", label: "Over", tone: "red" }, { key: "near", label: "Slightly over", tone: "amber" }, { key: "ok", label: "Within budget", tone: "green" }, { key: "none", label: "No budget", tone: "slate" }], defaultScope: "",
+    };
+  }
+
+  if (tab === "recurring") {
+    const costs = /** @type {RecurringCost[]} */ (data.recurringCosts || []);
+    const monthlyEquivalent = (/** @type {RecurringCost} */ cost) => Number(cost.amount || 0) / (cost.every === "Yearly" ? 12 : cost.every === "Quarterly" ? 3 : 1);
+    const active = costs.filter((cost) => cost.active !== false);
+    const soon = active.filter((cost) => recurringOccurrences(cost, fmtDate(today), fmtDate(addDays(new Date(`${fmtDate(today)}T00:00:00`), 14))).length);
+    return {
+      title: "Recurring", intro: "Costs that repeat — rent, utilities, subscriptions — so the cash forecast and budgets can expect them. Marking one done moves it to its next due date; record the actual spend as an expense request.",
+      placeholder: "Name, payee or category", actions: editPlanning ? [uiButton("Add recurring cost", { "data-expenses-recurring-new": "" }, { size: "sm", primary: true })] : [], minWidth: 860,
+      stats: [
+        { label: "Per month", value: pesoCompact(active.reduce((s, cost) => s + monthlyEquivalent(cost), 0)), sub: `${plural(active.length, "active cost")} (yearly and quarterly spread per month)`, tone: "blue" },
+        { label: "Due in 14 days", value: soon.length, sub: pesoCompact(soon.reduce((s, cost) => s + Number(cost.amount || 0), 0)), tone: "amber", scope: "soon" },
+        { label: "Paused", value: costs.length - active.length, sub: "Not counted in forecasts", tone: "slate", scope: "paused" },
+      ],
+      cols: [{ key: "id", label: "Cost", sortable: true }, { key: "category", label: "Category", sortable: true }, { key: "office", label: "Office", sortable: true }, { key: "every", label: "Every", sortable: true }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "next", label: "Next due", sortable: true }, { key: "status", label: "Status" }],
+      csvName: "recurring-costs.csv", csvHeader: ["Name", "Payee", "Category", "Office", "Every", "Amount", "Next due", "Status"],
+      rows: costs.map(/** @returns {UiViewRow} */ (cost) => {
+        const on = cost.active !== false;
+        const days = cost.nextDue ? daysUntil(cost.nextDue) : null;
+        const scopes = [on ? "active" : "paused", ...(on && days !== null && days <= 14 ? ["soon"] : [])];
+        return {
+          id: cost.id, branches: [], scopes,
+          search: [cost.name, cost.payee, cost.category, cost.office].filter(Boolean).join(" "),
+          sortValues: { id: cost.name, category: cost.category, office: String(cost.office || ""), every: cost.every, amount: Number(cost.amount || 0), next: inventoryDateValue(cost.nextDue) },
+          csv: [cost.name, cost.payee || "", cost.category, cost.office || "", cost.every, Number(cost.amount || 0).toFixed(2), cost.nextDue || "", on ? "Active" : "Paused"],
+          cells: [uiCellDoc(cost.name, select(cost.id), cost.payee || "", { plain: true }), escapeHtml(cost.category || "—"), escapeHtml(cost.office || "All"), escapeHtml(cost.every || "Monthly"), uiCellNum(peso.format(Number(cost.amount || 0))), cost.nextDue ? uiCellText(uiDate(cost.nextDue), days === null ? "" : days < 0 ? `${plural(-days, "day")} ago` : dueInText(days), { subTone: on && days !== null && days < 0 ? "red" : on && days !== null && days <= 7 ? "amber" : undefined }) : "—", uiPill(on ? "Active" : "Paused", on ? "green" : "slate")],
+          detail: () => ({
+            eyebrow: cost.category || "Recurring cost", title: cost.name, pill: on ? { text: "Active", tone: "green" } : { text: "Paused", tone: "slate" }, closeAttrs, label: "Recurring cost details",
+            fields: [
+              { label: "Amount", value: peso.format(Number(cost.amount || 0)), sub: String(cost.every || "Monthly") },
+              { label: "Next due", value: cost.nextDue ? uiDate(cost.nextDue) : "—" }, { label: "Payee", value: cost.payee || "—" }, { label: "Office", value: cost.office || "All" },
+              ...(cost.updatedBy ? [{ label: "Last changed by", value: cost.updatedBy, sub: cost.updatedAt ? uiDate(cost.updatedAt) : "" }] : []),
+            ],
+            actions: editPlanning ? [
+              ...(on ? [uiButton("Mark this one done", { "data-expenses-recurring-advance": cost.id }, { primary: true })] : []),
+              uiButton("Edit", { "data-expenses-recurring-edit": cost.id }),
+              uiButton(on ? "Pause" : "Resume", { "data-expenses-recurring-toggle": cost.id }),
+            ] : [],
+          }),
+        };
+      }),
+      empty: ["No recurring costs yet", editPlanning ? "Add rent, utilities or subscriptions so forecasts and budgets can expect them." : "Superadmin, CEO or Admin can add recurring costs."],
+      defaultSort: { key: "next", dir: 1 }, chips: [{ key: "active", label: "Active", tone: "green" }, { key: "soon", label: "Due in 14 days", tone: "amber" }, { key: "paused", label: "Paused", tone: "slate" }], defaultScope: "",
+    };
+  }
+
+  // Expenses list.
+  const viewRows = rows.map(/** @returns {UiViewRow} */ (r) => {
+    const stateKey = expenseState(r);
+    const state = EXPENSE_STATE[stateKey];
+    const cats = expenseByCategory(r);
+    const key = `expense:${r.id}`;
+    const actionHtml = stateKey === "approval" || stateKey === "returned" ? requestActions("expense", r.id)
+      : stateKey === "topay" ? `${paymentConfirmActions("expense", r.id)}<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print</button>`
+        : `<button class="mini-button" data-request-preview="${escapeHtml(key)}">Print</button>`;
+    const items = /** @type {Record<string, any>[]} */ (r.items || []);
+    const file = String(r.file || "").trim();
+    return {
+      id: r.id, branches: [], scopes: [stateKey, ...(["topay", "paid"].includes(stateKey) && !file.replace(/^[-\s]+$/, "") ? ["noreceipt"] : []), ...Object.keys(cats).map((cat) => `cat:${cat}`)],
+      search: [r.id, r.type, r.requester, r.employeeName, r.office, state.label, ...Object.keys(cats), ...items.map((item) => item.particulars)].filter(Boolean).join(" "),
+      sortValues: { id: r.id, who: String(r.requester || ""), date: inventoryDateValue(r.date), office: String(r.office || ""), amount: Number(r.amount || 0), status: state.label },
+      csv: [r.id, r.type || "", Object.keys(cats).join("; "), r.employeeName || "", r.requester || "", r.date || "", r.approvedAt || "", r.office || "", Number(r.amount || 0).toFixed(2), file, state.label, r.paymentConfirmed ? paymentMethodLabel(r.method) : ""],
+      cells: [
+        uiCellDoc(r.id, select(r.id), r.type || ""), uiCellText(r.requester || "—", r.employeeName && r.employeeName !== r.requester ? `For ${r.employeeName}` : ""), escapeHtml(uiDate(r.date)), escapeHtml(r.office || "—"),
+        escapeHtml(Object.keys(cats).join(", ")), uiCellNum(peso.format(Number(r.amount || 0))), uiPill(state.label, state.tone), inventoryNextStep(actionHtml),
+      ],
+      detail: /** @returns {UiDetail} */ () => {
+        const { buttons, notes } = uiAdoptActions(actionHtml);
+        return {
+          eyebrow: `${r.id} · ${r.type || "Expense"}`, title: r.requester || r.employeeName || "Expense", pill: { text: state.label, tone: state.tone }, closeAttrs, label: "Expense details",
+          fields: [
+            { label: "Date", value: uiDate(r.date) }, { label: "Office", value: r.office || "—" },
+            { label: "Employee", value: r.employeeName || "—" }, { label: "Receipt / file", value: file || "—", sub: file ? "" : "Missing" },
+            { label: "Approved by", value: r.approvedBy || "—", sub: r.approvedAt ? uiDate(r.approvedAt) : "" },
+            ...(stateKey === "paid" ? [{ label: "Paid by", value: paymentMethodLabel(r.method), sub: [r.bank, r.cheque ? `No. ${r.cheque}` : ""].filter(Boolean).join(" · ") }] : []),
+            ...(r.returnReason ? [{ label: "Returned because", value: String(r.returnReason), wide: true }] : []),
+          ],
+          linesTitle: "Items",
+          lines: items.map((item) => ({ left: String(item.particulars || item.item || "Item"), sub: item.classification ? String(item.classification) : "", right: peso.format(Number(item.amount || 0)) })),
+          total: { label: "Total", value: peso.format(Number(r.amount || 0)) },
+          note: notes[0] ? { text: notes[0], tone: "slate" } : stateKey === "topay" ? { text: "Pick how it was paid (cash, check or bank transfer) to mark it paid.", tone: "blue" } : undefined,
+          actions: [...buttons, uiButton("Full details", { "data-expense-detail": r.id })],
+        };
+      },
+    };
+  });
+  const thisMonth = months[5];
+  const approval = rows.filter((r) => expenseState(r) === "approval");
+  const topay = rows.filter((r) => expenseState(r) === "topay");
+  return {
+    title: "Expenses", intro: "Petty cash, per diem, operating expenses and revolving fund requests, from request to paid.", placeholder: "ID, requester, category or item",
+    actions: canEditModule("replenishments") ? [uiButton("New expense request", { "data-expenses-new": "" }, { size: "sm", primary: true })] : [], minWidth: 1000,
+    stats: [
+      { label: "Spent this month", value: pesoCompact(rows.filter((r) => ["topay", "paid"].includes(expenseState(r)) && fmtDateSafe(r.date).slice(0, 7) === thisMonth).reduce((s, r) => s + Number(r.amount || 0), 0)), sub: "Approved and paid", tone: "blue" },
+      { label: "To approve", value: approval.length, sub: pesoCompact(approval.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "amber", scope: "approval" },
+      { label: "Approved · to pay", value: topay.length, sub: pesoCompact(topay.reduce((s, r) => s + Number(r.amount || 0), 0)), tone: "blue", scope: "topay" },
+    ],
+    cols: [{ key: "id", label: "Expense", sortable: true }, { key: "who", label: "Requested by", sortable: true }, { key: "date", label: "Date", sortable: true }, { key: "office", label: "Office", sortable: true }, { key: "cat", label: "Category" }, { key: "amount", label: "Amount", align: "right", sortable: true }, { key: "status", label: "Status", sortable: true }, { key: "act", label: "", align: "right" }],
+    csvName: "expenses.csv", csvHeader: ["ID", "Expense type", "Category", "Employee", "Requester", "Requested", "Approved", "Office", "Amount", "Receipt/File", "Status", "Payment"],
+    rows: viewRows,
+    empty: ["No expense requests yet", "Create an expense request for petty cash, per diem or an operating expense."],
+    defaultSort: { key: "date", dir: -1 },
+    chips: [{ key: "approval", label: "To approve", tone: "amber" }, { key: "returned", label: "Returned", tone: "orange" }, { key: "topay", label: "Approved · to pay", tone: "blue" }, { key: "paid", label: "Paid", tone: "green" }, { key: "noreceipt", label: "Missing receipt", tone: "orange" }, { key: "cancelled", label: "Cancelled", tone: "slate" }, ...expenseCategories().map((cat) => ({ key: `cat:${cat}`, label: cat, tone: /** @type {UiTone} */ ("slate"), onlyWhenActive: true }))],
+    defaultScope: "",
+  };
 }
 
 function renderReplenishments() {
-  renderReplenishmentsWorkflowTabs();
-  const rows = byBranch(data.replenishments, "office").filter((r) => includesSearch(Object.values(r)));
-  // Summary totals should reflect live money, not requests that were cancelled — only the
-  // "All Expenses" table below keeps the full `rows` set (cancelled included) for audit history.
-  const activeRows = rows.filter((r) => (r.requestStatus || r.status) !== "Cancelled");
-  const requests = rows.filter((r) => r.requestStatus !== "Approved" && r.requestStatus !== "Cancelled");
-  const approved = rows.filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed);
-  const totalExpenses = activeRows.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const paidExpenses = activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const pendingAmount = activeRows.filter((expense) => !["Approved", "Cancelled", "Paid"].includes(expense.requestStatus || expense.status)).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const approvedAmount = approved.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-  const largestExpense = activeRows.reduce((max, expense) => Math.max(max, Number(expense.amount || 0)), 0);
-  const averageExpense = activeRows.length ? Math.round(totalExpenses / activeRows.length) : 0;
-  const topType = Object.entries(sumBy(activeRows, "type", (expense) => Number(expense.amount || 0))).sort((a, b) => b[1] - a[1])[0];
-  renderFinancialSummary("#expenses-summary-grid", [
-    { tone: "primary", label: "Total displayed expenses", value: peso.format(totalExpenses), note: `${activeRows.length} expense request${activeRows.length === 1 ? "" : "s"} in this view` },
-    { tone: "success", label: "Paid expenses", value: peso.format(paidExpenses), note: `${activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length} confirmed payment${activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length === 1 ? "" : "s"}` },
-    { tone: "warning", label: "Pending approval", value: peso.format(pendingAmount), note: `${requests.length} request${requests.length === 1 ? "" : "s"} pending` },
-  ], [
-    { title: "Status Count", items: [{ label: "Pending", value: requests.filter((r) => r.requestStatus !== "Returned").length }, { label: "Returned", value: rows.filter((r) => r.requestStatus === "Returned").length }, { label: "Cancelled", value: rows.filter((r) => (r.requestStatus || r.status) === "Cancelled").length }, { label: "Approved", value: approved.length }, { label: "Paid", value: activeRows.filter((expense) => expense.paymentConfirmed || (expense.status || "") === "Paid").length }] },
-    { title: "Expense Size", kind: "pairs", items: [{ label: "Average", value: peso.format(averageExpense) }, { label: "Largest", value: peso.format(largestExpense) }] },
-    { title: "Classification", kind: "pairs", items: [{ label: topType?.[0] || "Top Type", value: topType ? peso.format(topType[1]) : peso.format(0) }, { label: "Approved", value: peso.format(approvedAmount) }] },
-  ]);
-  table("#expense-requests-table", ["ID", "Type", "Employee", "Requester", "Requested", "Items", "Amount", "Status", "Actions"], requests.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.date || "-", itemizedSummary(r.items), peso.format(r.amount), `<span class="pill ${statusClass(r.requestStatus)}">${r.requestStatus}</span>`, requestActions("expense", r.id)] })));
-  table("#confirmed-expenses-table", ["ID", "Type", "Employee", "Requester", "Requested", "Approved", "Amount", "Status", "Payment"], approved.map((r) => ({ focus: r.id, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.date || "-", r.approvedAt || "-", peso.format(r.amount), `<span class="pill success">Approved</span>`, paymentConfirmActions("expense", r.id)] })));
-  table("#replenishments-table", ["ID", "Expense Type", "Employee", "Requester", "Requested", "Approved", "Office", "Amount", "Receipt/File", "Status", "Payment"], rows.map((r) => ({ focus: r.id, attrs: { "data-expense-detail": r.id }, cells: [r.id, r.type, r.employeeName || "-", r.requester, r.date || "-", r.approvedAt || "-", r.office, peso.format(r.amount), r.file, `<span class="pill ${statusClass(r.requestStatus || r.status)}">${r.requestStatus || r.status}</span>`, r.paymentConfirmed ? `${escapeHtml(r.method)}<small>${escapeHtml(r.bank || r.cheque || "")}</small>` : "-"] })));
+  if (!EXPENSES_TAB_LABELS[expensesTab]) expensesTab = "overview";
+  const header = qs("#replenishments-actions");
+  if (header) header.innerHTML = canEditModule("replenishments") ? uiButton("New expense request", { "data-expenses-new": "" }, { primary: true }) : "";
+  const rows = byBranch(data.replenishments, "office");
+  const budgets = expenseBudgetMap();
+  const now = expenseSpendByCategory(rows, recentMonthKeys(1)[0]);
+  /** @type {Record<string, number | undefined>} */
+  const counts = {
+    list: rows.filter((r) => expenseState(r) === "approval").length,
+    budgets: Object.keys(budgets).filter((cat) => (now[cat] || 0) > budgets[cat]).length,
+    recurring: (/** @type {RecurringCost[]} */ (data.recurringCosts || [])).filter((cost) => cost.active !== false).length,
+  };
+  qs("#expenses-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(EXPENSES_TAB_LABELS).map((key) => ({ key, label: EXPENSES_TAB_LABELS[key], count: counts[key] })), active: expensesTab, attr: "data-expenses-tab" });
+  renderModuleAssistant("replenishments");
+  uiRender(qs("#replenishments-tab-panel"), expensesTab === "overview" ? expensesOverviewHtml() : uiViewHtml(expensesTabModel(expensesTab), expensesView, "expenses"));
+  syncModuleUrl("replenishments", expensesQueryString());
 }
 
-function renderReplenishmentsWorkflowTabs() {
-  const scoped = byBranch(data.replenishments, "office");
-  /** @type {Record<string, any>} */
-  const counts = {
-    requests: scoped.filter((r) => r.requestStatus !== "Approved" && r.requestStatus !== "Cancelled").length,
-    payment: scoped.filter((r) => r.requestStatus === "Approved" && !r.paymentConfirmed).length,
-    all: scoped.length,
-  };
-  /** @type {Record<string, any>} */
-  const labels = { requests: "Requests", payment: "For Payment", all: "All Expenses" };
-  qsaIn(qs("#replenishments-workflow-tabs"), "[data-replenishments-workflow]").forEach((button) => {
-    const tab = /** @type {string} */ (button.dataset.replenishmentsWorkflow);
-    button.classList.toggle("active", tab === replenishmentsWorkflowTab);
-    button.innerHTML = `${escapeHtml(labels[tab])} <span class="tab-count">${counts[tab] || 0}</span>`;
+/** Notification / search links: open the tab that holds the record and select it. @param {string} query */
+function purchasingFocusRecord(query) {
+  const po = (data.inventoryPurchaseOrders || []).find((entry) => String(entry.id).toLowerCase() === query);
+  if (!po) return false;
+  purchasingTab = "pos"; purchasingView = uiBlankViewState(); purchasingView.sel = po.id;
+  return true;
+}
+/** @param {string} query */
+function payablesFocusRecord(query) {
+  const payable = (data.payables || []).find((entry) => String(entry.id).toLowerCase() === query);
+  if (!payable) return false;
+  payablesTab = "bills"; payablesView = uiBlankViewState(); payablesView.sel = payable.id;
+  return true;
+}
+/** @param {string} query */
+function expensesFocusRecord(query) {
+  const expense = (data.replenishments || []).find((entry) => String(entry.id).toLowerCase() === query);
+  if (!expense) return false;
+  expensesTab = "list"; expensesView = uiBlankViewState(); expensesView.sel = expense.id;
+  return true;
+}
+
+/** @param {string} category */
+async function saveExpenseBudget(category) {
+  if (!canEditExpensePlanning()) return toast("Only Superadmin, CEO or Admin can set budgets.");
+  const input = /** @type {HTMLInputElement | null} */ (document.getElementById("expense-budget-amount"));
+  const amount = Number(input?.value || 0);
+  if (!Number.isFinite(amount) || amount < 0) return toast("Enter a budget of zero or more.");
+  const id = `budget-${category.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const existing = (/** @type {ExpenseBudget[]} */ (data.expenseBudgets || [])).find((budget) => budget.category === category);
+  /** @type {ExpenseBudget} */
+  const record = { ...(existing || {}), id: existing?.id || id, category, monthly: Math.round(amount * 100) / 100, updatedBy: currentUser?.name || "System User", updatedAt: fmtDate(today) };
+  const saveResult = await persistRecords({ expenseBudgets: [record] });
+  if (!saveResult?.ok) return;
+  data.expenseBudgets = [...(data.expenseBudgets || []).filter((/** @type {ExpenseBudget} */ budget) => budget.id !== record.id), record];
+  log("Set expense budget", "Expenses", `${category}: ${peso.format(record.monthly)}`, { save: false });
+  renderReplenishments();
+  toast(`${category} budget set to ${peso.format(record.monthly)} a month.`);
+}
+
+/** @param {RecurringCost} cost */
+async function saveRecurringCost(cost) {
+  const record = { ...cost, updatedBy: currentUser?.name || "System User", updatedAt: fmtDate(today) };
+  const saveResult = await persistRecords({ recurringCosts: [record] });
+  if (!saveResult?.ok) return false;
+  data.recurringCosts = [...(data.recurringCosts || []).filter((/** @type {RecurringCost} */ entry) => entry.id !== record.id), record];
+  return true;
+}
+
+/** Add / edit form for a recurring cost. @param {string} [id] */
+function openRecurringCostForm(id) {
+  if (!canEditExpensePlanning()) return toast("Only Superadmin, CEO or Admin can change recurring costs.");
+  const existing = id ? (/** @type {RecurringCost[]} */ (data.recurringCosts || [])).find((cost) => cost.id === id) : undefined;
+  const option = (/** @type {string} */ value, /** @type {string | undefined} */ current) => `<option${value === current ? " selected" : ""}>${escapeHtml(value)}</option>`;
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal invite-confirm-modal";
+  dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Recurring cost</p><h2>${existing ? `Edit ${escapeHtml(existing.name)}` : "Add a recurring cost"}</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div>
+    <div class="form-grid">
+      <div class="field"><label for="rc-name">Name</label><input id="rc-name" required maxlength="80" value="${escapeHtml(existing?.name || "")}" placeholder="e.g. Office rent" /></div>
+      <div class="field"><label for="rc-payee">Payee (optional)</label><input id="rc-payee" maxlength="80" value="${escapeHtml(existing?.payee || "")}" /></div>
+      <div class="field"><label for="rc-category">Category</label><select id="rc-category">${expenseCategories().map((cat) => option(cat, existing?.category)).join("")}</select></div>
+      <div class="field"><label for="rc-office">Office</label><select id="rc-office">${["All", "Las Pinas", "Naga"].map((office) => option(office, existing?.office || "All")).join("")}</select></div>
+      <div class="field"><label for="rc-amount">Amount</label><input id="rc-amount" type="number" min="0" step="any" required value="${existing ? Number(existing.amount || 0) : ""}" /></div>
+      <div class="field"><label for="rc-every">Every</label><select id="rc-every">${["Monthly", "Quarterly", "Yearly"].map((every) => option(every, existing?.every || "Monthly")).join("")}</select></div>
+      <div class="field"><label for="rc-next">Next due</label><input id="rc-next" type="date" required value="${escapeHtml(existing?.nextDue || fmtDate(today))}" /></div>
+    </div>
+    <div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Cancel</button><button class="primary-button" value="confirm">Save</button></div></form>`;
+  document.body.appendChild(dialog);
+  dialog.addEventListener("close", async () => {
+    const get = (/** @type {string} */ sel) => /** @type {HTMLInputElement} */ (qsIn(dialog, sel)).value.trim();
+    const values = { name: get("#rc-name"), payee: get("#rc-payee"), category: get("#rc-category"), office: get("#rc-office"), amount: Number(get("#rc-amount")), every: get("#rc-every"), nextDue: get("#rc-next") };
+    const ok = dialog.returnValue === "confirm";
+    dialog.remove();
+    if (!ok) return;
+    if (!values.name || !(values.amount > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(values.nextDue)) return toast("Enter a name, an amount above zero and the next due date.");
+    /** @type {RecurringCost} */
+    const record = { ...(existing || {}), id: existing?.id || `RC-${Date.now().toString(36).toUpperCase()}`, name: values.name, payee: values.payee, category: values.category, office: values.office === "All" ? "" : values.office, amount: Math.round(values.amount * 100) / 100, every: /** @type {RecurringCost["every"]} */ (values.every), nextDue: values.nextDue, active: existing?.active ?? true };
+    if (!(await saveRecurringCost(record))) return;
+    log(existing ? "Edited recurring cost" : "Added recurring cost", "Expenses", `${record.name}: ${peso.format(record.amount)} ${record.every.toLowerCase()}`, { save: false });
+    expensesTab = "recurring";
+    expensesView = uiBlankViewState();
+    expensesView.sel = record.id;
+    renderReplenishments();
+    toast(`${record.name} saved.`);
   });
-  qsa("[data-replenishments-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.replenishmentsPanel === replenishmentsWorkflowTab));
+  dialog.showModal();
+}
+
+/** @param {string} id @param {"advance" | "toggle"} action */
+async function updateRecurringCost(id, action) {
+  if (!canEditExpensePlanning()) return toast("Only Superadmin, CEO or Admin can change recurring costs.");
+  const cost = (/** @type {RecurringCost[]} */ (data.recurringCosts || [])).find((entry) => entry.id === id);
+  if (!cost) return toast("Recurring cost not found.");
+  let next;
+  if (action === "advance") {
+    const step = cost.every === "Yearly" ? 12 : cost.every === "Quarterly" ? 3 : 1;
+    const nextDue = fmtDate(addMonthsToDate(new Date(`${cost.nextDue || fmtDate(today)}T00:00:00`), step));
+    if (!confirm(`Mark ${cost.name} (${uiDate(cost.nextDue)}) done and move it to ${uiDate(nextDue)}?`)) return;
+    next = { ...cost, nextDue };
+  } else next = { ...cost, active: cost.active === false };
+  if (!(await saveRecurringCost(next))) return;
+  log(action === "advance" ? "Advanced recurring cost" : next.active ? "Resumed recurring cost" : "Paused recurring cost", "Expenses", `${cost.name}${action === "advance" ? ` → ${next.nextDue}` : ""}`, { save: false });
+  renderReplenishments();
 }
 
 /** @param {any[]} [items] */
@@ -10617,7 +11824,7 @@ async function loadMorePurchaseOrders() {
     toast(error.message || "Could not load more purchase orders.");
   }
   page.loading = false;
-  renderPurchaseOrders();
+  renderSales();
 }
 async function loadMoreInventoryPurchaseOrders() {
   const page = modulePagination.inventoryPurchaseOrders;
@@ -10633,6 +11840,7 @@ async function loadMoreInventoryPurchaseOrders() {
   }
   page.loading = false;
   renderInventory();
+  if (document.body.dataset.activeSection === "purchase-orders") renderPurchaseOrders();
 }
 async function loadMoreTransfers() {
   const page = modulePagination.pendingTransfers;
@@ -10902,7 +12110,7 @@ function handleWorkflowAction(action) {
 /** @type {Record<string, any>} */
 const modalConfigs = {
   client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
-  item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...activeItems().map((item) => item.brand), ...activeSuppliers().map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => activeSuppliers().map((supplier) => supplier.name)]] },
+  item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...activeItems().map((item) => item.brand), ...activeSuppliers().map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => activeSuppliers().map((supplier) => supplier.name)], ["packSize", "Pack Size (supplier order multiple, optional)", "number-optional"]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea-optional"]] },
   supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(activeItems().map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["birthday", "Birthday", "date"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
@@ -10910,9 +12118,9 @@ const modalConfigs = {
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist-optional", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["skipPo", "Skip PO — record-keeping only, this invoice won't be printed", "checkbox"], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["preparedBy", "Collector", "datalist", () => activeEmployees().map((employee) => employee.name)], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Multiple Cheques", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
-  payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
+  payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["dueDate", "Due Date (blank = 30 days after the date)", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
-  inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => [ALL_RECEIVING_BRANCHES, ...platformBranches()]], ["date", "PO Date", "date"]] },
+  inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => [ALL_RECEIVING_BRANCHES, ...platformBranches()]], ["date", "PO Date", "date"], ["promisedDate", "Supplier Promised Delivery (optional)", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => activeClients().map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
   productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
@@ -10967,7 +12175,7 @@ function openModal(type, edit = null) {
   editingPoId = type === "purchaseOrder" && edit?.poEdit ? edit.poEdit.id : null;
   if (type === "purchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor(edit?.poEdit?.lines?.length ? edit.poEdit.lines : [{}], { requireLot: false }));
   if (["invoice", "cancelReplace"].includes(type)) qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor());
-  if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor([{}], { requireLot: false, allowDiscount: true, showCode: true }));
+  if (type === "inventoryPurchaseOrder") qs("#modal-fields").insertAdjacentHTML("beforeend", renderInvoiceEditor(inventoryPoPrefill?.lines.length ? inventoryPoPrefill.lines : [{}], { requireLot: false, allowDiscount: true, showCode: true }));
   if (type === "purchaseOrder" && editingPoId) {
     const po = edit.poEdit;
     qs("#modal-title").textContent = `Edit ${po.id}`;
@@ -10978,7 +12186,11 @@ function openModal(type, edit = null) {
   } else if (type === "purchaseOrder") {
     qs("#date").value = fmtDate(today);
   }
-  if (type === "inventoryPurchaseOrder") qs("#date").value = fmtDate(today);
+  if (type === "inventoryPurchaseOrder") {
+    qs("#date").value = fmtDate(today);
+    if (inventoryPoPrefill?.supplier && qs("#supplier")) qs("#supplier").value = inventoryPoPrefill.supplier;
+    inventoryPoPrefill = null;
+  }
   if (type === "invoice") {
     const date = qs("#date");
     date.value = fmtDate(today);
@@ -11486,7 +12698,7 @@ function buildInventoryPurchaseOrder(values) {
   const lines = parseInvoiceLines(values.itemsText || "", { requireLot: false }).map((line) => ({ ...line, receivedQty: 0 }));
   if (!lines.length) throw new Error("At least one inventory PO line is required.");
   const by = currentUser?.name || "System User";
-  return { id: nextInventoryPurchaseOrderId(), supplier: supplier.name, branch, date: values.date || fmtDate(today), terms: 30, status: "Pending Approval", approvedBy: "", approvedAt: "", cancelledBy: "", cancelledAt: "", history: [{ date: poHistoryTimestamp(), status: "Pending Approval", note: `Purchase order created for ${branch}.`, by }], lines, createdByUser: currentUser?.email || "" };
+  return { id: nextInventoryPurchaseOrderId(), supplier: supplier.name, branch, date: values.date || fmtDate(today), terms: 30, promisedDate: /^\d{4}-\d{2}-\d{2}$/.test(String(values.promisedDate || "")) ? String(values.promisedDate) : "", status: "Pending Approval", approvedBy: "", approvedAt: "", cancelledBy: "", cancelledAt: "", history: [{ date: poHistoryTimestamp(), status: "Pending Approval", note: `Purchase order created for ${branch}.`, by }], lines, createdByUser: currentUser?.email || "" };
 }
 
 function poHistoryTimestamp() {

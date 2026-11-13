@@ -112,6 +112,7 @@ async function submitModal(event) {
     // otherwise be silently dropped on save.
     const next = { ...previous, ...values };
     if (modalType === "item" && next.classification) next.category = importedCategory(next.classification);
+    if (modalType === "item") next.packSize = itemPackSizeValue(next.packSize);
     if (modalType === "employee" && !canManageEmployeeSalary()) next.salary = editContext.list[editContext.index].salary;
     try { validateMasterRecord(modalType, next, editContext.index); }
     catch (/** @type {any} */ error) { return toast(error.message); }
@@ -139,6 +140,7 @@ async function submitModal(event) {
   }
   if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) {
     if (modalType === "item" && values.classification) values.category = importedCategory(values.classification);
+    if (modalType === "item") values.packSize = itemPackSizeValue(values.packSize);
     try { validateMasterRecord(modalType, values); }
     catch (/** @type {any} */ error) { return toast(error.message); }
   }
@@ -375,6 +377,8 @@ async function submitModal(event) {
     const gross = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const deductions = financialRequestDeductions(gross);
     if (!items.length || deductions.total <= 0) return toast("Add at least one payable item with amount.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(values.dueDate || ""))) values.dueDate = fmtDate(addDays(values.date || fmtDate(today), PAYABLE_DEFAULT_TERMS_DAYS));
+    else if (values.date && values.dueDate < values.date) return toast("The due date can't be before the payable date.");
     const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, grossAmount: deductions.grossAmount, withholdingTax1: deductions.withholdingTax1, withholdingTax2: deductions.withholdingTax2, amount: deductions.total, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, createdByUser: currentUser?.email || "" };
     if (!(await confirmFinalSave("Save this payable?"))) return;
     data.payables.push(/** @type {Payable} */ (/** @type {unknown} */ (payable)));
@@ -1119,12 +1123,6 @@ function exportInventoryCsv() {
   downloadCsv("inventory-stock.csv", [header, ...rows.map((m) => [m.item.branch, m.item.brand, m.item.code, m.item.item, m.item.serial || "", m.item.lot || "", inventoryHasExpiry(m.item) ? m.item.expiry : "", m.item.qty, m.item.min, m.statusText, m.item.note || ""])]);
   log("Exported inventory stock (CSV)", "Inventory", `${rows.length} records`, { save: false });
 }
-qs("#po-workflow-tabs")?.addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-po-workflow]");
-  if (!button) return;
-  poWorkflowTab = button.dataset.poWorkflow;
-  renderPurchaseOrders();
-});
 qs("#print-template-tabs")?.addEventListener("click", (event) => {
   const button = closestEl(event.target, "[data-pt-tab]");
   if (!button) return;
@@ -1177,28 +1175,6 @@ qs("#print-template-panel")?.addEventListener("change", (event) => {
   if (id === "pt-step-select") ptStepIn = Number(/** @type {AnyEl} */ (event.target).value);
 });
 qs("#load-more-collections-history").addEventListener("click", loadMoreCollectionsHistory);
-qs("#payables-workflow-tabs").addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-payables-workflow]");
-  if (!button) return;
-  payablesWorkflowTab = button.dataset.payablesWorkflow;
-  renderPayables();
-});
-qs("#replenishments-workflow-tabs").addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-replenishments-workflow]");
-  if (!button) return;
-  replenishmentsWorkflowTab = button.dataset.replenishmentsWorkflow;
-  renderReplenishments();
-});
-qs("#replenishments-table")?.addEventListener("click", (event) => {
-  const row = closestEl(event.target, "[data-expense-detail]");
-  if (row) showExpenseDetail(/** @type {string} */ (row.dataset.expenseDetail));
-});
-qs("#po-view-toggle").addEventListener("click", (event) => {
-  const btn = closestEl(event.target, "[data-po-view]");
-  if (!btn) return;
-  poViewMode = btn.dataset.poView;
-  renderPurchaseOrders();
-});
 qs("#item-forecast-preset-toggle")?.addEventListener("click", (event) => {
   const btn = closestEl(event.target, "[data-forecast-months]");
   if (!btn) return;
@@ -1449,10 +1425,67 @@ qs("#receivables-tracker").addEventListener("click", (event) => {
   uiViewClick(target, "receivables", { state: () => receivablesView, view: () => receivablesTabModel(receivablesTab), render: renderReceivablesTracker });
 });
 qs("#receivables-tracker").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "receivables", () => receivablesView, renderReceivablesTracker); });
-qs("#replenishments-table").addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-approve-expense]");
-  if (button) approveExpense(Number(/** @type {string} */ (button.dataset.approveExpense)), /** @type {string} */ (button.dataset.nextStatus));
+// ---- Purchase Orders (supplier) / Payables / Expenses (redesign phase 4) — markup/state in modules.js / state.js ----
+qs("#purchase-orders").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  const tab = closestEl(target, "[data-purchasing-tab]");
+  if (tab) {
+    if (tab.dataset.purchasingTab !== purchasingTab) purchasingView = uiBlankViewState();
+    purchasingTab = /** @type {string} */ (tab.dataset.purchasingTab);
+    return renderPurchaseOrders();
+  }
+  if (closestEl(target, "[data-purchasing-new]")) return openSupplierPoForm();
+  const reorder = closestEl(target, "[data-purchasing-reorder]");
+  if (reorder) return openSupplierPoForm(String(reorder.dataset.purchasingReorder || "").split(",").filter(Boolean));
+  const promised = closestEl(target, "[data-purchasing-promised]");
+  if (promised) return setSupplierPoPromisedDate(/** @type {string} */ (promised.dataset.purchasingPromised));
+  if (closestEl(target, "[data-purchasing-client-orders]")) { salesTab = "orders"; salesView = uiBlankViewState(); salesDocType = "all"; return showSection("sales", { scrollTop: true }); }
+  const supplierPos = closestEl(target, "[data-purchasing-supplier-pos]");
+  if (supplierPos) { purchasingTab = "pos"; purchasingView = uiBlankViewState(); purchasingView.q = /** @type {string} */ (supplierPos.dataset.purchasingSupplierPos); return renderPurchaseOrders(); }
+  if (closestEl(target, "[data-purchasing-load-more]")) return loadMoreInventoryPurchaseOrders();
+  if (purchasingTab !== "overview") uiViewClick(target, "purchasing", { state: () => purchasingView, view: () => purchasingTabModel(purchasingTab), render: renderPurchaseOrders });
 });
+qs("#purchase-orders").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "purchasing", () => purchasingView, renderPurchaseOrders); });
+qs("#payables").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  const tab = closestEl(target, "[data-payables-tab]");
+  if (tab) {
+    if (tab.dataset.payablesTab !== payablesTab) payablesView = uiBlankViewState();
+    payablesTab = /** @type {string} */ (tab.dataset.payablesTab);
+    return renderPayables();
+  }
+  if (closestEl(target, "[data-payables-new]")) return canEditModule("payables") ? openModal("payable") : toast("Editing is disabled for Payables in User Settings.");
+  const billsFor = closestEl(target, "[data-payables-bills-for]");
+  if (billsFor) { payablesTab = "bills"; payablesView = uiBlankViewState(); payablesView.q = /** @type {string} */ (billsFor.dataset.payablesBillsFor); return renderPayables(); }
+  if (closestEl(target, "[data-payables-load-more]")) return loadMorePayables();
+  if (payablesTab !== "overview") uiViewClick(target, "payables", { state: () => payablesView, view: () => payablesTabModel(payablesTab), render: renderPayables });
+});
+qs("#payables").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "payables", () => payablesView, renderPayables); });
+qs("#replenishments").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  const tab = closestEl(target, "[data-expenses-tab]");
+  if (tab) {
+    if (tab.dataset.expensesTab !== expensesTab) expensesView = uiBlankViewState();
+    expensesTab = /** @type {string} */ (tab.dataset.expensesTab);
+    return renderReplenishments();
+  }
+  if (closestEl(target, "[data-expenses-new]")) return canEditModule("replenishments") ? openModal("replenishment") : toast("Editing is disabled for Expenses in User Settings.");
+  const budgetSave = closestEl(target, "[data-expenses-budget-save]");
+  if (budgetSave) return saveExpenseBudget(/** @type {string} */ (budgetSave.dataset.expensesBudgetSave));
+  const category = closestEl(target, "[data-expenses-show-category]");
+  if (category) { expensesTab = "list"; expensesView = uiBlankViewState(); expensesView.scope = `cat:${category.dataset.expensesShowCategory}`; return renderReplenishments(); }
+  if (closestEl(target, "[data-expenses-recurring-new]")) return openRecurringCostForm();
+  const recurringEdit = closestEl(target, "[data-expenses-recurring-edit]");
+  if (recurringEdit) return openRecurringCostForm(/** @type {string} */ (recurringEdit.dataset.expensesRecurringEdit));
+  const recurringAdvance = closestEl(target, "[data-expenses-recurring-advance]");
+  if (recurringAdvance) return updateRecurringCost(/** @type {string} */ (recurringAdvance.dataset.expensesRecurringAdvance), "advance");
+  const recurringToggle = closestEl(target, "[data-expenses-recurring-toggle]");
+  if (recurringToggle) return updateRecurringCost(/** @type {string} */ (recurringToggle.dataset.expensesRecurringToggle), "toggle");
+  const detail = closestEl(target, "[data-expense-detail]");
+  if (detail) return showExpenseDetail(/** @type {string} */ (detail.dataset.expenseDetail));
+  if (expensesTab !== "overview") uiViewClick(target, "expenses", { state: () => expensesView, view: () => expensesTabModel(expensesTab), render: renderReplenishments });
+});
+qs("#replenishments").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "expenses", () => expensesView, renderReplenishments); });
 qs("#master-table").addEventListener("click", (event) => {
   const editButton = closestEl(event.target, "[data-master-edit]");
   if (editButton) {
@@ -1665,11 +1698,7 @@ qs("#dashboard-date-from").addEventListener("change", renderDashboard);
 qs("#dashboard-date-to").addEventListener("change", renderDashboard);
 qs("#clear-dashboard-dates").addEventListener("click", () => { qs("#dashboard-date-from").value = ""; qs("#dashboard-date-to").value = ""; renderDashboard(); toast("Dashboard date filter cleared."); });
 qs("#dashboard-export-csv").addEventListener("click", exportDashboardCsv);
-qs("#replenishments-export-csv")?.addEventListener("click", exportReplenishmentsCsv);
 qs("#dashboard-export-pdf").addEventListener("click", printDashboardReport);
-qs("#po-date-from").addEventListener("change", renderPurchaseOrders);
-qs("#po-date-to").addEventListener("change", renderPurchaseOrders);
-qs("#clear-po-dates").addEventListener("click", () => { qs("#po-date-from").value = ""; qs("#po-date-to").value = ""; renderPurchaseOrders(); toast("Purchase order date filter cleared."); });
 qs("#inventory-status").addEventListener("change", renderInventory);
 qs("#product-issue-status").addEventListener("change", renderProductIssues);
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
@@ -1702,8 +1731,6 @@ qsa("#logs-tabs .tab").forEach((button) => button.addEventListener("click", () =
 }));
 qs("#clear-notification-log-filters").addEventListener("click", () => { qs("#notification-logs-date-from").value = ""; qs("#notification-logs-date-to").value = ""; qs("#notification-logs-channel-filter").value = "all"; renderNotificationLogs(); toast("Filters cleared."); });
 qs("#load-more-notification-logs").addEventListener("click", loadMoreNotificationLogs);
-qs("#load-more-purchase-orders").addEventListener("click", loadMorePurchaseOrders);
-qs("#load-more-payables").addEventListener("click", loadMorePayables);
 qs("#notification-logs-channel-filter").addEventListener("change", renderNotificationLogs);
 qs("#clear-notifications").addEventListener("click", () => {
   const dismissed = new Set(data.notificationsDismissed || []);

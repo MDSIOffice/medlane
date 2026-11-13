@@ -3410,6 +3410,8 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .ui-scope .ui-meter span.t-amber { background: var(--ui-amber); }
 .ui-scope .ui-meter span.t-red { background: var(--ui-red); }
 .ui-scope .ui-sub.tone-orange { color: var(--ui-orange-fg); font-weight: 600; }
+.ui-scope .ui-num.tone-red { color: var(--ui-red-fg); font-weight: 700; }
+.ui-scope .ui-num.tone-green { color: var(--ui-green-fg); font-weight: 700; }
 .ui-scope #sales-tab-panel .ui-filterbar, .ui-scope #sales-tab-panel .ui-chips { margin-bottom: 0; }
 /* Redesigned pages carry their own page header; hide the app shell's duplicate title there. */
 body[data-active-section="sales"] #page-title,
@@ -3530,6 +3532,7 @@ body[data-active-section="sales"] #page-description { display: none; }
 
 /* ===== Dashboard grid ===== */
 .ui-scope .ui-dash { display: flex; flex-direction: column; gap: 14px; }
+.ui-scope .ui-kpis + .ui-dash { margin-top: 14px; }
 .ui-scope .ui-dash-row { display: flex; flex-wrap: wrap; gap: 14px; }
 .ui-scope .ui-dash-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; min-width: 0; box-sizing: border-box; }
 .ui-scope .ui-dash-card.span-1 { flex: 1 1 260px; }
@@ -3625,7 +3628,10 @@ body[data-active-section="inventory"] .topbar-title,
 body[data-active-section="sales"] .topbar-title,
 body[data-active-section="invoicing"] .topbar-title,
 body[data-active-section="collections"] .topbar-title,
-body[data-active-section="receivables-tracker"] .topbar-title { display: none; }
+body[data-active-section="receivables-tracker"] .topbar-title,
+body[data-active-section="purchase-orders"] .topbar-title,
+body[data-active-section="payables"] .topbar-title,
+body[data-active-section="replenishments"] .topbar-title { display: none; }
 @media (max-width: 1180px) {
   .topbar .tb-workspace { order: 10; }
 }

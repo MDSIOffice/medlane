@@ -59,6 +59,15 @@ describe("module access", () => {
     assert.equal(canAccessKey(as("Sales", ["sales"]), "payables", "edit"), false);
     assert.equal(canAccessKey(as("Accounting", ["payables"]), "payables", "edit"), true);
   });
+  test("expense budgets and recurring costs: Expenses users read, only Superadmin/CEO/Admin edit", () => {
+    for (const key of ["expenseBudgets", "recurringCosts"]) {
+      assert.equal(canAccessKey(as("Accounting", ["replenishments"]), key, "view"), true);
+      assert.equal(canAccessKey(as("Accounting", ["replenishments"]), key, "edit"), false);
+      assert.equal(canAccessKey(as("Admin", ["replenishments"]), key, "edit"), true);
+      assert.equal(canAccessKey(as("CEO"), key, "edit"), true);
+      assert.equal(canAccessKey(as("Sales", ["sales"]), key, "view"), false);
+    }
+  });
   test("an unknown key is denied", () => { assert.equal(canAccessKey(as("Admin", ["payables"]), "nope", "edit"), false); });
   test("no profile is denied", () => {
     assert.equal(canAccessKey(null, "payables", "view"), false);

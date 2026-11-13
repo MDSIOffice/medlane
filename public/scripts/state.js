@@ -130,11 +130,25 @@ const receivablesSeed = moduleUrlSeed("receivables-tracker", RECEIVABLES_TABS);
 let receivablesTab = receivablesSeed.tab;
 /** @type {UiViewState} */
 let receivablesView = receivablesSeed.view;
+// Phase 4: supplier Purchase Orders, Payables and Expenses (section ids purchase-orders / payables / replenishments).
+const PURCHASING_TABS = ["overview", "pos", "reorder", "suppliers"];
+const purchasingSeed = moduleUrlSeed("purchase-orders", PURCHASING_TABS);
+let purchasingTab = purchasingSeed.tab;
+/** @type {UiViewState} */
+let purchasingView = purchasingSeed.view;
+const PAYABLES_TABS = ["overview", "bills", "payees", "paid"];
+const payablesSeed = moduleUrlSeed("payables", PAYABLES_TABS);
+let payablesTab = payablesSeed.tab;
+/** @type {UiViewState} */
+let payablesView = payablesSeed.view;
+const EXPENSES_TABS = ["overview", "list", "budgets", "recurring"];
+const expensesSeed = moduleUrlSeed("replenishments", EXPENSES_TABS);
+let expensesTab = expensesSeed.tab;
+/** @type {UiViewState} */
+let expensesView = expensesSeed.view;
+/** Pre-fill for the next "New purchase order" form (from reorder suggestions). @type {{ supplier: string, lines: Record<string, any>[] } | null} */
+let inventoryPoPrefill = null;
 
-/** @type {any} */
-let poViewMode = "table";
-/** @type {any} */
-let poWorkflowTab = "pending";
 let masterShowArchived = false;
 /** @type {any} */
 let currentSalesBreakdownDimension = null;
@@ -156,10 +170,6 @@ let clientHistoryTab = "invoices";
 let purchaseHistoryVisibleCounts = {};
 let itemForecastMonths = 3;
 let itemForecastFilters = { brand: "", client: "", item: "", division: "", region: "", classification: "" };
-/** @type {any} */
-let payablesWorkflowTab = "all";
-/** @type {any} */
-let replenishmentsWorkflowTab = "all";
 let transferRowUid = 0;
 let invoiceRowUid = 0;
 let stockSheetRowUid = 0;
@@ -225,7 +235,7 @@ const frontendModuleRecordKeys = {
   warranty: ["warranties"],
   "purchase-history": ["sales", "purchaseOrders", "payments"],
   payables: ["payables"],
-  replenishments: ["replenishments"],
+  replenishments: ["replenishments", "expenseBudgets", "recurringCosts"],
   imports: ["imports", "clients", "items", "suppliers", "sales", "payments"],
   reports: ["reports"],
   reconciliation: ["reconHistory"],
@@ -414,6 +424,8 @@ function emptyProductionData() {
     printTemplates: [],
     memos: [],
     calendarEvents: [],
+    expenseBudgets: [],
+    recurringCosts: [],
   };
 }
 
@@ -483,6 +495,8 @@ function normalizeData(next) {
   next.printTemplates ||= [];
   next.memos ||= [];
   next.calendarEvents ||= [];
+  next.expenseBudgets ||= [];
+  next.recurringCosts ||= [];
   next.pendingTransfers ||= [];
   next.pendingCreditInvoices ||= [];
   next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };

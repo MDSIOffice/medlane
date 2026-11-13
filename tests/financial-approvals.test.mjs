@@ -107,6 +107,20 @@ describe("inventory purchase orders", () => {
     mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Approved" })] });
     await check(env, STATE, as("CEO"), [row("inventoryPurchaseOrders", "PO1", { status: "Approved" })]);
   });
+  for (const status of ["Sent to Supplier", "In Transit", "For Receiving", "Fully Received"]) {
+    test(`Logistics cannot move a pending PO straight to ${status}`, async () => {
+      mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Pending Approval" })] });
+      await assert.rejects(check(env, STATE, as("Logistics"), [row("inventoryPurchaseOrders", "PO1", { status })]), /must be approved/);
+    });
+  }
+  test("an approved PO may move on to Sent to Supplier", async () => {
+    mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Approved" })] });
+    await check(env, STATE, as("Logistics"), [row("inventoryPurchaseOrders", "PO1", { status: "Sent to Supplier", promisedDate: "2026-12-01" })]);
+  });
+  test("a pending PO can still be edited while pending", async () => {
+    mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Pending Approval" })] });
+    await check(env, STATE, as("Logistics"), [row("inventoryPurchaseOrders", "PO1", { status: "Pending Approval", promisedDate: "2026-12-01" })]);
+  });
 });
 
 describe("missing profile fails closed", () => {

@@ -481,8 +481,6 @@ function tableFullyRevealed(target) {
 // loadMoreTableRows() has nothing to call to fetch the next page from the server.
 /** @type {Record<string, any>} */
 const paginatedModuleButtons = {
-  "#purchase-order-table": { button: "#load-more-purchase-orders", key: "purchaseOrders", loadMore: () => loadMorePurchaseOrders() },
-  "#payables-table": { button: "#load-more-payables", key: "payables", loadMore: () => loadMorePayables() },
   "#logs-table": { button: "#load-more-logs", hasMore: () => Boolean(logsState.nextCursor), loadMore: () => loadMoreLogs() },
   "#notification-logs-table": { button: "#load-more-notification-logs", hasMore: () => Boolean(notificationLogsState.nextCursor), loadMore: () => loadMoreNotificationLogs() },
   "#collections-history-table": { button: "#load-more-collections-history", hasMore: () => Boolean(collectionsHistoryState.nextCursor), loadMore: () => loadMoreCollectionsHistory() },
@@ -522,6 +520,9 @@ function updateTableScrollHints() {
 
 /** @param {string} section @param {string} [record] */
 function goToFocused(section, record = "") {
+  // Client POs (data.purchaseOrders) are worked from Sales → Sales orders; Purchase Orders is supplier POs.
+  const recordId = String(record).split("|")[0].toLowerCase();
+  if (section === "purchase-orders" && recordId && (data.purchaseOrders || []).some((po) => String(po.id).toLowerCase() === recordId)) section = "sales";
   prepareFocusedSection(section, record);
   showSection(section);
   if (record) setTimeout(() => focusRecord(record), 80);
@@ -540,13 +541,13 @@ function prepareFocusedSection(section, record) {
     return;
   }
   if (section === "receivables-tracker") { receivablesFocusRecord(query); return renderReceivablesTracker(); }
-  if (section === "payables") return renderPayables();
+  if (section === "payables") { payablesFocusRecord(query); return renderPayables(); }
   if (section === "warranty") return renderWarranty();
   if (section === "product-issues") return renderProductIssues();
-  if (section === "replenishments") return renderReplenishments();
+  if (section === "replenishments") { expensesFocusRecord(query); return renderReplenishments(); }
   if (section === "collections") { collectionsFocusRecord(query); return renderCollections(); }
   if (section === "sales") { salesFocusRecord(query); return renderSales(); }
-  if (section === "purchase-orders") { poWorkflowTab = "pending"; return renderPurchaseOrders(); }
+  if (section === "purchase-orders") { purchasingFocusRecord(query); return renderPurchaseOrders(); }
   if (section === "invoicing") { invoicingFocusRecord(query); return renderInvoicing(); }
   if (section === "imports") return renderImports();
   if (section === "reports") return renderReports();
