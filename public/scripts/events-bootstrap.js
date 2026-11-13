@@ -495,6 +495,8 @@ document.body.addEventListener("click", (event) => {
   if (sortButton) return sortTable(sortButton);
   if (!closestEl(event.target, ".notification-menu")) { qs("#notification-popover").hidden = true; qs("#notification-toggle").setAttribute("aria-expanded", "false"); }
   if (!closestEl(event.target, ".user-menu")) { qs("#user-popover").hidden = true; qs("#user-menu-toggle").setAttribute("aria-expanded", "false"); }
+  const assistantGoto = closestEl(event.target, "[data-wa-goto]");
+  if (assistantGoto) { const [module, tab, scope, sel] = String(assistantGoto.dataset.waGoto || "").split("|"); return workflowGoto(module, tab, scope, sel); }
   const assistantToggle = closestEl(event.target, "[data-wa-toggle]");
   if (assistantToggle) return toggleModuleAssistant(/** @type {string} */ (assistantToggle.dataset.waToggle));
   const workflowAction = closestEl(event.target, "[data-workflow-action]");
@@ -1333,18 +1335,6 @@ qs("#sales").addEventListener("click", (event) => {
   if (closestEl(target, "#sales-new-order")) {
     if (!canEditModule("purchase-orders")) return toast("Editing is disabled for Purchase Orders in User Settings.");
     return openModal("purchaseOrder");
-  }
-  // Workflow assistant links: "tab|status|record" opens a tab with a status filter or a record selected.
-  const go = closestEl(target, "[data-sales-goto]");
-  if (go) {
-    const [tab, scope, sel] = String(go.dataset.salesGoto || "").split("|");
-    if (SALES_TAB_LABELS[tab]) salesTab = tab;
-    salesView = uiBlankViewState();
-    salesDocType = "all";
-    salesView.scope = scope || "";
-    salesView.sel = sel || "";
-    renderSales();
-    return document.getElementById("sales-tab-panel")?.scrollIntoView({ block: "start", behavior: "smooth" });
   }
   const type = closestEl(target, "[data-sales-type]");
   if (type) { salesDocType = /** @type {string} */ (type.dataset.salesType); salesView.page = 0; return renderSales(); }

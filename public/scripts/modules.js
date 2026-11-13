@@ -142,7 +142,7 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "invoicing", "collections", "receivables-tracker", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"];
+const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "analytics", "masterlists", "warranty", "purchase-history", "imports", "payables", "replenishments", "reports", "reconciliation", "security", "users", "product-issues"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -156,7 +156,7 @@ function renderWorkflowAssistAll() {
 // inside the module's <section>, so module-scoped handlers such as data-inventory-filter work).
 // Recommendations are ranked by tone (red → green), then by money at stake.
 /** @typedef {{ id: string, rule: (ctx: WorkflowRuleContext) => UiRec | null }} WorkflowRule */
-/** @typedef {{ cover: StockCoverRow[] }} WorkflowRuleContext */
+/** Shared, lazily computed inputs (each is built at most once per assistant render). @typedef {{ readonly cover: StockCoverRow[], readonly lots: { row: StockRow, status: string }[], readonly receipts: CollectionReceipt[], readonly receivables: ReturnType<typeof receivablesByClient> }} WorkflowRuleContext */
 
 /** @type {Record<string, boolean>} */
 const workflowAssistantOpen = {};
@@ -166,17 +166,17 @@ const plural = (/** @type {number} */ n, /** @type {string} */ word, /** @type {
 /** @type {Record<string, WorkflowRule[]>} */
 const WORKFLOW_RULES = {
   inventory: [
-    { id: "expired-on-hand", rule: () => {
+    { id: "expired-on-hand", rule: (ctx) => {
       if (isDemoOnlyRole()) return null;
       // Same count as the Expired card on the Stocks tab.
-      const lots = data.inventory.filter((row) => inventoryStatus(row) === "Expired");
+      const lots = ctx.lots.filter((lot) => lot.status === "Expired").map((lot) => lot.row);
       if (!lots.length) return null;
       const units = lots.reduce((sum, row) => sum + Math.max(0, Number(row.qty || 0)), 0);
       return { tone: "red", text: `${plural(lots.length, "expired lot")} (${units.toLocaleString("en-PH")} units) — pull them for disposal.`, action: "Show expired", attrs: { "data-inventory-filter": "disposal" } };
     } },
-    { id: "critical-stock", rule: () => {
+    { id: "critical-stock", rule: (ctx) => {
       if (isDemoOnlyRole()) return null;
-      const lots = data.inventory.filter((row) => inventoryStatus(row) === "Critical");
+      const lots = ctx.lots.filter((lot) => lot.status === "Critical");
       return lots.length ? { tone: "red", text: `${plural(lots.length, "stock record")} at a critical level.`, action: "Show critical", attrs: { "data-inventory-filter": "critical" } } : null;
     } },
     { id: "receipts-to-approve", rule: () => {
@@ -207,9 +207,9 @@ const WORKFLOW_RULES = {
         attrs: canOrder ? { "data-action": "open-modal", "data-type": "inventoryPurchaseOrder" } : { "data-workflow-action": `open-inventory:${first.code}` },
       };
     } },
-    { id: "low-stock", rule: () => {
+    { id: "low-stock", rule: (ctx) => {
       if (isDemoOnlyRole()) return null;
-      const lots = data.inventory.filter((row) => inventoryStatus(row) === "Low Stock");
+      const lots = ctx.lots.filter((lot) => lot.status === "Low Stock");
       return lots.length ? { tone: "orange", text: `${plural(lots.length, "stock record")} below the minimum level.`, action: "Show low stock", attrs: { "data-inventory-filter": "low" } } : null;
     } },
     { id: "pos-to-receive", rule: () => {
@@ -217,9 +217,9 @@ const WORKFLOW_RULES = {
       const n = receivingPurchaseOrders().filter((po) => ["For Receiving", "Partially Received"].includes(po.status)).length;
       return n ? { tone: "blue", text: `${plural(n, "purchase order")} ready to receive.`, action: "Receive", attrs: { "data-inventory-workflow": "receiving" } } : null;
     } },
-    { id: "near-expiry-fefo", rule: () => {
+    { id: "near-expiry-fefo", rule: (ctx) => {
       if (isDemoOnlyRole()) return null;
-      const lots = data.inventory.filter((row) => inventoryStatus(row) === "Near Expiry");
+      const lots = ctx.lots.filter((lot) => lot.status === "Near Expiry");
       return lots.length ? { tone: "amber", text: `${plural(lots.length, "lot")} near expiry — dispatch these first (FEFO).`, action: "Show near expiry", attrs: { "data-inventory-filter": "near" } } : null;
     } },
   ],
@@ -231,29 +231,29 @@ const WORKFLOW_RULES = {
       const clients = [...new Set(bounced.map((payment) => payment.client))];
       const order = openOrders.find((po) => po.client === clients[0]);
       const money = bounced.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-      return { tone: "red", money, text: `${clients.length === 1 ? clients[0] : plural(clients.length, "client")} ${clients.length === 1 ? "has" : "have"} an open order while a bounced check (${salesPesoShort(money)}) is not yet replaced.`, action: "Open order", attrs: { "data-sales-goto": `orders||${order?.id || ""}` } };
+      return { tone: "red", money, text: `${clients.length === 1 ? clients[0] : plural(clients.length, "client")} ${clients.length === 1 ? "has" : "have"} an open order while a bounced check (${salesPesoShort(money)}) is not yet replaced.`, action: "Open order", attrs: { "data-wa-goto": `sales|orders||${order?.id || ""}` } };
     } },
     { id: "orders-waiting-to-invoice", rule: () => {
       const waiting = salesOpenOrders().filter((po) => poStatus(po) === "For Invoicing" && daysUntil(po.date) <= -2);
       if (!waiting.length) return null;
       const money = waiting.reduce((sum, po) => sum + salesOrderTotal(po), 0);
       const oldest = waiting.reduce((a, b) => (String(a.date) <= String(b.date) ? a : b));
-      return { tone: "orange", money, text: `${plural(waiting.length, "order")} (${salesPesoShort(money)}) waiting 2+ days with nothing invoiced — oldest ${oldest.id}, ${-daysUntil(oldest.date)} days.`, action: "Show orders", attrs: { "data-sales-goto": "orders|For Invoicing|" } };
+      return { tone: "orange", money, text: `${plural(waiting.length, "order")} (${salesPesoShort(money)}) waiting 2+ days with nothing invoiced — oldest ${oldest.id}, ${-daysUntil(oldest.date)} days.`, action: "Show orders", attrs: { "data-wa-goto": "sales|orders|For Invoicing|" } };
     } },
     { id: "orders-partly-invoiced", rule: () => {
       const partial = salesOpenOrders().filter((po) => poStatus(po) === "Pending Orders");
       if (!partial.length) return null;
-      return { tone: "amber", text: `${plural(partial.length, "order")} partly invoiced — the remaining lines still need an invoice or DR.`, action: "Show orders", attrs: { "data-sales-goto": "orders|Pending Orders|" } };
+      return { tone: "amber", text: `${plural(partial.length, "order")} partly invoiced — the remaining lines still need an invoice or DR.`, action: "Show orders", attrs: { "data-wa-goto": "sales|orders|Pending Orders|" } };
     } },
     { id: "not-delivered", rule: () => {
       const docs = salesScopedDocuments().filter((sale) => sale.status !== "Cancelled" && (sale.deliveryStatus || "Pending") === "Pending" && daysUntil(sale.date) <= -3);
       if (!docs.length) return null;
-      return { tone: "amber", text: `${plural(docs.length, "document")} still marked Pending delivery 3+ days after issue.`, action: "Show deliveries", attrs: { "data-sales-goto": "deliveries|Pending|" } };
+      return { tone: "amber", text: `${plural(docs.length, "document")} still marked Pending delivery 3+ days after issue.`, action: "Show deliveries", attrs: { "data-wa-goto": "sales|deliveries|Pending|" } };
     } },
     { id: "no-signed-copy", rule: () => {
       const docs = salesScopedDocuments().filter((sale) => sale.status !== "Cancelled" && sale.deliveryStatus === "Document Delivered" && daysUntil(sale.date) <= -7);
       if (!docs.length) return null;
-      return { tone: "blue", text: `${plural(docs.length, "delivered document")} with no signed copy back after 7+ days.`, action: "Show deliveries", attrs: { "data-sales-goto": "deliveries|Document Delivered|" } };
+      return { tone: "blue", text: `${plural(docs.length, "delivered document")} with no signed copy back after 7+ days.`, action: "Show deliveries", attrs: { "data-wa-goto": "sales|deliveries|Document Delivered|" } };
     } },
     { id: "missing-client-docs", rule: () => {
       if (!canViewModule("masterlists")) return null;
@@ -261,22 +261,121 @@ const WORKFLOW_RULES = {
       if (!clients.length) return null;
       return { tone: "amber", text: `${plural(clients.length, "client")} with open orders ${clients.length === 1 ? "is" : "are"} missing required documents — check before invoicing.`, action: "Open masterlist", attrs: { "data-go-section": "masterlists", "data-focus-record": clients.map((client) => client?.name).join("|") } };
     } },
-    { id: "sell-near-expiry-first", rule: () => {
-      const lots = byBranch(data.inventory).filter((row) => inventoryStatus(row) === "Near Expiry");
+    { id: "sell-near-expiry-first", rule: (ctx) => {
+      const inView = new Set(byBranch(data.inventory));
+      const lots = ctx.lots.filter((lot) => lot.status === "Near Expiry" && inView.has(lot.row)).map((lot) => lot.row);
       if (!lots.length) return null;
       const names = lots.slice(0, 2).map((row) => row.item).join(", ");
       const canOpen = canViewModule("inventory") && !isDemoOnlyRole();
       return { tone: "amber", text: `Sell first: ${plural(lots.length, "lot")} near expiry (${names}${lots.length > 2 ? ", …" : ""}).`, action: canOpen ? "Show lots" : "", attrs: canOpen ? { "data-workflow-action": "inventory-status:near" } : {} };
     } },
   ],
+  invoicing: [
+    { id: "overdue-invoices", rule: () => {
+      const overdue = byBranch(data.sales, "area").filter((sale) => invoicingStatus(sale) === "Overdue");
+      if (!overdue.length) return null;
+      const money = overdue.reduce((sum, sale) => sum + salesBalance(sale), 0);
+      const clients = new Set(overdue.map((sale) => sale.client)).size;
+      return { tone: "red", money, text: `${plural(overdue.length, "invoice")} overdue (${salesPesoShort(money)}) across ${plural(clients, "client")} — they're due a statement of account.`, action: "Show overdue", attrs: { "data-wa-goto": "invoicing|invoices|Overdue|" } };
+    } },
+    { id: "credit-approvals", rule: () => {
+      if (!canApproveCreditInvoice()) return null;
+      const waiting = (data.pendingCreditInvoices || []).filter((request) => request.status === "Pending");
+      if (!waiting.length) return null;
+      return { tone: "amber", text: `${plural(waiting.length, "over-limit invoice")} waiting for your credit approval.`, action: "Review", attrs: { "data-wa-goto": `invoicing|credit|Pending|${waiting.length === 1 ? waiting[0].id : ""}` } };
+    } },
+    { id: "due-this-week", rule: () => {
+      const soon = byBranch(data.sales, "area").filter((sale) => ["SI", "TS"].includes(documentType(sale.type)) && sale.status !== "Cancelled" && salesBalance(sale) > 0.005 && daysUntil(salesDueDate(sale)) >= 0 && daysUntil(salesDueDate(sale)) <= 7);
+      if (!soon.length) return null;
+      const money = soon.reduce((sum, sale) => sum + salesBalance(sale), 0);
+      return { tone: "blue", money, text: `${plural(soon.length, "invoice")} (${salesPesoShort(money)}) fall due within 7 days — remind those clients before adding more credit.`, action: "Show", attrs: { "data-wa-goto": "invoicing|invoices|duesoon|" } };
+    } },
+  ],
+  collections: [
+    { id: "bounced-not-replaced", rule: (ctx) => {
+      const bounced = ctx.receipts.filter((receipt) => receipt.state === "bounced");
+      if (!bounced.length) return null;
+      const money = bounced.reduce((sum, receipt) => sum + receipt.total, 0);
+      const first = bounced[0];
+      return { tone: "red", money, text: bounced.length === 1 ? `${first.client}'s bounced check (${salesPesoShort(money)}) still needs a replacement.` : `${plural(bounced.length, "bounced check")} (${salesPesoShort(money)}) still need a replacement.`, action: "Show bounced", attrs: { "data-wa-goto": `collections|receipts|bounced|${bounced.length === 1 ? first.id : ""}` } };
+    } },
+    { id: "to-deposit", rule: (ctx) => {
+      const waiting = ctx.receipts.filter((receipt) => receipt.state === "deposit");
+      if (!waiting.length) return null;
+      const cash = waiting.filter((receipt) => collectionMethodKey(receipt.method) === "cash").reduce((sum, receipt) => sum + receipt.total, 0);
+      const money = waiting.reduce((sum, receipt) => sum + receipt.total, 0);
+      return { tone: "amber", money, text: `${salesPesoShort(money)} waiting to be deposited${cash > 0.005 ? ` (${salesPesoShort(cash)} in cash)` : ""} — ${plural(waiting.length, "receipt")}.`, action: "Deposit slips", attrs: { "data-wa-goto": "collections|deposits||" } };
+    } },
+    { id: "pdc-now-due", rule: () => {
+      const due = data.payments.filter((payment) => !payment.voided && payment.collectionStatus === "Posted Date" && (payment.postedDate || payment.chequeDate) && daysUntil(payment.postedDate || payment.chequeDate) <= 0);
+      if (!due.length) return null;
+      const money = due.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      return { tone: "amber", money, text: `${plural(due.length, "post-dated check")} (${salesPesoShort(money)}) ${due.length === 1 ? "is" : "are"} now dated today or earlier — deposit ${due.length === 1 ? "it" : "them"}.`, action: "Show checks", attrs: { "data-wa-goto": "collections|register|pdc|" } };
+    } },
+    { id: "collection-receipts-to-approve", rule: (ctx) => {
+      if (!canApprovePaymentRequests()) return null;
+      const waiting = ctx.receipts.filter((receipt) => receipt.state === "approval");
+      if (!waiting.length) return null;
+      return { tone: "slate", money: waiting.reduce((sum, receipt) => sum + receipt.total, 0), text: `${plural(waiting.length, "collection receipt")} waiting for your approval.`, action: "Review", attrs: { "data-wa-goto": "collections|receipts|approval|" } };
+    } },
+  ],
+  "receivables-tracker": [
+    { id: "at-risk-clients", rule: (ctx) => {
+      const risky = ctx.receivables.filter((entry) => entry.risk === "risk").sort((a, b) => b.overdue - a.overdue);
+      if (!risky.length) return null;
+      const money = risky.reduce((sum, entry) => sum + entry.overdue, 0);
+      const first = risky[0];
+      const why = first.bounced.length && first.amounts[4] > 0.005 ? "over 90 days overdue and has a bounced check" : first.bounced.length ? "has a bounced check" : "over 90 days overdue";
+      return { tone: "red", money, text: risky.length === 1 ? `${first.client} is ${why}.` : `${plural(risky.length, "client")} at risk (${salesPesoShort(money)} overdue) — ${first.client} is ${why}.`, action: "Open", attrs: { "data-wa-goto": `receivables-tracker|aging|risk|${risky.length === 1 ? first.client : ""}` } };
+    } },
+    { id: "due-for-statement", rule: (ctx) => {
+      const due = ctx.receivables.filter((entry) => entry.overdue > 0.005).sort((a, b) => b.overdue - a.overdue);
+      if (!due.length) return null;
+      const names = due.slice(0, 3).map((entry) => entry.client).join(", ");
+      return { tone: "amber", money: due.reduce((sum, entry) => sum + entry.overdue, 0), text: `${plural(due.length, "client")} due a statement of account: ${names}${due.length > 3 ? ` and ${due.length - 3} more` : ""}.`, action: "Statements", attrs: { "data-wa-goto": "receivables-tracker|soa|overdue|" } };
+    } },
+    { id: "follow-ups-needed", rule: () => {
+      // Same test as the Follow-ups tab's "Need a follow-up" card.
+      const canViewAll = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
+      const n = (data.collectionContacts || []).filter((contact) => (canViewAll || isClientAssignedToCurrentUser(contact.client)) && ["Pending", "No Response", "Unreached", "Called"].includes(String(contact.status || "Pending"))).length;
+      return n ? { tone: "amber", text: `${plural(n, "client")} still need a follow-up call this week.`, action: "Follow-ups", attrs: { "data-wa-goto": "receivables-tracker|followups|needs|" } } : null;
+    } },
+    { id: "cheques-to-pick-up", rule: () => {
+      const n = (data.collectionContacts || []).filter((contact) => contact.status === "Cheque Available").length;
+      return n ? { tone: "blue", text: `${plural(n, "client")} ${n === 1 ? "has a check" : "have checks"} ready for pickup.`, action: "Show", attrs: { "data-wa-goto": "receivables-tracker|followups|Cheque Available|" } } : null;
+    } },
+  ],
 };
+
+/** Opens a redesigned module on a tab with a status filter and/or a selected record (assistant links). @param {string} module @param {string} tab @param {string} scope @param {string} sel */
+function workflowGoto(module, tab, scope, sel) {
+  const view = uiBlankViewState();
+  view.scope = scope || "";
+  view.sel = sel || "";
+  if (module === "sales") { if (SALES_TAB_LABELS[tab]) salesTab = tab; salesView = view; salesDocType = "all"; }
+  else if (module === "invoicing") { if (INVOICING_TAB_LABELS[tab]) invoicingTab = tab; invoicingView = view; }
+  else if (module === "collections") { if (COLLECTIONS_TAB_LABELS[tab]) collectionsTab = tab; collectionsView = view; }
+  else if (module === "receivables-tracker") { if (RECEIVABLES_TAB_LABELS[tab]) receivablesTab = tab; receivablesView = view; }
+  else return;
+  if (document.body.dataset.activeSection !== module) showSection(module);
+  else renderSection(module);
+  document.getElementById(`${module === "receivables-tracker" ? "receivables" : module}-tab-panel`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
 
 /** @param {string} module @returns {UiRec[]} */
 function workflowRecommendations(module) {
   const rules = WORKFLOW_RULES[module] || [];
   if (!rules.length) return [];
+  /** @type {Record<string, any>} */
+  const memo = {};
+  const lazy = (/** @type {string} */ key, /** @type {() => any} */ build) => (memo[key] ??= build());
   /** @type {WorkflowRuleContext} */
-  const ctx = { cover: itemStockCover() };
+  const ctx = {
+    get lots() { return lazy("lots", () => data.inventory.map((row) => ({ row, status: inventoryStatus(row) }))); },
+    get cover() { return lazy("cover", () => itemStockCover(new Map(ctx.lots.map((lot) => [lot.row, lot.status])))); },
+    get receipts() { return lazy("receipts", collectionReceipts); },
+    get receivables() { return lazy("receivables", receivablesByClient); },
+  };
   /** @type {UiRec[]} */
   const recs = [];
   for (const { rule } of rules) {
@@ -305,8 +404,8 @@ function toggleModuleAssistant(module) {
 // unexpired lots only; on order is what open supplier POs still have to deliver. Units are the
 // invoice line quantities by item code, the same basis Item Forecast uses.
 /** @typedef {{ code: string, name: string, onHand: number, onOrder: number, avgMonthly: number, months: number | null }} StockCoverRow */
-/** @returns {StockCoverRow[]} */
-function itemStockCover() {
+/** @param {Map<StockRow, string>} [statusOf] precomputed inventoryStatus per stock row @returns {StockCoverRow[]} */
+function itemStockCover(statusOf) {
   const from = fmtDate(addMonthsToDate(today, -6));
   const to = fmtDate(today);
   /** @type {Record<string, number>} */
@@ -321,7 +420,7 @@ function itemStockCover() {
   /** @type {Record<string, number>} */
   const onHand = {};
   for (const row of data.inventory) {
-    if (Number(row.qty) > 0 && inventoryStatus(row) !== "Expired") onHand[row.code] = (onHand[row.code] || 0) + Number(row.qty || 0);
+    if (Number(row.qty) > 0 && (statusOf?.get(row) ?? inventoryStatus(row)) !== "Expired") onHand[row.code] = (onHand[row.code] || 0) + Number(row.qty || 0);
   }
   /** @type {Record<string, number>} */
   const onOrder = {};
@@ -5126,6 +5225,7 @@ function renderInvoicing() {
     credit: credits.filter((request) => request.status === "Pending").length,
   };
   qs("#invoicing-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(INVOICING_TAB_LABELS).map((key) => ({ key, label: INVOICING_TAB_LABELS[key], count: counts[key] })), active: invoicingTab, attr: "data-invoicing-tab" });
+  renderModuleAssistant("invoicing");
   uiRender(qs("#invoicing-tab-panel"), uiViewHtml(invoicingTabModel(invoicingTab), invoicingView, "invoicing"));
   syncModuleUrl("invoicing", invoicingQueryString());
 }
@@ -5545,6 +5645,7 @@ function renderCollections() {
     register: data.payments.filter((payment) => !payment.voided && payment.collectionStatus === "Bounced" && collectionMethodKey(payment.method) === "check").length,
   };
   qs("#collections-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(COLLECTIONS_TAB_LABELS).map((key) => ({ key, label: COLLECTIONS_TAB_LABELS[key], count: counts[key] })), active: collectionsTab, attr: "data-collections-tab" });
+  renderModuleAssistant("collections");
   const history = collectionsTab === "history";
   qs("#collections-tab-panel").hidden = history;
   qs("#collections-history-panel").hidden = !history;
@@ -5714,6 +5815,9 @@ function receivablesTabModel(tab) {
     const count = (/** @type {string} */ scope) => rows.filter((row) => row.scopes.includes(scope)).length;
     return {
       title: "Follow-ups", intro: "", placeholder: "Client, area, notes or invoice", actions: [], minWidth: 820,
+      // Was the old Collector Work Queue's "Send reminders" card: marks every pending / unreached
+      // follow-up as reminded by email in one go.
+      toolbarExtra: canEditModule("collections") ? uiButton("Mark all reminded", { "data-workflow-action": "bulk-remind" }, { size: "sm" }) : "",
       csvName: "receivables-follow-ups.csv",
       csvHeader: ["Client", "Area", "Status", "Last contact", "By", "Channels", "Open balance", "Notes"],
       stats: [
@@ -5875,6 +5979,7 @@ function renderReceivablesTracker() {
     followups: (data.collectionContacts || []).filter((contact) => ["Pending", "No Response", "Unreached", "Called"].includes(contact.status)).length,
   };
   qs("#receivables-tabs").innerHTML = uiModuleTabs({ tabs: Object.keys(RECEIVABLES_TAB_LABELS).map((key) => ({ key, label: RECEIVABLES_TAB_LABELS[key], count: counts[key] })), active: receivablesTab, attr: "data-receivables-tab" });
+  renderModuleAssistant("receivables-tracker");
   uiRender(qs("#receivables-tab-panel"), uiViewHtml(receivablesTabModel(receivablesTab), receivablesView, "receivables"));
   const map = qs("#receivables-followups-map");
   if (map) map.hidden = receivablesTab !== "followups";
@@ -10781,7 +10886,6 @@ function handleWorkflowAction(action) {
       saveData();
       renderAll();
     }
-    showSection("collections");
     return toast(count ? `${count} reminder(s) marked.` : "No pending reminders.");
   }
   if (action === "check-import") {

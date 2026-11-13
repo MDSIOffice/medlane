@@ -1273,8 +1273,12 @@ function includesSearch(values) {
 function byBranch(items, key = "branch") { return data.branch === "all" ? items : items.filter((item) => item[key] === data.branch || item[key] === "Both" || item.area === data.branch || item.office === data.branch || item.dealer === data.branch); }
 /** @param {any} date @param {any} days */
 function addDays(date, days) { const d = new Date(date); d.setDate(d.getDate() + Number(days)); return d; }
+// One shared formatter: toLocaleDateString(…, { timeZone }) builds a new Intl formatter on every
+// call, which made stock-status passes over a few thousand lots take ~100ms. Same output
+// ("YYYY-MM-DD" in Manila); an invalid date still gives "Invalid Date" instead of throwing.
+const MANILA_DATE_FORMAT = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila" });
 /** @param {any} date */
-function fmtDate(date) { return new Date(date).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }); }
+function fmtDate(date) { const value = new Date(date); return Number.isNaN(value.getTime()) ? "Invalid Date" : MANILA_DATE_FORMAT.format(value); }
 /** @param {any} date */
 function daysUntil(date) { return Math.ceil((new Date(date).getTime() - Number(today)) / 86400000); }
 /** @param {any} value */
