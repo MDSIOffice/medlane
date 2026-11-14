@@ -7,7 +7,6 @@
   "7": "public/scripts/vendor/pdf-lib.min.js",
   "8": "scripts/vendor/pdf-lib.min.js",
   "9": "renderAll",
-  "10": "fetch",
   "12": "importCheckedRows",
   "13": "worker.js",
   "14": "renderInvoicing",
@@ -17,7 +16,6 @@
   "18": "public/scripts/ui-utils.js",
   "19": "scripts/ui-utils.js",
   "24": "openModal",
-  "26": "renderUsers",
   "27": "game.js",
   "28": "renderLogs",
   "32": "renderProductIssues",
@@ -46,7 +44,6 @@
   "68": "Ir",
   "70": "Feature Specification: [FEATURE NAME]",
   "72": "bi",
-  "73": "normalizeData",
   "74": "workflowFacts",
   "75": "bi",
   "76": "Core Principles",
@@ -71,6 +68,5 @@
   "119": "documentType",
   "120": "workflowCard",
   "121": "public/scripts/app-motion.js",
-  "122": "scripts/app-motion.js",
-  "123": "supabaseFetch"
+  "122": "scripts/app-motion.js"
 }
