@@ -23,6 +23,12 @@ describe("which notices a non-management role can read", () => {
     assert.equal(notificationVisibleTo(accounting, { section: "users", message: "x" }), false);
     assert.equal(notificationVisibleTo(accounting, { section: "invoicing", type: "Security", message: "Password reset" }), false);
   });
+  test("a notice addressed to the role shows even without that module (new PO → Accounting)", () => {
+    const notice = { type: "New Purchase Order", message: "PO-9 from Lab is ready for invoicing", section: "purchase-orders", audience: ["Accounting"] };
+    assert.equal(notificationVisibleTo(accounting, notice), true); // this Accounting account has no purchase-orders module
+    assert.equal(notificationVisibleTo(sales, notice), false);
+    assert.equal(notificationVisibleTo(accounting, { ...notice, type: "Security", message: "password reset" }), false);
+  });
   test("an audience list limits by role", () => {
     assert.equal(notificationVisibleTo(accounting, { section: "invoicing", audience: ["Admin"], message: "x" }), false);
     assert.equal(notificationVisibleTo(accounting, { section: "invoicing", audience: ["Accounting"], message: "x" }), true);

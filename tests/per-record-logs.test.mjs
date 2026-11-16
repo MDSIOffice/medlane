@@ -84,3 +84,26 @@ describe("trimmed state load", () => {
     assert.equal(trim(rows.slice(0, 50), { sales: 900 }).pagination.sales.hasMore, true);
   });
 });
+
+describe("new client PO notice for Accounting", () => {
+  const { newPurchaseOrderNotices } = worker;
+  const po = (id, extra = {}) => ({ module_name: "purchaseOrders", record_key: id, data: { id, client: "Naga City Lab", lines: [{ code: "A", qty: 2, price: 100 }], ...extra } });
+
+  test("a brand-new PO creates one Accounting notice keyed by the PO", () => {
+    const [notice, ...rest] = newPurchaseOrderNotices([], [po("PO-9")], "2026-11-16T07:00:00.000Z");
+    assert.equal(rest.length, 0);
+    assert.equal(notice.module_name, "notifications");
+    assert.equal(notice.record_key, "NTF-PO-PO-9");
+    assert.deepEqual(notice.data.audience, ["Accounting"]);
+    assert.equal(notice.data.section, "purchase-orders");
+    assert.equal(notice.data.record, "PO-9");
+    assert.equal(notice.data.status, "Unread");
+    assert.match(notice.data.message, /PO-9 from Naga City Lab is ready for invoicing/);
+    assert.equal(notice.data.date, "Nov 16, 2026, 03:00 PM"); // Manila time
+  });
+
+  test("editing an existing PO, or saving other modules, sends nothing", () => {
+    assert.equal(newPurchaseOrderNotices([{ module_name: "purchaseOrders", record_key: "PO-9" }], [po("PO-9", { client: "Changed" })]).length, 0);
+    assert.equal(newPurchaseOrderNotices([], [{ module_name: "sales", record_key: "SI-1", data: {} }]).length, 0);
+  });
+});

@@ -216,8 +216,7 @@ async function submitModal(event) {
     const saveResult = await persistRecords({ purchaseOrders: [po] });
     if (!saveResult?.ok) return;
     log(wasEditing ? "Edited purchase order" : `Saved ${modalType}`, modalConfigs[modalType].title, po.id || po.client, { save: false });
-    // Accounting invoices client POs: tell them a new one is ready (opens the PO on Purchase Orders).
-    if (!wasEditing) notify("New Purchase Order", `${po.id} from ${po.client} is ready for invoicing (${peso.format(salesOrderTotal(po))}).`, "purchase-orders", po.id, ["Accounting"]);
+    // Accounting's "New Purchase Order" notice is written by the server (writeNewPurchaseOrderNotices).
     editingPoId = null;
     qs("#demo-modal").close();
     form.reset();

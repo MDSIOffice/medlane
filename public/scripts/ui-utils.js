@@ -271,6 +271,7 @@ function canSeeNotification(notice) {
   if (["users", "settings", "backup", "security", "logs"].includes(section)) return false;
   if (/user|account|permission|password|security|audit|login|logout|session/i.test(`${notice?.type || ""} ${notice?.message || ""}`)) return false;
   if (Array.isArray(notice?.audience) && !notice.audience.includes(currentUser?.role)) return false;
+  if (Array.isArray(notice?.audience)) return true; // addressed to this role by name (mirrors worker.js)
   return section === "notifications" || effectiveModules().includes(section);
 }
 function visibleNotifications() {
@@ -335,7 +336,9 @@ function syncGeneratedNotifications() {
   if (latestRecon?.high > 0) add("recon-high-findings", "Reconciliation Risk", `Latest reconciliation has ${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"}.`, "reconciliation", latestRecon.date || "High");
   if (facts.overdue.length || facts.lowStock.length || facts.duePayables.length) add("reports-management-pack", "Report Pack", "Management reports have current AR, inventory, or payable risks to export.", "reports", facts.overdue.length ? "Collections & AR" : facts.lowStock.length ? "Reagent Expiry" : "Supplier Payables");
   const manual = data.notifications.filter((notice) => !notice.generated);
-  data.notifications = [...notices, ...manual].slice(0, 100);
+  // Newest first across both kinds, so a fresh notice (e.g. a new PO for Accounting) shows at the
+  // top of the bell instead of under every standing alert.
+  data.notifications = newestFirst([...notices, ...manual]).slice(0, 100);
   if (changedGenerated.length) markRecordsDirty("notifications", changedGenerated);
 }
 /** @param {string} message */

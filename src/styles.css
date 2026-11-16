@@ -2804,13 +2804,18 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-bento-pair figcaption { padding: 16px; }
 .lr-bento-pair figcaption strong { font-size: 15px; }
 
-.lr-loc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.lr-loc-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+@media (max-width: 1100px) {
+  .lr-loc-row { grid-template-columns: 1fr 1fr; }
+  .lr-loc-row > .lr-loc-card:last-child { grid-column: 1 / -1; } /* Regional Office spans the row under the two Metro Manila offices */
+}
 .lr-loc-card { display: flex; flex-direction: column; gap: 20px; padding: 32px; border-radius: 20px; background: var(--lr-tint); border: 1px solid rgba(0,110,182,.08); }
 .lr-loc-card header { display: flex; flex-direction: column; gap: 6px; }
 .lr-loc-card strong { font-family: var(--lr-display); font-weight: 700; font-size: 22px; color: var(--lr-ink); }
 .lr-loc-label { font-family: var(--lr-body); font-weight: 600; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
 .lr-loc-label--blue { color: var(--lr-blue); }
 .lr-loc-label--orange { color: var(--lr-orange); }
+.lr-loc-label--cyan { color: #1d8aa3; }
 .lr-loc-card > p { margin: 0; font-size: 14px; line-height: 1.5; color: rgba(30,41,59,.8); }
 .lr-map { position: relative; height: 210px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(0,110,182,.22); background: #e8eef5; box-shadow: inset 0 0 0 1px rgba(0,110,182,.06); }
 .lr-map iframe { width: 100%; height: 100%; border: 0; display: block; filter: saturate(1.04) contrast(1.02); transition: filter .4s ease; }
@@ -2977,6 +2982,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-section.in-view .lr-checklist li:nth-child(2) { transition-delay: .1s; }
 .lr-section.in-view .lr-checklist li:nth-child(3) { transition-delay: .2s; }
 .lr-section.in-view .lr-loc-card:nth-child(2) { transition-delay: .1s; }
+.lr-section.in-view .lr-loc-card:nth-child(3) { transition-delay: .2s; }
 .lr-section.in-view .lr-metric:nth-child(2) { transition-delay: .12s; }
 .lr-section.in-view .lr-bento-right { transition-delay: .1s; }
 .lr-section.in-view .lr-profile-text { transition-delay: .08s; }

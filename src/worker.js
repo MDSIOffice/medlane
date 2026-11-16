@@ -962,6 +962,38 @@ async function postWorkflowEventToDiscord(env, profile, { title, color, fields, 
     .catch((error) => recordSystemLog(env, { action: "Discord event post failed", module: "Discord", record: `${label}: ${error.message}` }).catch(() => null));
 }
 
+// A new client PO tells Accounting it's ready to invoice. Written here, not by the browser, because
+// only Superadmin/CEO/Admin may write notifications — a Sales user's own notice would never save.
+// Keyed by the PO id so a retried save can't create a second notice.
+/** @param {any[]} beforeRows @param {any[]} savedRows @param {string} [now] */
+function newPurchaseOrderNotices(beforeRows, savedRows, now = new Date().toISOString()) {
+  const existing = new Set((beforeRows || []).filter((row) => row.module_name === "purchaseOrders").map((row) => String(row.record_key)));
+  const date = new Date(now).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
+  return (savedRows || [])
+    .filter((row) => row.module_name === "purchaseOrders" && !existing.has(String(row.record_key)))
+    .map((row) => {
+      const po = row.data || {};
+      const id = String(po.id || row.record_key);
+      const noticeId = `NTF-PO-${id}`;
+      return {
+        module_name: "notifications",
+        record_key: noticeId,
+        data: { id: noticeId, createdAt: now, date, type: "New Purchase Order", message: `${id} from ${po.client || "a client"} is ready for invoicing (${money(salesPoTotal(po))}).`, section: "purchase-orders", record: id, status: "Unread", audience: ["Accounting"] },
+      };
+    });
+}
+
+/** @param {WorkerEnv} env @param {string} stateKey @param {any[]} beforeRows @param {any[]} savedRows */
+async function writeNewPurchaseOrderNotices(env, stateKey, beforeRows, savedRows) {
+  const notices = newPurchaseOrderNotices(beforeRows, savedRows);
+  if (!notices.length) return;
+  await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
+    method: "POST",
+    headers: { prefer: "resolution=ignore-duplicates,return=minimal" },
+    body: JSON.stringify(notices.map((notice) => ({ state_key: stateKey, ...notice, updated_by: null }))),
+  }).catch((/** @type {any} */ error) => recordSystemLog(env, { action: "New PO notice failed", module: "Notifications", record: error.message }).catch(() => null));
+}
+
 /** @param {WorkerEnv} env @param {Profile} profile @param {any} beforeRows @param {any} savedRows */
 async function postRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
   if (!env.DISCORD_WEBHOOK_URL || !savedRows.length) return;
@@ -2325,6 +2357,9 @@ function notificationVisibleTo(profile, notice) {
   if (["users", "settings", "backup", "security", "logs"].includes(section)) return false;
   if (/user|account|permission|password|security|audit|login|logout|session/i.test(`${notice.type || ""} ${notice.message || ""}`)) return false;
   if (Array.isArray(notice.audience) && !notice.audience.includes(profile?.role)) return false;
+  // Addressed to this role by name (e.g. a new PO for Accounting): shown even if this account's
+  // module list lacks the notice's section.
+  if (Array.isArray(notice.audience)) return true;
   const modules = profile?.customPermissions?.view || [];
   return section === "notifications" || modules.includes(section);
 }
@@ -5381,6 +5416,7 @@ export default {
             // Same reasoning as /api/modules/records: this already swallows its own errors and
             // runs its posts in parallel, so it doesn't need to hold up the response.
             ctx.waitUntil(postRecordEventsToDiscord(env, profile, eventBeforeRows, rows));
+            ctx.waitUntil(writeNewPurchaseOrderNotices(env, stateKey, eventBeforeRows, rows));
           }
           return json({ ok: true, savedRecords: rows.length, revision: Date.now(), stock: savedStockQty(rows) });
           };
@@ -5812,6 +5848,7 @@ export default {
           // This is the shared save path for nearly every module, so this alone removes a
           // meaningful chunk of latency (and "Failed to fetch" exposure) from every itemized submit.
           ctx.waitUntil(postRecordEventsToDiscord(env, profile, beforeRows, rows));
+          ctx.waitUntil(writeNewPurchaseOrderNotices(env, stateKey, beforeRows, rows));
           ctx.waitUntil(writeChangeAudits(env, stateKey, profile, authUser.id, auditContextForRequest(request), rows, auditBefore).catch(() => null));
         }
         return json({ ok: true, savedRecords: rows.length, revision: Date.now(), stock: savedStockQty(rows) });
