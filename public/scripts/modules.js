@@ -4908,13 +4908,16 @@ function renderSales() {
 }
 
 /** Same rule and save as the Invoicing delivery-status control. @param {string} saleId @param {string} status */
-function setSaleDeliveryStatus(saleId, status) {
+async function setSaleDeliveryStatus(saleId, status) {
   if (!canUpdateDeliveryStatus()) return toast("Only Accounting/Superadmin/CEO can update delivery status.");
   const sale = data.sales.find((entry) => entry.id === saleId);
   if (!sale || !deliveryStatusOptions.includes(status)) return;
+  const previous = sale.deliveryStatus;
   sale.deliveryStatus = status;
+  // Save only this invoice — a whole-list save could overwrite someone else's newer invoice change.
+  const saveResult = await persistRecords({ sales: [sale] });
+  if (!saveResult?.ok && !saveResult?.queued) { sale.deliveryStatus = previous; renderAll(); return; }
   log("Updated invoice delivery status", "Invoicing", `${sale.documentNo || sale.id}: ${status}`);
-  saveData();
   toast(`${sale.documentNo || sale.id} marked ${status}.`);
   renderAll();
 }

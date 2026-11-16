@@ -237,7 +237,10 @@ function getDashboardRange() {
 /** @param {string} action @param {string} module @param {string} record @param {Record<string, any>} [options] */
 function log(action, module, record, options = {}) {
   MedlaneAPI.recordLog({ action, module, record: String(record ?? "") }).catch(() => {});
-  if (options.save !== false) saveData();
+  // Logging no longer saves by default: an implicit saveData() resent every record of the active
+  // page from this tab's copy, which could overwrite another person's newer change saved moments
+  // earlier. Every caller saves its own change (persistRecords / a dedicated endpoint / saveData).
+  if (options.save === true) saveData();
 }
 /** @param {string} type @param {string} message @param {string} [section] @param {string} [record] @param {string[] | null} [audience] @param {string | null} [targetUser] */
 function notify(type, message, section = "notifications", record = "", audience = null, targetUser = null) {
