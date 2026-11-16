@@ -50,10 +50,13 @@ export async function runSql(/** @type {any} */ env, /** @type {any} */ query) {
   return Array.isArray(rows) ? rows : [];
 }
 
+// Logs: GET /analytics/endpoints/logs (ClickHouse SQL over one `logs` table, filtered by `source`).
+// The old logs.all endpoint (BigQuery SQL, one table per source) returns 410 since 23 Sep 2026.
+// Query errors come back as HTTP 200 with { result: null, error }, so `error` is checked too.
 /** @param {WorkerEnv} env @param {any} sql @param {any} startIso @param {any} endIso */
 async function runLogsSql(env, sql, startIso, endIso) {
   const qs = new URLSearchParams({ sql, iso_timestamp_start: startIso, iso_timestamp_end: endIso });
-  const payload = await mgmtFetch(env, `/analytics/endpoints/logs.all?${qs}`);
+  const payload = await mgmtFetch(env, `/analytics/endpoints/logs?${qs}`);
   if (payload?.error) throw new Error(typeof payload.error === "string" ? payload.error : JSON.stringify(payload.error).slice(0, 160));
   return payload?.result || [];
 }
@@ -65,19 +68,28 @@ select
   (select count(*) from pg_stat_activity where state = 'idle in transaction') as idle_tx,
   (select setting::int from pg_settings where name = 'max_connections') as max_conns,
   pg_database_size(current_database()) as bytes,
-  d.blks_hit, d.blks_read, d.xact_commit, d.xact_rollback, d.deadlocks, d.temp_bytes,
-  (select coalesce(sum(calls), 0) from pg_stat_statements) as stmt_calls,
-  (select coalesce(sum(total_exec_time), 0) from pg_stat_statements) as stmt_ms,
-  (select coalesce(sum(rows), 0) from pg_stat_statements) as stmt_rows
+  d.blks_hit, d.blks_read, d.xact_commit, d.xact_rollback, d.deadlocks, d.temp_bytes
 from pg_stat_database d where d.datname = current_database()`;
+// Query totals come from pg_stat_statements, which Supabase installs in the `extensions` schema
+// (not on the read-only endpoint's search path). Kept separate so the rest of the db sample still
+// works if the extension is off.
+const STMT_SQL = `select coalesce(sum(calls), 0) as stmt_calls, coalesce(sum(total_exec_time), 0) as stmt_ms, coalesce(sum(rows), 0) as stmt_rows from extensions.pg_stat_statements`;
 
 const num = (/** @type {any} */ value) => (value === null || value === undefined || value === "" ? null : Number(value));
 
 /** @param {WorkerEnv} env */
 async function sampleDb(env) {
-  const [row] = await runSql(env, SAMPLE_SQL);
+  const [[row], stmt] = await Promise.all([
+    runSql(env, SAMPLE_SQL),
+    runSql(env, STMT_SQL).then((rows) => /** @type {{ row?: any, error?: string }} */ ({ row: rows[0] }), (/** @type {any} */ error) => /** @type {{ row?: any, error?: string }} */ ({ error: String(error.message || error) })),
+  ]);
   if (!row) throw new Error("empty result");
-  return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, num(value)]));
+  /** @type {Record<string, any>} */
+  const db = Object.fromEntries(Object.entries({ ...row, ...(stmt.row || {}) }).map(([key, value]) => [key, num(value)]));
+  if (stmt.error) db._stmtError = /relation .*pg_stat_statements.* does not exist/.test(stmt.error)
+    ? "pg_stat_statements is not enabled — turn it on in Supabase → Database → Extensions to get query timings"
+    : stmt.error;
+  return db;
 }
 
 /** @param {any} text */
@@ -120,10 +132,11 @@ async function sampleSys(env) {
 
 /** @type {Record<string, any>} */
 const LOG_QUERIES = {
-  edge: "select count(*) as total, countif(r.status_code >= 500) as s5xx, countif(r.status_code >= 400 and r.status_code < 500) as s4xx from edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as r",
-  auth: "select count(*) as total, countif(m.level = 'error') as errors from auth_logs cross join unnest(metadata) as m",
-  storage: "select count(*) as total, countif(m.level = 'error') as errors from storage_logs cross join unnest(metadata) as m",
-  realtime: "select count(*) as total, countif(m.level = 'error') as errors from realtime_logs cross join unnest(metadata) as m",
+  // log_attributes values are strings, so status codes are cast before comparing.
+  edge: "select count() as total, countIf(toInt32OrZero(log_attributes['response.status_code']) >= 500) as s5xx, countIf(toInt32OrZero(log_attributes['response.status_code']) between 400 and 499) as s4xx from logs where source = 'edge_logs'",
+  auth: "select count() as total, countIf(log_attributes['level'] in ('error', 'fatal')) as errors from logs where source = 'auth_logs'",
+  storage: "select count() as total, countIf(log_attributes['level'] in ('error', 'fatal')) as errors from logs where source = 'storage_logs'",
+  realtime: "select count() as total, countIf(log_attributes['level'] in ('error', 'fatal')) as errors from logs where source = 'realtime_logs'",
 };
 
 /** @param {WorkerEnv} env @param {any} kind @param {any} startIso @param {any} endIso */
@@ -155,6 +168,7 @@ export async function collectSample(/** @type {any} */ env) {
     if (result.status === "fulfilled") sample[key] = result.value;
     else sample.errors[key] = String(result.reason?.message || result.reason).slice(0, 200);
   });
+  if (sample.db?._stmtError) { sample.errors["query timing"] = String(sample.db._stmtError).slice(0, 200); delete sample.db._stmtError; }
   return sample;
 }
 
@@ -163,12 +177,12 @@ export async function collectLiveDetails(/** @type {any} */ env) {
   const run = async (/** @type {any} */ label, /** @type {any} */ sql) => { try { return { rows: await runSql(env, sql) }; } catch (/** @type {any} */ error) { return { rows: [], error: `${label}: ${error.message}`.slice(0, 200) }; } };
   const [queries, tables, indexes] = await Promise.all([
     run("top queries", `select left(regexp_replace(query, '\\s+', ' ', 'g'), 150) as q, calls, round(total_exec_time::numeric) as total_ms, round(mean_exec_time::numeric, 2) as mean_ms, rows
-      from pg_stat_statements s join pg_roles r on r.oid = s.userid
+      from extensions.pg_stat_statements s join pg_roles r on r.oid = s.userid
       where r.rolname in ('service_role', 'authenticated', 'anon') order by total_exec_time desc limit 8`),
     run("table health", `select relname, n_live_tup as live, n_dead_tup as dead, seq_scan, coalesce(idx_scan, 0) as idx_scan, pg_total_relation_size(relid) as bytes
-      from pg_stat_user_tables order by pg_total_relation_size(relid) desc limit 10`),
+      from pg_stat_user_tables where schemaname = 'public' order by pg_total_relation_size(relid) desc limit 10`),
     run("unused indexes", `select indexrelname as idx, relname as tbl, pg_relation_size(indexrelid) as bytes
-      from pg_stat_user_indexes where idx_scan = 0 and indexrelname not like '%pkey' and indexrelname not like '%key' order by 3 desc limit 8`),
+      from pg_stat_user_indexes where schemaname = 'public' and idx_scan = 0 and indexrelname not like '%pkey' and indexrelname not like '%key' order by 3 desc limit 8`),
   ]);
   return { queries, tables, indexes };
 }
