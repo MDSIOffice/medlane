@@ -992,6 +992,7 @@ document.addEventListener("change", (event) => {
     const onDone = rerender === "payment-request-detail" ? () => renderPaymentRequestDetail(recordId)
       : rerender === "client-docs-modal" ? () => refreshClientDocsModal(clientName)
       : rerender === "service-report-modal" ? () => renderServiceReportUploadSlot(recordType, recordId)
+      : rerender === "product-issue-detail" ? () => renderProductIssueDetail(String(recordId))
       : rerender && sectionRenderers[rerender] ? sectionRenderers[rerender] : null;
     uploadPhysicalCopy(file, recordType, recordId, docName || "Physical copy", onDone);
     /** @type {AnyEl} */ (event.target).value = "";

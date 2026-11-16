@@ -1834,6 +1834,8 @@ button.calendar-cell:hover { background: var(--tint); }
 .total-collections-amount strong { display: block; font-size: 40px; font-weight: 900; letter-spacing: -0.04em; color: var(--ink); }
 .total-collections-amount small { color: var(--muted); font-weight: 700; }
 .attached-files-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.product-issue-attachments { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 12px 0; }
+.product-issue-attachments p { margin: 0; }
 .docs-complete { background: var(--tint-green); color: var(--green); }
 .client-docs-modal { max-width: 480px; width: 100%; padding: 24px; }
 .client-docs-list { display: grid; gap: 12px; margin-top: 14px; }
