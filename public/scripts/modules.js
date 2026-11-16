@@ -819,9 +819,11 @@ function paymentRequestActionsCell(request) {
   const isDepositFinal = linkedPayment?.collectionStatus === "Deposited";
   const isCancellable = request.requestStatus === "Pending";
   const cancelBtn = isCancellable && canApprovePaymentRequests() ? `<button class="mini-button danger-button" data-payment-request-cancel="${escapeHtml(request.cvNo)}">Cancel</button>` : "";
-  const statusActions = request.requestStatus === "Approved" && linkedPayment && !isDepositFinal
-    ? collectionStatusButtonsHtml(linkedPayment, "mini-button")
-    : "";
+  const perCheque = request.requestStatus === "Approved" && collectionChequeGroups(request.cvNo).length > 0;
+  const statusActions = perCheque ? `<button class="mini-button" data-collections-goto-checks="${escapeHtml(request.cvNo)}">Update checks</button>`
+    : request.requestStatus === "Approved" && linkedPayment && !isDepositFinal
+      ? collectionStatusButtonsHtml(linkedPayment, "mini-button")
+      : "";
   const timelineBtn = `<button class="mini-button" data-payment-request-timeline="${escapeHtml(request.cvNo)}">View Timeline</button>`;
   const printBtn = `<button class="mini-button" data-payment-request-preview="${escapeHtml(request.cvNo)}">Preview / Print</button>`;
   const moreBtn = `<button class="mini-button" data-payment-request-more="${escapeHtml(request.cvNo)}">More...</button>`;
@@ -940,6 +942,18 @@ async function approvePaymentRequest(cvNo) {
       applyPayment(sale, applied);
     });
   }
+  // Multiple Cheques: one payment per cheque per invoice, so each cheque is deposited / bounced
+  // on its own. Every payment also gets its own record key — payments used to be keyed by the
+  // receipt number alone, so a collection over several invoices kept only its last payment.
+  if (request.paymentType === "Multiple Cheques" && Array.isArray(request.cheques)) {
+    const split = splitPaymentsByCheque(newPayments, request.cheques);
+    if (split !== newPayments) {
+      data.payments = data.payments.filter((payment) => !newPayments.includes(payment));
+      data.payments.push(...split);
+      newPayments.splice(0, newPayments.length, ...split);
+    }
+  }
+  newPayments.forEach((payment) => { payment.id ||= `${payment.receiptNo}|${payment.invoice}`; });
   request.requestStatus = "Approved";
   request.status = "Approved";
   request.approvedBy = by;
@@ -5402,6 +5416,7 @@ function collectionBranches(invoices, index) {
 function collectionNextButton(receipt) {
   const cv = escapeHtml(receipt.id);
   if (receipt.state === "approval") return canApprovePaymentRequests() ? `<button class="mini-button" data-payment-request-approve="${cv}">Approve</button>` : "";
+  if (["deposit", "pdc", "bounced"].includes(receipt.state) && collectionChequeGroups(receipt.id).length) return `<button class="mini-button" data-collections-goto-checks="${cv}">Update checks</button>`;
   if (receipt.state === "deposit" || receipt.state === "pdc") return `<button class="mini-button" data-collection-status="${cv}:Deposited">Mark deposited</button>`;
   if (receipt.state === "bounced") return canRedepositCollections() ? `<button class="mini-button" data-collection-redeposit="${cv}">Redeposit</button>` : "";
   return "";
@@ -5413,12 +5428,14 @@ function collectionReceiptActions(receipt) {
   const state = receipt.state;
   const buttons = [];
   if (state === "approval" && canApprovePaymentRequests()) buttons.push(`<button data-payment-request-approve="${cv}">Approve</button>`, `<button class="danger-button" data-payment-request-cancel="${cv}">Cancel</button>`);
-  if (state === "deposit" || state === "pdc") {
+  const chequeGroups = state === "approval" || state === "cancelled" ? [] : collectionChequeGroups(receipt.id);
+  if (chequeGroups.length) chequeGroups.forEach((group) => buttons.push(...collectionChequeButtons(receipt.id, group, true)));
+  else if (state === "deposit" || state === "pdc") {
     buttons.push(`<button data-collection-status="${cv}:Deposited">Mark deposited</button>`);
     if (state === "deposit") buttons.push(`<button data-collection-status="${cv}:Posted Date">Post-dated</button>`);
     buttons.push(`<button class="danger-button" data-collection-status="${cv}:Bounced">Bounced</button>`);
   }
-  if (state === "bounced" && canRedepositCollections()) buttons.push(`<button data-collection-redeposit="${cv}">Redeposit</button>`);
+  if (!chequeGroups.length && state === "bounced" && canRedepositCollections()) buttons.push(`<button data-collection-redeposit="${cv}">Redeposit</button>`);
   const primary = buttons.length > 0;
   if (receipt.request) buttons.push(`<button data-payment-request-preview="${cv}">Preview / print</button>`, `<button data-payment-request-timeline="${cv}">View timeline</button>`);
   const firstSale = receipt.shares.map((share) => data.sales.find((sale) => sale.documentNo === share.invoice || sale.id === share.invoice)).find(Boolean);
@@ -5511,30 +5528,35 @@ function collectionsTabModel(tab) {
     const rows = [];
     receipts.forEach((receipt) => {
       if (collectionMethodKey(receipt.method) !== "check" || receipt.state === "cancelled") return;
-      const meta = COLLECTION_STATES[receipt.state];
       const cheques = receipt.cheques.length
         ? receipt.cheques.map((cheque) => ({ no: cheque.reference, date: cheque.chequeDate, amount: Number(cheque.amount || 0) }))
         : [{ no: receipt.cheque, date: receipt.chequeDate || receipt.payments.find((payment) => payment.postedDate)?.postedDate || "", amount: receipt.total }];
       const invoices = receipt.shares.map((share) => share.invoice);
+      const groups = ["approval", "cancelled"].includes(receipt.state) ? [] : collectionChequeGroups(receipt.id);
       cheques.forEach((cheque, index) => {
         const id = cheques.length > 1 ? `${receipt.id}#${index + 1}` : receipt.id;
+        // Multiple Cheques tracked per cheque: this row's own status, amount and buttons.
+        const group = groups.find((entry) => entry.index === index);
+        if (group && !cheque.amount) cheque.amount = group.amount;
+        const rowState = group ? group.state : receipt.state;
+        const meta = COLLECTION_STATES[rowState];
         const days = cheque.date ? moduleDaysFromToday(cheque.date) : null;
-        const dateSub = receipt.state === "bounced" ? "Bounced" : days !== null && days > 0 && receipt.state !== "deposited" ? `in ${days} ${days === 1 ? "day" : "days"}` : "";
+        const dateSub = rowState === "bounced" ? "Bounced" : days !== null && days > 0 && rowState !== "deposited" ? `in ${days} ${days === 1 ? "day" : "days"}` : "";
         rows.push({
           id,
           branches: collectionBranches(invoices, saleIndex),
-          scopes: [receipt.state],
+          scopes: [rowState],
           search: [cheque.no, receipt.bank, receipt.client, receipt.id, ...invoices, meta.label].filter(Boolean).join(" "),
           sortValues: { id: String(cheque.no || ""), client: receipt.client, date: inventoryDateValue(cheque.date || receipt.date), amount: cheque.amount, status: meta.short },
           csv: [cheque.no || "", receipt.bank, receipt.client, cheque.date || "", cheque.amount.toFixed(2), receipt.id, meta.label],
           cells: [
             uiCellDoc(cheque.no || "No number", select(id), receipt.bank),
             uiCellText(receipt.client || "—", "", { strong: true }),
-            uiCellText(uiDate(cheque.date || receipt.date), dateSub, { subTone: receipt.state === "bounced" ? "red" : dateSub ? "orange" : undefined }),
+            uiCellText(uiDate(cheque.date || receipt.date), dateSub, { subTone: rowState === "bounced" ? "red" : dateSub ? "orange" : undefined }),
             uiCellNum(peso.format(cheque.amount)),
             `<span class="mono">${escapeHtml(receipt.id)}</span>`,
             uiPill(meta.short, meta.tone),
-            inventoryNextStep(collectionNextButton(receipt)),
+            inventoryNextStep(group ? (collectionChequeButtons(receipt.id, group)[0] || "").replace("<button", '<button class="mini-button"') : collectionNextButton(receipt)),
           ],
           detail: /** @returns {UiDetail} */ () => ({
             eyebrow: `${receipt.bank || "Bank"} · ${cheque.no || "no number"}`, title: peso.format(cheque.amount), pill: { text: meta.label, tone: meta.tone }, closeAttrs, label: "Check details",
@@ -5545,10 +5567,10 @@ function collectionsTabModel(tab) {
               { label: "Bank", value: receipt.bank || "—" },
               { label: "For invoices", value: invoices.join(", ") || "—", mono: Boolean(invoices.length), wide: true },
             ],
-            note: receipt.state === "pdc" ? { text: `Post-dated. Deposit on or after ${uiDate(receipt.payments.find((payment) => payment.postedDate)?.postedDate || cheque.date)}.`, tone: "amber" }
-              : receipt.state === "bounced" ? { text: "Returned by the bank. The invoice balance was restored; a Superadmin must redeposit it.", tone: "red" }
-              : receipt.state === "approval" ? { text: "The receipt is waiting for Superadmin/CEO approval.", tone: "slate" } : undefined,
-            actions: [...collectionReceiptActions(receipt), uiButton("View receipt", { "data-collections-goto-receipt": receipt.id })],
+            note: rowState === "pdc" ? { text: `Post-dated. Deposit on or after ${uiDate(receipt.payments.find((payment) => payment.postedDate)?.postedDate || cheque.date)}.`, tone: "amber" }
+              : rowState === "bounced" ? { text: "Returned by the bank. The invoice balance was restored; a Superadmin must redeposit it.", tone: "red" }
+              : rowState === "approval" ? { text: "The receipt is waiting for Superadmin/CEO approval.", tone: "slate" } : undefined,
+            actions: [...(group ? uiAdoptActions(collectionChequeButtons(receipt.id, group).join(""), { primaryFirst: true }).buttons : collectionReceiptActions(receipt)), uiButton("View receipt", { "data-collections-goto-receipt": receipt.id })],
           }),
         });
       });
@@ -6606,14 +6628,100 @@ function openPaymentRequestForInvoice(documentNo) {
   syncPaymentRequestTotal();
 }
 
-/** @param {string} receiptNo @param {string} status */
-async function updateCollectionPaymentStatus(receiptNo, status) {
-  const payments = data.payments.filter((entry) => entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo);
-  if (!payments.length) return toast("Collection not found.");
+/**
+ * Splits a Multiple Cheques collection's invoice payments into one slice per cheque. Each cheque
+ * covers its share of what the collection settles (cheque amount ÷ all cheques — the settled
+ * amount can include withholding credit), filled oldest invoice first. Slices of one invoice add
+ * up exactly to its original payment, so invoice balances don't change. Returns `payments`
+ * unchanged when the cheques have no amounts (older collections).
+ * @param {Payment[]} payments @param {ChequeLine[]} cheques @returns {Payment[]}
+ */
+function splitPaymentsByCheque(payments, cheques) {
+  const chequeTotal = cheques.reduce((sum, cheque) => sum + Number(cheque.amount || 0), 0);
+  if (cheques.length < 2 || chequeTotal <= 0 || cheques.some((cheque) => !(Number(cheque.amount) > 0))) return payments;
+  const total = roundMoney(payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
+  let assigned = 0;
+  const shares = cheques.map((cheque, index) => {
+    if (index === cheques.length - 1) return roundMoney(total - assigned);
+    const share = roundMoney(total * Number(cheque.amount) / chequeTotal);
+    assigned = roundMoney(assigned + share);
+    return share;
+  });
+  /** @type {Payment[]} */
+  const out = [];
+  let chequeAt = 0;
+  let left = shares[0];
+  const slice = (/** @type {Payment} */ payment, /** @type {number} */ index, /** @type {number} */ amount) => {
+    const cheque = cheques[index];
+    out.push({ ...payment, id: `${payment.receiptNo}|${payment.invoice}|C${index + 1}`, amount, chequeIndex: index, chequeNo: cheque.reference, reference: cheque.reference, chequeDate: cheque.chequeDate, cheques: [{ ...cheque }], statusHistory: [...(payment.statusHistory || [])] });
+  };
+  payments.forEach((payment) => {
+    let remaining = roundMoney(Number(payment.amount || 0));
+    while (remaining > 0.004 && chequeAt < cheques.length) {
+      const take = roundMoney(Math.min(remaining, left));
+      if (take > 0) slice(payment, chequeAt, take);
+      remaining = roundMoney(remaining - take);
+      left = roundMoney(left - take);
+      if (left <= 0.004) { chequeAt += 1; left = shares[chequeAt] ?? 0; }
+    }
+    if (remaining > 0.004) { // centavo rounding left over: add it to this invoice's last slice
+      const last = [...out].reverse().find((entry) => entry.invoice === payment.invoice);
+      if (last) last.amount = roundMoney(Number(last.amount || 0) + remaining);
+      else slice(payment, cheques.length - 1, remaining);
+    }
+  });
+  return out;
+}
+
+/** A collection's payments, and whether they're tracked per cheque. @param {string} receiptNo */
+function collectionPaymentsFor(receiptNo) {
+  const all = data.payments.filter((entry) => !entry.voided && (entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo));
+  return { all, perCheque: all.some((payment) => Number.isInteger(payment.chequeIndex)) };
+}
+
+/** Per-cheque groups of a Multiple Cheques collection (empty for older/other collections). @param {string} receiptNo */
+function collectionChequeGroups(receiptNo) {
+  const { all, perCheque } = collectionPaymentsFor(receiptNo);
+  if (!perCheque) return [];
+  const request = data.paymentRequests.find((entry) => entry.cvNo === receiptNo);
+  /** @type {Map<number, Payment[]>} */
+  const groups = new Map();
+  all.forEach((payment) => { const index = Number(payment.chequeIndex); groups.set(index, [...(groups.get(index) || []), payment]); });
+  return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([index, payments]) => {
+    const amount = roundMoney(payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
+    const cheque = request?.cheques?.[index] || { reference: payments[0].chequeNo || payments[0].reference || "", chequeDate: payments[0].chequeDate || "", amount };
+    return { index, cheque, payments, amount, state: collectionPaymentsState(payments) };
+  });
+}
+
+/** Deposited / Post-dated / Bounced / Redeposit buttons for one cheque. @param {string} receiptNo @param {{ index: number, cheque: ChequeLine, state: string }} group @param {boolean} [labelled] */
+function collectionChequeButtons(receiptNo, group, labelled = false) {
+  const cv = escapeHtml(receiptNo);
+  const no = labelled ? ` · ${escapeHtml(group.cheque.reference || `#${group.index + 1}`)}` : "";
+  if (group.state === "bounced") return canRedepositCollections() ? [`<button data-collection-redeposit="${cv}:${group.index}">Redeposit${no}</button>`] : [];
+  if (group.state !== "deposit" && group.state !== "pdc") return [];
+  return [
+    `<button data-collection-status="${cv}:Deposited:${group.index}">Mark deposited${no}</button>`,
+    ...(group.state === "deposit" ? [`<button data-collection-status="${cv}:Posted Date:${group.index}">Post-dated${no}</button>`] : []),
+    `<button class="danger-button" data-collection-status="${cv}:Bounced:${group.index}">Bounced${no}</button>`,
+  ];
+}
+
+/** @param {string} receiptNo @param {string} status @param {number | null} [chequeIndex] one cheque of a Multiple Cheques collection */
+async function updateCollectionPaymentStatus(receiptNo, status, chequeIndex = null) {
+  const { all, perCheque } = collectionPaymentsFor(receiptNo);
+  if (!all.length) return toast("Collection not found.");
+  // Multiple Cheques: a status is set per cheque. "Mark deposited" on the whole receipt (deposit
+  // slip) deposits every cheque still waiting; Bounced / Post-dated must name the cheque.
+  if (perCheque && chequeIndex === null && status !== "Deposited") return toast(`Choose the cheque to mark ${status} in Collections → Check register.`);
+  const payments = chequeIndex !== null ? all.filter((payment) => payment.chequeIndex === chequeIndex)
+    : perCheque ? all.filter((payment) => ["For Deposit", "Posted Date"].includes(payment.collectionStatus)) : all;
+  if (!payments.length) return toast(perCheque ? "No cheque on this collection is waiting for deposit." : "Collection not found.");
+  const label = chequeIndex !== null ? `cheque ${payments[0].chequeNo || `#${chequeIndex + 1}`} (${receiptNo})` : receiptNo;
   if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited and can no longer be changed.");
   if (payments.some((payment) => payment.collectionStatus === "Bounced")) return toast("This payment bounced — a Superadmin must Redeposit it first.");
   const postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payments[0].postedDate || fmtDate(today)) || "" : "";
-  if (!(await confirmFinalSave(`Mark ${receiptNo} as ${status}?`))) return;
+  if (!(await confirmFinalSave(`Mark ${label} as ${status}?`))) return;
   payments.forEach((payment) => {
     // The invoice's paid amount is applied as soon as the payment is posted (see approvePaymentRequest),
     // not gated on deposit confirmation. Only a bounced deposit reverses it; every other status here
@@ -6629,7 +6737,13 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
   if (request) {
     request.history = paymentRequestHistory(request);
     const by = currentUser?.name || "System User";
-    if (status === "Deposited") {
+    // A multi-cheque collection is Completed only once every cheque is deposited.
+    const allDeposited = all.every((payment) => payment.collectionStatus === "Deposited");
+    if (status === "Deposited" && perCheque && !allDeposited) {
+      request.requestStatus = "Approved";
+      request.status = "Approved";
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Deposited", note: `${label} marked Deposited by ${by}.`, by });
+    } else if (status === "Deposited") {
       request.requestStatus = "Completed";
       request.status = "Completed";
       request.completedAt = fmtDate(today);
@@ -6644,11 +6758,11 @@ async function updateCollectionPaymentStatus(receiptNo, status) {
   const affectedSales = [...new Map(/** @type {Sale[]} */ (payments.map((payment) => saleForPayment(payment)).filter(Boolean)).map((sale) => [sale.documentNo || sale.id, sale])).values()];
   const saveResult = await persistRecords({ payments, paymentRequests: request ? [request] : [], sales: affectedSales });
   if (!saveResult?.ok) return;
-  log("Changed collection status", "Collections", `${receiptNo}: ${status}`, { save: false });
+  log("Changed collection status", "Collections", `${label}: ${status}`, { save: false });
   saveData(["notifications"]);
   renderAll();
   if (payments[0].paymentRequestCvNo && document.body.dataset.activeSection === "payment-request-detail") renderPaymentRequestDetail(payments[0].paymentRequestCvNo);
-  toast(`${receiptNo} marked ${status}.`);
+  toast(`${label} marked ${status}.`);
 }
 
 // A "Multiple Cheques" collection shows one editable number per cheque; anything else one field.
@@ -6670,17 +6784,25 @@ function promptRedepositCheque(currentCheque, cheques = []) {
   });
 }
 
-/** @param {string} receiptNo */
-async function redepositCollectionPayment(receiptNo) {
+/** @param {string} receiptNo @param {number | null} [chequeIndex] one bounced cheque of a Multiple Cheques collection */
+async function redepositCollectionPayment(receiptNo, chequeIndex = null) {
   if (!canRedepositCollections()) return toast("Only Superadmin/CEO can redeposit a bounced payment.");
-  const payments = data.payments.filter((entry) => entry.receiptNo === receiptNo || entry.paymentRequestCvNo === receiptNo);
-  if (!payments.length) return toast("Collection not found.");
-  if (!payments.every((payment) => payment.collectionStatus === "Bounced")) return toast("Only a Bounced payment can be redeposited.");
+  const { all, perCheque } = collectionPaymentsFor(receiptNo);
+  if (!all.length) return toast("Collection not found.");
+  if (perCheque && chequeIndex === null) return toast("Choose the bounced cheque to redeposit in Collections → Check register.");
+  const payments = chequeIndex !== null ? all.filter((payment) => payment.chequeIndex === chequeIndex) : all;
+  if (!payments.length || !payments.every((payment) => payment.collectionStatus === "Bounced")) return toast("Only a Bounced payment can be redeposited.");
   const request = data.paymentRequests.find((entry) => entry.cvNo === (payments[0].paymentRequestCvNo || receiptNo));
-  const previousCheque = String(request?.cheque || payments[0].reference || "");
-  const previousCheques = request?.paymentType === "Multiple Cheques" && Array.isArray(request.cheques) ? request.cheques : [];
+  const previousCheque = String(chequeIndex !== null ? (payments[0].chequeNo || payments[0].reference || "") : (request?.cheque || payments[0].reference || ""));
+  const previousCheques = chequeIndex === null && request?.paymentType === "Multiple Cheques" && Array.isArray(request.cheques) ? request.cheques : [];
   const answer = await promptRedepositCheque(previousCheque, previousCheques);
   if (answer === null) return;
+  if (chequeIndex !== null && answer.cheque && request?.cheques?.[chequeIndex]) {
+    // Only this cheque's number changes; the collection keeps the others.
+    request.cheques = request.cheques.map((entry, index) => (index === chequeIndex ? { ...entry, reference: answer.cheque } : entry));
+    answer.cheques = [];
+    payments.forEach((payment) => { payment.chequeNo = answer.cheque; payment.cheques = [{ ...(/** @type {ChequeLine[]} */ (request.cheques))[chequeIndex] }]; });
+  }
   const cheque = answer.cheque;
   const by = currentUser?.name || "System User";
   const chequeNote = cheque && cheque !== previousCheque ? ` Cheque No. changed from ${previousCheque || "-"} to ${cheque}.` : "";
@@ -6695,7 +6817,8 @@ async function redepositCollectionPayment(receiptNo) {
     payment.statusHistory.push(...collectionStatusHistory(`Redeposited — For Deposit${cheque ? ` (Cheque ${cheque})` : ""}`));
   });
   if (request) {
-    if (cheque) request.cheque = cheque;
+    if (chequeIndex !== null) request.cheque = (request.cheques || []).map((entry) => entry.reference).join(", ");
+    else if (cheque) request.cheque = cheque;
     if (answer.cheques.length) request.cheques = answer.cheques;
     request.history = paymentRequestHistory(request);
     request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Redeposited", note: `Redeposited by ${by}; back to For Deposit and the invoice paid amount re-applied.${chequeNote}`, by });
@@ -6940,13 +7063,13 @@ function togglePaymentRequestChequeFields() {
   if (editor) {
     const multi = type === "Multiple Cheques";
     editor.hidden = !multi;
-    qsaIn(editor, ".multi-cheque-number, .multi-cheque-date").forEach((input) => { input.required = multi; });
+    qsaIn(editor, ".multi-cheque-number, .multi-cheque-date, .multi-cheque-amount").forEach((input) => { input.required = multi; });
   }
 }
 
 /** @param {Partial<ChequeLine>} [cheque] */
 function multiChequeRowTemplate(cheque = {}) {
-  return `<div class="payment-request-line-row multi-cheque-row"><div class="field"><label>Cheque No.</label><input class="multi-cheque-number" autocomplete="off" value="${escapeHtml(cheque.reference || "")}" /></div><div class="field"><label>Cheque Date</label><input class="multi-cheque-date" type="date" value="${escapeHtml(cheque.chequeDate || "")}" /></div><button class="icon-button danger-button remove-multi-cheque" type="button" aria-label="Remove cheque">Remove</button></div>`;
+  return `<div class="payment-request-line-row multi-cheque-row"><div class="field"><label>Cheque No.</label><input class="multi-cheque-number" autocomplete="off" value="${escapeHtml(cheque.reference || "")}" /></div><div class="field"><label>Cheque Date</label><input class="multi-cheque-date" type="date" value="${escapeHtml(cheque.chequeDate || "")}" /></div><div class="field"><label>Cheque Amount</label><input class="multi-cheque-amount" type="number" min="0.01" step="0.01" inputmode="decimal" value="${cheque.amount ? escapeHtml(String(cheque.amount)) : ""}" /></div><button class="icon-button danger-button remove-multi-cheque" type="button" aria-label="Remove cheque">Remove</button></div>`;
 }
 
 // The Multiple Cheques editor lives right after the single Cheque Date field and is only shown
@@ -6955,7 +7078,7 @@ function ensureMultiChequeEditor() {
   if (qs("#multi-cheque-editor")) return;
   const anchor = qs("#chequeDate")?.closest(".field");
   if (!anchor) return;
-  anchor.insertAdjacentHTML("afterend", `<div class="field full" id="multi-cheque-editor" hidden><label>Cheques</label><p class="field-help">Add one row per cheque received for this collection.</p><div id="multi-cheque-list">${multiChequeRowTemplate()}${multiChequeRowTemplate()}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-multi-cheque" type="button">Add Cheque</button></div></div>`);
+  anchor.insertAdjacentHTML("afterend", `<div class="field full" id="multi-cheque-editor" hidden><label>Cheques</label><p class="field-help">Add one row per cheque: its number, date and amount. The amounts must add up to the Net Amount. Each cheque is deposited (or bounces) on its own.</p><div id="multi-cheque-list">${multiChequeRowTemplate()}${multiChequeRowTemplate()}</div><div class="payment-request-editor-actions"><button class="ghost-button" id="add-multi-cheque" type="button">Add Cheque</button></div></div>`);
 }
 
 /** @returns {ChequeLine[]} */
@@ -6963,7 +7086,8 @@ function collectMultiCheques() {
   return qsa(".multi-cheque-row").map((row) => ({
     reference: qsIn(row, ".multi-cheque-number")?.value.trim() || "",
     chequeDate: qsIn(row, ".multi-cheque-date")?.value || "",
-  })).filter((cheque) => cheque.reference || cheque.chequeDate);
+    amount: roundMoney(Number(qsIn(row, ".multi-cheque-amount")?.value || 0)),
+  })).filter((cheque) => cheque.reference || cheque.chequeDate || cheque.amount);
 }
 
 function syncPaymentRequestBankAccount() {

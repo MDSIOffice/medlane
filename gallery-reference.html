@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Field Work Gallery — reference</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#14233A; --muted:#4F5D6B; --line:#E3E9EE; --eyebrow:#2B6CB0; --teal:#4FA9C9; --orange:#E07A2F; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; color: var(--ink); }
+  button { font-family: inherit; cursor: pointer; }
+  button:focus-visible { outline: 2px solid #2B88B8; outline-offset: 3px; }
+
+  .fw { padding: 72px 24px 96px; }
+  .fw__inner { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 36px; }
+  .fw__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; }
+  .fw__titles { display: flex; flex-direction: column; gap: 14px; max-width: 760px; }
+  .fw__eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; letter-spacing: .14em; color: var(--eyebrow); }
+  .fw__eyebrow::before { content: ""; width: 9px; height: 9px; border-radius: 99px; background: var(--teal); }
+  .fw__title { margin: 0; font-family: 'Outfit', sans-serif; font-size: clamp(30px, 4vw, 46px); line-height: 1.08; font-weight: 700; letter-spacing: -.02em; }
+  .fw__rule { width: 112px; height: 3px; border-radius: 99px; background: linear-gradient(90deg, var(--teal), var(--orange)); }
+  .fw__intro { margin: 0; max-width: 340px; font-size: 15px; line-height: 1.6; color: var(--muted); }
+
+  .fw__filters { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #D5DEE5; background: #fff; color: var(--muted); font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+  .chip:hover { border-color: #9FB3C2; color: var(--ink); }
+  .chip span { font-size: 12px; color: #8A97A4; }
+  .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .chip[aria-pressed="true"] span { color: rgba(255,255,255,.7); }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(4, minmax(0,1fr)); grid-auto-rows: 228px; grid-auto-flow: dense; }
+  .grid.is-filtered { grid-template-columns: repeat(3, minmax(0,1fr)); grid-auto-rows: auto; }
+  .grid.is-filtered .tile { grid-column: auto !important; grid-row: auto !important; aspect-ratio: 4 / 3; }
+
+  .tile { position: relative; overflow: hidden; border: 0; padding: 0; border-radius: 16px; background: #E9EEF2; width: 100%; height: 100%; text-align: left; transition: box-shadow .25s ease; }
+  .tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .6s cubic-bezier(.2,.7,.2,1); }
+  .tile::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,22,36,0) 45%, rgba(10,22,36,.78) 100%); }
+  .tile:hover { box-shadow: 0 14px 34px rgba(16,34,52,.18); }
+  .tile:hover img { transform: scale(1.04); }
+  .tile__cap { position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .tile__tag { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #fff; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35); border-radius: 99px; padding: 4px 10px; backdrop-filter: blur(6px); }
+  .tile__title { font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 18px; line-height: 1.2; }
+  .tile--feature .tile__title { font-size: 26px; }
+  .tile__view { position: absolute; z-index: 1; top: 14px; right: 14px; width: 38px; height: 38px; border-radius: 99px; background: rgba(255,255,255,.92); color: var(--ink); display: flex; align-items: center; justify-content: center; opacity: 0; transform: translateY(-4px); transition: .2s ease; }
+  .tile:hover .tile__view, .tile:focus-visible .tile__view { opacity: 1; transform: none; }
+
+  .fw__foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 20px; font-size: 14px; color: #5B6876; }
+
+  .lb { position: fixed; inset: 0; z-index: 50; background: rgba(8,16,26,.94); color: #fff; display: none; flex-direction: column; }
+  .lb.is-open { display: flex; }
+  .lb__top, .lb__bottom { padding: 16px 24px; display: flex; justify-content: space-between; gap: 16px; }
+  .lb__bottom { padding: 20px 24px 24px; align-items: flex-end; flex-wrap: wrap; }
+  .lb__count { font-size: 14px; color: rgba(255,255,255,.75); font-variant-numeric: tabular-nums; align-self: center; }
+  .lb__stage { flex: 1; min-height: 0; display: flex; align-items: center; gap: 16px; padding: 0 24px; }
+  .lb__img { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
+  .lb__img img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 10px; }
+  .lb__btn { width: 52px; height: 52px; flex-shrink: 0; border: 0; border-radius: 99px; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; }
+  .lb__btn--sm { width: 44px; height: 44px; }
+  .lb__btn:hover { background: rgba(255,255,255,.22); }
+  .lb__cat { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #8CCDE3; }
+  .lb__title { font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 600; margin: 6px 0; }
+  .lb__text { font-size: 15px; line-height: 1.5; color: rgba(255,255,255,.75); max-width: 640px; margin: 0; }
+  .lb__thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .lb__thumb { width: 56px; height: 42px; padding: 0; border-radius: 6px; overflow: hidden; background: #000; border: 2px solid transparent; opacity: .5; }
+  .lb__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .lb__thumb[aria-current="true"] { border-color: #fff; opacity: 1; }
+
+  @media (max-width: 900px) {
+    .fw__head { flex-direction: column; align-items: flex-start; }
+    .grid, .grid.is-filtered { grid-template-columns: repeat(2, minmax(0,1fr)); grid-auto-rows: 200px; }
+    .tile { grid-column: auto !important; grid-row: auto !important; }
+    .grid.is-filtered { grid-auto-rows: auto; }
+    .lb__btn:not(.lb__btn--sm) { display: none; }
+    .lb__thumbs { display: none; }
+  }
+  @media (max-width: 520px) { .grid, .grid.is-filtered { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { .tile img, .tile, .tile__view { transition: none; } }
+</style>
+</head>
+<body>
+
+<section class="fw" aria-labelledby="fw-title">
+  <div class="fw__inner">
+    <div class="fw__head">
+      <div class="fw__titles">
+        <span class="fw__eyebrow">FIELD WORK</span>
+        <h2 class="fw__title" id="fw-title">Installations, training, and on-site laboratory support.</h2>
+        <span class="fw__rule" aria-hidden="true"></span>
+      </div>
+      <p class="fw__intro">From analyzer setup to go-live training and partner visits, a look at the work our team does with laboratories.</p>
+    </div>
+    <div class="fw__filters" role="group" aria-label="Filter photos" id="filters"></div>
+    <div class="grid" id="grid"></div>
+    <div class="fw__foot"><span id="countLine"></span><span>Select a photo to view it full size.</span></div>
+  </div>
+</section>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-labelledby="lbTitle">
+  <div class="lb__top">
+    <span class="lb__count" id="lbCount"></span>
+    <button class="lb__btn lb__btn--sm" id="lbClose" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="lb__stage">
+    <button class="lb__btn" id="lbPrev" aria-label="Previous photo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div class="lb__img"><img id="lbImg" alt=""></div>
+    <button class="lb__btn" id="lbNext" aria-label="Next photo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+  </div>
+  <div class="lb__bottom">
+    <div><div class="lb__cat" id="lbCat"></div><div class="lb__title" id="lbTitle"></div><p class="lb__text" id="lbText"></p></div>
+    <div class="lb__thumbs" id="lbThumbs"></div>
+  </div>
+</div>
+
+<script>
+// Data: file, category, title, description, colSpan, rowSpan (used only in the "All" layout), object-position
+const PHOTOS = [
+  { src: 'fieldwork/fw-4.jpg', cat: 'training', title: 'Go-live day at a partner laboratory', text: 'First live runs completed together with the laboratory staff on site.', cols: 2, rows: 2, pos: '50% 40%' },
+  { src: 'fieldwork/fw-2.jpg', cat: 'install',  title: 'Analyzer configuration on site', text: 'Setting up and verifying a chemistry analyzer before it goes live.', cols: 1, rows: 2, pos: '40% 50%' },
+  { src: 'fieldwork/fw-8.jpg', cat: 'events',   title: 'Diagnostics expo booth', text: 'Showcasing hematology, FIA and urinalysis analyzers to laboratory professionals.', cols: 1, rows: 2, pos: '50% 55%' },
+  { src: 'fieldwork/fw-6.jpg', cat: 'partners', title: 'Principal partner visit', text: 'Hosting our principal’s team at the MDSolutions office.', cols: 1, rows: 2, pos: '50% 40%' },
+  { src: 'fieldwork/fw-1.jpg', cat: 'training', title: 'Hands-on training with the lab team', text: 'Walking laboratory staff through daily QC and sample runs on newly installed analyzers.', cols: 2, rows: 1, pos: '50% 35%' },
+  { src: 'fieldwork/fw-3.jpg', cat: 'install',  title: 'Installation and handover', text: 'Analyzer installed, tested and handed over with the client’s team.', cols: 1, rows: 1, pos: '50% 45%' },
+  { src: 'fieldwork/fw-5.jpg', cat: 'partners', title: 'Technical seminar with a principal partner', text: 'A product and research briefing for our team and partner laboratories.', cols: 2, rows: 1, pos: '50% 55%' },
+  { src: 'fieldwork/fw-7.jpg', cat: 'partners', title: 'Partner meeting at MDSolutions', text: 'Reviewing product lines and support plans with visiting partners.', cols: 1, rows: 1, pos: '50% 45%' }
+];
+const CATS = [['all','All'],['install','Installations'],['training','Training'],['partners','Partners'],['events','Events']];
+const LABEL = { install: 'Installation', training: 'Training', partners: 'Partners', events: 'Events' };
+
+let cat = 'all', list = PHOTOS, idx = null, lastFocus = null;
+const $ = id => document.getElementById(id);
+
+function renderFilters() {
+  $('filters').innerHTML = CATS.map(([k, l]) => {
+    const n = k === 'all' ? PHOTOS.length : PHOTOS.filter(p => p.cat === k).length;
+    return `<button class="chip" data-cat="${k}" aria-pressed="${k === cat}">${l}<span>${n}</span></button>`;
+  }).join('');
+}
+function renderGrid() {
+  list = PHOTOS.filter(p => cat === 'all' || p.cat === cat);
+  const g = $('grid');
+  g.classList.toggle('is-filtered', cat !== 'all');
+  g.innerHTML = list.map((p, i) => `
+    <button class="tile${p.cols === 2 && p.rows === 2 ? ' tile--feature' : ''}" data-i="${i}" aria-label="View photo: ${p.title}"
+      style="grid-column: span ${p.cols}; grid-row: span ${p.rows};">
+      <img src="${p.src}" alt="${p.title}" loading="lazy" style="object-position:${p.pos}">
+      <span class="tile__view" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></span>
+      <span class="tile__cap"><span class="tile__tag">${LABEL[p.cat]}</span><span class="tile__title">${p.title}</span></span>
+    </button>`).join('');
+  $('countLine').textContent = cat === 'all' ? `${PHOTOS.length} photos` : `${list.length} of ${PHOTOS.length} photos · ${CATS.find(c => c[0] === cat)[1]}`;
+}
+function openLb(i) {
+  idx = (i + list.length) % list.length;
+  const p = list[idx];
+  $('lbImg').src = p.src; $('lbImg').alt = p.title;
+  $('lbCat').textContent = LABEL[p.cat]; $('lbTitle').textContent = p.title; $('lbText').textContent = p.text;
+  $('lbCount').textContent = `${idx + 1} / ${list.length}`;
+  $('lbThumbs').innerHTML = list.map((q, j) => `<button class="lb__thumb" data-j="${j}" aria-label="Show photo ${j + 1}: ${q.title}" aria-current="${j === idx}"><img src="${q.src}" alt=""></button>`).join('');
+  if (!$('lb').classList.contains('is-open')) {
+    lastFocus = document.activeElement;
+    $('lb').classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+    $('lbClose').focus();
+  }
+}
+function closeLb() {
+  $('lb').classList.remove('is-open'); idx = null;
+  document.body.style.overflow = '';
+  if (lastFocus) lastFocus.focus();
+}
+
+$('filters').addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; cat = b.dataset.cat; renderFilters(); renderGrid(); });
+$('grid').addEventListener('click', e => { const t = e.target.closest('.tile'); if (t) openLb(+t.dataset.i); });
+$('lbThumbs').addEventListener('click', e => { const t = e.target.closest('.lb__thumb'); if (t) openLb(+t.dataset.j); });
+$('lbPrev').onclick = () => openLb(idx - 1);
+$('lbNext').onclick = () => openLb(idx + 1);
+$('lbClose').onclick = closeLb;
+$('lb').addEventListener('click', e => { if (e.target.classList.contains('lb__img') || e.target.classList.contains('lb__stage')) closeLb(); });
+document.addEventListener('keydown', e => {
+  if (idx === null) return;
+  if (e.key === 'Escape') closeLb();
+  if (e.key === 'ArrowLeft') openLb(idx - 1);
+  if (e.key === 'ArrowRight') openLb(idx + 1);
+});
+let sx = null;
+$('lb').addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+$('lb').addEventListener('touchend', e => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 50) openLb(idx + (dx < 0 ? 1 : -1)); sx = null; });
+
+renderFilters(); renderGrid();
+</script>
+</body>
+</html>

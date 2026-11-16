@@ -288,7 +288,7 @@ async function submitModal(event) {
       const cheques = collectMultiCheques();
       if (!values.bank) return toast("Bank name is required for cheque collections.");
       if (cheques.length < 2) return toast("Add at least two cheques for Multiple Cheques (use Check for a single cheque).");
-      if (cheques.some((cheque) => !cheque.reference || !cheque.chequeDate)) return toast("Each cheque needs a cheque number and cheque date.");
+      if (cheques.some((cheque) => !cheque.reference || !cheque.chequeDate || !(Number(cheque.amount) > 0))) return toast("Each cheque needs a cheque number, cheque date and an amount greater than zero.");
       const numbers = cheques.map((cheque) => cheque.reference.toLowerCase());
       if (new Set(numbers).size !== numbers.length) return toast("The same cheque number is entered more than once.");
       values.cheques = cheques;
@@ -329,6 +329,10 @@ async function submitModal(event) {
       total = gross;
     }
     if (total <= 0) return toast("Payment request total must be greater than zero.");
+    if (values.paymentType === "Multiple Cheques") {
+      const chequeSum = roundMoney(values.cheques.reduce((/** @type {number} */ sum, /** @type {ChequeLine} */ cheque) => sum + Number(cheque.amount || 0), 0));
+      if (Math.abs(chequeSum - roundMoney(netAmount)) > 0.01) return toast(`The cheque amounts add up to ${peso.format(chequeSum)}, but the Net Amount is ${peso.format(netAmount)}. They must match.`);
+    }
 
     const invoiceIds = collectPaymentRequestInvoices();
     const linkedSales = /** @type {any[]} */ (invoiceIds.map((id) => findSaleByDocumentInput(id)).filter(Boolean));
@@ -553,9 +557,20 @@ document.body.addEventListener("click", (event) => {
   const makePaymentRequest = closestEl(event.target, "[data-make-payment-request]");
   if (makePaymentRequest) return openPaymentRequestForInvoice(/** @type {string} */ (makePaymentRequest.dataset.makePaymentRequest));
   const collectionRedeposit = closestEl(event.target, "[data-collection-redeposit]");
-  if (collectionRedeposit) return redepositCollectionPayment(/** @type {string} */ (collectionRedeposit.dataset.collectionRedeposit));
+  if (collectionRedeposit) { const [receiptNo, index] = String(collectionRedeposit.dataset.collectionRedeposit).split(":"); return redepositCollectionPayment(receiptNo, index === undefined ? null : Number(index)); }
+  // Multiple Cheques: open Collections → Check register filtered to this collection's cheques.
+  const gotoChecks = closestEl(event.target, "[data-collections-goto-checks]");
+  if (gotoChecks) {
+    collectionsTab = "register";
+    collectionsView = uiBlankViewState();
+    collectionsMethod = "all";
+    collectionsView.q = String(gotoChecks.dataset.collectionsGotoChecks || "");
+    if (document.body.dataset.activeSection === "collections") return renderCollections();
+    return showSection("collections");
+  }
   const collectionStatus = closestEl(event.target, "[data-collection-status]");
-  if (collectionStatus) { const [receiptNo, status] = /** @type {string} */ (collectionStatus.dataset.collectionStatus).split(":"); return updateCollectionPaymentStatus(receiptNo, status); }
+  // "CV:Status" for a whole collection, "CV:Status:<cheque index>" for one cheque of a Multiple Cheques collection.
+  if (collectionStatus) { const [receiptNo, status, index] = /** @type {string} */ (collectionStatus.dataset.collectionStatus).split(":"); return updateCollectionPaymentStatus(receiptNo, status, index === undefined ? null : Number(index)); }
   const addressButton = closestEl(event.target, "[data-edit-branch-address]");
   if (addressButton) return editPlatformBranchAddress(/** @type {string} */ (addressButton.dataset.editBranchAddress));
   const removeBranchButton = closestEl(event.target, "[data-remove-platform-branch]");

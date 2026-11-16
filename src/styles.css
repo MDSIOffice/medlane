@@ -1816,6 +1816,10 @@ button.calendar-cell:hover { background: var(--tint); }
 .support-report-print .qc-parameter-print-table td:first-child, .support-report-print .qc-parameter-print-table th:first-child { text-align: left; }
 .payment-request-editor { border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: var(--tint); }
 .payment-request-line-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 0.28fr) auto; gap: 12px; align-items: end; margin-bottom: 12px; }
+/* Multiple Cheques: number · date · amount · remove on one line */
+.payment-request-line-row.multi-cheque-row { grid-template-columns: minmax(0, 1.2fr) minmax(150px, 0.8fr) minmax(130px, 0.8fr) auto; }
+.multi-cheque-row .remove-multi-cheque { width: auto; }
+@media (max-width: 760px) { .payment-request-line-row.multi-cheque-row { grid-template-columns: 1fr; } }
 .payment-request-line-row .icon-button { border-radius: 14px; width: auto; min-width: 84px; padding: 0 12px; }
 .payment-request-invoice-row { grid-template-columns: minmax(140px, 1.3fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr) auto auto; }
 .financial-line-row-expense { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr) minmax(160px, 0.85fr) minmax(120px, 0.55fr) auto; }

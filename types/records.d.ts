@@ -285,6 +285,11 @@ interface Payment {
   cheques?: unknown[];
   statusHistory?: unknown[];
   voided?: boolean;
+  /** Own record key (`CV|invoice` or `CV|invoice|C<n>`); older payments are keyed by receiptNo. */
+  id?: string;
+  /** Multiple Cheques: which cheque (0-based, request.cheques order) this slice belongs to. */
+  chequeIndex?: number;
+  chequeNo?: string;
 }
 
 interface Payable {
