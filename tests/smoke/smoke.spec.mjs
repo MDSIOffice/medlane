@@ -34,7 +34,7 @@ async function logIn(page, email = "superadmin@medlane.test") {
   await expect(page.locator("body")).toHaveClass(/app-route/);
 }
 
-const APP_SCRIPTS = /scripts\/(modules|state|api-client|ui-utils|events-bootstrap|game|config-data|vendor\/pdf-lib)/;
+const APP_SCRIPTS = /scripts\/(modules|state|api-client|ui-utils|events-bootstrap|recon-page|masterlists-page|game|config-data|vendor\/pdf-lib)/;
 function trackScripts(page) {
   const loaded = [];
   page.on("request", (request) => { if (APP_SCRIPTS.test(request.url())) loaded.push(new URL(request.url()).pathname); });
@@ -207,7 +207,7 @@ test("supplier POs open inside Inventory", async ({ page }) => {
 
 // Each section is drawn on first open, so check it actually fills in with its own records.
 for (const [section, selector, text] of [
-  ["masterlists", "#masterlists", "Naga City Lab"],
+  ["masterlists", "#masterlists", "Records complete"], // opens on Overview
   ["inventory", "#inventory", "Glucose Reagent"],
   ["sales", "#sales", "PO-1"], // opens on Sales orders (client POs); SI-1 is on the Invoices tab
   ["purchase-orders", "#purchase-orders", "PO-1"], // client POs (sales & invoicing); supplier POs are Inventory → Supplier POs
@@ -215,7 +215,7 @@ for (const [section, selector, text] of [
   ["collections", "#collections", "Naga City Lab"],
   ["payables", "#payables", "PAY-1"],
   ["replenishments", "#replenishments", "EXP-1"],
-  ["reconciliation", "#reconciliation", "Client Docs"],
+  ["reconciliation", "#reconciliation", "Checks passed"], // results come from the fake /api/recon (real checks over the seed)
 ]) {
   test(`${section} shows its records the first time it's opened`, async ({ page }) => {
     const { problems } = await watch(page);

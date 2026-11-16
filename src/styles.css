@@ -3693,7 +3693,9 @@ body[data-active-section="payables"] .topbar-title,
 body[data-active-section="replenishments"] .topbar-title,
 body[data-active-section="analytics"] .topbar-title,
 body[data-active-section="purchase-history"] .topbar-title,
-body[data-active-section="logs"] .topbar-title { display: none; }
+body[data-active-section="logs"] .topbar-title,
+body[data-active-section="reconciliation"] .topbar-title,
+body[data-active-section="masterlists"] .topbar-title { display: none; }
 .ui-scope .logs-notifications { display: grid; gap: 16px; }
 .ui-scope .ui-client-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }
 .ui-scope .ui-client-picker .ui-select { min-width: 0; max-width: 100%; }
@@ -4052,3 +4054,42 @@ body[data-active-section="logs"] .topbar-title { display: none; }
   .rd-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rd-wide { grid-column: 1 / -1; }
 }
+
+/* Recon / Masterlists dialogs (appended to <body>, so outside .ui-scope). */
+.modal.recon-modal { width: min(620px, calc(100vw - 28px)); }
+.modal.recon-modal-wide { width: min(980px, calc(100vw - 24px)); }
+.recon-modal form { display: grid; gap: 14px; }
+.recon-modal .modal-header { margin-bottom: 0; }
+.recon-modal .modal-header small { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }
+.recon-modal .field { display: grid; gap: 6px; }
+.recon-modal .field.full { grid-column: 1 / -1; }
+.recon-modal .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.recon-preview { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--tint); }
+.recon-preview h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.recon-preview ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.recon-preview li { display: flex; align-items: baseline; gap: 10px; font-size: 14px; }
+.recon-preview li .grow { flex: 1; min-width: 0; }
+.recon-preview li b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.recon-dialog-note { margin: 0; font-size: 13px; color: var(--muted); }
+.recon-series-row { display: grid; grid-template-columns: 1fr 1fr 1fr .7fr 1.4fr; gap: 10px; align-items: end; }
+.recon-count-sheet { max-height: 52dvh; overflow: auto; border: 1px solid var(--line); border-radius: 14px; }
+.recon-count-sheet table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.recon-count-sheet th { position: sticky; top: 0; background: var(--panel-solid); text-align: left; font-size: 12px; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.recon-count-sheet td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.recon-count-sheet td small { display: block; color: var(--muted); font-size: 12px; }
+.recon-count-sheet .num { text-align: right; font-variant-numeric: tabular-nums; }
+.recon-count-input { width: 96px; text-align: right; }
+.ui-scope .ui-dl.recon-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 640px) {
+  .recon-series-row { grid-template-columns: 1fr 1fr; }
+  .recon-series-row .field:last-child { grid-column: 1 / -1; }
+}
+/* The app pins every table's last column; the count sheet scrolls itself, so keep it in the flow. */
+.recon-count-sheet th:last-child, .recon-count-sheet td:last-child { position: static; }
+.recon-count-sheet td, .recon-count-sheet th { white-space: normal; }
+.recon-count-sheet table { min-width: 0; table-layout: fixed; }
+.recon-count-sheet th:nth-child(1) { width: 40%; }
+.recon-count-sheet th:nth-child(2) { width: 26%; }
+.recon-count-sheet th:nth-child(3) { width: 14%; }
+.recon-count-sheet th:last-child, .recon-count-sheet td:last-child { width: 20%; background: none; box-shadow: none; }
+.recon-count-input { width: 100%; max-width: 110px; }

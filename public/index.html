@@ -617,7 +617,7 @@
         <a href="/dashboard?section=replenishments" class="nav-item" data-section="replenishments" data-title="Expenses" title="Expenses" data-description="Submit and monitor petty cash, per diem, and expense requests for HR and Accounting approval."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2.5" width="12" height="15" rx="1.5"/><path d="M6.5 6h7"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M6.5 13h.01M10 13h.01M13.5 13h.01M6.5 16h.01M10 16h.01M13.5 16h.01"/></svg></span><span>Expenses</span></a>
         <a href="/dashboard?section=imports" class="nav-item" data-section="imports" data-title="Excel / CSV Import" title="Excel / CSV Import" data-description="Import spreadsheet records to support migration from existing Excel or Google Sheets files."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12.5V3.5"/><path d="M6.5 7 10 3.5 13.5 7"/><path d="M3.5 13v2.5A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5V13"/></svg></span><span>Import</span></a>
         <a href="/dashboard?section=reports" class="nav-item" data-section="reports" data-title="Reports" title="Reports" data-description="Preview and print management, compliance, inventory, collections, warranty, and audit reports."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="10" height="14" rx="1.3"/><path d="M7.5 2.5h5v2h-5z"/><path d="M7.5 9h5M7.5 12h5M7.5 15h3"/></svg></span><span>Reports</span></a>
-        <a href="/dashboard?section=reconciliation" class="nav-item" data-section="reconciliation" data-title="Reconciliation" title="Reconciliation" data-description="Run manual checks to validate documents, stock, payments, credit limits, and linked records."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.3"/><path d="M6.8 10.2 9 12.4l4.2-4.6"/></svg></span><span>Recon</span></a>
+        <a href="/dashboard?section=reconciliation" class="nav-item" data-section="reconciliation" data-title="Recon" title="Recon" data-description="Automatic checks that numbers agree across stock, orders, invoices, payments, bills and master data."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.3"/><path d="M6.8 10.2 9 12.4l4.2-4.6"/></svg></span><span>Recon</span></a>
         <a href="/dashboard?section=security" class="nav-item" data-section="security" data-title="Security" title="Security" data-description="Preview money-protection controls for compromised passwords, lost phones, approvals, and audit trails." hidden><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M6.5 9V6.3a3.5 3.5 0 0 1 7 0V9"/></svg></span><span>Security</span></a>
         <a href="/dashboard?section=users" class="nav-item" data-section="users" data-title="Users" title="Users" data-description="Manage user accounts, roles, branch access, and allowed modules."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.3" cy="6.8" r="2.6"/><path d="M2.5 17c0-2.9 2.1-5 4.8-5s4.8 2.1 4.8 5"/><circle cx="14.3" cy="7.3" r="2.1"/><path d="M13 12.2c1.9.3 3.5 2 3.5 4.8"/></svg></span><span>Users</span></a>
         <a href="/dashboard?section=logs" class="nav-item" data-section="logs" data-title="Audit Logs" title="Audit Logs" data-description="Review traceable user activity including edits, imports, exports, stock changes, and payment postings."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5h9M7.5 10h9M7.5 15h9"/><path d="M3.5 5h.01M3.5 10h.01M3.5 15h.01"/></svg></span><span>Audit Logs</span></a>
@@ -787,38 +787,17 @@
         <div id="analytics-tab-panel"></div>
       </section>
 
-      <section class="section" id="masterlists">
-        <div class="section-header"><div><p class="eyebrow">Masterlists</p><h2>Clients, reagents, suppliers, employees</h2></div><div class="section-header-actions"><button class="ghost-button" id="master-archived-toggle" type="button" hidden>Show Archived</button><button class="primary-button" id="master-add-button">Add Client</button></div></div>
-        <div class="tabs" id="master-tabs">
-          <button class="tab active" data-master="clients">Clients</button>
-          <button class="tab" data-master="items">Items</button>
-          <button class="tab" data-master="suppliers">Suppliers</button>
-          <button class="tab" data-master="branches">Branches</button>
-          <button class="tab" data-master="employees">Employees</button>
-          <button class="tab" data-master="banks">Banks</button>
+      <section class="section ui-scope" id="masterlists">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Masterlists</h1></div>
+            <p class="ui-desc">The records every transaction uses: items, clients, suppliers, price lists and branches. Each record shows whether it’s complete, and changes to costs, prices and credit terms are logged.</p>
+          </div>
+          <div class="ui-actions" id="master-actions"></div>
         </div>
-        <div class="master-overview" id="master-overview"></div>
-        <div class="toolbar" id="master-items-filter-toolbar" hidden>
-          <div class="field"><label for="master-items-brand-filter">Brand</label><select id="master-items-brand-filter"><option value="">All Brands</option></select></div>
-          <div class="field"><label for="master-items-supplier-filter">Supplier</label><select id="master-items-supplier-filter"><option value="">All Suppliers</option></select></div>
-          <div class="field"><label for="master-items-classification-filter">Classification</label><select id="master-items-classification-filter"><option value="">All Classifications</option></select></div>
-          <button class="ghost-button" id="master-items-filter-clear" type="button">Clear Filters</button>
-        </div>
-        <div class="toolbar" id="master-suppliers-filter-toolbar" hidden>
-          <div class="field"><label for="master-suppliers-classification-filter">Classification</label><select id="master-suppliers-classification-filter"><option value="">All Classifications</option></select></div>
-          <div class="field"><label for="master-suppliers-status-filter">Status</label><select id="master-suppliers-status-filter"><option value="">All Statuses</option></select></div>
-          <button class="ghost-button" id="master-suppliers-filter-clear" type="button">Clear Filters</button>
-        </div>
-        <article class="panel settings-panel platform-settings-panel" id="platform-branch-panel">
-          <div class="panel-header"><div><p class="eyebrow">Branch Masterlist</p><h2>Physical Branches</h2></div></div>
-          <form id="platform-branch-form" class="toolbar">
-            <input id="platform-branch-name" class="search-input" name="branch" placeholder="New branch name" required />
-            <input id="platform-branch-address" class="search-input" name="address" placeholder="Branch address" required />
-            <button class="primary-button" type="submit">Add Branch</button>
-          </form>
-          <div class="platform-area-list" id="platform-branch-list"></div>
-        </article>
-        <div class="table-card"><table id="master-table"></table></div>
+        <div class="ui-wa-host" data-wa-host="masterlists"></div>
+        <div class="ui-tabs" id="master-tabs" role="tablist" aria-label="Masterlist sections"></div>
+        <div id="master-tab-panel"></div>
       </section>
 
       <section class="section ui-scope" id="inventory">
@@ -1141,25 +1120,17 @@
         <div id="replenishments-tab-panel"></div>
       </section>
 
-      <section class="section" id="reconciliation">
-        <div class="section-header"><div><p class="eyebrow">Reconciliation</p><h2>Manual Data Integrity Checks</h2></div><button class="primary-button" id="run-reconciliation">Run Reconciliation</button></div>
-        <div class="toolbar recon-toolbar">
-          <div class="field"><label for="recon-date-from">Check records from</label><input id="recon-date-from" type="date" /></div>
-          <div class="field"><label for="recon-date-to">Check records until</label><input id="recon-date-to" type="date" /></div>
-          <div class="field"><label for="recon-period">Compare by</label><select id="recon-period"><option value="day">Day</option><option value="month" selected>Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></div>
-          <div class="field"><label for="recon-area-filter">Area</label><select id="recon-area-filter"><option value="">All Areas</option><option value="sales">Sales</option><option value="collections">Collections</option><option value="invoicing">Invoicing</option><option value="masterlists">Masterlists</option><option value="inventory">Inventory</option></select></div>
-          <button class="ghost-button" id="clear-recon-dates" type="button">All Dates</button>
+      <section class="section ui-scope" id="reconciliation">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Recon</h1></div>
+            <p class="ui-desc">Automatic checks that compare numbers which should agree across modules: stock, orders, invoices, payments, bills and master data. Each difference shows the records behind it and a fix you can preview and apply. Every fix is logged.</p>
+          </div>
+          <div class="ui-actions" id="recon-actions"></div>
         </div>
-        <div class="tabs" id="reconciliation-tabs"><button class="tab active" data-recon-tab="current">Current Check</button><button class="tab" data-recon-tab="history">History</button></div>
-        <div class="recon-tab-panel active" data-recon-panel="current">
-          <article class="panel recon-help" id="reconciliation-description"></article>
-          <article class="panel recon-help"><div class="panel-header"><div><p class="eyebrow">Comparison</p><h2>Daily, Monthly, Quarterly, Yearly Results</h2></div></div><div class="chart-bars" id="reconciliation-comparison"></div></article>
-          <div class="dashboard-grid" id="reconciliation-summary"></div>
-          <div class="table-card"><table id="reconciliation-table"></table></div>
-        </div>
-        <div class="recon-tab-panel" data-recon-panel="history">
-          <article class="panel recon-help"><div class="panel-header"><div><p class="eyebrow">History</p><h2>Past Reconciliation Runs</h2></div></div><div class="table-card compact-table"><table id="reconciliation-history-table"></table></div></article>
-        </div>
+        <div class="ui-wa-host" data-wa-host="reconciliation"></div>
+        <div class="ui-tabs" id="recon-tabs" role="tablist" aria-label="Recon sections"></div>
+        <div id="recon-tab-panel"></div>
       </section>
 
       <section class="section" id="security">
@@ -1580,7 +1551,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

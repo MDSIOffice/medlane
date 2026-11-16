@@ -88,10 +88,6 @@ function moduleWorkflowItems(section) {
       { title: "Scheduled reporting", text: "Use saved report cards to avoid rebuilding common management views.", tone: "info" },
       facts.overdue.length && { title: "Export AR support", text: `${facts.overdue.length} overdue invoices should be included in collection report.`, action: `open-ar:${topOverdue.documentNo || topOverdue.id}`, tone: "risk" },
     ],
-    reconciliation: [
-      { title: "Run fix-oriented checks", text: "Find duplicate receipts, missing docs, transfer issues, and AR mismatches with direct fix buttons.", action: "run-reconciliation", actionLabel: "Run", tone: "info" },
-      facts.chequeReviews.length && { title: "Cheque data gap", text: `${facts.chequeReviews.length} cheque records need bank/date cleanup.`, section: "collections", tone: "warning" },
-    ],
     security: [
       { title: "Audit risky actions", text: "Watch discount approvals, credit overrides, cancellations, and backdated payments.", tone: "info" },
     ],
@@ -142,7 +138,7 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "masterlists", "warranty", "imports", "reports", "reconciliation", "security", "users", "product-issues"];
+const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "warranty", "imports", "reports", "security", "users", "product-issues"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -483,6 +479,8 @@ function workflowGoto(module, tab, scope, sel) {
   else if (module === "replenishments") { if (EXPENSES_TAB_LABELS[tab]) expensesTab = tab; expensesView = view; }
   else if (module === "logs") { if (LOGS_TAB_LABELS[tab]) logsTab = tab; logsView = view; }
   else if (module === "analytics") { if (ANALYTICS_TAB_LABELS[tab]) analyticsTab = tab; analyticsView = view; }
+  else if (module === "reconciliation") { if (RECON_TAB_LABELS[tab]) reconTab = tab; reconView = view; }
+  else if (module === "masterlists") { if (MASTER_TAB_LABELS[tab]) masterPageTab = tab; masterView = view; }
   else if (module === "purchase-history") {
     if (CLIENT_HISTORY_TAB_LABELS[tab]) clientHistoryPageTab = tab;
     if (clientHistoryPageTab === "profile") { if (sel) clientHistoryClient = sel; view.sel = ""; }
@@ -1577,7 +1575,7 @@ function renderPlatformSettings() {
   if (qs("#approved-dr")) qs("#approved-dr").value = approvals.DR || "ECTOSOC";
   if (qs("#invoice-approval-form")) qs("#invoice-approval-form").dataset.focusRecord = "Invoice approvals";
   if (qs("#dev-settings-panel")) qs("#dev-settings-panel").hidden = !isDevEnvironment();
-  qs("#platform-branch-list").innerHTML = platformBranches().map((branch) => `<div class="platform-area-chip" data-focus-record="${escapeHtml(branch)}" data-focus-text="${escapeHtml(`${branch} ${branchAddresses()[branch] || "No address set"}`)}"><span>${escapeHtml(branch)}<small>${escapeHtml(branchAddresses()[branch] || "No address set")}</small></span><button class="mini-button" type="button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${lockedBranches.has(branch) ? `<small>Used by records</small>` : `<button class="mini-button danger-button" type="button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}</div>`).join("");
+  if (qs("#platform-branch-list")) qs("#platform-branch-list").innerHTML = platformBranches().map((branch) => `<div class="platform-area-chip" data-focus-record="${escapeHtml(branch)}" data-focus-text="${escapeHtml(`${branch} ${branchAddresses()[branch] || "No address set"}`)}"><span>${escapeHtml(branch)}<small>${escapeHtml(branchAddresses()[branch] || "No address set")}</small></span><button class="mini-button" type="button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${lockedBranches.has(branch) ? `<small>Used by records</small>` : `<button class="mini-button danger-button" type="button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}</div>`).join("");
   renderSettingsTutorial();
 }
 
@@ -2724,87 +2722,6 @@ function masterlistSourceLabel(record) {
 function masterlistSourcePill(record) {
   const label = masterlistSourceLabel(record);
   return `<span class="pill ${label === "Migrated" ? "purple" : "gray"}">${label}</span>`;
-}
-
-function renderMasterlists() {
-  ensureUploadedFilesLoaded(renderMasterlists);
-  if (data.masterTab === "employees" && !canManageEmployees()) data.masterTab = "clients";
-  qsa("#master-tabs .tab[data-master='employees']").forEach((tab) => { tab.hidden = !canManageEmployees(); });
-  qsa("#master-tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.master === data.masterTab));
-  qs("#platform-branch-panel").hidden = data.masterTab !== "branches";
-  /** @type {HTMLElement} */ (qs("#master-table").parentElement).hidden = data.masterTab === "branches";
-  qs("#master-add-button").hidden = !canEditModule("masterlists") || data.masterTab === "branches";
-  qs("#master-table").classList.toggle("employee-table", data.masterTab === "employees");
-  qs("#master-table").classList.toggle("client-table", data.masterTab === "clients");
-  /** @type {Record<string, any>} */
-  const labels = { clients: "Add Client", items: "Add Item", suppliers: "Add Supplier", branches: "Add Branch", employees: "Add Employee", banks: "Add Bank" };
-  qs("#master-add-button").textContent = labels[data.masterTab];
-  const canArchive = ["Superadmin", "CEO"].includes(currentUser?.role);
-  const archivableTabs = ["clients", "items", "suppliers", "employees", "banks"];
-  const showArchived = masterShowArchived && archivableTabs.includes(data.masterTab);
-  const archivedToggle = qs("#master-archived-toggle");
-  if (archivedToggle) {
-    const canToggle = canArchive && archivableTabs.includes(data.masterTab);
-    archivedToggle.hidden = !canToggle;
-    archivedToggle.textContent = showArchived ? "Show Active" : "Show Archived";
-    archivedToggle.classList.toggle("active", showArchived);
-  }
-  qs("#master-add-button").hidden = !canEditModule("masterlists") || showArchived || data.masterTab === "branches";
-  qs("#master-items-filter-toolbar").hidden = data.masterTab !== "items";
-  qs("#master-suppliers-filter-toolbar").hidden = data.masterTab !== "suppliers";
-  if (data.masterTab === "items") {
-    setForecastSelectOptions("#master-items-brand-filter", data.items.map((i) => i.brand), "All Brands");
-    setForecastSelectOptions("#master-items-supplier-filter", data.items.map((i) => i.supplier), "All Suppliers");
-    setForecastSelectOptions("#master-items-classification-filter", data.items.map((i) => i.classification || i.category), "All Classifications");
-  }
-  if (data.masterTab === "suppliers") {
-    setForecastSelectOptions("#master-suppliers-classification-filter", data.suppliers.map((s) => s.classification || s.brand), "All Classifications");
-    setForecastSelectOptions("#master-suppliers-status-filter", data.suppliers.map((s) => s.status), "All Statuses");
-  }
-  const itemsBrandFilter = qs("#master-items-brand-filter")?.value || "";
-  const itemsSupplierFilter = qs("#master-items-supplier-filter")?.value || "";
-  const itemsClassificationFilter = qs("#master-items-classification-filter")?.value || "";
-  const suppliersClassificationFilter = qs("#master-suppliers-classification-filter")?.value || "";
-  const suppliersStatusFilter = qs("#master-suppliers-status-filter")?.value || "";
-  const masterFilter = (/** @type {any} */ record) => {
-    if (!(showArchived ? isArchived(record) : !isArchived(record)) || !includesSearch(Object.values(record))) return false;
-    if (data.masterTab === "items") {
-      if (itemsBrandFilter && record.brand !== itemsBrandFilter) return false;
-      if (itemsSupplierFilter && record.supplier !== itemsSupplierFilter) return false;
-      if (itemsClassificationFilter && (record.classification || record.category) !== itemsClassificationFilter) return false;
-    }
-    if (data.masterTab === "suppliers") {
-      if (suppliersClassificationFilter && (record.classification || record.brand) !== suppliersClassificationFilter) return false;
-      if (suppliersStatusFilter && record.status !== suppliersStatusFilter) return false;
-    }
-    return true;
-  };
-  const rowActions = (/** @type {any} */ type, /** @type {any} */ index) => {
-    if (showArchived) return canArchive ? `<button class="mini-button" data-master-restore="${type}" data-index="${index}">Restore</button>` : "Archived";
-    const parts = [canEditModule("masterlists") ? `<button class="mini-button" data-master-edit="${type}" data-index="${index}">Edit</button>` : "Approval required"];
-    if (canArchive) parts.push(`<button class="mini-button danger-button" data-master-archive="${type}" data-index="${index}">Archive</button>`);
-    return parts.join(" ");
-  };
-  const missingDocs = activeClients().reduce((sum, client) => sum + requiredClientDocs.filter((doc) => !client.docs?.includes(doc)).length, 0);
-  qs("#master-overview").innerHTML = [
-    ["Clients", activeClients().length, `${missingDocs} missing docs`, "◆"],
-    ["Items", activeItems().length, `${new Set(activeItems().map((item) => item.brand)).size} brands`, "▤"],
-    ["Suppliers", activeSuppliers().length, "supplier records", "◇"],
-    ["Banks", activeBanks().length, "collection accounts", "●"],
-  ].map(([title, value, note, icon]) => `<article class="master-card"><span class="feature-icon">${icon}</span><div><strong>${value}</strong><small>${title} · ${note}</small></div></article>`).join("");
-  if (data.masterTab === "clients") table("#master-table", ["Code", "Client", "Area", "Account Type", "Sales Person", "Terms", "Contact", "TIN", "Status", "Credit Limit", "AR Used", "Required Docs", "Source", "Actions"], data.clients.filter(masterFilter).map((c) => {
-    const used = clientBalance(c.name);
-    const creditClass = used > c.creditLimit ? "credit-warning" : "";
-    return { focus: c.name, cells: [c.code || "-", c.name, c.area, c.dealer, c.salesperson || "Unassigned", `${c.terms || 30} days`, c.contact, c.tin, isArchived(c) ? "Archived" : (c.status || "Active"), peso.format(c.creditLimit), `<span class="${creditClass}">${peso.format(used)}</span>`, docUploadButtons(c), masterlistSourcePill(c), rowActions("client", data.clients.indexOf(c))] };
-  }));
-  if (data.masterTab === "items") table("#master-table", ["Code", "Item", "Brand", "UOM", "Supplier", "Classification", "Source", "Actions"], data.items.filter(masterFilter).map((i) => ({ focus: i.code, cells: [i.code, i.name, i.brand, i.uom, i.supplier, i.classification || i.category, masterlistSourcePill(i), rowActions("item", data.items.indexOf(i))] })));
-  if (data.masterTab === "suppliers") table("#master-table", ["Code", "Supplier", "Classification", "TIN", "Address", "ZIP", "Contact", "Status", "Source", "Actions"], data.suppliers.filter(masterFilter).map((s) => ({ focus: s.name, cells: [s.code || "-", s.name, s.classification || s.brand || "Multiple", s.tin || "-", s.address, s.zip || "-", s.contact, isArchived(s) ? "Archived" : (s.status || "Active"), masterlistSourcePill(s), rowActions("supplier", data.suppliers.indexOf(s))] })));
-  if (data.masterTab === "branches") table("#master-table", ["Branch", "Address", "Status", "Actions"], platformBranches().map((branch) => {
-    const locked = data.inventory.some((item) => item.branch === branch) || data.pendingTransfers.some((transfer) => transfer.from === branch || transfer.to === branch);
-    return { focus: branch, cells: [branch, branchAddresses()[branch] || "No address set", locked ? "Used by records" : "Unused", canEditModule("masterlists") ? `<button class="mini-button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${locked ? "" : `<button class="mini-button danger-button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}` : "Approval required"] };
-  }));
-  if (data.masterTab === "employees") table("#master-table", ["Name", "Role", "Contact", "Salary", "Target Sales", "Govt. Benefits", "Actions"], data.employees.filter(masterFilter).map((e) => ({ focus: e.name, cells: [e.name, e.role, e.contact, canManageEmployeeSalary() ? peso.format(Number(e.salary || 0)) : "Superadmin Only", Number(e.targetSales || 0) ? peso.format(Number(e.targetSales)) : "-", employeeBenefitsSummary(e), rowActions("employee", data.employees.indexOf(e))] })));
-  if (data.masterTab === "banks") table("#master-table", ["Bank", "Account", "Notes", "Actions"], data.banks.filter(masterFilter).map((b) => ({ focus: b.name, cells: [b.name, b.account, b.notes, rowActions("bank", data.banks.indexOf(b))] })));
 }
 
 /** @param {string} clientName @param {any} doc */
@@ -4989,6 +4906,8 @@ function sectionQueryString(sectionId) {
   if (sectionId === "analytics") return analyticsQueryString();
   if (sectionId === "logs") return logsQueryString();
   if (sectionId === "purchase-history") return clientHistoryQueryString();
+  if (sectionId === "reconciliation") return reconQueryString();
+  if (sectionId === "masterlists") return masterQueryString();
   return `section=${encodeURIComponent(sectionId)}`;
 }
 
@@ -11947,171 +11866,6 @@ function renderSalesBreakdownReport(dimension) {
   showSection("sales-breakdown-detail");
 }
 
-function getReconRange() {
-  const from = qs("#recon-date-from")?.value || "";
-  const to = qs("#recon-date-to")?.value || "";
-  return { from, to, label: from || to ? `${from || "Start"} to ${to || "Today"}` : "All dates" };
-}
-
-/** @param {any} dateValue @param {any} [range] */
-function isWithinReconRange(dateValue, range = getReconRange()) {
-  if (!dateValue) return !range.from && !range.to;
-  const value = fmtDate(dateValue);
-  return (!range.from || value >= range.from) && (!range.to || value <= range.to);
-}
-
-/** @param {any} [range] */
-function getReconScope(range = getReconRange()) {
-  const sales = data.sales.filter((sale) => isWithinReconRange(sale.date, range));
-  const payments = data.payments.filter((payment) => isWithinReconRange(payment.dateRecorded || payment.dateCollected, range));
-  const clients = range.from || range.to ? data.clients.filter((client) => sales.some((sale) => sale.client === client.name) || payments.some((payment) => payment.client === client.name)) : data.clients;
-  const transfers = data.pendingTransfers.filter((transfer) => !transfer.receivedAt || isWithinReconRange(transfer.receivedAt, range));
-  return { range, sales, payments, clients, transfers };
-}
-
-/** @param {string} clientName @param {Sale[]} sales */
-function getScopedClientBalance(clientName, sales) {
-  return sales.filter((/** @type {Sale} */ sale) => sale.client === clientName && sale.status !== "Cancelled").reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-}
-
-/** @param {any} [scope] */
-function getReconciliationFindings(scope = getReconScope()) {
-  /** @type {any[]} */
-  const findings = [];
-  const docCounts = scope.sales.reduce((/** @type {Record<string, any>} */ acc, /** @type {Sale} */ sale) => { acc[sale.documentNo] = (acc[sale.documentNo] || 0) + 1; return acc; }, {});
-  Object.entries(docCounts).filter(([, count]) => count > 1).forEach(([documentNo]) => findings.push(["Duplicate Document", documentNo, "Manual SI/TS/DR number appears more than once", "High", "sales", documentNo]));
-  scope.sales.forEach((/** @type {Sale} */ sale) => {
-    // DR (Delivery Receipt) documents are expected to carry 0 gross — they record a delivery,
-    // not a billable amount — so a line-total/gross mismatch there is normal, not a data error.
-    if (documentType(sale.type) === "DR") return;
-    const lineTotal = saleAmount(sale.lines || []);
-    if (Math.abs(lineTotal - sale.amount) > 1) findings.push(["Sales Amount", sale.documentNo, `Line total ${peso.format(lineTotal)} does not match gross ${peso.format(sale.amount)}`, "High", "sales", sale.documentNo]);
-    if (sale.paid > sale.net) findings.push(["Collection", sale.documentNo, "Paid amount is higher than invoice net", "High", "collections", sale.documentNo]);
-    // A payment marked appliedToInvoice=true should already be counted in sale.paid. If the two
-    // disagree, an approval's paid-amount update never made it to the server (see the stale-sync
-    // bug fixed in approvePaymentRequest on 2026-10-09) and the invoice is understating what was
-    // actually collected.
-    const appliedPaymentsTotal = data.payments.filter((payment) => (payment.invoice === sale.documentNo || payment.invoice === sale.id) && payment.appliedToInvoice === true).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    if (appliedPaymentsTotal - sale.paid > 1) findings.push(["Collection", sale.documentNo, `Approved payment(s) totaling ${peso.format(appliedPaymentsTotal)} marked applied but invoice paid is only ${peso.format(sale.paid)} — approval did not persist, needs manual correction`, "High", "collections", sale.documentNo]);
-    if (sale.replacementId && !scope.sales.some((/** @type {any} */ entry) => entry.documentNo === sale.replacementId) && !data.sales.some((entry) => entry.documentNo === sale.replacementId)) findings.push(["Cancellation", sale.documentNo, `Replacement ${sale.replacementId} not found`, "High", "invoicing", sale.documentNo]);
-    (sale.lines || []).forEach((/** @type {any} */ line) => {
-      if (!uomOptions.includes(normalizeUom(line.uom))) findings.push(["UOM", sale.documentNo, `${line.item} uses unsupported UOM ${line.uom}`, "Medium", "sales", sale.documentNo]);
-      if (!data.items.some((item) => item.code === line.code || item.name === line.item)) findings.push(["Item Link", sale.documentNo, `${line.item} is not in item masterlist`, "High", "masterlists", line.item]);
-    });
-  });
-  scope.payments.forEach((/** @type {Payment} */ payment) => {
-    if (!data.sales.some((sale) => sale.id === payment.invoice || sale.documentNo === payment.invoice)) findings.push(["Payment Link", payment.invoice, "Payment does not match a sales document", "High", "collections", payment.invoice]);
-    if (!payment.receiptNo) findings.push(["Collections", payment.invoice, "Missing receipt number", "High", "collections", payment.invoice]);
-    if (payment.method === "Cheque" && (!payment.bank || !payment.chequeDate)) findings.push(["Collections", payment.invoice, "Cheque payment missing bank or cheque date", "High", "collections", payment.invoice]);
-  });
-  Object.entries(sumBy(scope.payments, "receiptNo", () => 1)).filter(([receiptNo, count]) => receiptNo && count > 1).forEach(([receiptNo]) => findings.push(["Collections", receiptNo, "Duplicate receipt number", "High", "collections", receiptNo]));
-  scope.clients.forEach((/** @type {Client} */ client) => {
-    const balance = getScopedClientBalance(client.name, scope.sales);
-    if (client.creditLimit > 0 && balance > client.creditLimit) findings.push(["Credit Limit", client.name, `${peso.format(balance)} exceeds ${peso.format(client.creditLimit)} for selected dates`, "Medium", "masterlists", client.name]);
-    requiredClientDocs.forEach((doc) => { if (!attachedFilesFor("client-doc", clientDocRecordId(client.name, doc)).length) findings.push(["Client Docs", client.name, `Missing ${doc}`, "Low", "masterlists", client.name]); });
-  });
-  scope.transfers.filter((/** @type {PendingTransfer} */ transfer) => transfer.status === "For Receiving").forEach((/** @type {PendingTransfer} */ transfer) => findings.push(["Stock Transfer", transfer.id, "Pending receiving confirmation", "Medium", "inventory", transfer.id]));
-  return findings;
-}
-
-/** @param {any} findings @param {any} [scope] */
-function getReconciliationSuccesses(findings, scope = getReconScope()) {
-  const issueRecords = new Set(findings.map((/** @type {any} */ row) => row[1]));
-  return [
-    ...scope.sales.filter((/** @type {Sale} */ sale) => !issueRecords.has(sale.documentNo)).slice(0, 6).map((/** @type {Sale} */ sale) => ["Sales", sale.documentNo, "Gross, net, item links, and payment balance passed", "sales", sale.documentNo]),
-    ...scope.payments.filter((/** @type {Payment} */ payment) => !issueRecords.has(payment.invoice) && !issueRecords.has(payment.receiptNo)).slice(0, 4).map((/** @type {Payment} */ payment) => ["Collections", payment.receiptNo, "Receipt, method, and invoice link passed", "collections", payment.invoice]),
-    ...scope.clients.filter((/** @type {Client} */ client) => !issueRecords.has(client.name)).slice(0, 4).map((/** @type {Client} */ client) => ["Client", client.name, "Credit limit and required documents passed", "masterlists", client.name]),
-  ];
-}
-
-/** @param {any} dateValue @param {any} period */
-function periodKey(dateValue, period) {
-  const d = new Date(dateValue);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  if (period === "day") return fmtDate(d);
-  if (period === "quarter") return `${year} Q${Math.floor(d.getMonth() / 3) + 1}`;
-  if (period === "year") return String(year);
-  return `${year}-${month}`;
-}
-
-function renderReconciliationHistory() {
-  table("#reconciliation-history-table", ["Run Date", "Range", "Compare By", "Findings", "High", "Medium", "Low", "Pass Rate", "View"], data.reconHistory.slice(0, 10).map((/** @type {any} */ run, /** @type {any} */ index) => ({ focus: run.date, cells: [run.date, run.range, run.period, run.findings, run.high, run.medium, run.low, `${run.passRate}%`, `<button class="mini-button" data-recon-history="${index}">Load Run</button>`] })));
-}
-
-function renderReconciliationTabs() {
-  qsa("#reconciliation-tabs .tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.reconTab === reconciliationTab));
-  qsa(".recon-tab-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.reconPanel === reconciliationTab));
-}
-
-/** @param {any} index */
-function applyReconciliationHistory(index) {
-  const run = data.reconHistory[index];
-  if (!run) return toast("Reconciliation run not found.");
-  const [from, to] = String(run.range || "").split(" to ");
-  qs("#recon-date-from").value = from && from !== "All dates" && from !== "Start" ? from : "";
-  qs("#recon-date-to").value = to && to !== "Today" ? to : "";
-  qs("#recon-period").value = run.period || "month";
-  selectedReconHistoryIndex = index;
-  reconciliationTab = "current";
-  renderReconciliation();
-  toast(`Loaded reconciliation run from ${run.date}.`);
-}
-
-/** @param {any} findings @param {any} passRate @param {any} scope */
-function recordReconciliationRun(findings, passRate, scope) {
-  const high = findings.filter((/** @type {any} */ item) => item[3] === "High").length;
-  const medium = findings.filter((/** @type {any} */ item) => item[3] === "Medium").length;
-  const low = findings.filter((/** @type {any} */ item) => item[3] === "Low").length;
-  const run = { id: `REC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), range: scope.range.label, period: qs("#recon-period")?.value || "month", findings: findings.length, high, medium, low, passRate };
-  data.reconHistory.unshift(run);
-  data.reconHistory = data.reconHistory.slice(0, 30);
-  return run;
-}
-
-function renderReconciliation() {
-  // Findings flag clients with missing documents, so the file list has to be loaded to be accurate.
-  ensureUploadedFilesLoaded(renderReconciliation);
-  defaultDateRangeIfEmpty("recon-date-from", "recon-date-to");
-  const scope = getReconScope();
-  const findings = getReconciliationFindings(scope);
-  const successes = getReconciliationSuccesses(findings, scope);
-  const high = findings.filter((item) => item[3] === "High").length;
-  const medium = findings.filter((item) => item[3] === "Medium").length;
-  const low = findings.filter((item) => item[3] === "Low").length;
-  const totalChecks = scope.sales.length * 5 + scope.payments.length * 3 + scope.clients.length * requiredClientDocs.length + scope.transfers.length;
-  const passed = Math.max(totalChecks - findings.length, 0);
-  const passRate = totalChecks ? Math.round((passed / totalChecks) * 100) : 100;
-  const selectedRun = selectedReconHistoryIndex == null ? null : data.reconHistory[selectedReconHistoryIndex];
-  renderReconciliationTabs();
-  qs("#reconciliation-summary").innerHTML = [
-    ["High Issues", high, "Needs correction"],
-    ["Medium Issues", medium, "Needs review"],
-    ["Low Issues", low, "Cleanup"],
-    ["Pass Rate", `${passRate}%`, `${passed} passed checks of ${totalChecks}`],
-    ["Date Scope", scope.range.label, `${scope.sales.length} sales · ${scope.payments.length} payments`],
-  ].map(([title, value, note]) => `<article class="stat-card"><span>${title}</span><strong>${value}</strong><small>${note}</small></article>`).join("");
-  qs("#reconciliation-description").innerHTML = `<div class="panel-header"><div><p class="eyebrow">How It Computes</p><h2>Comparison Preview and Record Checks</h2>${selectedRun ? `<p class="selected-history-note">Viewing saved run from ${escapeHtml(selectedRun.date)}: ${selectedRun.findings} findings, ${selectedRun.passRate}% pass rate.</p>` : ""}</div><span class="badge">${scope.range.label} · ${findings.length} to fix · ${successes.length} examples passed</span></div><div class="recon-visual-grid"><div><h3>Issue Severity</h3><div class="chart-bars">${barRows([["High", high], ["Medium", medium], ["Low", low], ["Passed", passed]], (value) => `${value} check${value === 1 ? "" : "s"}`, ["red", "orange", "", "green"])}</div></div><div><h3>What is compared</h3><ul class="compact-list"><li><span>Date scope</span><strong>sales by invoice date, payments by recorded/collected date</strong></li><li><span>Sales amount</span><strong>sum(qty x price) vs gross before discount/VAT</strong></li><li><span>Collections</span><strong>paid vs net, receipt uniqueness, cheque bank/date</strong></li><li><span>Client risk</span><strong>selected-date AR against credit limit plus required docs</strong></li></ul></div></div><details class="recon-correct-records"><summary><strong><i class="collapse-icon" aria-hidden="true">›</i> Correct Records Preview</strong><span>${successes.length} passed example${successes.length === 1 ? "" : "s"}</span></summary><div class="table-card compact-table"><table><tbody>${successes.slice(0, 8).map((row) => `<tr><td>${escapeHtml(row[0])}</td><td>${escapeHtml(row[1])}</td><td>${escapeHtml(row[2])}</td><td><button class="mini-button" data-go-section="${row[3]}" data-focus-record="${escapeHtml(row[4])}">View</button></td></tr>`).join("") || `<tr><td>No passing examples available for the selected dates.</td></tr>`}</tbody></table></div></details>`;
-  const period = qs("#recon-period")?.value || "month";
-  /** @type {Record<string, any>} */
-  const buckets = scope.sales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
-    const key = periodKey(sale.date, period);
-    acc[key] ||= { sales: 0, findings: 0 };
-    acc[key].sales += 1;
-    acc[key].findings += findings.filter((finding) => finding[1] === sale.documentNo).length;
-    return acc;
-  }, {});
-  scope.payments.forEach((payment) => {
-    const key = periodKey(payment.dateRecorded || payment.dateCollected, period);
-    buckets[key] ||= { sales: 0, findings: 0 };
-    buckets[key].findings += findings.filter((finding) => finding[1] === payment.invoice || finding[1] === payment.receiptNo).length;
-  });
-  qs("#reconciliation-comparison").innerHTML = barRows(Object.entries(buckets).sort(([a], [b]) => a.localeCompare(b)).map(([label, values]) => [label, values.findings]), (value) => `${value} issue${value === 1 ? "" : "s"}`, ["green", "orange", "red"]) + graphNote("Computed by grouping reconciliation findings by invoice/payment date using the selected period.");
-  const tableFindings = reconciliationAreaFilter ? findings.filter((row) => row[4] === reconciliationAreaFilter) : findings;
-  table("#reconciliation-table", ["Area", "Record", "What Needs Fixing", "Severity", "Fix"], tableFindings.map((row) => [row[0], row[1], row[2], `<span class="pill ${statusClass(row[3] === "High" ? "Critical" : row[3] === "Medium" ? "Near Due" : "Available")}">${row[3]}</span>`, `<button class="mini-button" data-go-section="${row[4]}" data-focus-record="${escapeHtml(row[5])}">Fix in ${row[4]}</button>`]));
-  renderReconciliationHistory();
-}
-
 function canManageUsers() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
 function canUpdateDeliveryStatus() { return ["Accounting", "Superadmin", "CEO"].includes(currentUser?.role); }
 /** @param {any} value */
@@ -12975,7 +12729,7 @@ const sectionRenderers = {
   dashboard: renderDashboard,
   calendar: renderCalendarSection,
   analytics: renderAnalytics,
-  masterlists: renderMasterlists,
+  masterlists: () => renderMasterlists(),
   inventory: renderInventory,
   sales: renderSales,
   "item-forecast": renderItemForecast,
@@ -12992,7 +12746,7 @@ const sectionRenderers = {
   replenishments: renderReplenishments,
   reports: renderReports,
   "report-detail": () => currentOperationalReportKey && applyOperationalReport(currentOperationalReportKey),
-  reconciliation: renderReconciliation,
+  reconciliation: () => renderReconciliation(),
   users: renderUsers,
   notifications: renderNotifications,
   security: renderSecurity,
@@ -13017,21 +12771,6 @@ function renderAll() {
   renderBranchFilter(); renderNotifications(); renderMemoBadge(); renderPlatformSettings();
   renderSection();
   appInitialRenderComplete = true;
-}
-
-async function runReconciliationWorkflow() {
-  const scope = getReconScope();
-  const findings = getReconciliationFindings(scope);
-  const totalChecks = scope.sales.length * 5 + scope.payments.length * 3 + scope.clients.length * requiredClientDocs.length + scope.transfers.length;
-  const passRate = totalChecks ? Math.round((Math.max(totalChecks - findings.length, 0) / totalChecks) * 100) : 100;
-  if (!(await confirmFinalSave("Run reconciliation and save this to history?"))) return;
-  const run = recordReconciliationRun(findings, passRate, scope);
-  const saveResult = await persistRecords({ reconHistory: [run] });
-  if (!saveResult?.ok) return;
-  renderReconciliation();
-  renderWorkflowAssist("reconciliation");
-  log("Ran reconciliation", "Reconciliation", `${scope.range.label} · ${findings.length} findings`, { save: false });
-  toast("Reconciliation completed and saved to history.");
 }
 
 /** @param {string} action */
@@ -13118,24 +12857,23 @@ function handleWorkflowAction(action) {
     renderImportCheck();
     return toast("Import safety check completed.");
   }
-  if (action === "run-reconciliation") {
-    showSection("reconciliation");
-    return runReconciliationWorkflow();
-  }
 }
 
+// Suppliers are paid by cash, check or bank transfer only.
+const SUPPLIER_PAYMENT_METHODS = ["Bank transfer", "Check", "Cash"];
+const PRICE_LIST_NONE = "Standard (item list prices)";
 /** @type {Record<string, any>} */
 const modalConfigs = {
-  client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["docs", "Required Documents", "doc-files"]] },
-  item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...activeItems().map((item) => item.brand), ...activeSuppliers().map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => activeSuppliers().map((supplier) => supplier.name)], ["packSize", "Pack Size (supplier order multiple, optional)", "number-optional"]] },
+  client: { title: "Add Client", fields: [["name", "Client Name"], ["area", "Area", "select", () => platformAreas()], ["dealer", "Account Type", "select", ["Direct", "Dealer"]], ["salesperson", "Assigned Sales Person", "select", () => data.users.filter((user) => ["Sales", "Admin", "CEO"].includes(user.role)).map((user) => user.name)], ["terms", "Client Terms (days)", "number"], ["address", "Address", "textarea"], ["contact", "Contact Information", "department-contacts"], ["tin", "TIN No.", "tin"], ["creditLimit", "Credit Limit", "number"], ["priceList", "Price List", "select", () => [PRICE_LIST_NONE, ...(data.priceLists || []).filter((list) => list.active !== false).map((list) => String(list.name))]], ["docs", "Required Documents", "doc-files"]] },
+  item: { title: "Add Item", fields: [["code", "Item Code"], ["name", "Item Name"], ["brand", "Brand", "datalist", () => [...new Set([...activeItems().map((item) => item.brand), ...activeSuppliers().map((supplier) => supplier.brand)].filter(Boolean))]], ["classification", "Classification", "select", productClassificationOptions], ["uom", "Default Unit of Measurement", "select", uomOptions], ["supplier", "Supplier", "datalist", () => activeSuppliers().map((supplier) => supplier.name)], ["packSize", "Pack Size (supplier order multiple, optional)", "number-optional"], ["cost", "Unit Cost (₱, latest supplier PO price)", "number-optional"], ["price", "List Price (₱, VAT inclusive)", "number-optional"], ["quotedPerDeal", "No list price: quoted per deal", "checkbox"], ["minLevel", "Minimum Stock Level (all branches)", "number-optional"]] },
   bank: { title: "Add Bank", fields: [["name", "Bank Name"], ["account", "Account / Purpose"], ["notes", "Notes", "textarea-optional"]] },
-  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(activeItems().map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]]] },
+  supplier: { title: "Add Supplier", fields: [["name", "Supplier Name"], ["classification", "Classification", "select", supplierClassificationOptions], ["brand", "Brand Supplied", "datalist", () => [...new Set(activeItems().map((item) => item.brand).filter(Boolean))]], ["address", "Address", "textarea"], ["zip", "ZIP Code"], ["contact", "Contact Information"], ["tin", "TIN No.", "tin"], ["entityType", "Payee Type (for BIR Form 2307)", "select", ["Corporation", "Individual"]], ["terms", "Payment Terms (days)", "number-optional"], ["paymentMethod", "We Pay By", "select", SUPPLIER_PAYMENT_METHODS], ["bankName", "Bank (for bank transfers)", "optional"], ["bankAccountName", "Account Name", "optional"], ["bankAccountNo", "Account No.", "optional"]] },
   employee: { title: "Add Employee", fields: [["name", "Employee Name"], ["role", "Role"], ["contact", "Contact Information"], ["birthday", "Birthday", "date"], ["salary", "Salary Amount", "number"], ["targetSales", "Target Sales (Annual, Sales Role Only)", "number-optional"], ["benefits", "Govt. Benefits", "benefit-checkboxes"], ["sssNo", "SSS ID No.", "optional"], ["philHealthNo", "PhilHealth ID No.", "optional"], ["pagIbigNo", "Pag-IBIG ID No.", "optional"]] },
   purchaseOrder: { title: "Create PO", fields: [["id", "PO No.", "optional"], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["sourceBranch", "Ships from", "select", () => platformBranches()], ["date", "Purchase Order Date", "date"]] },
   invoice: { title: "Create Sales Invoice", fields: [["type", "Type", "select", ["SI", "TS", "DR"]], ["documentNo", "Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "Purchase Order No.", "datalist-optional", () => data.purchaseOrders.filter(poInvoiceable).map((po) => po.id)], ["skipPo", "Skip PO — record-keeping only, this invoice won't be printed", "checkbox"], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   cancelReplace: { title: "Cancel Invoice And Make Replacement", fields: [["oldInvoice", "Cancelled Invoice", "hidden"], ["reason", "Cancellation Reason", "textarea"], ["type", "New Type", "select", ["SI", "TS", "DR"]], ["documentNo", "New Manual SI / TS / DR No."], ["client", "Client", "datalist", () => activeClients().map((c) => c.name)], ["po", "New Purchase Order No.", "datalist", () => data.purchaseOrders.filter((po) => !PO_TERMINAL_STATUSES.includes(poStatus(po))).map((po) => po.id)], ["sourceBranch", "Stock From", "select", () => platformBranches()], ["date", "Invoice Date", "date"], ["vatCode", "VAT Code", "select", ["VAT", "NO VAT"]], ["discount", "Overall Discount", "number"], ["discountReason", "Overall Discount Reason", "textarea"]] },
   paymentRequest: { title: "Add Collection", fields: [["employee", "Client", "datalist", () => activeClients().map((client) => client.name)], ["preparedBy", "Collector", "datalist", () => activeEmployees().map((employee) => employee.name)], ["cvNo", "CR/PR No."], ["date", "Date", "date"], ["paymentType", "Type of Payment", "select", ["Cash", "Check", "Multiple Cheques", "Bank Transfer", "Debit Memo"]], ["transferDate", "Transfer Date", "date"], ["bank", "Bank Name", "select", () => activeBanks().map((bank) => bank.name)], ["bankAccount", "Account Number", "readonly"], ["cheque", "Cheque No."], ["chequeDate", "Cheque Date", "date"]] },
-  payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["dueDate", "Due Date (blank = 30 days after the date)", "date"], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
+  payable: { title: "Payable Request", fields: [["supplier", "Vendor", "datalist", () => activeSuppliers().map((s) => s.name)], ["date", "Date", "date"], ["dueDate", "Due Date (blank = 30 days after the date)", "date"], ["poId", "Supplier PO (optional, for the 3-way match)", "datalist-optional", () => (data.inventoryPurchaseOrders || []).filter((po) => !/cancel/i.test(String(po.status || ""))).map((po) => String(po.id))], ["requestNote", "Request Notes", "textarea-optional"], ["withholdingTax1", "Apply Withholding 1%", "checkbox"], ["withholdingTax2", "Apply Withholding 2%", "checkbox"]] },
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => [ALL_RECEIVING_BRANCHES, ...platformBranches()]], ["date", "PO Date", "date"], ["promisedDate", "Supplier Promised Delivery (optional)", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => activeClients().map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
@@ -13305,7 +13043,10 @@ function openModal(type, edit = null) {
       } else if (key === "contactDepartments" && type === "client") {
         populateClientDepartmentContacts(value);
         if (field) field.value = value;
-      } else if (field?.type === "checkbox") field.checked = Boolean(value);
+      } else if (key === "bankDetails" && value && typeof value === "object") {
+        [["bankName", "bank"], ["bankAccountName", "accountName"], ["bankAccountNo", "accountNo"]].forEach(([id, part]) => { const input = qs(`#${id}`); if (input) input.value = String(/** @type {any} */ (value)[part] || ""); });
+      } else if (key === "priceList" && type === "client") { if (field) field.value = value || PRICE_LIST_NONE; }
+      else if (field?.type === "checkbox") field.checked = Boolean(value);
       else if (field) field.value = value;
     });
     if (type === "payable") togglePayableFields();
@@ -13623,6 +13364,32 @@ async function cancelInvoice(invoiceId) {
 
 /** @param {any} form @returns {Record<string, any>} */
 function formObject(form) { return Object.fromEntries(new FormData(form).entries()); }
+
+/**
+ * Masterlist fields the modal can't express directly: numbers, the per-deal checkbox (an
+ * unchecked box sends nothing, so it must be cleared explicitly), nested supplier bank details
+ * and the client's price list. Mutates and returns the record.
+ * @param {string} type @param {any} record @param {Record<string, any>} values
+ */
+function normalizeMasterRecord(type, record, values) {
+  const amount = (/** @type {unknown} */ value) => (value === "" || value === undefined || value === null ? undefined : Math.round(Number(value) * 100) / 100);
+  if (type === "item") {
+    for (const key of ["cost", "price", "minLevel"]) { const n = amount(record[key]); if (n === undefined || !Number.isFinite(n)) delete record[key]; else record[key] = n; }
+    record.quotedPerDeal = values.quotedPerDeal === "true";
+  }
+  if (type === "supplier") {
+    const terms = amount(record.terms);
+    if (terms === undefined || !Number.isFinite(terms)) delete record.terms; else record.terms = Math.round(terms);
+    if (!SUPPLIER_PAYMENT_METHODS.includes(record.paymentMethod)) delete record.paymentMethod;
+    const bank = { bank: String(values.bankName || "").trim(), accountName: String(values.bankAccountName || "").trim(), accountNo: String(values.bankAccountNo || "").trim() };
+    if (bank.bank || bank.accountName || bank.accountNo) record.bankDetails = bank; else delete record.bankDetails;
+    delete record.bankName; delete record.bankAccountName; delete record.bankAccountNo;
+  }
+  if (type === "client") {
+    if (!record.priceList || record.priceList === PRICE_LIST_NONE) delete record.priceList;
+  }
+  return record;
+}
 
 /** @param {any} type @param {any} record */
 function recordLabel(type, record) {

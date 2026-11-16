@@ -113,6 +113,7 @@ async function submitModal(event) {
     const next = { ...previous, ...values };
     if (modalType === "item" && next.classification) next.category = importedCategory(next.classification);
     if (modalType === "item") next.packSize = itemPackSizeValue(next.packSize);
+    normalizeMasterRecord(modalType, next, values);
     if (modalType === "employee" && !canManageEmployeeSalary()) next.salary = editContext.list[editContext.index].salary;
     try { validateMasterRecord(modalType, next, editContext.index); }
     catch (/** @type {any} */ error) { return toast(error.message); }
@@ -145,9 +146,9 @@ async function submitModal(event) {
     catch (/** @type {any} */ error) { return toast(error.message); }
   }
   if (["client", "item", "bank", "supplier", "employee"].includes(modalType)) {
-    const record = modalType === "client" ? { ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" }
+    const record = normalizeMasterRecord(modalType, modalType === "client" ? { ...values, terms: Number(values.terms || 30), creditLimit: Number(values.creditLimit), docs: values.docs || "" }
       : modalType === "employee" ? { ...values, salary: canManageEmployeeSalary() ? Number(values.salary || 0) : 0, targetSales: Number(values.targetSales || 0) }
-      : values;
+      : { ...values }, values);
     /** @type {Record<string, any[]>} */
     const listByType = { client: data.clients, item: data.items, supplier: data.suppliers, employee: data.employees, bank: data.banks };
     const moduleKey = masterlistModuleKey(modalType);
@@ -382,6 +383,9 @@ async function submitModal(event) {
     const gross = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const deductions = financialRequestDeductions(gross);
     if (!items.length || deductions.total <= 0) return toast("Add at least one payable item with amount.");
+    values.poId = String(values.poId || "").trim();
+    if (values.poId && !(data.inventoryPurchaseOrders || []).some((po) => po.id === values.poId)) return toast(`Supplier PO ${values.poId} wasn't found. Pick one from the list or leave it blank.`);
+    if (!values.poId) delete values.poId;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(values.dueDate || ""))) values.dueDate = fmtDate(addDays(values.date || fmtDate(today), PAYABLE_DEFAULT_TERMS_DAYS));
     else if (values.date && values.dueDate < values.date) return toast("The due date can't be before the payable date.");
     const payable = { id: nextId(data.payables, "PAY"), ...values, item: items.map((item) => item.particulars).join("; "), qty: items.length, uom: "item", items, grossAmount: deductions.grossAmount, withholdingTax1: deductions.withholdingTax1, withholdingTax2: deductions.withholdingTax2, amount: deductions.total, paid: 0, method: "", bank: "", cheque: "", chequeDate: "", status: "For Approval", requestStatus: "For Approval", paymentConfirmed: false, createdByUser: currentUser?.email || "" };
@@ -771,25 +775,6 @@ qs("#password-form").addEventListener("submit", async (event) => {
   saveData(["notifications"]);
   toast("Password updated.");
 });
-qs("#platform-branch-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!canEditModule("masterlists")) return toast("Branch masterlist changes need approval from Admin or Superadmin.");
-  const values = formObject(event.currentTarget);
-  const branch = values.branch.trim();
-  if (!branch) return toast("Branch name is required.");
-  if (platformBranches().some((item) => item.toLowerCase() === branch.toLowerCase())) return toast("Branch already exists.");
-  if (!(await confirmFinalSave(`Add branch "${branch}"?`))) return;
-  data.platformBranches.push(branch);
-  data.branchAddresses ||= {};
-  data.branchAddresses[branch] = values.address.trim();
-  /** @type {AnyEl} */ (event.currentTarget).reset();
-  log("Added branch masterlist record", "Masterlists", branch);
-  notify("Settings", `${branch} was added to platform branches.`, "settings", branch);
-  saveData();
-  renderPlatformSettings();
-  renderAll();
-  toast(`${branch} added to platform branches.`);
-});
 document.body.addEventListener("click", (event) => {
   const openDocs = closestEl(event.target, "[data-open-client-docs]");
   if (openDocs) return openClientDocsModal(/** @type {string} */ (openDocs.dataset.openClientDocs));
@@ -814,13 +799,6 @@ qs("#memo-list").addEventListener("click", (event) => {
   const print = closestEl(event.target, "[data-print-memo]");
   if (print) return printMemo(/** @type {string} */ (print.dataset.printMemo));
 });
-qs("#platform-branch-list").addEventListener("click", /** @returns {any} */ (event) => {
-  const addressButton = closestEl(event.target, "[data-edit-branch-address]");
-  if (addressButton) return editPlatformBranchAddress(/** @type {string} */ (addressButton.dataset.editBranchAddress));
-  const button = closestEl(event.target, "[data-remove-platform-branch]");
-  if (button) return removePlatformBranch(/** @type {string} */ (button.dataset.removePlatformBranch));
-});
-
 /** @param {string} branch */
 async function editPlatformBranchAddress(branch) {
   if (!canEditModule("masterlists")) return toast("Branch masterlist changes need approval from Admin or Superadmin.");
@@ -850,13 +828,6 @@ async function removePlatformBranch(branch) {
   renderAll();
   toast(`${branch} removed from platform branches.`);
 }
-qs("#master-add-button").addEventListener("click", () => {
-  if (!canEditActiveSection()) return toast("Masterlist changes need approval from Admin or Superadmin.");
-  if (data.masterTab === "branches") return qs("#platform-branch-name").focus();
-  /** @type {Record<string, string>} */
-  const modalByTab = { clients: "client", items: "item", suppliers: "supplier", employees: "employee", banks: "bank" };
-  openModal(modalByTab[data.masterTab]);
-});
 qs("#users-table").addEventListener("click", async (event) => {
   const resendButton = closestEl(event.target, "[data-resend-invite]");
   if (resendButton) return resendUserInvite(Number(/** @type {string} */ (resendButton.dataset.resendInvite)));
@@ -1472,6 +1443,10 @@ qs("#purchase-orders").addEventListener("click", (event) => {
   if (detail) return showSaleDetail(/** @type {string} */ (detail.dataset.saleDetail));
 });
 qs("#purchase-orders").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "clientpo", () => clientPoView, renderClientPurchaseOrders); });
+qs("#masterlists").addEventListener("click", (event) => { handleMasterlistsClick(/** @type {Element} */ (event.target)); });
+qs("#masterlists").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "master", () => masterView, renderMasterlists); });
+qs("#reconciliation").addEventListener("click", (event) => { handleReconClick(/** @type {Element} */ (event.target)); });
+qs("#reconciliation").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "recon", () => reconView, renderReconciliation); });
 qs("#payables").addEventListener("click", (event) => {
   const target = /** @type {AnyEl} */ (event.target);
   const tab = closestEl(target, "[data-payables-tab]");
@@ -1563,21 +1538,6 @@ qs("#replenishments").addEventListener("click", (event) => {
   if (expensesTab !== "overview") uiViewClick(target, "expenses", { state: () => expensesView, view: () => expensesTabModel(expensesTab), render: renderReplenishments });
 });
 qs("#replenishments").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "expenses", () => expensesView, renderReplenishments); });
-qs("#master-table").addEventListener("click", (event) => {
-  const editButton = closestEl(event.target, "[data-master-edit]");
-  if (editButton) {
-    if (!canEditActiveSection()) return toast("Masterlist edits need approval from Admin or Superadmin.");
-    return openMasterEditModal(/** @type {string} */ (editButton.dataset.masterEdit), Number(/** @type {string} */ (editButton.dataset.index)));
-  }
-  const archiveButton = closestEl(event.target, "[data-master-archive]");
-  if (archiveButton) return archiveMasterlistRecord(/** @type {string} */ (archiveButton.dataset.masterArchive), Number(/** @type {string} */ (archiveButton.dataset.index)));
-  const restoreButton = closestEl(event.target, "[data-master-restore]");
-  if (restoreButton) return restoreMasterlistRecord(/** @type {string} */ (restoreButton.dataset.masterRestore), Number(/** @type {string} */ (restoreButton.dataset.index)));
-});
-qs("#master-archived-toggle")?.addEventListener("click", () => {
-  masterShowArchived = !masterShowArchived;
-  renderMasterlists();
-});
 qs("#report-grid").addEventListener("click", (event) => {
   const categoryButton = closestEl(event.target, "[data-report-category]");
   if (categoryButton) {
@@ -1611,27 +1571,6 @@ qs("#sales-breakdown-clear-dates")?.addEventListener("click", () => {
   qs("#sales-breakdown-date-from").value = "";
   qs("#sales-breakdown-date-to").value = "";
   renderSalesBreakdownReport(currentSalesBreakdownDimension);
-});
-qs("#reconciliation-history-table").addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-recon-history]");
-  if (button) applyReconciliationHistory(Number(/** @type {string} */ (button.dataset.reconHistory)));
-});
-qs("#reconciliation-tabs").addEventListener("click", (event) => {
-  const button = closestEl(event.target, "[data-recon-tab]");
-  if (!button) return;
-  reconciliationTab = button.dataset.reconTab;
-  renderReconciliationTabs();
-});
-qsa("#master-tabs .tab").forEach((button) => button.addEventListener("click", () => { data.masterTab = button.dataset.master; masterShowArchived = false; saveData(); renderMasterlists(); }));
-qsa("#master-items-filter-toolbar select").forEach((select) => select.addEventListener("change", renderMasterlists));
-qs("#master-items-filter-clear")?.addEventListener("click", () => {
-  qsa("#master-items-filter-toolbar select").forEach((select) => { select.value = ""; });
-  renderMasterlists();
-});
-qsa("#master-suppliers-filter-toolbar select").forEach((select) => select.addEventListener("change", renderMasterlists));
-qs("#master-suppliers-filter-clear")?.addEventListener("click", () => {
-  qsa("#master-suppliers-filter-toolbar select").forEach((select) => { select.value = ""; });
-  renderMasterlists();
 });
 
 qs("#modal-form").addEventListener("submit", submitModal);
@@ -1787,12 +1726,6 @@ qs("#product-issue-status").addEventListener("change", renderProductIssues);
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
 qs("#export-demo")?.addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export logged."); });
 qs("#print-report").addEventListener("click", () => window.print());
-qs("#run-reconciliation").addEventListener("click", runReconciliationWorkflow);
-qs("#recon-date-from").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
-qs("#recon-date-to").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
-qs("#recon-period").addEventListener("change", () => { selectedReconHistoryIndex = null; renderReconciliation(); });
-qs("#recon-area-filter").addEventListener("change", (event) => { reconciliationAreaFilter = /** @type {AnyEl} */ (event.target).value; renderReconciliation(); });
-qs("#clear-recon-dates").addEventListener("click", () => { selectedReconHistoryIndex = null; qs("#recon-date-from").value = ""; qs("#recon-date-to").value = ""; renderReconciliation(); toast("Reconciliation date scope reset."); });
 qs("#back-to-logs").addEventListener("click", () => showSection("logs"));
 qs("#load-more-user-logs").addEventListener("click", loadMoreUserAuditLog);
 
