@@ -26,6 +26,7 @@ function fakeSupabase() {
       rows = rows.filter((row) => !excluded.includes(row.module_name));
     }
     if (q.get("record_key")?.startsWith("eq.")) rows = rows.filter((row) => row.record_key === q.get("record_key").slice(3));
+    if (q.get("record_key")?.startsWith("gte.")) rows = rows.filter((row) => row.record_key >= q.get("record_key").slice(4));
     rows.sort((a, b) => a.updated_at.localeCompare(b.updated_at));
     const total = rows.length;
     const offset = Number(q.get("offset") || 0);
@@ -115,6 +116,20 @@ describe("backup files can be restored", () => {
     for (const moduleName of restorable) assert.deepEqual(db.get(moduleName, `${moduleName}-1`), sample(moduleName), `${moduleName} restored exactly`);
     // Deliberately not restored: audit logs and system/game bookkeeping.
     for (const moduleName of NOT_RESTORED.filter((name) => name !== "system-reset")) assert.equal(db.get(moduleName, "x"), undefined, `${moduleName} is not restored`);
+  });
+
+  test("stock movements Recon no longer needs are left out; recent ones are kept", async () => {
+    const day = 86400000;
+    const old = new Date(Date.now() - 200 * day).toISOString();
+    const recent = new Date(Date.now() - 10 * day).toISOString();
+    db.seed("stockMovements", `MV-${old}-aaaa0000`, { at: old });
+    db.seed("stockMovements", `MV-${recent}-bbbb1111`, { at: recent });
+    db.seed("sales", "SI-1", { documentNo: "SI-1" });
+    const run = await createBackup(env, "manual", null);
+    const keys = (await gunzipJson(bucket.objects.get(run.object_key))).records.map((row) => row.record_key);
+    assert.ok(keys.includes("SI-1"));
+    assert.ok(keys.includes(`MV-${recent}-bbbb1111`), "a movement from the last 90 days is backed up");
+    assert.ok(!keys.includes(`MV-${old}-aaaa0000`), "a 200-day-old movement is not");
   });
 
   test("a large backup (beyond one 1,000-row page) is complete and fully restorable", async () => {

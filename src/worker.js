@@ -505,19 +505,84 @@ function stockMovementRows(stateKey, userId, actor, rows, storedByKey, source) {
   return out;
 }
 
+// ----- retention -----
+// Recon's history is kept bounded without weakening the app_records delete guard:
+//  - runs overwrite a fixed ring of RECON_RUN_SLOTS record keys (no deletes needed);
+//  - the k1 movement baseline rolls forward every MOVEMENT_BASELINE_ROLL_DAYS, but only when
+//    k1 passes (re-checked under the stock lock), so a difference is never absorbed;
+//  - movements older than movementCutoff() are never read again, are left out of backups, and are
+//    removed nightly by the narrow prune_stock_movements() database function (when installed).
+const RECON_RUN_SLOTS = 120;
+const MOVEMENT_KEEP_DAYS = 90;
+const MOVEMENT_BASELINE_ROLL_DAYS = 30;
+/**
+ * The oldest movement anything still needs: the k1 baseline, the 90-day window that k5 lists
+ * unattributed changes from, and every still-open k5 difference (an open difference whose
+ * movement stopped being read would be marked "No longer found" without anyone fixing it).
+ * @param {string | undefined} baselineAt @param {any[]} diffs @param {number} [now]
+ */
+function movementCutoff(baselineAt, diffs, now = Date.now()) {
+  let cut = new Date(now - MOVEMENT_KEEP_DAYS * 86400000).toISOString();
+  if (baselineAt && String(baselineAt) < cut) cut = String(baselineAt);
+  for (const diff of diffs || []) {
+    if (diff?.status !== "open") continue;
+    const match = /^move:MV-(.+)-[0-9a-f]{8}$/.exec(String(diff.key || ""));
+    if (match && match[1] < cut) cut = match[1];
+  }
+  return cut;
+}
+/** Record keys are `MV-<ISO time>-<id>`, so this filter uses the primary-key index. @param {string} cut */
+function movementKeyFilter(cut) { return `record_key=gte.${encodeURIComponent(`MV-${cut}`)}`; }
+/** Current cutoff from the stored baseline and differences. @param {WorkerEnv} env @param {string} stateKey */
+async function storedMovementCutoff(env, stateKey) {
+  const sk = encodeURIComponent(stateKey);
+  const [baselineRows, diffRows] = await Promise.all([
+    supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.reconSettings&record_key=eq.movement-baseline&select=data`),
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.reconDifferences&select=data`),
+  ]);
+  return movementCutoff(baselineRows[0]?.data?.at, diffRows.map((/** @type {any} */ row) => row.data));
+}
+/**
+ * Removes movement rows older than the cutoff through prune_stock_movements(), the only delete the
+ * app_records guard allows (docs/migrations/2026-11-16-prune-stock-movements.sql). Until that
+ * function is installed this is a no-op. @param {WorkerEnv} env @param {string} stateKey
+ */
+async function pruneStockMovements(env, stateKey) {
+  const before = await storedMovementCutoff(env, stateKey);
+  let removed = 0;
+  for (let batch = 0; batch < 10; batch += 1) {
+    let count = 0;
+    try {
+      count = Number(await supabaseFetch(env, "/rest/v1/rpc/prune_stock_movements", { method: "POST", body: JSON.stringify({ p_state_key: stateKey, p_before: before, p_limit: 5000 }) })) || 0;
+    } catch (/** @type {any} */ error) {
+      if (/prune_stock_movements|PGRST202|schema cache|function/i.test(String(error?.message || ""))) return { removed, before, installed: false };
+      throw error;
+    }
+    removed += count;
+    if (count < 5000) break;
+  }
+  return { removed, before, installed: true };
+}
+
 // ----- runs -----
 /** @param {WorkerEnv} env @param {string} stateKey @param {string} module */
 function fetchModuleData(env, stateKey, module) {
   return supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(module)}&select=module_name,record_key,data`);
 }
-/** Everything a run reads. Movements are only needed from the k1 baseline on. @param {WorkerEnv} env @param {string} stateKey */
+/** Everything a run reads. Movements are only read from movementCutoff() on. @param {WorkerEnv} env @param {string} stateKey */
 async function loadReconData(env, stateKey) {
   const modules = RECON_INPUT_MODULES.filter((module) => module !== "stockMovements");
-  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(modules))}&select=module_name,record_key,data`);
-  const baseline = rows.find((/** @type {any} */ row) => row.module_name === "reconSettings" && row.record_key === "movement-baseline")?.data;
-  const since = baseline?.at || new Date(Date.now() - 90 * 86400000).toISOString();
-  const moves = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockMovements&data->>at=gt.${encodeURIComponent(since)}&select=module_name,record_key,data`);
-  return { rows: [...rows, ...moves], baseline };
+  const sk = encodeURIComponent(stateKey);
+  const [rows, diffRows] = await Promise.all([
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=in.${encodeURIComponent(postgrestIn(modules))}&select=module_name,record_key,data`),
+    fetchModuleData(env, stateKey, "reconDifferences"),
+  ]);
+  const settingsRow = (/** @type {string} */ key) => rows.find((/** @type {any} */ row) => row.module_name === "reconSettings" && row.record_key === key)?.data;
+  const baseline = settingsRow("movement-baseline");
+  const storedDiffs = diffRows.map((/** @type {any} */ row) => row.data).filter(Boolean);
+  const cut = movementCutoff(baseline?.at, storedDiffs);
+  const moves = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.stockMovements&${movementKeyFilter(cut)}&select=module_name,record_key,data`);
+  return { rows: [...rows, ...moves], baseline, storedDiffs, runCounter: Number(settingsRow("run-counter")?.n || 0) };
 }
 /** Starts the k1 movement log: the on-hand quantities right now (taken under the stock lock). @param {WorkerEnv} env @param {string} stateKey */
 async function createMovementBaseline(env, stateKey) {
@@ -534,12 +599,38 @@ async function createMovementBaseline(env, stateKey) {
   });
 }
 /**
+ * Moves the k1 baseline to "on hand now" once it is MOVEMENT_BASELINE_ROLL_DAYS old, so older
+ * movements stop being needed. Under the stock lock it re-runs k1 on fresh data and only rolls
+ * when every movement still adds up; otherwise it leaves the baseline (and the difference) alone.
+ * @param {WorkerEnv} env @param {string} stateKey @param {{ at: string }} baseline
+ */
+async function rollMovementBaseline(env, stateKey, baseline) {
+  if (!baseline?.at || Date.now() - new Date(baseline.at).getTime() < MOVEMENT_BASELINE_ROLL_DAYS * 86400000) return null;
+  return withStockLock(env, stateKey, async () => {
+    const sk = encodeURIComponent(stateKey);
+    const [current, stock, moves] = await Promise.all([
+      supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.reconSettings&record_key=eq.movement-baseline&select=module_name,record_key,data`),
+      fetchModuleData(env, stateKey, "inventory"),
+      supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.stockMovements&${movementKeyFilter(baseline.at)}&select=module_name,record_key,data`),
+    ]);
+    if (current[0]?.data?.at !== baseline.at) return null; // someone else rolled it
+    const check = runRecon(dataFromRows([...current, ...stock, ...moves]), { only: ["k1"] }).results.k1;
+    if (check?.status !== "pass") return null;
+    /** @type {Record<string, number>} */
+    const qty = {};
+    for (const row of stock) qty[String(row.record_key)] = (qty[String(row.record_key)] || 0) + Number(row.data?.qty || 0);
+    const next = { id: "movement-baseline", at: new Date().toISOString(), qty, previousAt: baseline.at };
+    await upsertAppRows(env, [{ state_key: stateKey, module_name: "reconSettings", record_key: "movement-baseline", data: next, updated_by: null }]);
+    return next;
+  });
+}
+/**
  * Runs the checks (all, or `only`), stores the run and merges the differences.
  * @param {WorkerEnv} env @param {string} stateKey @param {{ trigger: string, by: string, only?: string[] }} options
  */
 async function runReconJob(env, stateKey, { trigger, by, only }) {
   const started = Date.now();
-  const { rows, baseline } = await loadReconData(env, stateKey);
+  const { rows, baseline, storedDiffs, runCounter } = await loadReconData(env, stateKey);
   let startedLog = false;
   if (!baseline && (!only || only.includes("k1"))) { await createMovementBaseline(env, stateKey); startedLog = true; }
   const now = new Date();
@@ -548,14 +639,17 @@ async function runReconJob(env, stateKey, { trigger, by, only }) {
   const { results, rows: found, recordsChecked } = runRecon(data, { now, only });
   if (startedLog && results.k1) results.k1 = { ...results.k1, status: "cant", reason: `The stock movement log started on ${manilaTimestamp()}. From the next run, every stock change since then is checked against on hand.` };
   const at = now.toISOString();
-  const storedRows = await fetchModuleData(env, stateKey, "reconDifferences");
-  const stored = storedRows.map((/** @type {any} */ row) => row.data).filter((/** @type {any} */ diff) => diff && (!only || only.includes(String(diff.check))));
+  const stored = storedDiffs.filter((/** @type {any} */ diff) => !only || only.includes(String(diff.check)));
   const changed = mergeDifferences(stored, found, results, at);
   const run = { id: `RUN-${at}`, startedAt: at, durationMs: Date.now() - started, trigger, by, recordsChecked, checks: Object.keys(results), results };
+  // Runs reuse a fixed ring of keys, so the history stays at RECON_RUN_SLOTS rows without deletes.
+  const slot = `RUN-${String(runCounter % RECON_RUN_SLOTS).padStart(3, "0")}`;
   await upsertAppRows(env, [
-    { state_key: stateKey, module_name: "reconRuns", record_key: run.id, data: run, updated_by: null },
+    { state_key: stateKey, module_name: "reconRuns", record_key: slot, data: run, updated_by: null },
+    { state_key: stateKey, module_name: "reconSettings", record_key: "run-counter", data: { id: "run-counter", n: runCounter + 1 }, updated_by: null },
     ...changed.map((diff) => ({ state_key: stateKey, module_name: "reconDifferences", record_key: diff.id, data: diff, updated_by: null })),
   ]);
+  if (!only && !startedLog && results.k1?.status === "pass" && baseline) await rollMovementBaseline(env, stateKey, baseline).catch(() => null);
   return run;
 }
 
@@ -563,7 +657,7 @@ async function runReconJob(env, stateKey, { trigger, by, only }) {
 async function reconOverview(env, stateKey, profile) {
   const sk = encodeURIComponent(stateKey);
   const [runs, diffs, settings, counts, statements, cash] = await Promise.all([
-    supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.reconRuns&select=data&order=record_key.desc&limit=30`),
+    supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.reconRuns&select=data&order=data->>startedAt.desc&limit=30`),
     fetchModuleData(env, stateKey, "reconDifferences"),
     fetchModuleData(env, stateKey, "reconSettings"),
     supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.stockCounts&select=data&order=updated_at.desc&limit=40`),
@@ -3476,7 +3570,14 @@ async function createBackup(env, backupType = "manual", actor = null) {
   const stateKey = appStateKey(env);
   // Skip `game-sessions` — single-use expiring tokens, nothing to restore, and it's the
   // one module that grows without bound.
-  const records = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(["game-sessions"]))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+  // Stock movements older than Recon's cutoff are never read again (and are pruned), so only the
+  // ones still needed are kept.
+  const cut = await storedMovementCutoff(env, stateKey).catch(() => "");
+  const [records, moves] = await Promise.all([
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(["game-sessions", "stockMovements"]))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`),
+    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockMovements${cut ? `&${movementKeyFilter(cut)}` : ""}&select=module_name,record_key,data,updated_at&order=record_key.asc`),
+  ]);
+  records.push(...moves);
   const createdAt = new Date().toISOString();
   const payload = { app: "medlane", stateKey, backupType, mode: "compressed-full", sinceAt: null, createdAt, records };
   const bytes = await gzipBytes(JSON.stringify(payload));
@@ -4647,6 +4748,8 @@ async function runFiveMinuteScheduledTasks(event, env) {
     if (scheduled.month === "01" && scheduled.day === "01") backupJobs.push(["yearly-backup", yearKey, () => createBackup(env, "yearly", null)]);
     // Evening Recon run: after any backup due today, in the backup lane (never alongside a digest).
     backupJobs.push(["recon-evening", dayKey, () => runReconJob(env, appStateKey(env), { trigger: "scheduled", by: "Recon (6:00 PM)" })]);
+    // Then drop stock movements nothing needs any more (no-op until the prune function is installed).
+    backupJobs.push(["movement-prune", dayKey, () => pruneStockMovements(env, appStateKey(env))]);
     // ticks :00 :10 :20 :30 :40 :50 → digest lane; ticks :05 :15 :25 :35 :45 :55 → backup lane
     tasks.push(runNextPendingAutomationJob(env, Number(scheduled.minute) % 10 === 0 ? digestJobs : backupJobs));
   }

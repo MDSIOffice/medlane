@@ -4,7 +4,7 @@ import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { worker, env, STATE, as } from "./helpers/load-worker.mjs";
 
-const { requireReconViewer, requireReconFixer, reconDifferenceAction, saveReconInput, runReconJob, reconOverview, stockMovementRows, stockMovementSource } = worker;
+const { requireReconViewer, requireReconFixer, reconDifferenceAction, saveReconInput, runReconJob, reconOverview, stockMovementRows, stockMovementSource, movementCutoff, pruneStockMovements, RECON_RUN_SLOTS } = worker;
 
 /** In-memory app_records with the PostgREST filters the Recon code uses. */
 function fakeDb(seed = {}) {
@@ -12,8 +12,16 @@ function fakeDb(seed = {}) {
   const put = (module, key, data) => table.set(`${module}|${key}`, { module_name: module, record_key: key, data: structuredClone(data), updated_at: new Date().toISOString() });
   for (const [module, records] of Object.entries(seed)) for (const [key, data] of Object.entries(records)) put(module, key, data);
   const upserts = [];
+  const reads = [];
+  const rpc = { prune: null, calls: [] };
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
+    if (url.pathname === "/rest/v1/rpc/prune_stock_movements") {
+      const body = JSON.parse(init.body);
+      rpc.calls.push(body);
+      if (!rpc.prune) return Response.json({ code: "PGRST202", message: "Could not find the function public.prune_stock_movements in the schema cache" }, { status: 404 });
+      return Response.json(rpc.prune(body, table));
+    }
     if (url.pathname !== "/rest/v1/app_records") return Response.json([]);
     if ((init.method || "GET") === "POST") {
       const rows = JSON.parse(init.body);
@@ -21,6 +29,7 @@ function fakeDb(seed = {}) {
       for (const row of rows) put(row.module_name, row.record_key, row.data);
       return new Response(null, { status: 201 });
     }
+    reads.push(url.search);
     let rows = [...table.values()];
     const list = (value) => value.replace(/^\(|\)$/g, "").split(",").map((part) => part.replace(/^"|"$/g, ""));
     for (const [name, value] of url.searchParams) {
@@ -28,14 +37,16 @@ function fakeDb(seed = {}) {
       if (name === "module_name" && value.startsWith("in.")) { const set = list(value.slice(3)); rows = rows.filter((row) => set.includes(row.module_name)); }
       if (name === "record_key" && value.startsWith("eq.")) rows = rows.filter((row) => row.record_key === value.slice(3));
       if (name === "record_key" && value.startsWith("in.")) { const set = list(value.slice(3)); rows = rows.filter((row) => set.includes(row.record_key)); }
+      if (name === "record_key" && value.startsWith("gte.")) rows = rows.filter((row) => row.record_key >= value.slice(4));
       if (name === "data->>at" && value.startsWith("gt.")) rows = rows.filter((row) => String(row.data?.at || "") > value.slice(3));
     }
     if (url.searchParams.get("order") === "record_key.desc") rows.sort((a, b) => b.record_key.localeCompare(a.record_key));
+    if (url.searchParams.get("order") === "data->>startedAt.desc") rows.sort((a, b) => String(b.data?.startedAt).localeCompare(String(a.data?.startedAt)));
     const offset = Number(url.searchParams.get("offset") || 0);
     const limit = Number(url.searchParams.get("limit") || 1e9);
     return Response.json(rows.slice(offset, offset + limit));
   };
-  return { get: (module, key) => table.get(`${module}|${key}`)?.data, all: (module) => [...table.values()].filter((row) => row.module_name === module).map((row) => row.data), upserts };
+  return { get: (module, key) => table.get(`${module}|${key}`)?.data, all: (module) => [...table.values()].filter((row) => row.module_name === module).map((row) => row.data), upserts, reads, rpc, table };
 }
 const superadmin = { ...as("Superadmin"), name: "Super Admin", email: "sa@test" };
 const ceo = { ...as("CEO"), name: "The CEO", email: "ceo@test" };
@@ -182,5 +193,97 @@ describe("stock movement log", () => {
     const entry = { at: "x", by: "y", changes: [{ field: "qty" }], reason: "Damaged" };
     assert.deepEqual(stockMovementSource([], { history: [entry] }, { history: [] }), { type: "adjustment", ref: "", reason: "Damaged" });
     assert.equal(stockMovementSource([], { history: [entry] }, { history: [entry] }).type, "unattributed", "an old history entry is not this change's reason");
+  });
+});
+
+describe("retention", () => {
+  const DAY = 86400000;
+  const iso = (daysAgo) => new Date(Date.now() - daysAgo * DAY).toISOString();
+  const move = (daysAgo, extra = {}) => { const at = iso(daysAgo); const id = `MV-${at}-abcd1234`; return [id, { id, at, key: "A|Main|L1", code: "A", branch: "Main", lot: "L1", before: 0, after: 0, delta: 0, source: { type: "invoice" }, by: "t", ...extra }]; };
+
+  test("the cutoff is the oldest of: 90 days, the k1 baseline, and any open k5 difference", () => {
+    const now = Date.now();
+    assert.equal(movementCutoff(undefined, [], now), new Date(now - 90 * DAY).toISOString());
+    const baselineAt = new Date(now - 120 * DAY).toISOString();
+    assert.equal(movementCutoff(baselineAt, [], now), baselineAt);
+    const old = iso(200);
+    assert.equal(movementCutoff(iso(10), [{ status: "open", key: `move:MV-${old}-abcd1234` }], now), old);
+    // Explained, fixed or resolved ones don't hold old movements (only open ones can be auto-resolved).
+    for (const status of ["explained", "fixed", "resolved"]) assert.equal(movementCutoff(undefined, [{ status, key: `move:MV-${old}-abcd1234` }], now), new Date(now - 90 * DAY).toISOString());
+  });
+
+  test("runs reuse a fixed ring of keys, and the overview lists the newest first", async () => {
+    const db = fakeDb({ reconSettings: { "run-counter": { id: "run-counter", n: RECON_RUN_SLOTS - 1 } } });
+    const first = await runReconJob(env, STATE, { trigger: "manual", by: "t" });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await runReconJob(env, STATE, { trigger: "manual", by: "t" });
+    const keys = [...db.table.values()].filter((row) => row.module_name === "reconRuns").map((row) => row.record_key).sort();
+    assert.deepEqual(keys, ["RUN-000", `RUN-${String(RECON_RUN_SLOTS - 1).padStart(3, "0")}`], "slot wraps around after the last one");
+    assert.equal(db.get("reconSettings", "run-counter").n, RECON_RUN_SLOTS + 1);
+    const page = await reconOverview(env, STATE, superadmin);
+    assert.deepEqual(page.runs.map((run) => run.startedAt), [second.startedAt, first.startedAt]);
+  });
+
+  test("a run only reads movements from the cutoff on, but keeps reading an open k5 difference's movement", async () => {
+    const [oldId, oldMove] = move(200, { delta: 2, after: 2, source: { type: "unattributed" } });
+    const [skipId, skipMove] = move(150);
+    const db = fakeDb({
+      inventory: { "A|Main|L1": { code: "A", branch: "Main", lot: "L1", qty: 2 } },
+      reconSettings: { "movement-baseline": { id: "movement-baseline", at: iso(5), qty: { "A|Main|L1": 2 } } },
+      stockMovements: { [oldId]: oldMove, [skipId]: skipMove },
+      reconDifferences: { [`k5:move:${oldId}`]: { id: `k5:move:${oldId}`, check: "k5", key: `move:${oldId}`, status: "open", fingerprint: "x", history: [] } },
+    });
+    await runReconJob(env, STATE, { trigger: "manual", by: "t" });
+    assert.equal(db.get("reconDifferences", `k5:move:${oldId}`).status, "open", "still found, not auto-resolved");
+    assert.ok(db.reads.some((query) => decodeURIComponent(query).includes(`record_key=gte.MV-${oldMove.at}`)), "movements read by key from the cutoff");
+  });
+
+  test("the baseline rolls forward after 30 days, only when k1 still passes", async () => {
+    const [id, mv] = move(10, { delta: 3, before: 2, after: 5 });
+    const oldAt = iso(31);
+    const db = fakeDb({
+      inventory: { "A|Main|L1": { code: "A", branch: "Main", lot: "L1", qty: 5 } },
+      reconSettings: { "movement-baseline": { id: "movement-baseline", at: oldAt, qty: { "A|Main|L1": 2 } } },
+      stockMovements: { [id]: mv },
+    });
+    const run = await runReconJob(env, STATE, { trigger: "scheduled", by: "t" });
+    assert.equal(run.results.k1.status, "pass");
+    const next = db.get("reconSettings", "movement-baseline");
+    assert.equal(next.previousAt, oldAt);
+    assert.deepEqual(next.qty, { "A|Main|L1": 5 });
+    assert.ok(Date.now() - new Date(next.at).getTime() < 60000);
+  });
+
+  test("the baseline does not roll while k1 shows a difference", async () => {
+    const oldAt = iso(31);
+    const db = fakeDb({
+      inventory: { "A|Main|L1": { code: "A", branch: "Main", lot: "L1", qty: 9 } },
+      reconSettings: { "movement-baseline": { id: "movement-baseline", at: oldAt, qty: { "A|Main|L1": 2 } } },
+    });
+    const run = await runReconJob(env, STATE, { trigger: "scheduled", by: "t" });
+    assert.equal(run.results.k1.status, "diff");
+    assert.equal(db.get("reconSettings", "movement-baseline").at, oldAt);
+    assert.equal(db.get("reconSettings", "movement-baseline").previousAt, undefined);
+  });
+
+  test("pruning is a no-op until the database function is installed", async () => {
+    const db = fakeDb();
+    const result = await pruneStockMovements(env, STATE);
+    assert.equal(result.installed, false);
+    assert.equal(result.removed, 0);
+    assert.equal(db.rpc.calls.length, 1);
+  });
+
+  test("pruning passes the cutoff to the database function and repeats while full batches come back", async () => {
+    const db = fakeDb({ reconSettings: { "movement-baseline": { id: "movement-baseline", at: iso(5), qty: {} } } });
+    const batches = [5000, 1200];
+    db.rpc.prune = () => batches.shift() ?? 0;
+    const result = await pruneStockMovements(env, STATE);
+    assert.equal(result.installed, true);
+    assert.equal(result.removed, 6200);
+    assert.equal(db.rpc.calls.length, 2);
+    // 90 days back (the baseline is newer), never later.
+    assert.ok(Math.abs(Date.parse(db.rpc.calls[0].p_before) - (Date.now() - 90 * DAY)) < 60000);
+    assert.equal(db.rpc.calls[0].p_state_key, STATE);
   });
 });
