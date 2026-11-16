@@ -3391,7 +3391,9 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .ui-scope .ui-note.t-slate { background: var(--ui-slate-bg); color: var(--ui-slate-fg); }
 .ui-scope .ui-note.t-accent { background: var(--ui-accent-soft); color: var(--ui-accent); }
 .ui-scope .ui-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.ui-scope .ui-detail-actions .ui-btn { flex: 1 1 110px; }
+/* Buttons size to their label and wrap into rows, so long labels ("Upload physical copy") never
+   spill out of the border; a label wider than the panel breaks onto a second line instead. */
+.ui-scope .ui-detail-actions .ui-btn { flex: 1 1 auto; min-width: min(100%, 120px); max-width: 100%; height: auto; min-height: 44px; padding: 10px 14px; white-space: normal; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
 .ui-scope .ui-detail-actions .ui-btn.primary { flex-basis: 100%; }
 
 @media (max-width: 640px) {
