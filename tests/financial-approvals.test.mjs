@@ -121,6 +121,24 @@ describe("inventory purchase orders", () => {
     mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Pending Approval" })] });
     await check(env, STATE, as("Logistics"), [row("inventoryPurchaseOrders", "PO1", { status: "Pending Approval", promisedDate: "2026-12-01" })]);
   });
+  for (const role of ["Sales", "Accounting"]) {
+    test(`${role} can raise a new PO for approval`, async () => {
+      await check(env, STATE, as(role), [row("inventoryPurchaseOrders", "PO9", { status: "Pending Approval" })]);
+    });
+    test(`${role} cannot create a PO past Pending Approval`, async () => {
+      await assert.rejects(check(env, STATE, as(role), [row("inventoryPurchaseOrders", "PO9", { status: "Fully Received" })]), /must start as Pending Approval/);
+    });
+    test(`${role} cannot move or cancel an existing PO`, async () => {
+      mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Approved" })] });
+      await assert.rejects(check(env, STATE, as(role), [row("inventoryPurchaseOrders", "PO1", { status: "Sent to Supplier" })]), /can change a purchase order's status/);
+      mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Approved" })] });
+      await assert.rejects(check(env, STATE, as(role), [row("inventoryPurchaseOrders", "PO1", { status: "Cancelled" })]), /can change a purchase order's status/);
+    });
+    test(`${role} can annotate an existing PO without changing status`, async () => {
+      mockSupabase({ inventoryPurchaseOrders: [stored("PO1", { status: "Approved" })] });
+      await check(env, STATE, as(role), [row("inventoryPurchaseOrders", "PO1", { status: "Approved", promisedDate: "2026-12-01" })]);
+    });
+  }
 });
 
 describe("missing profile fails closed", () => {

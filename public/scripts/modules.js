@@ -240,7 +240,7 @@ const WORKFLOW_RULES = {
       return n ? { tone: "amber", text: `${plural(n, "transfer")} waiting to be dispatched.`, action: "Open transfers", attrs: { "data-inventory-workflow": "transfers" } } : null;
     } },
     { id: "transfers-in-transit", rule: () => {
-      if (isDemoOnlyRole()) return null;
+      if (isDemoOnlyRole() || isStockViewOnly()) return null;
       const n = (data.pendingTransfers || []).filter((transfer) => ["In Transit", "Incomplete"].includes(transfer.status)).length;
       return n ? { tone: "blue", text: `${plural(n, "transfer")} in transit — confirm when received.`, action: "Open transfers", attrs: { "data-inventory-workflow": "transfers" } } : null;
     } },
@@ -249,7 +249,7 @@ const WORKFLOW_RULES = {
       const short = cover.filter((row) => row.months !== null && row.months < 1 && row.onOrder <= 0).sort((a, b) => /** @type {number} */ (a.months) - /** @type {number} */ (b.months));
       if (!short.length) return null;
       const first = short[0];
-      const canOrder = canEditModule("inventory");
+      const canOrder = canCreateSupplierPo();
       return {
         tone: "orange",
         text: `${plural(short.length, "item")} under 1 month of cover with nothing on order — ${first.name} has ${first.months === 0 ? "none left" : `${/** @type {number} */ (first.months).toFixed(1)} months left`}.`,
@@ -2894,7 +2894,15 @@ function openDemoToSalesDialog(request) {
 // kept so requests filed before the change can still move forward.
 const demoRequesterRoles = ["Sales", "Engineering", "Product Specialist", "Superadmin", "CEO"];
 function canRequestDemo() { return demoRequesterRoles.includes(currentUser?.role); }
-function isDemoOnlyRole() { return ["Sales", "Engineering", "Product Specialist"].includes(currentUser?.role); }
+function isDemoOnlyRole() { return ["Engineering", "Product Specialist"].includes(currentUser?.role); }
+/** Sales, and anyone without Inventory edit (e.g. Accounting), see stock read-only — no receiving/transfers. */
+function isStockViewOnly() { return !isDemoOnlyRole() && (currentUser?.role === "Sales" || !canEditModule("inventory")); }
+/** Inventory tabs this user sees: demo requests only, stock (+ demo requests for requesters), or everything. */
+function inventoryVisibleTabs() {
+  if (isDemoOnlyRole()) return ["demos"];
+  if (isStockViewOnly()) return canRequestDemo() ? ["stocks", "demos"] : ["stocks"];
+  return INVENTORY_TABS;
+}
 /** @param {any[]} lines */
 function demoRequestInitialStatus(lines) {
   return (lines || []).some((line) => /consumable/i.test(String(line?.type || ""))) ? "For Logistics Approval" : "For Management Approval";
@@ -3138,7 +3146,7 @@ function inventoryStockDetailHtml() {
     extra: history.length ? "" : `<p class="ui-muted">No recorded changes for this lot yet.</p>`,
     note,
     actions: [
-      uiButton("Transfer", { "data-inventory-transfer": ref }, { primary: true }),
+      isStockViewOnly() ? "" : uiButton("Transfer", { "data-inventory-transfer": ref }, { primary: true }),
       canEditStockRecord() ? uiButton("Edit", { "data-stock-edit": ref }) : "",
       uiButton("History", { "data-stock-history": ref }),
     ].filter(Boolean),
@@ -3212,11 +3220,17 @@ function renderInventoryStocks() {
 function renderInventory() {
   // Engineering / Product Specialist see only the demo-request workflow; Request Demo itself is
   // limited to those roles (and Superadmin/CEO). Server-side, canAccessKey() limits their writes.
+  // Sales / Accounting see Stocks read-only (Sales also files demo requests).
   const demoOnly = isDemoOnlyRole();
   qs("#inventory")?.classList.toggle("demo-only", demoOnly);
-  if (demoOnly && inventoryWorkflowTab !== "demos") { inventoryWorkflowTab = "demos"; inventoryResetTabView(); }
+  const visibleTabs = inventoryVisibleTabs();
+  if (!visibleTabs.includes(inventoryWorkflowTab)) { inventoryWorkflowTab = /** @type {string} */ (visibleTabs[0]); inventoryResetTabView(); }
   const demoButton = qs("#open-demo-request");
   if (demoButton) demoButton.style.display = canRequestDemo() ? "" : "none";
+  const stockViewOnly = isStockViewOnly();
+  for (const id of ["#open-transfer-sheet", "#open-stock-sheet"]) { const button = qs(id); if (button) button.style.display = stockViewOnly ? "none" : ""; }
+  const newPoButton = qs('#inventory .ui-actions [data-type="inventoryPurchaseOrder"]');
+  if (newPoButton) newPoButton.style.display = canCreateSupplierPo() ? "" : "none";
   if (!platformBranches().includes(inventoryBranchView) && inventoryBranchView !== "all") inventoryBranchView = "all";
   // The hidden #inventory-status select stays the source of truth for the status filter so the
   // dashboard/workflow deep-links (which set it to "all") keep working.
@@ -3290,7 +3304,7 @@ function renderInventoryWorkflowTabs() {
     demos: (data.inventoryDemoRequests || []).filter((request) => !INVENTORY_DEMO_CLOSED.includes(request.status)).length,
   };
   if (!INVENTORY_TABS.includes(inventoryWorkflowTab)) inventoryWorkflowTab = "stocks";
-  tabs.innerHTML = uiModuleTabs({ tabs: INVENTORY_TABS.map((tab) => ({ key: String(tab), label: INVENTORY_TAB_LABELS[String(tab)], count: counts[String(tab)] })), active: inventoryWorkflowTab, attr: "data-inventory-workflow" });
+  tabs.innerHTML = uiModuleTabs({ tabs: inventoryVisibleTabs().map((tab) => ({ key: String(tab), label: INVENTORY_TAB_LABELS[String(tab)], count: counts[String(tab)] })), active: inventoryWorkflowTab, attr: "data-inventory-workflow" });
   qsa(".inventory-workflow-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.inventoryPanel === (inventoryWorkflowTab === "stocks" ? "stocks" : "tab")));
 }
 
@@ -8863,7 +8877,8 @@ const PURCHASING_STATUS = /** @type {Record<string, { label: string, tone: UiTon
 
 /** Supplier purchasing is for roles that can see supplier POs (not the demo-only roles). */
 function supplierPurchasingVisible() { return canViewModule("purchase-orders") && canViewModule("inventory") && !isDemoOnlyRole(); }
-function canCreateSupplierPo() { return canEditModule("inventory") && !isDemoOnlyRole(); }
+// Sales / Accounting raise supplier POs from the Purchase Orders module (server keeps them to Pending Approval).
+function canCreateSupplierPo() { return (canEditModule("inventory") || canEditModule("purchase-orders")) && !isDemoOnlyRole(); }
 
 /**
  * Facts about one supplier PO used across the page.
@@ -8977,7 +8992,7 @@ function purchasingQueryString() { return moduleViewQueryString("purchase-orders
 
 /** Opens the New purchase order form, optionally pre-filled from reorder suggestions. @param {string[]} [codes] */
 function openSupplierPoForm(codes = []) {
-  if (!canCreateSupplierPo()) return toast("Creating supplier purchase orders needs Inventory edit access.");
+  if (!canCreateSupplierPo()) return toast("Creating supplier purchase orders needs Inventory or Purchase Orders edit access.");
   const rows = codes.length ? supplierReorderRows(itemStockCover(), supplierPoFactsAll()).filter((row) => codes.includes(row.code)) : [];
   inventoryPoPrefill = rows.length ? {
     supplier: String(rows[0].item?.supplier || ""),

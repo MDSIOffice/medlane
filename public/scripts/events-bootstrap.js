@@ -493,7 +493,9 @@ document.body.addEventListener("click", (event) => {
   const modalButton = closestEl(event.target, "[data-action='open-modal']");
   if (modalButton) {
     if (qs("#report-preview-modal")?.open) qs("#report-preview-modal").close();
-    return canEditActiveSection() ? openModal(/** @type {string} */ (modalButton.dataset.type)) : toast("Editing is disabled for this module in User Settings.");
+    const type = /** @type {string} */ (modalButton.dataset.type);
+    const allowed = type === "inventoryPurchaseOrder" ? canCreateSupplierPo() : canEditActiveSection();
+    return allowed ? openModal(type) : toast("Editing is disabled for this module in User Settings.");
   }
   const sortButton = closestEl(event.target, "[data-sort-col]");
   if (sortButton) return sortTable(sortButton);

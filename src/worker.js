@@ -41,8 +41,9 @@ const roleModules = {
   // Accounting sees Inventory read-only (ROLE_VIEW_ONLY_DEFAULTS). Masterlists isn't a default but
   // can still be granted per user from the Users page when they need it.
   Accounting: ["dashboard", "inventory", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "imports", "print-templates", "notifications", "user-settings"],
-  // Sales: Analytics is scoped to their assigned clients; Inventory is view + request demo only (DEMO_ONLY_ROLES).
-  Sales: ["dashboard", "analytics", "inventory", "purchase-orders", "sales", "client-invoices", "notifications", "user-settings"],
+  // Sales: Analytics is scoped to their assigned clients; Inventory is view stock + request demo only
+  // (DEMO_ONLY_ROLES); Purchase Orders lets them raise supplier POs for Superadmin/CEO approval.
+  Sales: ["dashboard", "analytics", "inventory", "item-forecast", "purchase-orders", "sales", "client-invoices", "notifications", "user-settings"],
   Logistics: ["dashboard", "inventory", "notifications", "user-settings"],
   "Product Specialist": ["dashboard", "inventory", "notifications", "user-settings", "product-issues"],
   Engineering: ["dashboard", "inventory", "notifications", "user-settings", "product-issues"],
@@ -110,7 +111,9 @@ const moduleRecordKeys = {
   // the "masterlists" (or "inventory", for stock) permission itself.
   "catalog-reference": ["items", "clients", "suppliers", "inventory"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
-  "purchase-orders": ["purchaseOrders"],
+  // Supplier POs live with Inventory, but the Purchase Orders page also lets roles without Inventory
+  // edit (Sales, Accounting) raise one for approval — assertFinancialApprovalAllowed keeps them to that.
+  "purchase-orders": ["purchaseOrders", "inventoryPurchaseOrders"],
   invoicing: ["sales", "pendingCreditInvoices"],
   sales: ["sales"],
   receivables: ["sales", "payments", "collectionContacts", "collectionContactHistory"],
@@ -2019,6 +2022,22 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
         throw new Error("Only Superadmin/CEO can approve purchase orders");
       }
     }
+    // Sales / Accounting reach supplier POs only through the Purchase Orders module: they may raise
+    // a new PO (Pending Approval) and annotate one (e.g. promised date), but never change its status.
+    if (["Sales", "Accounting"].includes(role)) {
+      const ownPoRows = rows.filter((row) => row.module_name === "inventoryPurchaseOrders");
+      if (ownPoRows.length) {
+        const stored = await fetchStored("inventoryPurchaseOrders", ownPoRows);
+        for (const row of ownPoRows) {
+          const prev = stored.get(row.record_key);
+          if (!prev) {
+            if (lower(row.data?.status) !== "pending approval") throw new Error("A new purchase order must start as Pending Approval");
+          } else if (lower(prev.status) !== lower(row.data?.status)) {
+            throw new Error("Only Logistics or Superadmin/CEO can change a purchase order's status");
+          }
+        }
+      }
+    }
     // A PO still awaiting approval may not be moved on (sent, received…) by a plain save either —
     // the only ways out are approval (above / the approve endpoint) or cancelling it.
     const pendingCandidates = rows.filter((row) => row.module_name === "inventoryPurchaseOrders" && !["pending approval", "approved", "cancelled"].includes(lower(row.data?.status)));
@@ -2248,9 +2267,11 @@ function canAccessKey(profile, key, mode = "view") {
   // Support Tracker reports: Sales/Admin (Superadmin/CEO returned above) may create/edit;
   // Engineering/Product Specialist may only update status (assertSupportReportChangesAllowed).
   if (mode === "edit" && key === "productIssues" && !["Sales", "Admin", "Engineering", "Product Specialist"].includes(profile?.role)) return false;
-  if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
-  if (mode === "edit" && EXPENSE_PLANNING_KEYS.includes(key) && profile?.role !== "Admin") return false;
   const allowed = profile?.customPermissions?.[mode] || [];
+  // Sales raises supplier POs through the Purchase Orders module, not Inventory edit.
+  const poViaPurchasing = key === "inventoryPurchaseOrders" && allowed.includes("purchase-orders");
+  if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests" && !poViaPurchasing) return false;
+  if (mode === "edit" && EXPENSE_PLANNING_KEYS.includes(key) && profile?.role !== "Admin") return false;
   const modules = modulesForKey(key);
   return modules.some((module) => allowed.includes(module));
 }

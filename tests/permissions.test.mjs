@@ -91,8 +91,8 @@ describe("module access", () => {
     const sales = moduleListsFor("Sales", []);
     for (const module of ["analytics", "purchase-orders", "inventory"]) assert.ok(sales.view.includes(module), `Sales sees ${module}`);
     for (const module of ["receivables-tracker", "purchase-history", "product-issues"]) assert.ok(!sales.view.includes(module), `Sales has no ${module}`);
-    for (const role of ["Sales", "Accounting", "Logistics", "Engineering", "Product Specialist", "HR"]) assert.ok(!moduleListsFor(role, []).view.includes("item-forecast"), `${role} has no Item Forecast`);
-    for (const role of ["Superadmin", "CEO", "Admin"]) assert.ok(moduleListsFor(role, []).view.includes("item-forecast"), `${role} has Item Forecast`);
+    for (const role of ["Accounting", "Logistics", "Engineering", "Product Specialist", "HR"]) assert.ok(!moduleListsFor(role, []).view.includes("item-forecast"), `${role} has no Item Forecast`);
+    for (const role of ["Superadmin", "CEO", "Admin", "Sales"]) assert.ok(moduleListsFor(role, []).view.includes("item-forecast"), `${role} has Item Forecast`);
     const admin = moduleListsFor("Admin", []);
     assert.ok(admin.view.includes("imports") && admin.view.includes("settings"));
     assert.ok(!admin.view.includes("users") && !admin.view.includes("backup"));
@@ -111,6 +111,13 @@ describe("module access", () => {
       assert.equal(canAccessKey(as(role, ["inventory"]), "stockReceipts", "edit"), false);
     });
   }
+  test("Sales and Accounting can write supplier POs through Purchase Orders", () => {
+    assert.equal(canAccessKey(as("Sales", ["inventory", "purchase-orders"]), "inventoryPurchaseOrders", "edit"), true);
+    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "inventoryPurchaseOrders", "edit"), true);
+    assert.equal(canAccessKey(as("Sales", ["inventory"]), "inventoryPurchaseOrders", "edit"), false);
+    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "inventory", "edit"), false);
+    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "stockReceipts", "edit"), false);
+  });
   test("Logistics is blocked from logs and support", () => {
     assert.deepEqual(worker.ROLE_BLOCKED_MODULES.Logistics, ["logs", "product-issues"]);
   });
