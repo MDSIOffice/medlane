@@ -620,10 +620,21 @@ const LIVE_SINGLETON_KEYS = ["branchAddresses", "invoiceApprovals"];
 /** @param {any[]} rows */
 function mergeLiveChanges(rows) {
   const changed = new Set();
-  if (!Array.isArray(rows) || !rows.length || !data) return changed;
+  if (!data) return changed;
+  // Rows held back earlier (their module had unsent local changes) go first, so anything newer
+  // in this batch still wins. Held rows from before a full reload are stale — drop them.
+  const held = deferredLiveRowsLoadedAt === (MedlaneAPI?.dataLoadedAt?.() || null) ? deferredLiveRows : [];
+  deferredLiveRows = [];
+  const incoming = [...held, ...(Array.isArray(rows) ? rows : [])];
+  if (!incoming.length) return changed;
   const pending = readPendingSaveQueue();
-  for (const { module, key, data: record } of rows) {
-    if (!module || pending[module] !== undefined || !record || typeof record !== "object") continue;
+  for (const row of incoming) {
+    const { module, key, data: record } = row;
+    if (!module || !record || typeof record !== "object") continue;
+    // A module with unsent local changes can't take server rows yet, but the live cursor has
+    // already moved past them — hold them instead of dropping them, or another person's record
+    // saved in that window (e.g. a calendar event) would never show up here until a reload.
+    if (pending[module] !== undefined) { deferredLiveRows.push(row); deferredLiveRowsLoadedAt = MedlaneAPI?.dataLoadedAt?.() || null; continue; }
     // The server sends a role that only sees some notifications its whole visible list at once.
     if (module === "notifications" && key === "__all__") {
       const value = (Array.isArray(record.value) ? record.value : []).filter((/** @type {AppNotification} */ notice) => !notice?.generated);
@@ -654,6 +665,19 @@ function mergeLiveChanges(rows) {
   }
   if (changed.size) data = normalizeData({ ...emptyProductionData(), ...data });
   return changed;
+}
+
+/** Live-sync rows held while their module had unsent local changes (see mergeLiveChanges). @type {any[]} */
+let deferredLiveRows = [];
+/** @type {string | null} */
+let deferredLiveRowsLoadedAt = null;
+// Once a module's queued changes are saved, apply the rows held for it.
+function releaseDeferredLiveRows() {
+  if (!deferredLiveRows.length) return;
+  const pending = readPendingSaveQueue();
+  if (deferredLiveRows.every((row) => pending[row.module] !== undefined)) return;
+  // @ts-ignore runLiveSync lives in events-bootstrap.js (loaded later); absent in tests.
+  if (typeof runLiveSync === "function") setTimeout(() => runLiveSync(), 0);
 }
 
 /** @param {string} key @param {any[]} records @param {Record<string, any>} [explicitKeys] */
@@ -765,6 +789,7 @@ function writePendingSaveQueue(payload) {
   pendingSaveQueueMemory = cleaned;
   pendingSaveQueueMeta = meta;
   writePendingSaveQueueToDb(key, cleaned, meta);
+  releaseDeferredLiveRows();
 }
 
 /** @returns {PendingSaveMeta} */
@@ -961,9 +986,12 @@ function canEditSaveKey(key) {
   return owners.length ? owners.some((module) => editable.includes(module)) : true;
 }
 
+const PER_RECORD_ONLY_KEYS = ["calendarEvents"];
 function inferredSaveKeys() {
   const activeSection = document.body.dataset.activeSection || qs(".section.active")?.id || "dashboard";
-  const keys = [...(frontendModuleRecordKeys[activeSection] || [])];
+  // Calendar events are only ever saved one at a time (persistRecords); a background whole-list
+  // save would resend everyone's events from this tab's possibly stale copy.
+  const keys = (frontendModuleRecordKeys[activeSection] || []).filter((key) => !PER_RECORD_ONLY_KEYS.includes(key));
   if (data?.notifications) keys.push("notifications");
   return keys;
 }

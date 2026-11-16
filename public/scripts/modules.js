@@ -2487,7 +2487,7 @@ function addCalendarEventDialog(dateKey = "") {
     if (!title || !date || !time) return toast("Event, date and time are all required.");
     if (date < fmtDate(today)) return toast("Events can only be added for today or a future date.");
     /** @type {CalendarEvent} */
-    const entry = { id: `EVT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, title, date, time, createdBy: currentUser?.name || currentUser?.email || "User", createdByUser: currentUser?.email || "", createdAt: new Date().toISOString() };
+    const entry = { id: `EVT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, title, date, time, createdBy: currentUser?.name || currentUser?.email || "User", createdByUser: currentUser?.email || "", createdByRole: currentUser?.role || "", createdAt: new Date().toISOString() };
     data.calendarEvents.push(entry);
     const saveResult = await persistRecords({ calendarEvents: [entry] });
     if (!saveResult?.ok && !saveResult?.queued) {

@@ -429,6 +429,8 @@ interface CalendarEvent {
   time: string;
   createdBy: string;
   createdByUser: string;
+  /** Creator's role, stamped by the server; drives the department color. */
+  createdByRole?: string;
   createdAt: string;
   removed?: boolean;
   removedBy?: string;

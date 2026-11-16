@@ -2542,7 +2542,8 @@ async function runLiveSync() {
   liveSyncQueued = false;
   try {
     const payload = await MedlaneAPI.loadChanges().catch(() => null);
-    if (payload?.rows?.length && mergeLiveChanges(payload.rows).size) liveSyncRenderPending = true;
+    // Called even with no new rows: rows held back while a save was queued may now apply.
+    if (mergeLiveChanges(payload?.rows || []).size) liveSyncRenderPending = true;
     flushLiveSyncRender();
   } finally {
     liveSyncInFlight = false;

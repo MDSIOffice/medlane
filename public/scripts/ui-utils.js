@@ -676,6 +676,25 @@ function calendarTimeLabel(time) {
   const hours = Number(match[1]);
   return `${((hours + 11) % 12) + 1}:${match[2]} ${hours < 12 ? "AM" : "PM"}`;
 }
+// Each event is colored by the department (role) of the person who added it. createdByRole is
+// stamped by the server; older events fall back to the creator's role from the users list.
+/** @type {{ key: string, label: string, roles: string[] }[]} */
+const CALENDAR_DEPARTMENTS = [
+  { key: "management", label: "Management", roles: ["Superadmin", "CEO", "Admin"] },
+  { key: "sales", label: "Sales", roles: ["Sales"] },
+  { key: "accounting", label: "Accounting", roles: ["Accounting"] },
+  { key: "logistics", label: "Logistics", roles: ["Logistics"] },
+  { key: "engineering", label: "Engineering", roles: ["Engineering"] },
+  { key: "product", label: "Product Specialist", roles: ["Product Specialist"] },
+  { key: "hr", label: "HR", roles: ["HR"] },
+];
+const CALENDAR_OTHER_DEPARTMENT = { key: "other", label: "Other", roles: /** @type {string[]} */ ([]) };
+/** @param {CalendarEvent} entry */
+function calendarEventDepartment(entry) {
+  const email = String(entry.createdByUser || "").toLowerCase();
+  const role = entry.createdByRole || (email ? (data.users || []).find((/** @type {any} */ user) => String(user?.email || "").toLowerCase() === email)?.role : "") || "";
+  return CALENDAR_DEPARTMENTS.find((dept) => dept.roles.includes(role)) || CALENDAR_OTHER_DEPARTMENT;
+}
 /** @param {CalendarEvent} entry */
 function canChangeCalendarEvent(entry) {
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
@@ -690,7 +709,8 @@ function calendarEventsForMonth(year, month) {
     .filter((entry) => !entry.removed && String(entry.date || "").startsWith(prefix))
     .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")))
     .forEach((entry) => {
-      (events[entry.date] ||= []).push({ id: entry.id, type: calendarTimeLabel(entry.time), label: entry.title, by: entry.createdBy || "", tone: "blue", canChange: canChangeCalendarEvent(entry) });
+      const dept = calendarEventDepartment(entry);
+      (events[entry.date] ||= []).push({ id: entry.id, type: calendarTimeLabel(entry.time), label: entry.title, by: entry.createdBy || "", tone: "blue", dept: dept.key, deptLabel: dept.label, canChange: canChangeCalendarEvent(entry) });
     });
   return events;
 }
@@ -711,8 +731,8 @@ function calendarWidgetHtml(year, month, events, opts = {}) {
     const dayEvents = (events[key] || []).slice().sort((a, b) => calendarToneOrder.indexOf(a.tone) - calendarToneOrder.indexOf(b.tone));
     const shown = compact ? 3 : 2;
     const marks = compact
-      ? dayEvents.slice(0, shown).map((entry) => `<span class="calendar-dot ${entry.tone}"></span>`).join("")
-      : dayEvents.slice(0, shown).map((entry) => `<span class="calendar-chip" title="${escapeHtml(`${entry.type} · ${entry.label}${entry.by ? ` — ${entry.by}` : ""}`)}">${escapeHtml(entry.type)} ${escapeHtml(entry.label)}</span>`).join("");
+      ? dayEvents.slice(0, shown).map((entry) => `<span class="calendar-dot ${entry.dept ? `dept dept-${entry.dept}` : entry.tone}"></span>`).join("")
+      : dayEvents.slice(0, shown).map((entry) => `<span class="calendar-chip${entry.dept ? ` dept dept-${entry.dept}` : ""}" title="${escapeHtml(`${entry.type} · ${entry.label}${entry.by ? ` — ${entry.by}` : ""}${entry.deptLabel ? ` (${entry.deptLabel})` : ""}`)}">${escapeHtml(entry.type)} ${escapeHtml(entry.label)}</span>`).join("");
     const overflow = dayEvents.length > shown ? `<span class="calendar-more">+${dayEvents.length - shown}</span>` : "";
     cells.push(`<button type="button" class="calendar-cell${key === todayKey ? " is-today" : ""}${key < todayKey ? " is-past" : ""}${dayEvents.length ? " has-events" : ""}" data-calendar-day="${key}"><strong>${day}</strong><span class="${compact ? "calendar-dots" : "calendar-chips"}">${marks}${overflow}</span></button>`);
   }
@@ -723,6 +743,7 @@ function calendarWidgetHtml(year, month, events, opts = {}) {
       <button type="button" class="icon-button" data-calendar-nav="1" aria-label="Next month">›</button>
     </div>
     ${compact ? "" : `<div class="calendar-widget-actions"><button type="button" class="primary-button" data-calendar-add="">Add Event</button></div>`}
+    ${compact ? "" : `<div class="calendar-legend" aria-label="Event colors by department">${CALENDAR_DEPARTMENTS.map((dept) => `<span class="calendar-legend-item"><span class="calendar-dot dept dept-${dept.key}"></span>${escapeHtml(dept.label)}</span>`).join("")}</div>`}
     <div class="calendar-weekday-row">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
     <div class="calendar-grid">${cells.join("")}</div>
     <div class="calendar-day-detail" id="${idPrefix}-day-detail" hidden></div>
@@ -732,7 +753,7 @@ function calendarWidgetHtml(year, month, events, opts = {}) {
 function calendarDayDetailHtml(dateKey, entries) {
   const label = new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const rows = entries.length
-    ? entries.map((entry) => `<div class="alert-item calendar-event-row"><span class="alert-dot ${entry.tone}"></span><div><strong>${escapeHtml(entry.type)} · ${escapeHtml(entry.label)}</strong><span>${entry.by ? `Added by ${escapeHtml(entry.by)}` : ""}</span></div>${entry.canChange ? `<button type="button" class="mini-button danger-button" data-calendar-remove="${escapeHtml(entry.id)}">Remove</button>` : ""}</div>`).join("")
+    ? entries.map((entry) => `<div class="alert-item calendar-event-row"><span class="alert-dot ${entry.dept ? `dept dept-${entry.dept}` : entry.tone}"></span><div><strong>${escapeHtml(entry.type)} · ${escapeHtml(entry.label)}</strong><span>${entry.by ? `Added by ${escapeHtml(entry.by)}${entry.deptLabel && entry.dept !== "other" ? ` · ${escapeHtml(entry.deptLabel)}` : ""}` : ""}</span></div>${entry.canChange ? `<button type="button" class="mini-button danger-button" data-calendar-remove="${escapeHtml(entry.id)}">Remove</button>` : ""}</div>`).join("")
     : `<div class="alert-item"><span class="alert-dot green"></span><div><strong>Nothing scheduled</strong><span>No events on this date yet.</span></div></div>`;
   return `<div class="calendar-day-detail-header"><strong>${escapeHtml(label)}</strong>${dateKey >= fmtDate(today) ? `<button type="button" class="ghost-button" data-calendar-add="${escapeHtml(dateKey)}">Add event on this day</button>` : ""}</div>${rows}`;
 }

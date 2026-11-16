@@ -1859,8 +1859,12 @@ async function assertCalendarEventChangesAllowed(env, stateKey, profile, rows) {
     }
     if (!prev) {
       if (owner !== me && !isManagement) throw new Error("You can only add calendar events as yourself");
+      // The department color comes from the creator's real role, never from the client.
+      if (owner === me) next.createdByRole = profile?.role || "";
       continue;
     }
+    // An event keeps the department it was created under.
+    if (prev.createdByRole !== undefined) next.createdByRole = prev.createdByRole;
     const keys = ["title", "date", "time", "removed", "createdByUser"];
     const changed = keys.some((key) => String(prev[key] ?? "") !== String(next[key] ?? ""));
     if (changed && owner !== me && !isManagement) throw new Error("Only the person who added this calendar event can change or remove it");
