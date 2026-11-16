@@ -257,9 +257,6 @@
 
   // ---- Register scroll-linked parallax targets (consumed by updateScrollUi) ----
   if (!reduceMotion) {
-    $$(".lr-bento figure").forEach((fig) => {
-      if (fig.querySelector("img")) parallaxItems.push({ el: fig, range: 14 });
-    });
     const profilePhoto = $(".lr-profile-photo");
     if (profilePhoto) parallaxItems.push({ el: profilePhoto, range: 20 });
     if (parallaxItems.length) onScroll();
