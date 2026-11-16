@@ -409,6 +409,16 @@ const MedlaneAPI = (() => {
     return withTransientRetry(() => request("/api/stock-receipts", { method: "POST", body: JSON.stringify({ id, poId, lines, ...meta }) }));
   }
 
+  // ----- Recon (Superadmin/CEO; fixes Superadmin only — enforced in worker.js) -----
+  /** @returns {Promise<any>} */
+  async function reconLoad() { return withTransientRetry(() => request("/api/recon")); }
+  /** Runs every check, or one. Not retried: a run takes a while and a resend would run it twice. @param {string} [check] @returns {Promise<any>} */
+  async function reconRun(check) { return request("/api/recon/run", { method: "POST", body: JSON.stringify(check ? { check } : {}), timeoutMs: 120000 }); }
+  /** fix | undo | explain | reopen | assign. Not retried: the server refuses a repeat anyway. @param {string} id @param {string} action @param {Record<string, any>} [body] @returns {Promise<any>} */
+  async function reconAction(id, action, body = {}) { return request(`/api/recon/differences/${encodeURIComponent(id)}/${action}`, { method: "POST", body: JSON.stringify(body) }); }
+  /** settings | stock-counts | bank-statements | cash-counts. @param {string} kind @param {Record<string, any>} body @returns {Promise<any>} */
+  async function reconInput(kind, body) { return request(`/api/recon/${kind}`, { method: "POST", body: JSON.stringify(body) }); }
+
   /** @param {string} id @returns {Promise<StockReceiptResponse>} */
   async function approveStockReceipt(id) {
     // Not retried: approving posts to inventory across multiple non-atomic writes, so an
@@ -721,5 +731,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
+  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, reconLoad, reconRun, reconAction, reconInput, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();

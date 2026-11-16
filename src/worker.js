@@ -1,6 +1,7 @@
 /** @typedef {{ content?: string, embeds?: any[], allowedMentions?: any, wait?: boolean }} DiscordOptions */
 import { DurableObject } from "cloudflare:workers";
 import { collectSample, collectLiveDetails, buildWeeklyReport, hasAccessToken } from "./perf-report.js";
+import { RECON_CHECKS, RECON_AREAS, RECON_INPUT_MODULES, runRecon, dataFromRows, mergeDifferences, getPath, setPath, sameValue, saleDocType, saleNo } from "./recon.js";
 
 const jsonHeaders = {
   "content-type": "application/json; charset=utf-8",
@@ -37,7 +38,7 @@ const roleModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   CEO: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   // Admin: everything except Users and Backup.
-  Admin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "settings", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "security", "settings", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   // Accounting sees Inventory read-only (ROLE_VIEW_ONLY_DEFAULTS). Masterlists isn't a default but
   // can still be granted per user from the Users page when they need it.
   Accounting: ["dashboard", "inventory", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "imports", "print-templates", "notifications", "user-settings"],
@@ -103,7 +104,7 @@ const digestRoleMentions = {
 
 const moduleRecordKeys = {
   users: ["users"],
-  masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals", "masterTab"],
+  masterlists: ["clients", "items", "suppliers", "employees", "banks", "priceLists", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals", "masterTab"],
   // Read-only baseline every role gets regardless of module_permissions — items/clients/suppliers are
   // reference data other modules (receiving, transfers, demos, invoicing) autofill from, not just data
   // the Masterlists admin screen shows. Stock quantities/lots are included too so invoice creation can
@@ -415,6 +416,401 @@ async function withStockLock(env, stateKey, fn) {
   } finally {
     if (stub && token) await stub.fetch("https://live-hub/stock-lock/release", { method: "POST", body: JSON.stringify({ token }) }).catch(() => null);
   }
+}
+
+// ---- Recon (data integrity checks) ----------------------------------------------------------
+// The checks themselves are pure functions in ./recon.js. This part loads their inputs, stores
+// each run, applies previewed fixes (one bulk upsert = one transaction, logged and undoable) and
+// keeps the stock movement log that check k1 reconciles against.
+const RECON_VIEW_ROLES = ["Superadmin", "CEO"];
+const RECON_FIX_ROLES = ["Superadmin"];
+/** @param {Profile} profile */
+function requireReconViewer(profile) {
+  if (!RECON_VIEW_ROLES.includes(String(profile?.role))) throw new Error("Only Superadmin or CEO can open Recon");
+}
+/** @param {Profile} profile */
+function requireReconFixer(profile) {
+  if (!RECON_FIX_ROLES.includes(String(profile?.role))) throw new Error("Only Superadmin can fix or explain Recon differences");
+}
+const UPSERT_PATH = "/rest/v1/app_records?on_conflict=state_key,module_name,record_key";
+/** @param {WorkerEnv} env @param {any[]} rows */
+async function upsertAppRows(env, rows) {
+  if (!rows.length) return;
+  await supabaseFetch(env, UPSERT_PATH, { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows) });
+}
+/** An audit-log row written in the same upsert as the change it describes. @param {string} stateKey @param {Profile} profile @param {string} userId @param {any} context @param {{ action: string, module: string, record: string, changes?: { field: string, from: string, to: string }[] }} entry */
+function auditLogRow(stateKey, profile, userId, context, { action, module, record, changes }) {
+  return {
+    state_key: stateKey, module_name: "logs", record_key: `logs-${crypto.randomUUID()}`, updated_by: userId || null,
+    data: {
+      date: manilaTimestamp(), user: profile?.name || profile?.email || "System User", role: profile?.role || "Unknown", action, module, record,
+      ...(changes?.length ? { changes: changes.slice(0, 60) } : {}),
+      device: context?.device, browser: context?.browser, ipAddress: context?.ipAddress, userAgent: context?.userAgent, serverCapturedAt: context?.serverCapturedAt,
+    },
+  };
+}
+/** @param {unknown} value */
+function auditText(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  return typeof value === "object" ? JSON.stringify(value).slice(0, 200) : String(value);
+}
+
+// ----- stock movement log -----
+/** Stored inventory rows by record_key (whole module when many keys are involved). @param {WorkerEnv} env @param {string} stateKey @param {string[]} keys */
+async function storedInventoryByKey(env, stateKey, keys) {
+  if (!keys.length) return new Map();
+  const filter = keys.length > 150 ? "" : `&record_key=in.${encodeURIComponent(postgrestIn(keys))}`;
+  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory${filter}&select=record_key,data`);
+  return new Map(rows.map((/** @type {any} */ row) => [String(row.record_key), row.data || {}]));
+}
+/** What caused a stock change, from the records saved with it. @param {any[]} rows @param {any} incoming @param {any} prev */
+function stockMovementSource(rows, incoming, prev) {
+  const sales = rows.filter((row) => row.module_name === "sales").map((row) => row.data || {});
+  if (sales.length) {
+    const cancelled = sales.find((sale) => sale.status === "Cancelled");
+    return { type: sales.every((sale) => saleDocType(sale) === "DR") ? "demo" : "invoice", ref: sales.map(saleNo).filter(Boolean).join(", "), reason: cancelled ? `${saleNo(cancelled)} cancelled` : "" };
+  }
+  const transfers = rows.filter((row) => row.module_name === "pendingTransfers").map((row) => row.data || {});
+  if (transfers.length) return { type: "transfer", ref: transfers.map((transfer) => String(transfer.id || "")).join(", "), reason: "" };
+  const demos = rows.filter((row) => row.module_name === "inventoryDemoRequests").map((row) => row.data || {});
+  if (demos.length) return { type: "demo", ref: demos.map((demo) => String(demo.id || "")).join(", "), reason: "" };
+  // The Inventory → Stocks edit dialog adds a history entry with a required reason.
+  const entry = Array.isArray(incoming?.history) ? incoming.history[0] : null;
+  const prevEntry = Array.isArray(prev?.history) ? prev.history[0] : null;
+  if (entry && String(entry.reason || "").trim() && JSON.stringify(entry) !== JSON.stringify(prevEntry)) return { type: "adjustment", ref: "", reason: String(entry.reason).trim() };
+  return { type: "unattributed", ref: "", reason: "" };
+}
+/**
+ * One stockMovements row per inventory row whose quantity this save changes.
+ * @param {string} stateKey @param {string} userId @param {string} actor @param {any[]} rows @param {Map<string, any>} storedByKey @param {any} [source]
+ */
+function stockMovementRows(stateKey, userId, actor, rows, storedByKey, source) {
+  const at = new Date().toISOString();
+  /** @type {any[]} */
+  const out = [];
+  for (const row of rows) {
+    if (row.module_name !== "inventory") continue;
+    const prev = storedByKey.get(String(row.record_key));
+    const data = row.data || {};
+    const before = prev ? Number(prev.qty || 0) : 0;
+    const after = Number(data.qty || 0);
+    const delta = roundStockQty(after - before);
+    if (!Number.isFinite(delta) || Math.abs(delta) < 1e-9) continue;
+    const id = `MV-${at}-${crypto.randomUUID().slice(0, 8)}`;
+    out.push({
+      state_key: stateKey, module_name: "stockMovements", record_key: id, updated_by: userId || null,
+      data: { id, at, key: String(row.record_key), code: data.code || "", item: data.item || "", branch: data.branch || "", lot: data.lot || data.serial || "", before, after, delta, source: source || stockMovementSource(rows, data, prev), by: actor },
+    });
+  }
+  return out;
+}
+
+// ----- runs -----
+/** @param {WorkerEnv} env @param {string} stateKey @param {string} module */
+function fetchModuleData(env, stateKey, module) {
+  return supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(module)}&select=module_name,record_key,data`);
+}
+/** Everything a run reads. Movements are only needed from the k1 baseline on. @param {WorkerEnv} env @param {string} stateKey */
+async function loadReconData(env, stateKey) {
+  const modules = RECON_INPUT_MODULES.filter((module) => module !== "stockMovements");
+  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(modules))}&select=module_name,record_key,data`);
+  const baseline = rows.find((/** @type {any} */ row) => row.module_name === "reconSettings" && row.record_key === "movement-baseline")?.data;
+  const since = baseline?.at || new Date(Date.now() - 90 * 86400000).toISOString();
+  const moves = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockMovements&data->>at=gt.${encodeURIComponent(since)}&select=module_name,record_key,data`);
+  return { rows: [...rows, ...moves], baseline };
+}
+/** Starts the k1 movement log: the on-hand quantities right now (taken under the stock lock). @param {WorkerEnv} env @param {string} stateKey */
+async function createMovementBaseline(env, stateKey) {
+  return withStockLock(env, stateKey, async () => {
+    const existing = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.reconSettings&record_key=eq.movement-baseline&select=data`);
+    if (existing[0]?.data?.at) return existing[0].data;
+    const stock = await fetchModuleData(env, stateKey, "inventory");
+    /** @type {Record<string, number>} */
+    const qty = {};
+    for (const row of stock) qty[String(row.record_key)] = (qty[String(row.record_key)] || 0) + Number(row.data?.qty || 0);
+    const baseline = { id: "movement-baseline", at: new Date().toISOString(), qty };
+    await upsertAppRows(env, [{ state_key: stateKey, module_name: "reconSettings", record_key: "movement-baseline", data: baseline, updated_by: null }]);
+    return baseline;
+  });
+}
+/**
+ * Runs the checks (all, or `only`), stores the run and merges the differences.
+ * @param {WorkerEnv} env @param {string} stateKey @param {{ trigger: string, by: string, only?: string[] }} options
+ */
+async function runReconJob(env, stateKey, { trigger, by, only }) {
+  const started = Date.now();
+  const { rows, baseline } = await loadReconData(env, stateKey);
+  let startedLog = false;
+  if (!baseline && (!only || only.includes("k1"))) { await createMovementBaseline(env, stateKey); startedLog = true; }
+  const now = new Date();
+  // The run that starts the log has nothing to compare yet, so k1 reports "can't run" this time.
+  const data = dataFromRows(rows);
+  const { results, rows: found, recordsChecked } = runRecon(data, { now, only });
+  if (startedLog && results.k1) results.k1 = { ...results.k1, status: "cant", reason: `The stock movement log started on ${manilaTimestamp()}. From the next run, every stock change since then is checked against on hand.` };
+  const at = now.toISOString();
+  const storedRows = await fetchModuleData(env, stateKey, "reconDifferences");
+  const stored = storedRows.map((/** @type {any} */ row) => row.data).filter((/** @type {any} */ diff) => diff && (!only || only.includes(String(diff.check))));
+  const changed = mergeDifferences(stored, found, results, at);
+  const run = { id: `RUN-${at}`, startedAt: at, durationMs: Date.now() - started, trigger, by, recordsChecked, checks: Object.keys(results), results };
+  await upsertAppRows(env, [
+    { state_key: stateKey, module_name: "reconRuns", record_key: run.id, data: run, updated_by: null },
+    ...changed.map((diff) => ({ state_key: stateKey, module_name: "reconDifferences", record_key: diff.id, data: diff, updated_by: null })),
+  ]);
+  return run;
+}
+
+/** The page's data: check list, latest result per check, recent runs, differences and inputs. @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile */
+async function reconOverview(env, stateKey, profile) {
+  const sk = encodeURIComponent(stateKey);
+  const [runs, diffs, settings, counts, statements, cash] = await Promise.all([
+    supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.reconRuns&select=data&order=record_key.desc&limit=30`),
+    fetchModuleData(env, stateKey, "reconDifferences"),
+    fetchModuleData(env, stateKey, "reconSettings"),
+    supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.stockCounts&select=data&order=updated_at.desc&limit=40`),
+    supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.bankStatements&select=data&order=updated_at.desc&limit=24`),
+    supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${sk}&module_name=eq.cashCounts&select=data&order=updated_at.desc&limit=60`),
+  ]);
+  const runList = runs.map((/** @type {any} */ row) => row.data).filter(Boolean);
+  /** @type {Record<string, any>} */
+  const latest = {};
+  for (const run of runList) for (const [id, result] of Object.entries(run.results || {})) if (!latest[id]) latest[id] = { ...result, runAt: run.startedAt, runId: run.id };
+  const settingsById = Object.fromEntries(settings.map((/** @type {any} */ row) => [row.record_key, row.data]));
+  return {
+    checks: RECON_CHECKS.map(({ id, area, name, rule }) => ({ id, area, name, rule })),
+    areas: RECON_AREAS,
+    latest,
+    runs: runList.map((/** @type {any} */ run) => ({ id: run.id, startedAt: run.startedAt, durationMs: run.durationMs, trigger: run.trigger, by: run.by, recordsChecked: run.recordsChecked, checks: run.checks, open: Object.values(run.results || {}).reduce((s, r) => s + Number(/** @type {any} */ (r).open || 0), 0) })),
+    differences: diffs.map((/** @type {any} */ row) => row.data).filter(Boolean),
+    settings: settingsById.settings || { id: "settings", invoiceSeries: [] },
+    baseline: settingsById["movement-baseline"] ? { at: settingsById["movement-baseline"].at } : null,
+    stockCounts: counts.map((/** @type {any} */ row) => row.data).filter(Boolean),
+    // Statement lines are only needed by the run; the page lists the uploads.
+    bankStatements: statements.map((/** @type {any} */ row) => row.data).filter(Boolean).map((/** @type {any} */ s) => ({ ...s, lines: undefined, lineCount: (s.lines || []).length, credits: (s.lines || []).filter((/** @type {any} */ l) => Number(l.amount) > 0).reduce((/** @type {number} */ t, /** @type {any} */ l) => t + Number(l.amount), 0) })),
+    cashCounts: cash.map((/** @type {any} */ row) => row.data).filter(Boolean),
+    canFix: RECON_FIX_ROLES.includes(String(profile.role)),
+    schedule: ["06:00", "18:00"],
+  };
+}
+
+// ----- fixes -----
+/** @param {any} value @param {Record<string, string>} vars @returns {any} */
+function fillReconVars(value, vars) {
+  if (typeof value === "string") return value.replace(/\{\{(\w+)\}\}/g, (_, name) => vars[name] ?? "");
+  if (Array.isArray(value)) return value.map((/** @type {any} */ item) => fillReconVars(item, vars));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => /** @type {[string, any]} */ ([k, fillReconVars(v, vars)])));
+  return value;
+}
+/**
+ * Applies fix ops to the stored records. Refuses (409) if any record no longer holds the value
+ * the check saw. Returns the rows to upsert, the inverse ops (for undo) and the audit changes.
+ * @param {WorkerEnv} env @param {string} stateKey @param {any[]} ops @param {{ userId: string, actor: string, ref: string }} meta
+ */
+async function applyReconOps(env, stateKey, ops, { userId, actor, ref }) {
+  /** @type {Map<string, Set<string>>} */
+  const wanted = new Map();
+  for (const op of ops) {
+    const module = op.op === "set" ? String(op.module) : "inventory";
+    if (!wanted.has(module)) wanted.set(module, new Set());
+    /** @type {Set<string>} */ (wanted.get(module)).add(String(op.key));
+  }
+  /** @type {Map<string, any>} */
+  const records = new Map();
+  await Promise.all([...wanted].map(async ([module, keys]) => {
+    const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(module)}&record_key=in.${encodeURIComponent(postgrestIn([...keys]))}&select=record_key,data`);
+    for (const row of rows) records.set(`${module}|${row.record_key}`, structuredClone(row.data || {}));
+  }));
+  /** @type {any[]} */
+  const inverse = [];
+  /** @type {{ field: string, from: string, to: string }[]} */
+  const changes = [];
+  /** @type {any[]} */
+  const movementRows = [];
+  const at = new Date().toISOString();
+  const movement = (/** @type {any} */ stock, /** @type {string} */ key, /** @type {number} */ before, /** @type {number} */ after, /** @type {number} */ delta, /** @type {any} */ source) => {
+    const id = `MV-${at}-${crypto.randomUUID().slice(0, 8)}`;
+    movementRows.push({ state_key: stateKey, module_name: "stockMovements", record_key: id, updated_by: userId || null, data: { id, at, key, code: stock?.code || "", item: stock?.item || "", branch: stock?.branch || "", lot: stock?.lot || stock?.serial || "", before, after, delta, source, by: actor } });
+  };
+  for (const op of ops) {
+    if (op.op === "set") {
+      const id = `${op.module}|${op.key}`;
+      const record = records.get(id);
+      if (!record) throw new Error(`Recon conflict: ${op.module} ${op.key} no longer exists. Run the check again.`);
+      const current = getPath(record, op.field);
+      if (!sameValue(current, op.before)) throw new Error(`Recon conflict: ${op.key} ${op.field} is now ${auditText(current)} (it was ${auditText(op.before)} when checked). Run the check again.`);
+      setPath(record, op.field, op.after);
+      inverse.unshift({ op: "set", module: op.module, key: op.key, field: op.field, before: op.after ?? null, after: op.before ?? null });
+      changes.push({ field: `${op.module} · ${op.key} · ${op.field}`, from: auditText(op.before), to: auditText(op.after) });
+    } else if (op.op === "stock") {
+      const id = `inventory|${op.key}`;
+      const stock = records.get(id);
+      if (!stock) throw new Error(`Recon conflict: stock ${op.key} no longer exists. Run the check again.`);
+      const current = Number(stock.qty || 0);
+      if (!sameValue(current, Number(op.before))) throw new Error(`Recon conflict: ${op.key} now has ${current} on hand (it was ${op.before} when checked). Run the check again.`);
+      const after = roundStockQty(Number(op.after));
+      if (after < 0) throw new Error("Recon: a fix can't make stock negative.");
+      stock.qty = after;
+      stock.history = [{ at: manilaTimestamp(), by: actor, changes: [{ field: "qty", from: current, to: after }], reason: String(op.reason || "Recon fix") }, ...(Array.isArray(stock.history) ? stock.history : [])].slice(0, 50);
+      movement(stock, String(op.key), current, after, roundStockQty(after - current), { type: "correction", ref, reason: String(op.reason || "Recon fix") });
+      inverse.unshift({ op: "stock", key: op.key, before: after, after: current, reason: `Undo: ${op.reason || "Recon fix"}` });
+      changes.push({ field: `Stock · ${op.key} · on hand`, from: String(current), to: String(after) });
+    } else if (op.op === "movement") {
+      const stock = records.get(`inventory|${op.key}`) || op.item || {};
+      const qty = Number(stock.qty || 0);
+      movement(stock, String(op.key), roundStockQty(qty - Number(op.delta)), qty, Number(op.delta), { type: "reconcile", ref, reason: String(op.reason || "Recon") });
+      inverse.unshift({ op: "movement", key: op.key, delta: -Number(op.delta), reason: `Undo: ${op.reason || "Recon"}`, item: op.item });
+      changes.push({ field: `Movement log · ${op.key}`, from: "—", to: `${Number(op.delta) > 0 ? "+" : ""}${op.delta} (${op.reason || "Recon"})` });
+    } else {
+      throw new Error(`Recon: unknown fix step ${op.op}`);
+    }
+  }
+  const touched = new Set(ops.map((op) => (op.op === "set" ? `${op.module}|${op.key}` : op.op === "stock" ? `inventory|${op.key}` : "")).filter(Boolean));
+  const recordRows = [...touched].map((id) => {
+    const [module, ...rest] = id.split("|");
+    return { state_key: stateKey, module_name: module, record_key: rest.join("|"), data: records.get(id), updated_by: userId || null };
+  });
+  return { rows: [...recordRows, ...movementRows], inverse, changes, touchesStock: ops.some((op) => op.op !== "set") };
+}
+/** @param {WorkerEnv} env @param {string} stateKey @param {string} id */
+async function loadReconDifference(env, stateKey, id) {
+  const rows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.reconDifferences&record_key=eq.${encodeURIComponent(id)}&select=data`);
+  const diff = rows[0]?.data;
+  if (!diff) throw new Error("Recon conflict: that difference no longer exists. Refresh Recon.");
+  return diff;
+}
+/**
+ * fix | undo | explain | assign on one difference.
+ * @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {string} userId @param {any} context @param {string} id @param {string} action @param {any} body
+ */
+async function reconDifferenceAction(env, stateKey, profile, userId, context, id, action, body) {
+  const diff = await loadReconDifference(env, stateKey, id);
+  const actor = String(profile.name || profile.email || "System User");
+  const at = new Date().toISOString();
+  const note = String(body?.note || "").trim().slice(0, 500);
+  const check = RECON_CHECKS.find((entry) => entry.id === diff.check);
+  const label = `${check ? `${check.id.toUpperCase()} ${check.name}` : diff.check} · ${diff.ref || diff.key}`;
+  const diffRow = (/** @type {any} */ next) => ({ state_key: stateKey, module_name: "reconDifferences", record_key: id, data: next, updated_by: userId || null });
+
+  if (action === "fix" || action === "undo") {
+    requireReconFixer(profile);
+    const undo = action === "undo";
+    if (undo ? diff.status !== "fixed" || !Array.isArray(diff.undo) : diff.status !== "open") throw new Error(`Recon conflict: this difference is ${diff.status}, so it can't be ${undo ? "undone" : "fixed"}. Refresh Recon.`);
+    if (!undo && diff.fix?.kind !== "apply") throw new Error("Recon: this difference is fixed in its own module, not here.");
+    if (!undo && diff.fix.needsNote && !note) throw new Error("Recon: add a reason for this fix.");
+    const ops = undo ? diff.undo : fillReconVars(diff.fix.ops || [], { note, user: actor });
+    const run = async () => {
+      const applied = await applyReconOps(env, stateKey, ops, { userId, actor, ref: id });
+      const entry = { at, action: undo ? "Fix undone" : `Fixed: ${diff.fix?.label || "applied"}`, by: actor, ...(note ? { note } : {}) };
+      const next = undo
+        ? { ...diff, status: "open", undo: null, undoneAt: at, undoneBy: actor, history: [entry, ...(diff.history || [])].slice(0, 30) }
+        : { ...diff, status: "fixed", fixedAt: at, fixedBy: actor, fixNote: note, undo: applied.inverse, appliedChanges: applied.changes, history: [entry, ...(diff.history || [])].slice(0, 30) };
+      // One upsert: the corrected records, their movement entries, the difference and the audit row.
+      await upsertAppRows(env, [
+        ...applied.rows,
+        diffRow(next),
+        auditLogRow(stateKey, profile, userId, context, { action: undo ? "Recon fix undone" : "Recon fix applied", module: "Recon", record: `${label}${note ? ` · ${note}` : ""}`, changes: applied.changes }),
+      ]);
+      return next;
+    };
+    const touchesStock = ops.some((/** @type {any} */ op) => op.op !== "set");
+    return touchesStock ? withStockLock(env, stateKey, run) : run();
+  }
+  if (action === "explain") {
+    requireReconFixer(profile);
+    if (!note) throw new Error("Recon: add a note saying why this difference is expected.");
+    if (!["open", "explained"].includes(diff.status)) throw new Error(`Recon conflict: this difference is ${diff.status}. Refresh Recon.`);
+    const next = { ...diff, status: "explained", explainedAt: at, explainedBy: actor, note, history: [{ at, action: "Marked as explained", by: actor, note }, ...(diff.history || [])].slice(0, 30) };
+    await upsertAppRows(env, [diffRow(next), auditLogRow(stateKey, profile, userId, context, { action: "Recon difference explained", module: "Recon", record: `${label} · ${note}` })]);
+    return next;
+  }
+  if (action === "reopen") {
+    requireReconFixer(profile);
+    if (diff.status !== "explained") throw new Error(`Recon conflict: this difference is ${diff.status}. Refresh Recon.`);
+    const next = { ...diff, status: "open", history: [{ at, action: "Explanation withdrawn", by: actor }, ...(diff.history || [])].slice(0, 30) };
+    await upsertAppRows(env, [diffRow(next), auditLogRow(stateKey, profile, userId, context, { action: "Recon explanation withdrawn", module: "Recon", record: label })]);
+    return next;
+  }
+  if (action === "assign") {
+    requireReconViewer(profile);
+    const name = String(body?.assignee?.name || "").trim();
+    const email = String(body?.assignee?.email || "").trim().toLowerCase();
+    if (!name || !email) throw new Error("Recon: pick who to assign this to.");
+    const next = { ...diff, assignedTo: { name, email }, assignedAt: at, assignedBy: actor, history: [{ at, action: `Assigned to ${name}`, by: actor, ...(note ? { note } : {}) }, ...(diff.history || [])].slice(0, 30) };
+    const noticeId = `NTF-RECON-${id}-${Date.now()}`;
+    const date = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
+    await upsertAppRows(env, [
+      diffRow(next),
+      { state_key: stateKey, module_name: "notifications", record_key: noticeId, updated_by: userId || null, data: { id: noticeId, createdAt: at, date, type: "Recon follow-up", message: `${actor} asked you to look into: ${diff.title} (${diff.ref || diff.key}).${note ? ` Note: ${note}` : ""}`, section: "reconciliation", record: id, status: "Unread", targetUser: email } },
+      auditLogRow(stateKey, profile, userId, context, { action: "Recon difference assigned", module: "Recon", record: `${label} → ${name}` }),
+    ]);
+    return next;
+  }
+  throw new Error("Recon: unknown action");
+}
+
+// ----- inputs (series, counts, statements, cash) -----
+/** @param {unknown} value */
+const reconNum = (value) => { const n = Number(value); return Number.isFinite(n) ? n : 0; };
+/**
+ * @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {string} userId @param {any} context @param {string} kind @param {any} body
+ */
+async function saveReconInput(env, stateKey, profile, userId, context, kind, body) {
+  requireReconViewer(profile);
+  const actor = String(profile.name || profile.email || "System User");
+  const at = new Date().toISOString();
+  const row = (/** @type {string} */ module, /** @type {any} */ data) => ({ state_key: stateKey, module_name: module, record_key: String(data.id), data, updated_by: userId || null });
+  if (kind === "settings") {
+    const stored = (await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.reconSettings&record_key=eq.settings&select=data`))[0]?.data || { id: "settings", invoiceSeries: [] };
+    const previous = new Map((stored.invoiceSeries || []).map((/** @type {any} */ entry) => [String(entry.id), entry]));
+    const series = (Array.isArray(body?.invoiceSeries) ? body.invoiceSeries : []).slice(0, 20).map((/** @type {any} */ entry, /** @type {number} */ index) => {
+      const id = String(entry.id || `series-${Date.now()}-${index}`);
+      const prefix = String(entry.prefix || "").trim().toUpperCase().slice(0, 12);
+      const start = Math.floor(reconNum(entry.start));
+      if (!(start > 0)) throw new Error("Recon: each invoice series needs a first number above 0.");
+      // Voided numbers recorded by Recon fixes are kept; only the series definition is edited here.
+      return { id, prefix, branch: String(entry.branch || "").slice(0, 60), start, end: Math.floor(reconNum(entry.end)) || 0, width: Math.min(10, Math.floor(reconNum(entry.width))) || 0, voided: previous.get(id)?.voided || {} };
+    });
+    const next = { ...stored, id: "settings", invoiceSeries: series, updatedAt: at, updatedBy: actor };
+    await upsertAppRows(env, [row("reconSettings", next), auditLogRow(stateKey, profile, userId, context, { action: "Recon invoice series updated", module: "Recon", record: series.map((/** @type {any} */ s) => `${s.prefix}${s.start}${s.end ? `–${s.end}` : "+"}`).join(", ") || "none" })]);
+    return next;
+  }
+  if (kind === "stock-counts") {
+    const branch = String(body?.branch || "").trim();
+    if (!branch) throw new Error("Recon: pick the branch that was counted.");
+    const status = body?.status === "Posted" ? "Posted" : "Draft";
+    const id = String(body?.id || `CNT-${at.slice(0, 10)}-${crypto.randomUUID().slice(0, 6)}`);
+    const lines = (Array.isArray(body?.lines) ? body.lines : []).slice(0, 2000).map((/** @type {any} */ line) => ({ key: String(line.key || ""), code: String(line.code || ""), item: String(line.item || ""), lot: String(line.lot || ""), counted: reconNum(line.counted), system: reconNum(line.system) })).filter((/** @type {any} */ line) => line.key && line.counted >= 0);
+    if (status === "Posted") {
+      if (!lines.length) throw new Error("Recon: enter at least one counted line before posting.");
+      // The system quantity a count is compared with is the stored on-hand at posting time.
+      return withStockLock(env, stateKey, async () => {
+        const stored = await storedInventoryByKey(env, stateKey, lines.map((/** @type {any} */ line) => line.key));
+        for (const line of lines) line.system = reconNum(stored.get(line.key)?.qty);
+        const count = { id, branch, status, at, by: actor, note: String(body?.note || "").slice(0, 300), lines };
+        await upsertAppRows(env, [row("stockCounts", count), auditLogRow(stateKey, profile, userId, context, { action: "Stock count posted", module: "Recon", record: `${branch} · ${lines.length} line(s) · ${lines.filter((/** @type {any} */ l) => l.counted !== l.system).length} variance(s)` })]);
+        return count;
+      });
+    }
+    const count = { id, branch, status, at, by: actor, note: String(body?.note || "").slice(0, 300), lines };
+    await upsertAppRows(env, [row("stockCounts", count)]);
+    return count;
+  }
+  if (kind === "bank-statements") {
+    const lines = (Array.isArray(body?.lines) ? body.lines : []).slice(0, 5000).map((/** @type {any} */ line) => ({ date: String(line.date || "").slice(0, 10), description: String(line.description || "").slice(0, 160), amount: Math.round(reconNum(line.amount) * 100) / 100 })).filter((/** @type {any} */ line) => /^\d{4}-\d{2}-\d{2}$/.test(line.date) && line.amount);
+    if (!lines.length) throw new Error("Recon: no dated amounts were found in the statement.");
+    const days = lines.map((/** @type {any} */ line) => line.date).sort();
+    const statement = { id: String(body?.id || `BS-${at}`), bank: String(body?.bank || "").slice(0, 80), account: String(body?.account || "").slice(-6), from: String(body?.from || days[0]), to: String(body?.to || days[days.length - 1]), file: String(body?.file || "").slice(0, 120), uploadedAt: at, uploadedBy: actor, lines };
+    await upsertAppRows(env, [row("bankStatements", statement), auditLogRow(stateKey, profile, userId, context, { action: "Bank statement uploaded", module: "Recon", record: `${statement.bank || "Bank"} ${statement.from} to ${statement.to} · ${lines.length} line(s)` })]);
+    return { ...statement, lines: undefined, lineCount: lines.length };
+  }
+  if (kind === "cash-counts") {
+    const amount = Math.round(reconNum(body?.amount) * 100) / 100;
+    if (amount < 0) throw new Error("Recon: cash on hand can't be negative.");
+    const date = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+    const count = { id: `CASH-${at}`, date, at, branch: String(body?.branch || "All").slice(0, 60), amount, by: actor, note: String(body?.note || "").slice(0, 300) };
+    await upsertAppRows(env, [row("cashCounts", count), auditLogRow(stateKey, profile, userId, context, { action: "Cash count entered", module: "Recon", record: `${count.branch} · ${money(amount)}` })]);
+    return count;
+  }
+  throw new Error("Recon: unknown input");
 }
 
 // ---- Shared state snapshot ------------------------------------------------------------------
@@ -3229,7 +3625,9 @@ const PERF_MODULE = "perf-snapshots";
 // on data loaded before the last reset is a stale snapshot (e.g. an unsent offline queue from
 // before a wipe) and is refused, so it can't quietly re-upload records that were removed.
 const RESET_MARKER_MODULE = "system-reset";
-const NON_STATE_MODULES = ["logs", PERF_MODULE, RESET_MARKER_MODULE, ...GAME_MODULES];
+// Recon's own records are served by /api/recon (Superadmin/CEO) and never part of app state.
+const RECON_MODULES = ["reconRuns", "reconDifferences", "stockMovements", "stockCounts", "bankStatements", "cashCounts", "reconSettings"];
+const NON_STATE_MODULES = ["logs", PERF_MODULE, RESET_MARKER_MODULE, ...GAME_MODULES, ...RECON_MODULES];
 
 /** @param {WorkerEnv} env @param {string} stateKey @returns {Promise<string | null>} */
 async function dataResetAt(env, stateKey) {
@@ -4247,6 +4645,8 @@ async function runFiveMinuteScheduledTasks(event, env) {
     if (weekday === "Fri") backupJobs.push(["weekly-backup", dayKey, () => createBackup(env, "weekly", null)]);
     if (scheduled.day === "01") backupJobs.push(["monthly-backup", monthKey, () => createBackup(env, "monthly", null)]);
     if (scheduled.month === "01" && scheduled.day === "01") backupJobs.push(["yearly-backup", yearKey, () => createBackup(env, "yearly", null)]);
+    // Evening Recon run: after any backup due today, in the backup lane (never alongside a digest).
+    backupJobs.push(["recon-evening", dayKey, () => runReconJob(env, appStateKey(env), { trigger: "scheduled", by: "Recon (6:00 PM)" })]);
     // ticks :00 :10 :20 :30 :40 :50 → digest lane; ticks :05 :15 :25 :35 :45 :55 → backup lane
     tasks.push(runNextPendingAutomationJob(env, Number(scheduled.minute) % 10 === 0 ? digestJobs : backupJobs));
   }
@@ -4254,6 +4654,11 @@ async function runFiveMinuteScheduledTasks(event, env) {
   // send fails (Discord outage, transient error, etc.) — runOncePerPeriod's completion flag
   // means it only actually posts once the greeting succeeds for today's dayKey, so a healthy
   // run still only fires the one 08:00 attempt.
+  // Morning Recon run at 6:00 AM Manila, tried at :05/:20/:35/:50 (off the board-monitor ticks).
+  if (scheduled.hour === "06" && ["05", "20", "35", "50"].includes(scheduled.minute)) {
+    const { dayKey } = manilaPeriodKeys(scheduled);
+    tasks.push(runOncePerPeriod(env, "recon-morning", dayKey, () => runReconJob(env, appStateKey(env), { trigger: "scheduled", by: "Recon (6:00 AM)" })));
+  }
   if (Number(scheduled.hour) >= 8 && ["00", "15", "30", "45"].includes(scheduled.minute)) {
     const { dayKey } = manilaPeriodKeys(scheduled);
     tasks.push(runOncePerPeriod(env, "birthday-greetings", dayKey, () => runBirthdayGreetings(env)));
@@ -5365,10 +5770,12 @@ export default {
             }
 
             if (rows.length) {
+              const stockRows = rows.filter((row) => row.module_name === "inventory");
+              const movementRows = stockRows.length ? stockMovementRows(stateKey, authUser.id, actor, rows, await storedInventoryByKey(env, stateKey, stockRows.map((row) => String(row.record_key)))) : [];
               await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
                 method: "POST",
                 headers: { prefer: "resolution=merge-duplicates,return=minimal" },
-                body: JSON.stringify(rows),
+                body: JSON.stringify([...rows, ...movementRows]),
               });
             }
 
@@ -5702,6 +6109,9 @@ export default {
         const incomingStockRows = rows.filter((row) => row.module_name === "inventory");
         const hasStockMovementCompanion = rows.some((row) => stockMovementCompanions.has(row.module_name));
         const checkStockEdit = incomingStockRows.length && !hasStockMovementCompanion && !["Admin", "CEO", "Superadmin"].includes(profile?.role);
+        // Stored quantities (read under the stock lock, after the rebase) for the movement log.
+        const storedStockForLog = incomingStockRows.length ? storedInventoryByKey(env, stateKey, incomingStockRows.map((row) => String(row.record_key))) : Promise.resolve(new Map());
+        storedStockForLog.catch(() => null); // awaited before the upsert; a validation error may throw first
 
         // This is the real invoice-creation path (buildSale -> persistRecords -> here), not
         // /api/modules/state's bulk PUT — so the new-sale integrity checks belong here.
@@ -5838,10 +6248,12 @@ export default {
         }
 
         if (rows.length) {
+          // Each stock change is logged in the same upsert (one transaction) as the change itself.
+          const movementRows = incomingStockRows.length ? stockMovementRows(stateKey, authUser.id, String(profile.name || profile.email || "System User"), rows, await storedStockForLog) : [];
           await supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", {
             method: "POST",
             headers: { prefer: "resolution=merge-duplicates,return=minimal" },
-            body: JSON.stringify(rows),
+            body: JSON.stringify([...rows, ...movementRows]),
           });
           // Discord posts here already swallow their own errors and run in parallel internally
           // (Promise.allSettled) — pure notification, so it doesn't need to block the response.
@@ -5854,6 +6266,34 @@ export default {
         return json({ ok: true, savedRecords: rows.length, revision: Date.now(), stock: savedStockQty(rows) });
         };
         return await (rows.some((row) => row.module_name === "inventory") ? withStockLock(env, stateKey, runRecordSave) : runRecordSave());
+      }
+
+      // Recon: Superadmin/CEO view, run checks and enter counts/statements; only Superadmin fixes.
+      if (url.pathname === "/api/recon" || url.pathname.startsWith("/api/recon/")) {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        requireReconViewer(profile);
+        const stateKey = appStateKey(env);
+        const segments = url.pathname.split("/").filter(Boolean).slice(2);
+        if (!segments.length) {
+          if (request.method !== "GET") return methodNotAllowed();
+          return json(await reconOverview(env, stateKey, profile));
+        }
+        if (request.method !== "POST") return methodNotAllowed();
+        const body = await request.json().catch(() => ({}));
+        const context = auditContextForRequest(request);
+        if (segments[0] === "run") {
+          const check = typeof body.check === "string" && RECON_CHECKS.some((entry) => entry.id === body.check) ? body.check : "";
+          const run = await runReconJob(env, stateKey, { trigger: check ? "check" : "manual", by: String(profile.name || profile.email || "System User"), only: check ? [check] : undefined });
+          return json({ ok: true, run: { id: run.id, startedAt: run.startedAt, durationMs: run.durationMs }, ...(await reconOverview(env, stateKey, profile)) });
+        }
+        if (segments[0] === "differences" && segments[1] && segments[2]) {
+          const diff = await reconDifferenceAction(env, stateKey, profile, authUser.id, context, decodeURIComponent(segments[1]), segments[2], body);
+          return json({ ok: true, difference: diff });
+        }
+        if (["settings", "stock-counts", "bank-statements", "cash-counts"].includes(segments[0])) {
+          return json({ ok: true, record: await saveReconInput(env, stateKey, profile, authUser.id, context, segments[0], body) });
+        }
+        return json({ error: "Not found" }, { status: 404 });
       }
 
       if (url.pathname.startsWith("/api/purchase-orders/")) {
@@ -6051,6 +6491,8 @@ export default {
           if (!["For Receiving", "Partially Received"].includes(po.status)) throw new Error(`Cannot approve this stock receipt: ${po.id} is no longer ready for receiving (status "${po.status}").`);
           po.history = po.history || [];
         }
+        // applyReceivingLines edits these rows in place, so note the quantities first (movement log).
+        const stockBefore = new Map(invRows.map((/** @type {any} */ row) => [String(row.record_key), { qty: Number(row.data?.qty || 0) }]));
         const inventory = invRows.map((/** @type {any} */ row) => row.data);
         const totalReceived = applyReceivingLines(po, receipt.lines, inventory);
         receipt.status = "Approved";
@@ -6067,6 +6509,7 @@ export default {
         // ordering dependency between them, so running them together instead of one after another
         // cuts the remaining latency roughly by half.
         const invRecords = recordsFromState({ inventory }, authUser.id, stateKey, ["inventory"]);
+        invRecords.push(...stockMovementRows(stateKey, authUser.id, by, invRecords, stockBefore, { type: "receipt", ref: [receipt.id, receipt.poId].filter(Boolean).join(" · "), reason: "" }));
         const receiptRecords = recordsFromState({ stockReceipts: [receipt] }, authUser.id, stateKey, ["stockReceipts"]);
         await Promise.all([
           invRecords.length ? supabaseFetch(env, "/rest/v1/app_records?on_conflict=state_key,module_name,record_key", { method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(invRecords) }) : Promise.resolve(),
@@ -6694,7 +7137,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (/** @type {any} */ error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: |^Calendar event|calendar events as yourself|^Stock changed:/.test(error.message) ? 422 : /^Stock is busy/.test(error.message) ? 503 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: |^Calendar event|calendar events as yourself|^Stock changed:/.test(error.message) ? 422 : /^Recon conflict/.test(error.message) ? 409 : /^Recon: /.test(error.message) ? 422 : /^Stock is busy/.test(error.message) ? 503 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },

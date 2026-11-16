@@ -6,6 +6,7 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { seedData } from "./seed-data.mjs";
+import { RECON_AREAS, RECON_CHECKS, mergeDifferences, runRecon } from "../../src/recon.js";
 
 const port = Number(process.argv[2] || 8799);
 const seedScale = Number(process.argv[3] || 0);
@@ -26,7 +27,33 @@ const userFor = (role) => ({
 const newSession = (role) => ({ access_token: fakeToken(role), refresh_token: `refresh-${role}`, app_session_id: "00000000-0000-4000-8000-000000000001" });
 const readBody = async (req) => { let text = ""; for await (const chunk of req) text += chunk; try { return JSON.parse(text); } catch { return {}; } };
 
+// Recon runs the real checks (src/recon.js) over the seed data, so the page shows real results.
+const reconRuns = [];
+let reconDiffs = [];
+const reconRun = (role, only) => {
+  const startedAt = new Date().toISOString();
+  const { results, rows, recordsChecked } = runRecon(seedData(seedScale), { now: new Date(), only: only ? [only] : undefined });
+  const changed = mergeDifferences(reconDiffs.filter((diff) => !only || diff.check === only), rows, results, startedAt);
+  const ids = new Set(changed.map((diff) => diff.id));
+  reconDiffs = [...reconDiffs.filter((diff) => !ids.has(diff.id)), ...changed];
+  const run = { id: `RUN-${startedAt}`, startedAt, durationMs: 1200, trigger: only ? "check" : "manual", by: `Fake ${role}`, recordsChecked, checks: Object.keys(results).length, results };
+  reconRuns.unshift(run);
+  return run;
+};
+const reconOverview = (role) => {
+  if (!reconRuns.length) reconRun(role);
+  const latest = {};
+  for (const run of reconRuns) for (const [id, result] of Object.entries(run.results)) if (!latest[id]) latest[id] = { ...result, runAt: run.startedAt };
+  return {
+    checks: RECON_CHECKS.map(({ id, area, name, rule }) => ({ id, area, name, rule })), areas: RECON_AREAS, latest,
+    runs: reconRuns.map(({ results, ...run }) => run), differences: reconDiffs, settings: { id: "settings", invoiceSeries: [] }, baseline: null,
+    stockCounts: [], bankStatements: [], cashCounts: [], canFix: role === "Superadmin", schedule: ["06:00", "18:00"],
+  };
+};
+
 const authedRoutes = {
+  "GET /api/recon": (role) => reconOverview(role),
+  "POST /api/recon/run": (role, body) => { const run = reconRun(role, body?.check); return { ...reconOverview(role), run }; },
   "GET /api/auth/me": (role) => ({ user: userFor(role) }),
   "GET /api/modules/state": () => ({ data: seedData(seedScale), revision: 1, changesCursor: "cursor-1", pagination: {} }),
   "PUT /api/modules/state": () => ({ revision: 2 }),
@@ -69,9 +96,25 @@ createServer(async (req, res) => {
     if (!token) return send(res, 401, { error: "Authentication required" });
     const claim = claims(token);
     if (!claim || claim.exp * 1000 <= Date.now()) return send(res, 401, { error: "Invalid or expired session" });
+    const reconAction = /^\/api\/recon\/differences\/([^/]+)\/(fix|undo|explain|reopen|assign)$/.exec(pathname);
+    if (req.method === "POST" && reconAction) {
+      const body = await readBody(req);
+      const id = decodeURIComponent(reconAction[1]);
+      const at = new Date().toISOString();
+      const by = `Fake ${claim.role}`;
+      reconDiffs = reconDiffs.map((diff) => {
+        if (diff.id !== id) return diff;
+        const action = reconAction[2];
+        const status = { fix: "fixed", undo: "open", explain: "explained", reopen: "open", assign: diff.status }[action];
+        const label = { fix: `Fixed: ${diff.fix?.label || "fix"}`, undo: "Fix undone", explain: "Marked as explained", reopen: "Explanation withdrawn", assign: "Assigned" }[action];
+        return { ...diff, status, ...(action === "fix" ? { fixedAt: at, fixedBy: by, appliedChanges: (diff.fix?.preview || []).map(([field, change]) => ({ field, from: String(change).split(" → ")[0], to: String(change).split(" → ")[1] })), undo: [] } : {}), ...(action === "explain" ? { explainedAt: at, explainedBy: by, note: body.note } : {}), ...(action === "assign" ? { assignedTo: body.assignee, assignedBy: by, assignedAt: at } : {}), history: [{ at, action: label, by, note: body.note || "" }, ...(diff.history || [])] };
+      });
+      return send(res, 200, { difference: reconDiffs.find((diff) => diff.id === id) });
+    }
+    if (req.method === "POST" && /^\/api\/recon\/(settings|stock-counts|bank-statements|cash-counts)$/.test(pathname)) { await readBody(req); return send(res, 200, { ok: true }); }
     const route = authedRoutes[`${req.method} ${pathname}`];
     if (!route) return send(res, 404, { error: `Fake backend has no ${req.method} ${pathname}` });
-    return send(res, 200, route(claim.role));
+    return send(res, 200, route(claim.role, req.method === "POST" ? await readBody(req) : undefined));
   }
   let file = join(root, decodeURIComponent(pathname));
   try { if (!(await stat(file)).isFile()) throw new Error("not a file"); } catch { file = join(root, "index.html"); }

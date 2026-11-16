@@ -225,6 +225,8 @@ interface ProductIssue { id: string; status: string; history: PoHistoryEntry[]; 
 /** Client masterlist entry (data.clients). */
 interface Client {
   name: string;
+  /** Name of the client's price list (data.priceLists); none = standard item list prices. */
+  priceList?: string;
   area: string;
   dealer?: string;
   division?: string;
@@ -254,10 +256,17 @@ interface MasterItem {
   cost?: number;
   /** Supplier order multiple (units per pack/case); reorder suggestions round up to it. */
   packSize?: number;
+  /** No list price: sold at a price quoted per deal (Recon skips list-price checks). */
+  quotedPerDeal?: boolean;
+  /** Minimum quantity on hand across all branches. */
+  minLevel?: number;
   category?: string;
   archived?: boolean;
   [extra: string]: any;
 }
+
+/** A client price list (data.priceLists): own prices per item and/or a discount off list price. */
+interface PriceList { id: string; name: string; discountPct?: number; prices?: { code: string; price: number }[]; from?: string; to?: string; active?: boolean; note?: string; updatedAt?: string; updatedBy?: string }
 
 interface Supplier { name: string; brand?: string; archived?: boolean; [extra: string]: any }
 
@@ -402,6 +411,7 @@ interface AppData {
   pendingCreditInvoices: CreditInvoiceRequest[];
   expenseBudgets: ExpenseBudget[];
   recurringCosts: RecurringCost[];
+  priceLists: PriceList[];
   [collection: string]: any;
 }
 

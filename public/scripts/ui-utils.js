@@ -312,7 +312,6 @@ function syncGeneratedNotifications() {
   const bouncedCheques = data.payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce"));
   const forDepositCheques = data.payments.filter((payment) => ["Cheque", "Multiple Cheques"].includes(payment.method) && ["For Deposit", "Posted Date"].includes(payment.collectionStatus));
   const blockedImports = data.imports.filter((item) => /blocked|invalid|skipped|no valid/i.test(item.status));
-  const latestRecon = data.reconHistory[0];
 
   if (facts.lowStock.length) add("inventory-low-stock", "Low Stock", `${facts.lowStock.length} inventory lot${facts.lowStock.length === 1 ? "" : "s"} are low or critical.`, "inventory", facts.lowStock.map((item) => item.lot || item.code).join("|"));
   if (facts.nearExpiry.length) add("inventory-near-expiry", "Near Expiry", `${facts.nearExpiry.length} inventory lot${facts.nearExpiry.length === 1 ? "" : "s"} should be sold or transferred using FEFO.`, "inventory", facts.nearExpiry.map((item) => item.lot || item.code).join("|"));
@@ -333,7 +332,6 @@ function syncGeneratedNotifications() {
   if (warrantyExpired.length) add("warranty-expired", "Warranty Expired", `${warrantyExpired.length} warranty record${warrantyExpired.length === 1 ? "" : "s"} are expired.`, "warranty", warrantyExpired.map((item) => item.serial || item.client).join("|"));
   if (blockedImports.length) add("imports-review", "Import Review", `${blockedImports.length} import batch${blockedImports.length === 1 ? "" : "es"} have skipped, invalid, or blocked rows.`, "imports", blockedImports.map((item) => `${item.date} ${item.module} ${item.file}`).join("|"));
   if (data.backupStatus?.stale) add("backup-overdue", "Backup Overdue", "No successful backup has been recorded in the last 7 days.", "backup", data.backupStatus?.latest?.id || "backup");
-  if (latestRecon?.high > 0) add("recon-high-findings", "Reconciliation Risk", `Latest reconciliation has ${latestRecon.high} high-severity finding${latestRecon.high === 1 ? "" : "s"}.`, "reconciliation", latestRecon.date || "High");
   if (facts.overdue.length || facts.lowStock.length || facts.duePayables.length) add("reports-management-pack", "Report Pack", "Management reports have current AR, inventory, or payable risks to export.", "reports", facts.overdue.length ? "Collections & AR" : facts.lowStock.length ? "Reagent Expiry" : "Supplier Payables");
   const manual = data.notifications.filter((notice) => !notice.generated);
   // Newest first across both kinds, so a fresh notice (e.g. a new PO for Accounting) shows at the
@@ -562,9 +560,9 @@ function prepareFocusedSection(section, record) {
   if (qs("#global-search")?.value) qs("#global-search").value = "";
   const query = String(record).split("|")[0].toLowerCase();
   if (section === "masterlists") {
-    if (data.clients.some((item) => item.name.toLowerCase() === query || item.tin?.toLowerCase() === query)) data.masterTab = "clients";
-    else if (data.suppliers.some((item) => item.name.toLowerCase() === query)) data.masterTab = "suppliers";
-    else if (data.items.some((item) => item.code.toLowerCase() === query || item.name.toLowerCase() === query)) data.masterTab = "items";
+    if (data.clients.some((item) => item.name.toLowerCase() === query || item.tin?.toLowerCase() === query)) { masterPageTab = "clients"; masterView = { ...uiBlankViewState(), q: query }; }
+    else if (data.suppliers.some((item) => item.name.toLowerCase() === query)) { masterPageTab = "suppliers"; masterView = { ...uiBlankViewState(), q: query }; }
+    else if (data.items.some((item) => item.code.toLowerCase() === query || item.name.toLowerCase() === query)) { masterPageTab = "items"; masterView = { ...uiBlankViewState(), q: query }; }
     renderMasterlists();
     return;
   }

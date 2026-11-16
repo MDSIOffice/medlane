@@ -125,7 +125,7 @@ function uiCellNum(value) { return `<span class="ui-num">${escapeHtml(String(val
  *   cols: UiCol[], rows: UiRow[], caption: string, minWidth?: number, compact?: boolean,
  *   sort?: { key: string, dir: number }, sortAttr?: string,
  *   empty: { title: string, text: string, clearAttrs?: UiAttrs },
- *   foot: { shown: number, total: number, page: number, pageCount: number, pageAttr: string, note?: string },
+ *   foot: { shown: number, total: number, page: number, pageCount: number, pageAttr: string, note?: string, hidden?: boolean },
  *   after?: string, totals?: string[]
  * }} options
  */
@@ -148,7 +148,7 @@ function uiDataTable({ cols, rows, caption, minWidth = 900, compact = false, sor
     ? `<div class="ui-table-scroll"><table class="ui-table${compact ? " compact" : ""}" style="min-width:${Number(minWidth) || 0}px"><caption class="sr-only">${escapeHtml(caption)}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${totalsRow}</table></div>`
     : `<div class="ui-empty"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.text)}</span>${empty.clearAttrs ? uiButton("Clear filters", empty.clearAttrs, { size: "sm" }) : ""}</div>`;
   const pageText = foot.pageCount > 1 ? ` · page ${foot.page + 1} of ${foot.pageCount}` : "";
-  const footHtml = `<div class="ui-foot"><span>Showing ${foot.shown} of ${foot.total}${pageText}${foot.note ? ` · ${escapeHtml(foot.note)}` : ""}</span><div class="ui-pager">${uiButton("Previous", { [foot.pageAttr]: "prev" }, { size: "xs", disabled: foot.page <= 0 })}${uiButton("Next", { [foot.pageAttr]: "next" }, { size: "xs", disabled: foot.page >= foot.pageCount - 1 })}</div></div>`;
+  const footHtml = foot.hidden ? "" : `<div class="ui-foot"><span>Showing ${foot.shown} of ${foot.total}${pageText}${foot.note ? ` · ${escapeHtml(foot.note)}` : ""}</span><div class="ui-pager">${uiButton("Previous", { [foot.pageAttr]: "prev" }, { size: "xs", disabled: foot.page <= 0 })}${uiButton("Next", { [foot.pageAttr]: "next" }, { size: "xs", disabled: foot.page >= foot.pageCount - 1 })}</div></div>`;
   return `<div class="ui-card ui-table-card">${tableHtml}${footHtml}${after}</div>`;
 }
 

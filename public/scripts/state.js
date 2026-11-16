@@ -35,10 +35,7 @@ let paymentRequestRowUid = 0;
 let uploadedFilesCache = [];
 let uploadedFilesLoaded = false;
 /** @type {any} */
-let selectedReconHistoryIndex = null;
 /** @type {any} */
-let reconciliationTab = "current";
-let reconciliationAreaFilter = "";
 /** @type {any} */
 let collectionLeafletMap = null;
 /** @type {any} */
@@ -169,7 +166,6 @@ let logsView = logsSeed.view;
 /** Pre-fill for the next "New purchase order" form (from reorder suggestions). @type {{ supplier: string, lines: Record<string, any>[] } | null} */
 let inventoryPoPrefill = null;
 
-let masterShowArchived = false;
 /** @type {any} */
 let currentSalesBreakdownDimension = null;
 let clientInvoicesReturnSection = "receivables-tracker";
@@ -239,7 +235,7 @@ function pendingSaveQueueKey() {
 const frontendModuleRecordKeys = {
   dashboard: [],
   analytics: [],
-  masterlists: ["clients", "items", "suppliers", "employees", "banks", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
+  masterlists: ["clients", "items", "suppliers", "employees", "banks", "priceLists", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
   "purchase-orders": ["purchaseOrders"],
   "item-forecast": [],
@@ -285,7 +281,7 @@ const clientCoordinates = {
 /** @type {Record<string, any>} */
 const accounts = {
   Superadmin: { name: "Superadmin", role: "Superadmin", branch: "all", email: "superadmin@medlane.local", phone: "+63 900 000 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
-  Admin: { name: "Admin User", role: "Admin", branch: "all", email: "admin@medlane.local", phone: "+63 917 100 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "settings", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
+  Admin: { name: "Admin User", role: "Admin", branch: "all", email: "admin@medlane.local", phone: "+63 917 100 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "security", "settings", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
   CEO: { name: "CEO", role: "CEO", branch: "all", email: "ceo@medlane.local", phone: "+63 917 200 0000", modules: ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"] },
   Accounting: { name: "Joy Santos", role: "Accounting", branch: "all", email: "joy@medlane.local", phone: "+63 917 300 0000", modules: ["dashboard", "calendar", "inventory", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "imports", "print-templates", "notifications", "user-settings"] },
   Sales: { name: "Ana Cruz", role: "Sales", branch: "Region IV-A", email: "ana@medlane.local", phone: "+63 917 400 0000", modules: ["dashboard", "calendar", "analytics", "inventory", "item-forecast", "purchase-orders", "sales", "client-invoices", "notifications", "user-settings"] },
@@ -340,8 +336,10 @@ function effectiveModules() {
   // lose the Print Templates nav item while other Superadmins (no custom rows) keep it.
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return accounts[currentUser.role]?.modules || currentUser?.modules || [];
   const modules = currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || [];
-  const blocked = roleBlockedModules[currentUser?.role] || [];
-  return blocked.length ? modules.filter((/** @type {string} */ module) => !blocked.includes(module)) : modules;
+  // Recon is Superadmin/CEO only (its /api/recon endpoints refuse everyone else), whatever an
+  // older per-user permission row says.
+  const blocked = [...(roleBlockedModules[currentUser?.role] || []), "reconciliation"];
+  return modules.filter((/** @type {string} */ module) => !blocked.includes(module));
 }
 // Mirrors ROLE_BLOCKED_MODULES in worker.js (which also strips these from the server profile).
 /** @type {Record<string, string[]>} */
@@ -349,7 +347,7 @@ const roleBlockedModules = { Logistics: ["logs", "product-issues"], Sales: ["rec
 /** @type {Record<string, string[]>} */
 const roleEditableModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
-  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "settings", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "security", "settings", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   CEO: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
   Accounting: ["purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "imports", "print-templates", "notifications", "user-settings"],
   Sales: ["inventory", "purchase-orders", "sales", "client-invoices", "notifications", "user-settings"],
@@ -416,6 +414,7 @@ function emptyProductionData() {
     clients: [],
     items: [],
     suppliers: [],
+    priceLists: [],
     employees: [],
     inventory: [],
     sales: [],
