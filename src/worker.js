@@ -58,6 +58,8 @@ Object.values(roleModules).forEach((modules) => modules.push("memos"));
 /** @type {Partial<Record<AppRole, string[]>>} */
 const ROLE_BLOCKED_MODULES = {
   Logistics: ["logs", "product-issues"],
+  // Sales: no Receivables or Support Tracker, even if older per-user permission rows grant them.
+  Sales: ["receivables-tracker", "receivables", "product-issues"],
 };
 // Engineering and Product (Application) Specialists use Inventory only to file demo requests:
 // they keep read access to stock (for lot/serial pickers) but can write nothing in the
@@ -111,9 +113,8 @@ const moduleRecordKeys = {
   // the "masterlists" (or "inventory", for stock) permission itself.
   "catalog-reference": ["items", "clients", "suppliers", "inventory"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
-  // Supplier POs live with Inventory, but the Purchase Orders page also lets roles without Inventory
-  // edit (Sales, Accounting) raise one for approval — assertFinancialApprovalAllowed keeps them to that.
-  "purchase-orders": ["purchaseOrders", "inventoryPurchaseOrders"],
+  // Client POs (sales & invoicing). Supplier POs live under Inventory (inventoryPurchaseOrders above).
+  "purchase-orders": ["purchaseOrders"],
   invoicing: ["sales", "pendingCreditInvoices"],
   sales: ["sales"],
   receivables: ["sales", "payments", "collectionContacts", "collectionContactHistory"],
@@ -427,6 +428,25 @@ const STATE_SNAPSHOT_MAX_AGE_MS = 2000;
 /** @type {Map<string, { at: number, promise: Promise<StateSnapshot> }>} */
 const stateSnapshots = new Map();
 
+// The rows a full load needs. Postgres pre-trims them (app_state_load: open records + the newest of
+// each history module, a superset of what trimPaginatedModuleRows keeps), so the Worker no longer
+// downloads every invoice/payment/notice ever saved. Falls back to the full read if the function
+// isn't installed (docs/migrations/2026-11-16-app-state-load-rpc.sql).
+/** @param {WorkerEnv} env @param {string} stateKey @returns {Promise<{ rows: AppRecordRow[], totals: Record<string, number> | null, cursor: string | null }>} */
+async function loadStateRows(env, stateKey) {
+  try {
+    const result = await supabaseFetch(env, "/rest/v1/rpc/app_state_load", {
+      method: "POST",
+      body: JSON.stringify({ p_state_key: stateKey, p_exclude: NON_STATE_MODULES, p_page_size: PAGINATED_MODULE_PAGE_SIZE, p_notice_limit: PER_RECORD_LOG_LIMITS.notifications, p_history_limit: PER_RECORD_LOG_LIMITS.collectionContactHistory }),
+    });
+    if (result && Array.isArray(result.rows)) return { rows: result.rows, totals: result.totals || {}, cursor: result.cursor || null };
+  } catch (/** @type {any} */ error) {
+    if (!/app_state_load|function|PGRST202|schema cache/i.test(String(error?.message || ""))) throw error;
+  }
+  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`);
+  return { rows, totals: null, cursor: rows.length ? rows[rows.length - 1].updated_at : null };
+}
+
 /** @param {WorkerEnv} env @param {string} stateKey @returns {Promise<StateSnapshot>} */
 function sharedStateSnapshot(env, stateKey) {
   const hit = stateSnapshots.get(stateKey);
@@ -434,15 +454,15 @@ function sharedStateSnapshot(env, stateKey) {
   // loadedAt is taken before the read, so it never postdates the data it describes.
   const loadedAt = new Date().toISOString();
   const promise = Promise.all([
-    supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=not.in.${encodeURIComponent(postgrestIn(NON_STATE_MODULES))}&select=module_name,record_key,data,updated_at&order=updated_at.asc`),
+    loadStateRows(env, stateKey),
     dataResetAt(env, stateKey),
-  ]).then(([rows, resetAt]) => {
+  ]).then(([{ rows, totals, cursor }, resetAt]) => {
     // Ship only what's still open/pending plus the most recent PAGINATED_MODULE_PAGE_SIZE for the
     // modules whose history only ever grows — older closed records come via /api/modules/page.
     // changesCursor is the database's own latest updated_at over the FULL row set, so an edit to
     // an old, trimmed-out record still moves the live-sync cursor and clock skew can't open a gap.
-    const { rows: trimmedRows, pagination } = trimPaginatedModuleRows(rows);
-    return { trimmedRows, pagination, changesCursor: rows.length ? rows[rows.length - 1].updated_at : new Date().toISOString(), loadedAt, resetAt };
+    const { rows: trimmedRows, pagination } = trimPaginatedModuleRows(rows, totals);
+    return { trimmedRows, pagination, changesCursor: cursor || new Date().toISOString(), loadedAt, resetAt };
   });
   stateSnapshots.set(stateKey, { at: Date.now(), promise });
   // A failed read must not be handed to the next people who load.
@@ -1832,9 +1852,11 @@ const DEMO_TRANSITIONS = {
 };
 
 // Engineering / Product Specialist may only move an EXISTING support report through its status
-// workflow: they cannot create reports or change anything beyond these workflow fields.
+// workflow (no other fields). Product Specialists may also file NEW reports; Engineering may not.
 /** @type {AppRole[]} */
 const SUPPORT_STATUS_ONLY_ROLES = ["Engineering", "Product Specialist"];
+/** Status-only roles that may still file a new report. @type {AppRole[]} */
+const SUPPORT_REQUESTER_ROLES = ["Product Specialist"];
 const SUPPORT_STATUS_FIELDS = new Set(["status", "currentActor", "resolvedBy", "resolvedAt", "history", "actionsTaken"]);
 // Calendar events: anyone may add one (as themselves); only its creator or Superadmin/CEO may
 // change or remove (soft-delete via `removed`) an existing one.
@@ -1880,7 +1902,10 @@ async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
   const storedByKey = new Map(stored.map((row) => [row.record_key, row.data || {}]));
   for (const row of incoming) {
     const prev = storedByKey.get(row.record_key);
-    if (!prev) throw new Error("Only Sales, Admin, CEO or Superadmin can request a service report");
+    if (!prev) {
+      if (SUPPORT_REQUESTER_ROLES.includes(profile?.role)) continue;
+      throw new Error("Only Product Specialist, Admin, CEO or Superadmin can request a service report");
+    }
     /** @type {Record<string, any>} */
     const next = row.data || {};
     for (const field of new Set([...Object.keys(prev), ...Object.keys(next)])) {
@@ -2270,11 +2295,10 @@ function canAccessKey(profile, key, mode = "view") {
   if (mode === "edit" && modulesForKey(key).includes("memos") && !["HR"].includes(profile?.role)) return false;
   // Support Tracker reports: Sales/Admin (Superadmin/CEO returned above) may create/edit;
   // Engineering/Product Specialist may only update status (assertSupportReportChangesAllowed).
-  if (mode === "edit" && key === "productIssues" && !["Sales", "Admin", "Engineering", "Product Specialist"].includes(profile?.role)) return false;
+  if (mode === "edit" && key === "productIssues" && !["Admin", "Engineering", "Product Specialist"].includes(profile?.role)) return false;
   const allowed = profile?.customPermissions?.[mode] || [];
   // Sales raises supplier POs through the Purchase Orders module, not Inventory edit.
-  const poViaPurchasing = key === "inventoryPurchaseOrders" && allowed.includes("purchase-orders");
-  if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests" && !poViaPurchasing) return false;
+  if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
   if (mode === "edit" && EXPENSE_PLANNING_KEYS.includes(key) && profile?.role !== "Admin") return false;
   const modules = modulesForKey(key);
   return modules.some((module) => allowed.includes(module));
@@ -3282,8 +3306,8 @@ function paginatedModulePredicates(servedQtyByPo) {
 // updated_at}) down to "open ∪ most recent PAGINATED_MODULE_PAGE_SIZE", leaving every other
 // module untouched. Returns the trimmed row list plus per-module { hasMore, cursor } metadata
 // for the client's "Load previous" control (cursor = the `before` value for /api/modules/page).
-/** @param {AppRecordRow[]} rows */
-function trimPaginatedModuleRows(rows) {
+/** @param {AppRecordRow[]} rows @param {Record<string, number> | null} [totals] each module's full row count when `rows` was already pre-trimmed by app_state_load */
+function trimPaginatedModuleRows(rows, totals = null) {
   const servedQtyByPo = buildServedQtyByPo(rows.filter((/** @type {any} */ row) => row.module_name === "sales"));
   const predicates = paginatedModulePredicates(servedQtyByPo);
   const byModule = new Map();
@@ -3306,7 +3330,7 @@ function trimPaginatedModuleRows(rows) {
     const openRows = moduleRows.filter((/** @type {any} */ row) => !recentKeys.has(row.record_key) && isOpen(row.data));
     const finalRows = [...recent, ...openRows].sort((a, b) => sortOf(a).localeCompare(sortOf(b)));
     kept.push(...finalRows);
-    pagination[moduleName] = { hasMore: finalRows.length < moduleRows.length, cursor: sortOf(recent[recent.length - 1]) || null };
+    pagination[moduleName] = { hasMore: finalRows.length < (totals?.[moduleName] ?? moduleRows.length), cursor: sortOf(recent[recent.length - 1]) || null };
   }
   const untouched = trimPerRecordLogs(rows.filter((/** @type {any} */ row) => !PAGINATED_MODULES.includes(row.module_name)));
   return { rows: [...untouched, ...kept], pagination };

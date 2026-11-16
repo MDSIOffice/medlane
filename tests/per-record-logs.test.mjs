@@ -38,3 +38,49 @@ describe("load trimming", () => {
     assert.ok(keys.has("SI-1"));
   });
 });
+
+describe("trimmed state load", () => {
+  const { loadStateRows, trimPaginatedModuleRows: trim } = worker;
+  const env = { SUPABASE_URL: "https://supabase.test", SUPABASE_SERVICE_ROLE_KEY: "k", ENVIRONMENT: "test" };
+  const row = (module_name, record_key, data, updated_at = "2026-01-01T00:00:00+00:00") => ({ module_name, record_key, data, updated_at });
+
+  test("uses the database's pre-trimmed rows, totals and cursor", async () => {
+    const calls = [];
+    globalThis.fetch = async (input, init = {}) => {
+      calls.push(String(input));
+      return Response.json({ rows: [row("clients", "A", { name: "A" })], totals: { sales: 900 }, cursor: "2026-11-16T00:00:00+00:00" });
+    };
+    const result = await loadStateRows(env, "production");
+    assert.ok(calls[0].endsWith("/rest/v1/rpc/app_state_load"));
+    assert.equal(result.rows.length, 1);
+    assert.equal(result.totals.sales, 900);
+    assert.equal(result.cursor, "2026-11-16T00:00:00+00:00");
+  });
+
+  test("falls back to the full read when the function isn't installed yet", async () => {
+    const calls = [];
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("/rpc/app_state_load")) return Response.json({ code: "PGRST202", message: "Could not find the function public.app_state_load in the schema cache" }, { status: 404 });
+      return Response.json([row("clients", "A", { name: "A" }, "2026-01-01T00:00:00+00:00"), row("clients", "B", { name: "B" }, "2026-01-02T00:00:00+00:00")]);
+    };
+    const result = await loadStateRows(env, "production");
+    assert.equal(result.rows.length, 2);
+    assert.equal(result.totals, null);
+    assert.equal(result.cursor, "2026-01-02T00:00:00+00:00");
+    assert.ok(calls.some((url) => url.includes("/rest/v1/app_records?")));
+  });
+
+  test("other database errors are not hidden by the fallback", async () => {
+    globalThis.fetch = async () => Response.json({ message: "permission denied for table app_records" }, { status: 403 });
+    await assert.rejects(loadStateRows(env, "production"), /permission denied/);
+  });
+
+  test("'Load previous' still knows about rows the database left out", () => {
+    const rows = Array.from({ length: 60 }, (_, i) => row("sales", `SI-${i}`, { date: `2026-01-${String(1 + (i % 28)).padStart(2, "0")}`, status: "Active", net: 0, paid: 0 }));
+    assert.equal(trim(rows).pagination.sales.hasMore, true);
+    assert.equal(trim(rows.slice(0, 50)).pagination.sales.hasMore, false);
+    assert.equal(trim(rows.slice(0, 50), { sales: 900 }).pagination.sales.hasMore, true);
+  });
+});

@@ -53,7 +53,7 @@ let inventoryBranchTab = "Las Pinas";
 // Inventory page view state. Seeded from the URL (?section=inventory&tab=…&branch=…) so a
 // refresh or shared link restores the same view; read here at parse time because showSection()
 // rewrites the URL later during startup.
-const INVENTORY_TABS = /** @type {(string | null)[]} */ (["stocks", "receiving", "receipts", "completed", "transfers", "demos", "rhist", "thist"]);
+const INVENTORY_TABS = /** @type {(string | null)[]} */ (["stocks", "purchasing", "receiving", "receipts", "completed", "transfers", "demos", "rhist", "thist"]);
 const INVENTORY_SORT_KEYS = /** @type {(string | null)[]} */ (["item", "lot", "branch", "expiry", "qty"]);
 const INVENTORY_STATUS_KEYS = /** @type {(string | null)[]} */ (["all", "available", "near", "low", "critical", "disposal"]);
 const inventoryUrlParams = (() => {
@@ -136,6 +136,8 @@ const purchasingSeed = moduleUrlSeed("purchase-orders", PURCHASING_TABS);
 let purchasingTab = purchasingSeed.tab;
 /** @type {UiViewState} */
 let purchasingView = purchasingSeed.view;
+// Purchase Orders page = client POs (sales & invoicing); supplier POs live under Inventory → Supplier POs.
+let clientPoView = moduleUrlSeed("purchase-orders", ["orders"]).view;
 const PAYABLES_TABS = ["overview", "bills", "payees", "paid"];
 const payablesSeed = moduleUrlSeed("payables", PAYABLES_TABS);
 let payablesTab = payablesSeed.tab;
@@ -343,7 +345,7 @@ function effectiveModules() {
 }
 // Mirrors ROLE_BLOCKED_MODULES in worker.js (which also strips these from the server profile).
 /** @type {Record<string, string[]>} */
-const roleBlockedModules = { Logistics: ["logs", "product-issues"] };
+const roleBlockedModules = { Logistics: ["logs", "product-issues"], Sales: ["receivables-tracker", "receivables", "product-issues"] };
 /** @type {Record<string, string[]>} */
 const roleEditableModules = {
   Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates", "memos"],
@@ -356,11 +358,11 @@ const roleEditableModules = {
   Engineering: ["inventory", "notifications", "user-settings", "product-issues"],
   HR: ["replenishments", "reports", "notifications", "user-settings", "memos"],
 };
-// Support Tracker: only Sales, Admin, CEO and Superadmin can REQUEST (create) service reports.
-// Engineering and Product Specialist can only update status on existing reports; every other role
+// Support Tracker: Product Specialist, Admin, CEO and Superadmin can REQUEST (create) service
+// reports. Engineering and Product Specialist can only update status on existing reports; every other role
 // is view-only. Mirrored server-side in canAccessKey() + assertSupportReportChangesAllowed().
-const supportReportRequesterRoles = ["Sales", "Admin", "CEO", "Superadmin"];
-const supportReportEditorRoles = [...supportReportRequesterRoles, "Engineering", "Product Specialist"];
+const supportReportRequesterRoles = ["Product Specialist", "Admin", "CEO", "Superadmin"];
+const supportReportEditorRoles = [...supportReportRequesterRoles, "Engineering"];
 function canRequestSupportReport() { return supportReportRequesterRoles.includes(currentUser?.role) && canEditModule("product-issues"); }
 function editableModules() {
   // Same reasoning as effectiveModules(): Superadmin/CEO always get their full editable set so a

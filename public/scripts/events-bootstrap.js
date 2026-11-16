@@ -216,6 +216,8 @@ async function submitModal(event) {
     const saveResult = await persistRecords({ purchaseOrders: [po] });
     if (!saveResult?.ok) return;
     log(wasEditing ? "Edited purchase order" : `Saved ${modalType}`, modalConfigs[modalType].title, po.id || po.client, { save: false });
+    // Accounting invoices client POs: tell them a new one is ready (opens the PO on Purchase Orders).
+    if (!wasEditing) notify("New Purchase Order", `${po.id} from ${po.client} is ready for invoicing (${peso.format(salesOrderTotal(po))}).`, "purchase-orders", po.id, ["Accounting"]);
     editingPoId = null;
     qs("#demo-modal").close();
     form.reset();
@@ -1022,6 +1024,7 @@ function inventorySetStatus(key) {
 const inventoryLoadMore = { "load-more-inventory-pos": () => loadMoreInventoryPurchaseOrders(), "load-more-transfers": () => loadMoreTransfers() };
 qs("#inventory").addEventListener("click", (event) => {
   const target = /** @type {AnyEl} */ (event.target);
+  if (closestEl(target, "#inventory-purchasing")) return; // Supplier POs tab has its own handler
   const tab = closestEl(target, "[data-inventory-workflow]");
   if (tab) {
     if (tab.dataset.inventoryWorkflow !== inventoryWorkflowTab) inventoryResetTabView();
@@ -1081,6 +1084,7 @@ qs("#inventory").addEventListener("click", (event) => {
 // Search boxes are re-rendered with their list, so listen on the section rather than the input.
 qs("#inventory").addEventListener("input", (event) => {
   const input = /** @type {AnyEl} */ (event.target);
+  if (closestEl(input, "#inventory-purchasing")) return;
   if (uiViewSearch(input, "inventory-tab", () => inventoryTabView, renderInventory)) return;
   if (input.id !== "inventory-search") return;
   clearTimeout(inventorySearchTimer);
@@ -1420,7 +1424,7 @@ qs("#receivables-tracker").addEventListener("click", (event) => {
 });
 qs("#receivables-tracker").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "receivables", () => receivablesView, renderReceivablesTracker); });
 // ---- Purchase Orders (supplier) / Payables / Expenses (redesign phase 4) — markup/state in modules.js / state.js ----
-qs("#purchase-orders").addEventListener("click", (event) => {
+qs("#inventory-purchasing").addEventListener("click", (event) => {
   const target = /** @type {AnyEl} */ (event.target);
   const tab = closestEl(target, "[data-purchasing-tab]");
   if (tab) {
@@ -1439,7 +1443,20 @@ qs("#purchase-orders").addEventListener("click", (event) => {
   if (closestEl(target, "[data-purchasing-load-more]")) return loadMoreInventoryPurchaseOrders();
   if (purchasingTab !== "overview") uiViewClick(target, "purchasing", { state: () => purchasingView, view: () => purchasingTabModel(purchasingTab), render: renderPurchaseOrders });
 });
-qs("#purchase-orders").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "purchasing", () => purchasingView, renderPurchaseOrders); });
+qs("#inventory-purchasing").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "purchasing", () => purchasingView, renderPurchaseOrders); });
+// ---- Purchase Orders page: client POs (sales & invoicing) ----
+qs("#purchase-orders").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  if (closestEl(target, "#client-po-new")) {
+    if (!canEditModule("purchase-orders")) return toast("Editing is disabled for Purchase Orders in User Settings.");
+    return openModal("purchaseOrder");
+  }
+  if (uiViewClick(target, "clientpo", { state: () => clientPoView, view: () => clientOrdersModel("clientpo"), render: renderClientPurchaseOrders })) return;
+  if (closestEl(target, "[data-clientpo-load-more]")) return loadMorePurchaseOrders();
+  const detail = closestEl(target, "[data-sale-detail]");
+  if (detail) return showSaleDetail(/** @type {string} */ (detail.dataset.saleDetail));
+});
+qs("#purchase-orders").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "clientpo", () => clientPoView, renderClientPurchaseOrders); });
 qs("#payables").addEventListener("click", (event) => {
   const target = /** @type {AnyEl} */ (event.target);
   const tab = closestEl(target, "[data-payables-tab]");
@@ -1727,7 +1744,14 @@ qs("#demo-modal").addEventListener("click", (event) => {
   if (modalReadOnly) { editContext = null; qs("#demo-modal").close(); return; }
   guardedDialogClose(() => { editContext = null; editingPoId = null; qs("#demo-modal").close(); });
 });
-qs("#report-preview-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "report-preview-modal") closeReportPreview(); });
+qs("#report-preview-modal").addEventListener("click", (event) => {
+  const target = /** @type {AnyEl} */ (event.target);
+  if (target.id === "report-preview-modal") return closeReportPreview();
+  const cancel = closestEl(target, "[data-preview-cancel-invoice]");
+  if (cancel) { closeReportPreview(); return cancelInvoice(/** @type {string} */ (cancel.dataset.previewCancelInvoice)); }
+  const replace = closestEl(target, "[data-preview-cancel-replace]");
+  if (replace) { closeReportPreview(); return openCancelReplaceModal(/** @type {string} */ (replace.dataset.previewCancelReplace)); }
+});
 qs("#payment-request-preview-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "payment-request-preview-modal") qs("#payment-request-preview-modal").close(); });
 qs("#transfer-history-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "transfer-history-modal") qs("#transfer-history-modal").close(); });
 qs("#followup-history-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "followup-history-modal") qs("#followup-history-modal").close(); });

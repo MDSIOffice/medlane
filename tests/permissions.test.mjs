@@ -79,7 +79,8 @@ describe("module access", () => {
   });
   test("support reports are editable only by the listed roles", () => {
     assert.equal(canAccessKey(as("Logistics", ["product-issues"]), "productIssues", "edit"), false);
-    assert.equal(canAccessKey(as("Sales", ["product-issues"]), "productIssues", "edit"), true);
+    assert.equal(canAccessKey(as("Sales", ["product-issues"]), "productIssues", "edit"), false);
+    assert.equal(canAccessKey(as("Admin", ["product-issues"]), "productIssues", "edit"), true);
   });
   test("role defaults match the agreed access list", () => {
     const { moduleListsFor } = worker;
@@ -91,6 +92,10 @@ describe("module access", () => {
     const sales = moduleListsFor("Sales", []);
     for (const module of ["analytics", "purchase-orders", "inventory"]) assert.ok(sales.view.includes(module), `Sales sees ${module}`);
     for (const module of ["receivables-tracker", "purchase-history", "product-issues"]) assert.ok(!sales.view.includes(module), `Sales has no ${module}`);
+    // Older per-user rows that granted them are overridden for every Sales account.
+    const customised = moduleListsFor("Sales", ["receivables-tracker", "receivables", "product-issues", "sales"].map((module_key) => ({ module_key, can_view: true, can_edit: true })));
+    for (const module of ["receivables-tracker", "receivables", "product-issues"]) assert.ok(!customised.view.includes(module) && !customised.edit.includes(module), `customised Sales still has no ${module}`);
+    assert.ok(customised.view.includes("sales"));
     for (const role of ["Accounting", "Logistics", "Engineering", "Product Specialist", "HR"]) assert.ok(!moduleListsFor(role, []).view.includes("item-forecast"), `${role} has no Item Forecast`);
     for (const role of ["Superadmin", "CEO", "Admin", "Sales"]) assert.ok(moduleListsFor(role, []).view.includes("item-forecast"), `${role} has Item Forecast`);
     const admin = moduleListsFor("Admin", []);
@@ -111,12 +116,12 @@ describe("module access", () => {
       assert.equal(canAccessKey(as(role, ["inventory"]), "stockReceipts", "edit"), false);
     });
   }
-  test("Sales and Accounting can write supplier POs through Purchase Orders", () => {
-    assert.equal(canAccessKey(as("Sales", ["inventory", "purchase-orders"]), "inventoryPurchaseOrders", "edit"), true);
-    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "inventoryPurchaseOrders", "edit"), true);
-    assert.equal(canAccessKey(as("Sales", ["inventory"]), "inventoryPurchaseOrders", "edit"), false);
-    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "inventory", "edit"), false);
-    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "stockReceipts", "edit"), false);
+  test("Purchase Orders is client POs; supplier POs belong to Inventory", () => {
+    assert.equal(canAccessKey(as("Sales", ["purchase-orders"]), "purchaseOrders", "edit"), true);
+    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "purchaseOrders", "edit"), true);
+    assert.equal(canAccessKey(as("Sales", ["inventory", "purchase-orders"]), "inventoryPurchaseOrders", "edit"), false);
+    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "inventoryPurchaseOrders", "edit"), false);
+    assert.equal(canAccessKey(as("Logistics", ["inventory"]), "inventoryPurchaseOrders", "edit"), true);
   });
   test("Logistics is blocked from logs and support", () => {
     assert.deepEqual(worker.ROLE_BLOCKED_MODULES.Logistics, ["logs", "product-issues"]);
@@ -162,9 +167,10 @@ describe("support reports", () => {
   });
   test("Engineering can't create one", async () => {
     await assert.rejects(check(env, STATE, as("Engineering"), [row("productIssues", "I2", { status: "Open" })]), /can request a service report/);
+    await check(env, STATE, as("Product Specialist"), [row("productIssues", "I2", { status: "Open" })]);
   });
   test("other roles aren't limited by this check", async () => {
-    await check(env, STATE, as("Sales"), [row("productIssues", "I2", { status: "Open" })]);
+    await check(env, STATE, as("Admin"), [row("productIssues", "I2", { status: "Open" })]);
   });
 });
 

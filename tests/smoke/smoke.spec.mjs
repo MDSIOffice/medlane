@@ -196,12 +196,21 @@ test("logging in only draws what's on screen, and skips the calls other sections
   expect(problems).toEqual([]);
 });
 
+test("supplier POs open inside Inventory", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page);
+  await page.goto("/dashboard?section=inventory&tab=purchasing");
+  await expect(page.locator("#inventory-purchasing")).toBeVisible();
+  await expect(page.locator("#inventory-purchasing")).toContainText("Reagent Supply Co");
+  expect(problems).toEqual([]);
+});
+
 // Each section is drawn on first open, so check it actually fills in with its own records.
 for (const [section, selector, text] of [
   ["masterlists", "#masterlists", "Naga City Lab"],
   ["inventory", "#inventory", "Glucose Reagent"],
   ["sales", "#sales", "PO-1"], // opens on Sales orders (client POs); SI-1 is on the Invoices tab
-  ["purchase-orders", "#purchase-orders", "Reagent Supply Co"], // supplier purchasing (client POs live in Sales → Sales orders)
+  ["purchase-orders", "#purchase-orders", "PO-1"], // client POs (sales & invoicing); supplier POs are Inventory → Supplier POs
   ["invoicing", "#invoicing", "SI-1"],
   ["collections", "#collections", "Naga City Lab"],
   ["payables", "#payables", "PAY-1"],

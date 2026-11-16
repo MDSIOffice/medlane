@@ -542,9 +542,12 @@ function updateTableScrollHints() {
 
 /** @param {string} section @param {string} [record] */
 function goToFocused(section, record = "") {
-  // Client POs (data.purchaseOrders) are worked from Sales → Sales orders; Purchase Orders is supplier POs.
+  // Purchase Orders is client POs; supplier POs (older "purchase-orders" links too) open Inventory → Supplier POs.
   const recordId = String(record).split("|")[0].toLowerCase();
-  if (section === "purchase-orders" && recordId && (data.purchaseOrders || []).some((po) => String(po.id).toLowerCase() === recordId)) section = "sales";
+  if (section === "purchase-orders" && recordId && !(data.purchaseOrders || []).some((po) => String(po.id).toLowerCase() === recordId) && purchasingFocusRecord(recordId)) {
+    showSection("inventory");
+    return;
+  }
   prepareFocusedSection(section, record);
   showSection(section);
   if (record) setTimeout(() => focusRecord(record), 80);
@@ -569,7 +572,7 @@ function prepareFocusedSection(section, record) {
   if (section === "replenishments") { expensesFocusRecord(query); return renderReplenishments(); }
   if (section === "collections") { collectionsFocusRecord(query); return renderCollections(); }
   if (section === "sales") { salesFocusRecord(query); return renderSales(); }
-  if (section === "purchase-orders") { purchasingFocusRecord(query); return renderPurchaseOrders(); }
+  if (section === "purchase-orders") { clientPoFocusRecord(query); return renderClientPurchaseOrders(); }
   if (section === "invoicing") { invoicingFocusRecord(query); return renderInvoicing(); }
   if (section === "imports") return renderImports();
   if (section === "reports") return renderReports();
