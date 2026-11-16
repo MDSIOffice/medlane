@@ -2319,6 +2319,8 @@ function recordKeyFor(key, value, index) {
   if (key === "warranties") return String(value.serial || value.id || `${value.client || "client"}|${value.equipment || "equipment"}|${value.warrantyEnd || index}`);
   if (key === "imports") return String(value.id || [value.date, value.module, value.file].filter(Boolean).join("|") || `${key}-${index}`);
   if (key === "reconHistory") return String(value.id || [value.date, value.range, value.period].filter(Boolean).join("|") || `${key}-${index}`);
+  // One weekly follow-up record per client (it used to fall back to its list position).
+  if (key === "collectionContacts" && value.client) return String(value.client);
   return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
 }
 
@@ -3306,8 +3308,34 @@ function trimPaginatedModuleRows(rows) {
     kept.push(...finalRows);
     pagination[moduleName] = { hasMore: finalRows.length < moduleRows.length, cursor: sortOf(recent[recent.length - 1]) || null };
   }
-  const untouched = rows.filter((/** @type {any} */ row) => !PAGINATED_MODULES.includes(row.module_name));
+  const untouched = trimPerRecordLogs(rows.filter((/** @type {any} */ row) => !PAGINATED_MODULES.includes(row.module_name)));
   return { rows: [...untouched, ...kept], pagination };
+}
+
+// Notifications and collection contact history are one row per entry and only ever grow (the
+// app_records delete guard keeps old rows). Load ships the newest ones only — the screens show
+// the latest 80 / 40 — plus every generated (GEN-*) notice, and never cleared notices.
+const PER_RECORD_LOG_LIMITS = /** @type {Record<string, number>} */ ({ notifications: 150, collectionContactHistory: 100 });
+/** @param {any[]} list newest first by createdAt; entries without one keep their order, after dated ones */
+function newestNoticesFirst(list) {
+  return list
+    .filter((/** @type {any} */ notice) => notice && !notice.cleared)
+    .map((/** @type {any} */ item, /** @type {number} */ index) => ({ item, index, at: String(item?.createdAt || "") }))
+    .sort((a, b) => (a.at === b.at ? a.index - b.index : !a.at ? 1 : !b.at ? -1 : b.at.localeCompare(a.at)))
+    .map((entry) => entry.item);
+}
+/** @param {any[]} rows */
+function trimPerRecordLogs(rows) {
+  /** @type {Set<any>} */
+  const keep = new Set();
+  for (const [moduleName, limit] of Object.entries(PER_RECORD_LOG_LIMITS)) {
+    const moduleRows = rows.filter((row) => row.module_name === moduleName && !row.data?.cleared);
+    const byData = new Map(moduleRows.map((row) => [row.data, row]));
+    const newest = newestNoticesFirst(moduleRows.map((row) => row.data)).filter((item) => !item?.generated).slice(0, limit);
+    for (const item of newest) keep.add(byData.get(item));
+    for (const row of moduleRows) if (row.data?.generated) keep.add(row);
+  }
+  return rows.filter((row) => !PER_RECORD_LOG_LIMITS[row.module_name] || keep.has(row));
 }
 
 /** @param {WorkerEnv} env @param {any} [modules] */
@@ -5093,8 +5121,7 @@ export default {
         if (!canAccessKey(profile, "notifications", "view") && rows.some((/** @type {AppRecordRow} */ row) => row.module_name === "notifications")) {
           visible = visible.filter((row) => row.module_name !== "notifications");
           const all = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.notifications&select=record_key,data`));
-          const position = (/** @type {string} */ key) => { const n = Number(String(key).replace(/^notifications-/, "")); return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER; };
-          const list = all.sort((a, b) => position(a.record_key) - position(b.record_key)).map((row) => row.data).filter((notice) => notificationVisibleTo(profile, notice));
+          const list = newestNoticesFirst(all.map((row) => row.data)).filter((notice) => notificationVisibleTo(profile, notice));
           extra.push({ module: "notifications", key: "__all__", data: { value: list } });
         }
         return json({ rows: [...visible.map((/** @type {any} */ { module_name, record_key, data }) => ({ module: module_name, key: record_key, data: withStockBase(module_name, record_key, data) })), ...extra], cursor });

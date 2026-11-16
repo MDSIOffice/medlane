@@ -245,11 +245,20 @@ function log(action, module, record, options = {}) {
 /** @param {string} type @param {string} message @param {string} [section] @param {string} [record] @param {string[] | null} [audience] @param {string | null} [targetUser] */
 function notify(type, message, section = "notifications", record = "", audience = null, targetUser = null) {
   /** @type {AppNotification} */
-  const entry = { date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), type, message, section, record, status: "Unread" };
+  // Each notice is its own record (id) so two people creating notices at once can't overwrite each other.
+  const entry = { id: newRecordId("NTF"), createdAt: new Date().toISOString(), date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), type, message, section, record, status: "Unread" };
   if (Array.isArray(audience)) entry.audience = audience;
   if (targetUser) entry.targetUser = targetUser;
   data.notifications.unshift(entry);
   data.notifications = data.notifications.slice(0, 80);
+  markRecordsDirty("notifications", [entry]);
+  scheduleDirtyRecordFlush();
+}
+/** Saves notices whose status (Seen/Read/cleared) changed here. @param {AppNotification[]} notices */
+function saveNoticeChanges(notices) {
+  if (!notices.length) return;
+  markRecordsDirty("notifications", notices);
+  scheduleDirtyRecordFlush();
 }
 /** @param {AppNotification} notice */
 function canSeeNotification(notice) {
@@ -276,12 +285,22 @@ function syncGeneratedNotifications() {
   const dismissed = new Set(data.notificationsDismissed || []);
   /** @type {AppNotification[]} */
   const notices = [];
+  /** @type {AppNotification[]} */
+  const changedGenerated = [];
   /** @param {string} key @param {string} type @param {string} message @param {string} [section] @param {string} [record] */
   const add = (key, type, message, section = "notifications", record = "") => {
     const existing = previous.get(key);
-    if (existing) { notices.push({ key, generated: true, date: existing.date, type, message, section, record, status: existing.status }); return; }
+    if (existing) {
+      const next = { id: existing.id || `GEN-${key}`, key, generated: true, createdAt: existing.createdAt || new Date().toISOString(), date: existing.date, type, message, section, record, status: existing.status };
+      notices.push(next);
+      // Saved only when something about it actually changed, never on every sync.
+      if (["id", "createdAt", "type", "message", "section", "record"].some((field) => /** @type {any} */ (existing)[field] !== /** @type {any} */ (next)[field])) changedGenerated.push(next);
+      return;
+    }
     if (dismissed.has(`${key}::${record}`)) return;
-    notices.push({ key, generated: true, date: generatedNoticeDate(), type, message, section, record, status: "Unread" });
+    const created = { id: `GEN-${key}`, key, generated: true, createdAt: new Date().toISOString(), date: generatedNoticeDate(), type, message, section, record, status: "Unread" };
+    notices.push(created);
+    changedGenerated.push(created);
   };
   const facts = workflowFacts();
   const openPurchaseOrders = data.purchaseOrders.filter((po) => poInvoiceable(po));
@@ -317,6 +336,7 @@ function syncGeneratedNotifications() {
   if (facts.overdue.length || facts.lowStock.length || facts.duePayables.length) add("reports-management-pack", "Report Pack", "Management reports have current AR, inventory, or payable risks to export.", "reports", facts.overdue.length ? "Collections & AR" : facts.lowStock.length ? "Reagent Expiry" : "Supplier Payables");
   const manual = data.notifications.filter((notice) => !notice.generated);
   data.notifications = [...notices, ...manual].slice(0, 100);
+  if (changedGenerated.length) markRecordsDirty("notifications", changedGenerated);
 }
 /** @param {string} message */
 function toast(message) {

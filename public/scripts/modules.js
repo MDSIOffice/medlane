@@ -7414,7 +7414,9 @@ function toggleContactChannel(client, channel) {
   channels.has(channel) ? channels.delete(channel) : channels.add(channel);
   contact.channels = [...channels];
   contact.weekKey = followupWeekKey();
-  saveData();
+  // Only this client's follow-up is saved, so collectors working different clients can't clash.
+  markRecordsDirty("collectionContacts", [contact]);
+  scheduleDirtyRecordFlush(0);
   renderCollectionContactMap();
   openContactRegion(contact.area, client, false);
 }
@@ -7437,10 +7439,13 @@ function updateCollectionContact(client, status) {
   contact.chequeInvoice = status === "Cheque Available" ? chequeInvoice.trim() : "";
   const channelText = contact.channels?.length ? ` via ${contact.channels.join(" + ")}` : "";
   contact.notes = status === "Answered" ? `Client answered this week's follow-up${channelText}.` : status === "Cheque Available" ? `Cheque is available for ${contact.chequeInvoice}${channelText}; coordinate pickup or deposit.` : status === "Unreached" ? `Could not reach client${channelText}; try another channel.` : `No reply${channelText}; schedule another follow-up.`;
-  data.collectionContactHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), client, area: contact.area, invoice: contact.chequeInvoice || "", channels: contact.channels?.join(" + ") || "Not set", status, employee: contact.employee, notes: contact.notes });
+  const historyEntry = { id: newRecordId("CCH"), createdAt: new Date().toISOString(), date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), client, area: contact.area, invoice: contact.chequeInvoice || "", channels: contact.channels?.join(" + ") || "Not set", status, employee: contact.employee, notes: contact.notes };
+  data.collectionContactHistory.unshift(historyEntry);
   data.collectionContactHistory = data.collectionContactHistory.slice(0, 40);
   log("Updated collection contact map", "Collections", `${client}: ${status}`);
-  saveData();
+  markRecordsDirty("collectionContacts", [contact]);
+  markRecordsDirty("collectionContactHistory", [historyEntry]);
+  scheduleDirtyRecordFlush(0);
   renderCollectionContactMap();
   renderDashboard();
   renderNotifications();
@@ -12919,8 +12924,11 @@ function handleWorkflowAction(action) {
   }
   if (action === "bulk-remind") {
     let count = 0;
+    /** @type {any[]} */
+    const reminded = [];
     data.collectionContacts.forEach((contact) => {
       if (["Pending", "Unreached", "No Response"].includes(contact.status)) {
+        reminded.push(contact);
         contact.channels = [...new Set([...(contact.channels || []), "Email"])] ;
         contact.status = contact.status === "Pending" ? "Unreached" : contact.status;
         contact.lastContact = fmtDate(today);
@@ -12930,9 +12938,12 @@ function handleWorkflowAction(action) {
       }
     });
     if (count) {
-      data.collectionContactHistory.unshift({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), area: "All", client: "Batch reminder", channels: "Email", status: "Unreached", employee: currentUser?.name || "System User", notes: `${count} pending clients reminded.` });
+      const historyEntry = { id: newRecordId("CCH"), createdAt: new Date().toISOString(), date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), area: "All", client: "Batch reminder", channels: "Email", status: "Unreached", employee: currentUser?.name || "System User", notes: `${count} pending clients reminded.` };
+      data.collectionContactHistory.unshift(historyEntry);
       log("Sent batch collection reminders", "Collections", `${count} clients`);
-      saveData();
+      markRecordsDirty("collectionContacts", reminded);
+      markRecordsDirty("collectionContactHistory", [historyEntry]);
+      scheduleDirtyRecordFlush(0);
       renderAll();
     }
     return toast(count ? `${count} reminder(s) marked.` : "No pending reminders.");

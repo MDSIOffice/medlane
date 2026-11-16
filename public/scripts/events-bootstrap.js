@@ -640,8 +640,8 @@ document.body.addEventListener("click", (event) => {
   if (!target) return;
   const notice = closestEl(event.target, "[data-notice-index]");
   if (notice) {
-    data.notifications[Number(/** @type {string} */ (notice.dataset.noticeIndex))].status = "Seen";
-    saveData();
+    const seen = data.notifications[Number(/** @type {string} */ (notice.dataset.noticeIndex))];
+    if (seen && seen.status !== "Seen") { seen.status = "Seen"; saveNoticeChanges([seen]); }
     renderNotifications();
   }
   goToFocused(/** @type {string} */ (target.dataset.goSection), target.dataset.focusRecord || "");
@@ -1764,16 +1764,20 @@ qs("#clear-notifications").addEventListener("click", () => {
   const dismissed = new Set(data.notificationsDismissed || []);
   data.notifications.filter((notice) => notice.generated && notice.status !== "Unread").forEach((notice) => dismissed.add(`${notice.key}::${notice.record || ""}`));
   data.notificationsDismissed = [...dismissed].slice(-300);
+  // Clearing is a soft delete per notice, so it reaches every tab and isn't undone by a reload.
+  const cleared = data.notifications.filter((notice) => notice.status !== "Unread" && !notice.generated);
+  cleared.forEach((notice) => { notice.cleared = true; });
+  saveNoticeChanges(cleared);
   data.notifications = data.notifications.filter((notice) => notice.status === "Unread");
-  saveData();
   renderNotifications();
   toast("Read notifications cleared.");
 });
 qs("#mark-all-read-notifications").addEventListener("click", () => {
   const unreadCount = data.notifications.filter((notice) => notice.status === "Unread").length;
   if (!unreadCount) return toast("No unread notifications.");
-  data.notifications.forEach((notice) => { notice.status = "Read"; });
-  saveData();
+  const marked = data.notifications.filter((notice) => notice.status !== "Read");
+  marked.forEach((notice) => { notice.status = "Read"; });
+  saveNoticeChanges(marked);
   renderNotifications();
   toast(`${unreadCount} notification${unreadCount === 1 ? "" : "s"} marked as read.`);
 });

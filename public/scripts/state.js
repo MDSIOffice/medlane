@@ -506,6 +506,14 @@ function withStableFallbackIds(records, prefix) {
   });
 }
 
+/** Stable newest-first sort on createdAt (records without one keep their order, after dated ones). @template T @param {T[]} list @returns {T[]} */
+function newestFirst(list) {
+  return list.map((item, index) => ({ item, index, at: String(/** @type {any} */ (item)?.createdAt || "") }))
+    .sort((a, b) => (a.at === b.at ? a.index - b.index : !a.at ? 1 : !b.at ? -1 : b.at.localeCompare(a.at)))
+    .map((entry) => entry.item);
+}
+/** A unique id for a new per-record entry. @param {string} prefix */
+function newRecordId(prefix) { return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`; }
 /** @param {RawData} next @returns {AppData} */
 function normalizeData(next) {
   next.printTemplates ||= [];
@@ -518,14 +526,18 @@ function normalizeData(next) {
   next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };
   next.invoiceApprovals ||= { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" };
   next.transferHistory ||= [];
-  next.notifications ||= [];
+  // Notices and contact history are stored one row per entry (any order); show newest first and
+  // hide cleared notices (clearing is a soft delete so it reaches every tab and survives reloads).
+  next.notifications = newestFirst((next.notifications || []).filter((/** @type {AppNotification} */ notice) => !notice?.cleared));
   next.notificationsDismissed ||= [];
   next.reconHistory ||= [];
   next.platformAreas ||= [];
   next.platformBranches ||= [];
   next.purchaseOrders ||= [];
   next.collectionContacts ||= [];
-  next.collectionContactHistory ||= [];
+  next.collectionContactHistory = newestFirst(next.collectionContactHistory || []);
+  // Duplicate follow-up rows left over from the old position-keyed storage (see migration).
+  next.collectionContacts = (next.collectionContacts || []).filter((/** @type {any} */ contact) => !contact?.superseded);
   next.banks ||= [];
   next.paymentRequests ||= [];
   next.inventoryPurchaseOrders ||= [];
@@ -584,7 +596,8 @@ function normalizeData(next) {
   next.inventoryDemoRequests = withStableFallbackIds(next.inventoryDemoRequests, "DEMO").map((request) => ({ id: request.id, date: request.date || fmtDate(today), requestedBy: request.requestedBy || "System User", client: request.client || "", salesAgent: request.salesAgent || request.requestedBy || "", demoDate: request.demoDate || "", returnDate: request.returnDate || "", purpose: request.purpose || "", location: request.location || "", contactPerson: request.contactPerson || "", contactNumber: request.contactNumber || "", status: request.status || "For Sales Approval", salesApprovedBy: request.salesApprovedBy || "", managementApprovedBy: request.managementApprovedBy || "", closedBy: request.closedBy || "", history: request.history || [], lines: (request.lines || []).map((/** @type {any} */ line) => ({ type: line.type || "Machine", code: line.code || "", item: line.item || "", brand: line.brand || "", qty: Number(line.qty || 0), lot: line.lot || "", notes: line.notes || "" })), ...request }));
   const clientsWithBalance = new Set(next.sales.filter((sale) => Number(sale.net || 0) - Number(sale.paid || 0) > 0).map((sale) => sale.client));
   next.collectionContacts = next.clients.filter((client) => clientsWithBalance.has(client.name)).map((client) => {
-    const existing = next.collectionContacts.find((contact) => contact.client === client.name || contact.area === client.area) || /** @type {Record<string, any>} */ ({});
+    // Exact client first; an area match only for very old rows that were saved without a client.
+    const existing = next.collectionContacts.find((contact) => contact.client === client.name) || next.collectionContacts.find((contact) => !contact.client && contact.area === client.area) || /** @type {Record<string, any>} */ ({});
     const status = existing.status === "Called" ? "Unreached" : existing.status || "Pending";
     const currentWeek = followupWeekKey();
     const savedWeek = existing.weekKey || followupWeekKey(existing.lastContact);
@@ -592,7 +605,7 @@ function normalizeData(next) {
     const shouldReset = hasWeeklyWork && savedWeek !== currentWeek;
     return shouldReset
       ? { client: client.name, area: client.area, status: "Pending", lastContact: "", employee: "", channels: [], notes: "Fresh weekly follow-up. Not yet contacted this week.", weekKey: currentWeek }
-      : { client: client.name, area: client.area, status, lastContact: existing.lastContact || "", employee: existing.employee || "", channels: existing.channels || [], notes: existing.notes || "Not yet contacted this week.", weekKey: savedWeek || currentWeek };
+      : { client: client.name, area: client.area, status, lastContact: existing.lastContact || "", employee: existing.employee || "", channels: existing.channels || [], notes: existing.notes || "Not yet contacted this week.", chequeInvoice: existing.chequeInvoice || "", weekKey: savedWeek || currentWeek };
   });
   return /** @type {AppData} */ (/** @type {unknown} */ (next));
 }
@@ -610,6 +623,8 @@ function saveRecordKeyFor(key, value, index) {
   if (key === "warranties") return String(value.serial || value.id || `${value.client || "client"}|${value.equipment || "equipment"}|${value.warrantyEnd || index}`);
   if (key === "imports") return String(value.id || [value.date, value.module, value.file].filter(Boolean).join("|") || `${key}-${index}`);
   if (key === "reconHistory") return String(value.id || [value.date, value.range, value.period].filter(Boolean).join("|") || `${key}-${index}`);
+  // One weekly follow-up record per client (it used to fall back to its list position).
+  if (key === "collectionContacts" && value.client) return String(value.client);
   return String(value.id || value.documentNo || value.receiptNo || value.cvNo || value.code || value.name || value.email || `${key}-${index}`);
 }
 
@@ -634,7 +649,7 @@ function mergeLiveChanges(rows) {
     // A module with unsent local changes can't take server rows yet, but the live cursor has
     // already moved past them — hold them instead of dropping them, or another person's record
     // saved in that window (e.g. a calendar event) would never show up here until a reload.
-    if (pending[module] !== undefined) { deferredLiveRows.push(row); deferredLiveRowsLoadedAt = MedlaneAPI?.dataLoadedAt?.() || null; continue; }
+    if (liveRowBlocked(row, pending)) { deferredLiveRows.push(row); deferredLiveRowsLoadedAt = MedlaneAPI?.dataLoadedAt?.() || null; continue; }
     // The server sends a role that only sees some notifications its whole visible list at once.
     if (module === "notifications" && key === "__all__") {
       const value = (Array.isArray(record.value) ? record.value : []).filter((/** @type {AppNotification} */ notice) => !notice?.generated);
@@ -672,10 +687,14 @@ let deferredLiveRows = [];
 /** @type {string | null} */
 let deferredLiveRowsLoadedAt = null;
 // Once a module's queued changes are saved, apply the rows held for it.
+/** A live row waits while its module is queued, or (per-record modules) while that record has an unsent edit. @param {any} row @param {Record<string, any>} pending */
+function liveRowBlocked(row, pending) {
+  return pending[row.module] !== undefined || isRecordDirty(row.module, String(row.key));
+}
 function releaseDeferredLiveRows() {
   if (!deferredLiveRows.length) return;
   const pending = readPendingSaveQueue();
-  if (deferredLiveRows.every((row) => pending[row.module] !== undefined)) return;
+  if (deferredLiveRows.every((row) => liveRowBlocked(row, pending))) return;
   // @ts-ignore runLiveSync lives in events-bootstrap.js (loaded later); absent in tests.
   if (typeof runLiveSync === "function") setTimeout(() => runLiveSync(), 0);
 }
@@ -825,6 +844,9 @@ function prunePendingSaveQueue(resetAt) {
   const resetMs = resetAt ? Date.parse(resetAt) : NaN;
   const now = Date.now();
   const dropped = Object.keys(pending).filter((module) => {
+    // Per-record modules are never queued as whole lists any more; an old snapshot would rewrite
+    // everyone's records from this browser's copy.
+    if (PER_RECORD_ONLY_KEYS.includes(module)) return true;
     const meta = pendingSaveQueueMeta[module];
     if (!meta || !Number.isFinite(meta.queuedAt)) return true;
     if (now - meta.queuedAt > PENDING_SAVE_MAX_AGE_MS) return true;
@@ -986,14 +1008,74 @@ function canEditSaveKey(key) {
   return owners.length ? owners.some((module) => editable.includes(module)) : true;
 }
 
-const PER_RECORD_ONLY_KEYS = ["calendarEvents"];
+// ---- Per-record modules ------------------------------------------------------------------------
+// These modules are shared lists many people add to at once. They are never saved as a whole list
+// (a whole-list save resends everyone's records from this tab's possibly stale copy and can undo a
+// change someone else made moments earlier). Only records changed here are sent, one module per
+// request, through the per-record endpoint; until the server confirms them they count as "dirty",
+// and live updates for those exact records wait (see liveRowBlocked).
+const PER_RECORD_ONLY_KEYS = ["calendarEvents", "notifications", "collectionContacts", "collectionContactHistory"];
+/** @type {Record<string, Map<string, any>>} module -> record key -> record */
+const dirtyRecords = {};
+/** @param {string} key @param {any[]} records */
+function markRecordsDirty(key, records) {
+  const map = (dirtyRecords[key] ||= new Map());
+  (records || []).forEach((record, index) => {
+    const recordKey = saveRecordKeyFor(key, record, index);
+    if (recordKey) map.set(recordKey, record);
+  });
+}
+/** @param {string} key @param {string} recordKey */
+function isRecordDirty(key, recordKey) { return Boolean(dirtyRecords[key]?.has(recordKey)); }
+/** Drops dirty entries the server now has exactly as sent. @param {string} key @param {Map<string, string>} sentJson */
+function settleDirtyRecords(key, sentJson) {
+  const map = dirtyRecords[key];
+  if (!map) return;
+  for (const [recordKey, json] of sentJson) if (map.has(recordKey) && JSON.stringify(map.get(recordKey)) === json) map.delete(recordKey);
+}
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let dirtyFlushTimer;
+let dirtyFlushInFlight = false;
+const DIRTY_RETRY_MS = 15000;
+/** @param {number} [delay] */
+function scheduleDirtyRecordFlush(delay = 450) {
+  clearTimeout(dirtyFlushTimer);
+  dirtyFlushTimer = setTimeout(() => { flushDirtyRecords(); }, delay);
+}
+async function flushDirtyRecords() {
+  if (dirtyFlushInFlight || !currentUser || !MedlaneAPI?.session()?.access_token || !navigator.onLine) return;
+  const keys = Object.keys(dirtyRecords).filter((key) => dirtyRecords[key].size);
+  if (!keys.length) return;
+  dirtyFlushInFlight = true;
+  let retry = false;
+  try {
+    for (const key of keys) {
+      // A role that can't write this module keeps its changes locally, as before. Notifications are
+      // writable only with Security edit (Superadmin/CEO/Admin) — mirrors canAccessKey in worker.js.
+      const writable = key === "notifications" ? ["Superadmin", "CEO"].includes(currentUser?.role) || canEditModule("security") : canEditSaveKey(key);
+      if (!writable) { dirtyRecords[key].clear(); continue; }
+      const records = [...dirtyRecords[key].values()];
+      /** @type {Map<string, string>} */
+      const sentJson = new Map(records.map((record, index) => [String(saveRecordKeyFor(key, record, index)), JSON.stringify(record)]));
+      try {
+        await MedlaneAPI.saveRecords({ [key]: JSON.parse(JSON.stringify(records)) });
+        settleDirtyRecords(key, sentJson);
+      } catch (/** @type {any} */ error) {
+        const permanent = /STALE_SNAPSHOT/.test(error.message || "") || ([400, 403, 404, 422].includes(Number(error.status)) && !/APP_STATE_CONFLICT/.test(error.message || ""));
+        if (permanent) { settleDirtyRecords(key, sentJson); console.warn(`Discarded unsent ${key} change: ${error.message}`); }
+        else retry = true;
+      }
+    }
+  } finally {
+    dirtyFlushInFlight = false;
+  }
+  if (retry) scheduleDirtyRecordFlush(DIRTY_RETRY_MS);
+  releaseDeferredLiveRows();
+}
+
 function inferredSaveKeys() {
   const activeSection = document.body.dataset.activeSection || qs(".section.active")?.id || "dashboard";
-  // Calendar events are only ever saved one at a time (persistRecords); a background whole-list
-  // save would resend everyone's events from this tab's possibly stale copy.
-  const keys = (frontendModuleRecordKeys[activeSection] || []).filter((key) => !PER_RECORD_ONLY_KEYS.includes(key));
-  if (data?.notifications) keys.push("notifications");
-  return keys;
+  return (frontendModuleRecordKeys[activeSection] || []).filter((key) => !PER_RECORD_ONLY_KEYS.includes(key));
 }
 
 /** @param {string[] | null} [keys] */
@@ -1008,7 +1090,9 @@ function saveData(keys = null) {
   // directly waiting on — this only updates the small status indicator.
   if (!currentUser || !MedlaneAPI?.session()?.access_token) return;
   if (typeof syncGeneratedNotifications === "function") syncGeneratedNotifications();
-  const payload = savePayloadForKeys((keys || inferredSaveKeys()).filter(canEditSaveKey));
+  // Per-record modules (notifications, calendar, collection contacts) send only what changed.
+  scheduleDirtyRecordFlush();
+  const payload = savePayloadForKeys((keys || inferredSaveKeys()).filter((key) => !PER_RECORD_ONLY_KEYS.includes(key)).filter(canEditSaveKey));
   if (!Object.keys(payload).length) return;
   mergePendingSaveQueue(payload);
   clearTimeout(pendingServerSave);
@@ -1071,6 +1155,7 @@ function flushPendingSaveQueue() {
   // for saves the user is actively waiting on) or it can look like the page is
   // stuck loading every time it's opened, especially if this request is slow or
   // hangs.
+  flushDirtyRecords();
   if (!hasPendingSaveQueue() || !currentUser || !MedlaneAPI?.session()?.access_token || !navigator.onLine) return;
   clearTimeout(pendingServerSave);
   setGlobalSaveStatus("saving", "Saving pending changes...");
@@ -1198,10 +1283,13 @@ async function persistRecordsNow(records, recordKeys = {}) {
   beginSaveOperation();
   try {
     const sentInventory = filtered.inventory ? JSON.parse(JSON.stringify(filtered.inventory)) : undefined;
+    /** @type {Record<string, Map<string, string>>} */
+    const sentPerRecord = Object.fromEntries(Object.keys(filtered).filter((key) => PER_RECORD_ONLY_KEYS.includes(key)).map((key) => [key, new Map(filtered[key].map((/** @type {any} */ record, /** @type {number} */ index) => [String(saveRecordKeyFor(key, record, index)), JSON.stringify(record)]))]));
     const result = await MedlaneAPI.saveRecords(filtered, recordKeys);
     applySavedStock(result, sentInventory);
     if (result?.revision) serverRevision = Number(result.revision);
     clearPendingSaveQueueKeys(Object.keys(filtered));
+    Object.entries(sentPerRecord).forEach(([key, sent]) => settleDirtyRecords(key, sent));
     setGlobalSaveStatus("saved", "Saved");
     return result;
   } catch (/** @type {any} */ error) {
@@ -1239,7 +1327,12 @@ async function persistRecordsNow(records, recordKeys = {}) {
       if (typeof toast === "function") toast(`Not saved: ${error.message}`);
       return { ok: false, queued: false, error: error.message };
     }
-    mergePendingSaveQueue(savePayloadForKeys(Object.keys(filtered)));
+    // Per-record modules retry just the records sent; everything else queues as before.
+    const perRecordKeys = Object.keys(filtered).filter((key) => PER_RECORD_ONLY_KEYS.includes(key));
+    perRecordKeys.forEach((key) => markRecordsDirty(key, filtered[key]));
+    if (perRecordKeys.length) scheduleDirtyRecordFlush(DIRTY_RETRY_MS);
+    const wholeListKeys = Object.keys(filtered).filter((key) => !PER_RECORD_ONLY_KEYS.includes(key));
+    if (wholeListKeys.length) mergePendingSaveQueue(savePayloadForKeys(wholeListKeys));
     setGlobalSaveStatus("error", "Save failed", error.message);
     if (typeof toast === "function") toast(`Server save failed; queued for retry: ${error.message}`);
     return { ok: false, queued: true, error: error.message };

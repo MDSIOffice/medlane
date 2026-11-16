@@ -15,7 +15,7 @@ const EXPOSED = [
   "createBackup", "restoreBackupObject", "persistedKeys", "assertMigratedStockAllowed",
   "takeStockBases", "rebaseStockRows", "withStockBase", "savedStockQty", "withStockLock", "loginThrottle",
   "applyPreviewRole", "previewableRolesFor", "sharedStateSnapshot", "supabaseFetch",
-  "auditChangeEntries", "notificationVisibleTo", "filterRecordsForProfile", "auditSensitivity", "isSignInEntry", "manilaHour", "assertCalendarEventChangesAllowed",
+  "auditChangeEntries", "notificationVisibleTo", "filterRecordsForProfile", "auditSensitivity", "isSignInEntry", "manilaHour", "assertCalendarEventChangesAllowed", "trimPerRecordLogs", "newestNoticesFirst", "recordKeyFor",
 ];
 
 registerHooks({
