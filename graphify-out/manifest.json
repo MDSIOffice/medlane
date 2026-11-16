@@ -108,9 +108,9 @@
     "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
   },
   "src/worker.js": {
-    "mtime": 1794832974.0754135,
-    "seen": 1794833062.3375459,
-    "ast_hash": "5e6afdc8d6bd43b38a04661d9107e39b",
+    "mtime": 1794833377.2322638,
+    "seen": 1794833520.1686468,
+    "ast_hash": "86f0f54db5638f80e5385c8237e0ea3f",
     "semantic_hash": ""
   },
   "Notification Sound.mp3": {
@@ -768,9 +768,9 @@
     "semantic_hash": ""
   },
   "docs/supabase-production-schema.sql": {
-    "mtime": 1793525653.541472,
-    "seen": 1793526037.6631548,
-    "ast_hash": "115682a3cda0e81d568e6990ea4adf7f",
+    "mtime": 1794833398.358521,
+    "seen": 1794833520.1686242,
+    "ast_hash": "fc7ed77a5f9d4afc3a5298771e5e3a0c",
     "semantic_hash": ""
   },
   "skills-lock.json": {
@@ -882,9 +882,9 @@
     "semantic_hash": ""
   },
   "tests/backup-restore.test.mjs": {
-    "mtime": 1794195649.8549707,
-    "seen": 1794502067.1941051,
-    "ast_hash": "b875383afa836cdd2c1dcde993c4e2c7",
+    "mtime": 1794833461.6622753,
+    "seen": 1794833520.16865,
+    "ast_hash": "bc8bc367fefea5ad4799a6e888d04ff7",
     "semantic_hash": ""
   },
   "tests/financial-approvals.test.mjs": {
@@ -894,9 +894,9 @@
     "semantic_hash": ""
   },
   "tests/helpers/load-worker.mjs": {
-    "mtime": 1794832974.0758557,
-    "seen": 1794833062.337551,
-    "ast_hash": "b402b5c1c3e31b2574ae707f37ed73ec",
+    "mtime": 1794833441.7158608,
+    "seen": 1794833520.168652,
+    "ast_hash": "73e97f1ca68f3ccbf411cbff5825dcd6",
     "semantic_hash": ""
   },
   "tests/inventory-migration.test.mjs": {
@@ -1254,9 +1254,9 @@
     "semantic_hash": ""
   },
   "tests/recon-endpoints.test.mjs": {
-    "mtime": 1794832974.0760093,
-    "seen": 1794833062.3375611,
-    "ast_hash": "1b98376203a2a4014a1e537605ec4bb3",
+    "mtime": 1794833453.4694343,
+    "seen": 1794833520.1686568,
+    "ast_hash": "bcb62037bf8bbaacbf37e963035a4a0e",
     "semantic_hash": ""
   },
   "tests/recon.test.mjs": {
@@ -1383,6 +1383,12 @@
     "mtime": 1794832973.9813678,
     "seen": 1794833062.337645,
     "ast_hash": "1cd15a634eb586ab0284789e6c852ee6",
+    "semantic_hash": ""
+  },
+  "docs/migrations/2026-11-16-prune-stock-movements.sql": {
+    "mtime": 1794833398.358066,
+    "seen": 1794833520.168622,
+    "ast_hash": "0a904dc450695947817a9986183fe9ca",
     "semantic_hash": ""
   }
 }
