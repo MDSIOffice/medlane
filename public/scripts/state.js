@@ -325,13 +325,17 @@ function platformBranches() { return data?.platformBranches?.length ? data.platf
 function branchAddresses() { return data?.branchAddresses || /** @type {Record<string, any>} */ ({}); }
 function invoiceApprovals() { return data?.invoiceApprovals || { SI: "ECTOSOC", TS: "ECTOSOC", DR: "ECTOSOC" }; }
 function isDevEnvironment() { return ["localhost", "127.0.0.1", ""].includes(location.hostname) || location.protocol === "file:"; }
+/** Roles that always have the Support Tracker, whatever their saved permissions (worker.js SUPPORT_TRACKER_ROLES). */
+const supportTrackerRoles = ["Engineering", "Product Specialist"];
 function effectiveModules() {
   // Superadmin/CEO are hard-allowed on every module server-side (canAccessKey in worker.js), so a
   // stale or partial custom-permission set must never hide nav from them — e.g. a Superadmin whose
   // stored per-module permission rows predate a newer module like "print-templates" would otherwise
   // lose the Print Templates nav item while other Superadmins (no custom rows) keep it.
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return accounts[currentUser.role]?.modules || currentUser?.modules || [];
-  const modules = currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || [];
+  const saved = currentUser?.customPermissions?.view?.length ? currentUser.customPermissions.view : currentUser?.modules || [];
+  // Engineering and Product Specialist always have the Support Tracker (mirrors grantSupportTracker in worker.js).
+  const modules = supportTrackerRoles.includes(currentUser?.role) && !saved.includes("product-issues") ? [...saved, "product-issues"] : saved;
   // Recon is Superadmin/CEO only (its /api/recon endpoints refuse everyone else), whatever an
   // older per-user permission row says.
   const blocked = [...(roleBlockedModules[currentUser?.role] || []), "reconciliation"];
@@ -363,7 +367,8 @@ function editableModules() {
   // Same reasoning as effectiveModules(): Superadmin/CEO always get their full editable set so a
   // partial stored permission set can't strip edit access the server would still grant them.
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return roleEditableModules[currentUser.role] || [];
-  const list = currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || [];
+  const saved = currentUser?.customPermissions?.enabled ? currentUser.customPermissions.edit || [] : roleEditableModules[currentUser?.role] || [];
+  const list = supportTrackerRoles.includes(currentUser?.role) && !saved.includes("product-issues") ? [...saved, "product-issues"] : saved;
   return supportReportEditorRoles.includes(currentUser?.role) ? list : list.filter((/** @type {string} */ id) => id !== "product-issues");
 }
 /** @param {string} sectionId */

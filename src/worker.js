@@ -1851,6 +1851,16 @@ async function profileForUser(env, userId, email) {
 
 // The view/edit module lists for a role: the user's own module_permissions rows when they have
 // any, else the role defaults, plus the modules every role always gets and minus role blocks.
+// Engineering and Product Specialist always get the Support Tracker (view + edit), whatever their
+// saved module_permissions rows say, so older per-user rows that predate it can't hide it. What they
+// can change is still limited by SUPPORT_STATUS_ONLY_ROLES / assertSupportReportChangesAllowed().
+const SUPPORT_TRACKER_ROLES = ["Engineering", "Product Specialist"];
+/** @param {string} role @param {string[]} view @param {string[]} edit */
+function grantSupportTracker(role, view, edit) {
+  if (!SUPPORT_TRACKER_ROLES.includes(role)) return;
+  for (const list of [view, edit]) if (!list.includes("product-issues")) list.push("product-issues");
+}
+
 /** @param {AppRole} role @param {ModulePermissionRow[]} permissions */
 function moduleListsFor(role, permissions) {
   const fallback = roleModules[role] || roleModules.Sales;
@@ -1867,6 +1877,7 @@ function moduleListsFor(role, permissions) {
   // an admin-screen concern. Deliberately view-only and not overridable per-user: editing the
   // catalog still requires the real "masterlists" permission.
   if (!view.includes("catalog-reference")) view.push("catalog-reference");
+  grantSupportTracker(role, view, edit);
   const blocked = ROLE_BLOCKED_MODULES[role] || [];
   if (blocked.length) {
     for (const list of [view, edit]) for (let i = list.length - 1; i >= 0; i -= 1) if (blocked.includes(list[i])) list.splice(i, 1);
@@ -2805,6 +2816,7 @@ function userFromProfileAndAuth(profile, authUser, permissions = []) {
   const fallback = roleModules[/** @type {AppRole} */ (role)] || roleModules.Sales;
   const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
   const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : withoutViewOnlyDefaults(role, roleEditableFallback(role, view));
+  grantSupportTracker(role, view, edit);
   const email = cleanEmail(profile?.email || authUser?.email || "");
   return {
     id: profile?.id || authUser?.id || email,
