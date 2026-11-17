@@ -5,6 +5,7 @@ import { test, expect } from "@playwright/test";
 const OUT = new URL("../../screens/implementation/", import.meta.url).pathname;
 const PAGES = [
   { section: "user-settings", tabs: ["profile", "security", "notifications", "preferences"], name: "account" },
+  { section: "notifications", tabs: ["all", "unread", "approvals", "stock", "money", "service", "security"], name: "notifications" },
 ];
 
 test.skip(!process.env.SCREENS, "Set SCREENS=1 to capture screenshots");

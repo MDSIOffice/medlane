@@ -704,3 +704,46 @@ test("Collections: saved without approval; only Admin bounces or cancels; Accoun
   expect(depositedActions).toContain("data-payment-request-cancel");
   await admin.close();
 });
+
+test("Notifications: tabs with counts, day groups, mark read, mark all read for the tab, and the bell follows", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=notifications");
+  const panel = page.locator("#ntf-panel");
+  await expect(panel.locator(".ntf-row").first()).toBeVisible();
+  await expect(panel.locator(".ntf-group-title").first()).toHaveText("Today");
+  const tabs = page.locator("#ntf-tabs");
+  await expect(tabs.getByRole("tab", { name: /^All/ })).toBeVisible();
+  for (const name of ["Unread", "Approvals", "Stock", "Money", "Service", "Security"]) await expect(tabs.getByRole("tab", { name: new RegExp(`^${name}`) })).toBeVisible();
+  const bell = page.locator("#notification-count");
+  const unreadBefore = Number(await bell.textContent().then((t) => (t === "9+" ? 99 : t)));
+  // Mark one read: its dot goes, and the Unread tab count drops by one.
+  const unreadTab = tabs.getByRole("tab", { name: /^Unread/ });
+  const countOf = async () => Number(await unreadTab.locator(".ui-count").textContent());
+  const before = await countOf();
+  const firstUnread = panel.locator(".ntf-row.unread").first();
+  const id = await firstUnread.getAttribute("data-ntf-id");
+  await firstUnread.getByRole("button", { name: /^Mark read/ }).click();
+  await expect(panel.locator(`.ntf-row[data-ntf-id="${id}"]`)).not.toHaveClass(/unread/);
+  await expect.poll(countOf).toBe(before - 1);
+  // Security tab, then "Mark all security read" clears just that tab.
+  await tabs.getByRole("tab", { name: /^Security/ }).click();
+  await expect(page).toHaveURL(/tab=security/);
+  await page.getByRole("button", { name: "Mark all security read" }).click();
+  await expect(panel.locator(".ntf-row.unread")).toHaveCount(0);
+  await tabs.getByRole("tab", { name: /^All/ }).click();
+  await expect(panel.locator(".ntf-row.unread").first()).toBeVisible();
+  if (unreadBefore < 99) await expect.poll(async () => Number(await bell.textContent())).toBeLessThan(unreadBefore);
+  // Rows per page changes the server page size.
+  await page.locator('[data-ntf-size="25"]').click();
+  await expect(page.locator('[data-ntf-size="25"]')).toHaveAttribute("aria-pressed", "true");
+  expect(problems).toEqual([]);
+});
+
+test("the bell opens Notifications", async ({ page }) => {
+  await watch(page);
+  await logIn(page, "accounting@medlane.test");
+  await page.click("#notification-toggle");
+  await expect(page.locator("#notifications.active")).toBeVisible();
+  await expect(page.locator("#ntf-panel .ntf-row").first()).toBeVisible();
+});

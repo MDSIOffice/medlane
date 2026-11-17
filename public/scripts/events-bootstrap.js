@@ -639,16 +639,11 @@ document.body.addEventListener("click", (event) => {
   }
   const target = closestEl(event.target, "[data-go-section]");
   if (!target) return;
-  const notice = closestEl(event.target, "[data-notice-index]");
-  if (notice) {
-    const seen = data.notifications[Number(/** @type {string} */ (notice.dataset.noticeIndex))];
-    if (seen && seen.status !== "Seen") { seen.status = "Seen"; saveNoticeChanges([seen]); }
-    renderNotifications();
-  }
   goToFocused(/** @type {string} */ (target.dataset.goSection), target.dataset.focusRecord || "");
 });
 // Top bar: the bell opens Notifications and the name/avatar opens Account settings (plain links,
 // so middle-click / new tab still work; a normal click stays in the app).
+qs("#notifications").addEventListener("click", handleNotificationsClick);
 qs("#notification-toggle").addEventListener("click", (event) => {
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.button) return;
   event.preventDefault();
@@ -1566,27 +1561,6 @@ qs("#load-more-user-logs").addEventListener("click", loadMoreUserAuditLog);
 qs("#clear-notification-log-filters").addEventListener("click", () => { qs("#notification-logs-date-from").value = ""; qs("#notification-logs-date-to").value = ""; qs("#notification-logs-channel-filter").value = "all"; renderNotificationLogs(); toast("Filters cleared."); });
 qs("#load-more-notification-logs").addEventListener("click", loadMoreNotificationLogs);
 qs("#notification-logs-channel-filter").addEventListener("change", renderNotificationLogs);
-qs("#clear-notifications").addEventListener("click", () => {
-  const dismissed = new Set(data.notificationsDismissed || []);
-  data.notifications.filter((notice) => notice.generated && notice.status !== "Unread").forEach((notice) => dismissed.add(`${notice.key}::${notice.record || ""}`));
-  data.notificationsDismissed = [...dismissed].slice(-300);
-  // Clearing is a soft delete per notice, so it reaches every tab and isn't undone by a reload.
-  const cleared = data.notifications.filter((notice) => notice.status !== "Unread" && !notice.generated);
-  cleared.forEach((notice) => { notice.cleared = true; });
-  saveNoticeChanges(cleared);
-  data.notifications = data.notifications.filter((notice) => notice.status === "Unread");
-  renderNotifications();
-  toast("Read notifications cleared.");
-});
-qs("#mark-all-read-notifications").addEventListener("click", () => {
-  const unreadCount = data.notifications.filter((notice) => notice.status === "Unread").length;
-  if (!unreadCount) return toast("No unread notifications.");
-  const marked = data.notifications.filter((notice) => notice.status !== "Read");
-  marked.forEach((notice) => { notice.status = "Read"; });
-  saveNoticeChanges(marked);
-  renderNotifications();
-  toast(`${unreadCount} notification${unreadCount === 1 ? "" : "s"} marked as read.`);
-});
 qs("#user-devices-close")?.addEventListener("click", () => qs("#user-devices-modal")?.close());
 qs("#user-devices-modal")?.addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "user-devices-modal") qs("#user-devices-modal")?.close(); });
 qs("#refresh-user-sessions")?.addEventListener("click", () => { renderUserSessions(); toast("Device sessions refreshed."); });
@@ -2127,9 +2101,11 @@ qs("#password-kyc-change").addEventListener("click", () => {
   qs("#password-modal").showModal();
 });
 
-function playDashboardLoginSound() {
-  if (!currentUser || sessionStorage.getItem("medlane-dashboard-sound-played") === "1") return;
-  if (!visibleNotifications().some((notice) => notice.status === "Unread")) return;
+/** After sign-in: fetch the bell count, and chime once per tab session if there's anything unread. */
+async function playDashboardLoginSound() {
+  if (!currentUser) return;
+  await refreshBellCount({ force: true });
+  if (sessionStorage.getItem("medlane-dashboard-sound-played") === "1" || !ntfState.unread) return;
   sessionStorage.setItem("medlane-dashboard-sound-played", "1");
   if (!soundEffectsOn()) return;
   const audio = new Audio("/Notification Sound.mp3");
@@ -2327,7 +2303,10 @@ async function runLiveSync() {
   try {
     const payload = await MedlaneAPI.loadChanges().catch(() => null);
     // Called even with no new rows: rows held back while a save was queued may now apply.
-    if (mergeLiveChanges(payload?.rows || []).size) liveSyncRenderPending = true;
+    const changedModules = mergeLiveChanges(payload?.rows || []);
+    if (changedModules.size) liveSyncRenderPending = true;
+    // The bell: at once when someone created a notice, else at most once a minute.
+    refreshBellCount({ force: (payload?.rows || []).some((/** @type {any} */ row) => row?.module_name === "notifications") });
     flushLiveSyncRender();
   } finally {
     liveSyncInFlight = false;

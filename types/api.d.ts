@@ -108,3 +108,7 @@ interface GameSessionResponse { token: string }
 interface GameSkinResponse extends OkResponse { skin: string }
 interface GameLeaderboardEntry { name: string; score: number; date: string; totalXp: number; level: number; badge: string; skin: string; [detail: string]: unknown }
 interface GameLeaderboardResponse { entries: GameLeaderboardEntry[] }
+
+/** GET /api/notifications */
+interface NotificationItem { id: string; category: "approvals" | "stock" | "money" | "service" | "recon" | "security" | "general"; title: string; message: string; section: string; record: string; urgent: boolean; createdAt: string; read: boolean; group: "Today" | "Yesterday" | "Earlier this week" | "Older" }
+interface NotificationPageResponse { tab: string; page: number; size: number; pages: number; total: number; unread: number; counts: Record<string, { total: number; unread: number }>; items: NotificationItem[] }

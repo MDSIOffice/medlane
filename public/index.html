@@ -1173,9 +1173,17 @@
         <div id="users-tab-panel"></div>
       </section>
 
-      <section class="section" id="notifications">
-        <div class="section-header"><div><p class="eyebrow">Notifications</p><h2>Operational alerts and approvals</h2></div><div class="inline-actions"><button class="ghost-button" id="mark-all-read-notifications">Mark All as Read</button><button class="ghost-button" id="clear-notifications">Clear Read</button></div></div>
-        <div class="alert-list" id="notification-list"></div>
+      <section class="section ui-scope" id="notifications">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Notifications</h1></div>
+            <p class="ui-desc">Approvals, stock, money, service and security alerts meant for you. Read state is yours alone; notifications are kept for 90 days.</p>
+          </div>
+          <div class="ui-actions" id="ntf-actions"></div>
+        </div>
+        <div class="ui-wa-host" data-wa-host="notifications"></div>
+        <div class="ui-tabs" id="ntf-tabs" role="tablist" aria-label="Notification filters"></div>
+        <div id="ntf-panel"></div>
       </section>
 
       <section class="section" id="memos">
@@ -1508,7 +1516,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "notifications-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

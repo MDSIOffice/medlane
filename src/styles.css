@@ -3760,7 +3760,9 @@ body[data-active-section="logs"] .topbar-title,
 body[data-active-section="reconciliation"] .topbar-title,
 body[data-active-section="dashboard"] .topbar-title,
 body[data-active-section="item-forecast"] .topbar-title,
-body[data-active-section="masterlists"] .topbar-title { display: none; }
+body[data-active-section="masterlists"] .topbar-title,
+body[data-active-section="user-settings"] .topbar-title,
+body[data-active-section="notifications"] .topbar-title { display: none; }
 .ui-scope .logs-notifications { display: grid; gap: 16px; }
 .ui-scope .ui-client-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }
 .ui-scope .ui-client-picker .ui-select { min-width: 0; max-width: 100%; }
@@ -4367,4 +4369,30 @@ body.welcome-open { overflow: hidden; }
   .ui-scope .acct-managed { margin: 0 16px; }
   .ui-scope .acct-profile-head, .ui-scope .acct-actions { padding-inline: 16px; }
   .ui-scope .acct-session { padding-inline: 16px; flex-wrap: wrap; }
+}
+
+/* ----- Notifications (18 Nov 2026) ------------------------------------------------------------- */
+.ui-scope .ntf-card { padding: 4px 0 0; overflow: hidden; }
+.ui-scope .ntf-group + .ntf-group { border-top: 1px solid var(--ui-divider); }
+.ui-scope .ntf-group-title { margin: 0; padding: 14px 20px 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ui-subtle); }
+.ui-scope .ntf-list { list-style: none; margin: 0; padding: 0; }
+.ui-scope .ntf-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 20px; border-top: 1px solid var(--ui-divider); cursor: pointer; }
+.ui-scope .ntf-group-title + .ntf-list .ntf-row:first-child { border-top: 0; }
+.ui-scope .ntf-row:hover { background: var(--ui-hover); }
+.ui-scope .ntf-unread-dot { width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; background: transparent; }
+.ui-scope .ntf-row.unread .ntf-unread-dot { background: var(--ui-accent); }
+.ui-scope .ntf-row.unread .ntf-title { font-weight: 700; }
+.ui-scope .ntf-main { min-width: 0; }
+.ui-scope .ntf-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ui-scope .ntf-title { font-size: 14px; font-weight: 600; color: var(--ui-ink); }
+.ui-scope .ntf-time { margin-left: auto; font-size: 12.5px; color: var(--ui-subtle); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-scope .ntf-msg { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--ui-muted); overflow-wrap: anywhere; }
+.ui-scope .ntf-row:not(.unread) .ntf-msg, .ui-scope .ntf-row:not(.unread) .ntf-title { color: var(--ui-muted); }
+.ui-scope .ntf-actions { display: flex; gap: 8px; align-items: center; }
+.ui-scope .ntf-card .ui-table-foot { border-top: 1px solid var(--ui-divider); padding: 10px 20px; }
+@media (max-width: 640px) {
+  .ui-scope .ntf-row { grid-template-columns: 10px minmax(0, 1fr); padding: 12px 16px; }
+  .ui-scope .ntf-actions { grid-column: 2; }
+  .ui-scope .ntf-time { margin-left: 0; width: 100%; }
+  .ui-scope .ntf-group-title { padding: 14px 16px 6px; }
 }

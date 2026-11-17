@@ -538,6 +538,14 @@ const MedlaneAPI = (() => {
   async function signOutMySession(sessionId) { return request("/api/account/sessions/revoke", { method: "POST", body: JSON.stringify({ sessionId }) }); }
   /** @returns {Promise<{ ok: true, revoked: number }>} */
   async function signOutMyOtherSessions() { return request("/api/account/sessions/revoke-others", { method: "POST" }); }
+  /** One page of my notifications. @param {{ tab: string, page: number, size: number }} query @returns {Promise<NotificationPageResponse>} */
+  async function notificationsPage({ tab, page, size }) { return request(`/api/notifications?${new URLSearchParams({ tab, page: String(page), size: String(size) })}`); }
+  /** @returns {Promise<{ unread: number }>} */
+  async function notificationsUnread() { return request("/api/notifications/unread"); }
+  /** @param {string[]} ids @param {boolean} [read] @returns {Promise<{ ok: true, changed: number }>} */
+  async function markNotificationsRead(ids, read = true) { return request("/api/notifications/read", { method: "POST", body: JSON.stringify({ ids, read }) }); }
+  /** @param {string} tab @returns {Promise<{ ok: true, changed: number }>} */
+  async function markAllNotificationsRead(tab) { return request("/api/notifications/read-all", { method: "POST", body: JSON.stringify({ tab }) }); }
 
   /** @returns {Promise<OkResponse>} */
   async function keepCurrentPasswordForKyc() {
@@ -760,5 +768,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, deleteFile, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, changeUserRole, sendUserPasswordReset, cancelInvite, revokeAllUserSessions, setUserDisabled, setUserSuperadmin, resetUserPermissions, setPassword, changePassword, keepCurrentPasswordForKyc, loadAccount, saveAccountProfile, saveAccountPreferences, saveNotificationSetting, signOutMySession, signOutMyOtherSessions, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, reconLoad, reconRun, reconAction, reconInput, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
+  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, deleteFile, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, changeUserRole, sendUserPasswordReset, cancelInvite, revokeAllUserSessions, setUserDisabled, setUserSuperadmin, resetUserPermissions, setPassword, changePassword, keepCurrentPasswordForKyc, loadAccount, saveAccountProfile, saveAccountPreferences, saveNotificationSetting, signOutMySession, signOutMyOtherSessions, notificationsPage, notificationsUnread, markNotificationsRead, markAllNotificationsRead, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, reconLoad, reconRun, reconAction, reconInput, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();

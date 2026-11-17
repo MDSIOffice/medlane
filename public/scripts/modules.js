@@ -4667,6 +4667,7 @@ function sectionQueryString(sectionId) {
   if (sectionId === "analytics") return analyticsQueryString();
   if (sectionId === "logs") return logsQueryString();
   if (sectionId === "user-settings") return accountQueryString();
+  if (sectionId === "notifications") return notificationsQueryString();
   if (sectionId === "purchase-history") return clientHistoryQueryString();
   if (sectionId === "reconciliation") return reconQueryString();
   if (sectionId === "masterlists") return masterQueryString();
@@ -11759,10 +11760,6 @@ function dedupedUsers() {
   });
   return [...map.values()];
 }
-/** @param {AppNotification} notice @param {any} index */
-function notificationItem(notice, index) {
-  return `<div class="alert-item clickable" data-notice-index="${index}" data-go-section="${escapeHtml(notice.section || "notifications")}" data-focus-record="${escapeHtml(notice.record || "")}"><span class="alert-dot ${notice.status === "Unread" ? "orange" : "green"}"></span><div><strong>${escapeHtml(notice.type)} · ${escapeHtml(notice.status)}</strong><span>${escapeHtml(notice.message)} · ${escapeHtml(notice.date)}</span></div></div>`;
-}
 /** Bell badge text: hidden at 0, "9+" above 9. @param {number} unread */
 function bellCountLabel(unread) { return unread > 9 ? "9+" : String(Math.max(0, unread)); }
 /** @param {number} unread */
@@ -11774,14 +11771,6 @@ function setBellCount(unread) {
   badge.hidden = unread <= 0;
   bell.classList.toggle("has-unread", unread > 0);
   bell.setAttribute("aria-label", unread > 0 ? `Notifications, ${unread} unread` : "Notifications");
-}
-function renderNotifications() {
-  syncGeneratedNotifications();
-  const notices = visibleNotifications();
-  const unread = notices.filter((notice) => notice.status === "Unread").length;
-  setBellCount(unread);
-  if (qs("#notification-recent-list")) qs("#notification-recent-list").innerHTML = notices.slice(0, 5).map((notice) => notificationItem(notice, data.notifications.indexOf(notice))).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>No notifications</strong><span>System alerts will appear here.</span></div></div>`;
-  qs("#notification-list").innerHTML = notices.map((notice) => notificationItem(notice, data.notifications.indexOf(notice))).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>No notifications</strong><span>System alerts will appear here.</span></div></div>`;
 }
 function renderSecurity() {
   const controls = [
@@ -12465,7 +12454,7 @@ const sectionRenderers = {
   "report-detail": () => currentOperationalReportKey && applyOperationalReport(currentOperationalReportKey),
   reconciliation: () => renderReconciliation(),
   users: () => renderUsers(),
-  notifications: renderNotifications,
+  notifications: () => renderNotificationsPage(),
   security: renderSecurity,
   "print-templates": renderPrintTemplates,
   backup: renderBackup,

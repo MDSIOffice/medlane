@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { seedData } from "./seed-data.mjs";
 import { RECON_AREAS, RECON_CHECKS, mergeDifferences, runRecon } from "../../src/recon.js";
+import { generateNotices, planFanOut, notificationPage, rowInTab } from "../../src/notifications.js";
 import { preferencesFromRow, preferencePatchColumns, resolveNotificationSettings, notificationSettingPatch, profilePatch, passwordAge } from "../../src/account.js";
 
 const port = Number(process.argv[2] || 8799);
@@ -81,8 +82,42 @@ const accountRoutes = {
   "POST /api/account/sessions/revoke-others": (role) => { const a = accountFor(role); const before = a.sessions.length; a.sessions = a.sessions.filter((x) => x.current); return { ok: true, revoked: before - a.sessions.length }; },
 };
 
+// Notifications, per role for the life of the server: the seed's standing alerts plus a few
+// hand-made ones over the last week, fanned out with the real rules in src/notifications.js.
+const noticeRows = {};
+const noticesFor = (role) => {
+  if (noticeRows[role]) return noticeRows[role];
+  const user = userFor(role);
+  const a = accountFor(role);
+  const modules = user.modules?.length ? user.modules : ["purchase-orders", "inventory", "collections", "product-issues", "reconciliation", "receivables-tracker", "payables", "replenishments", "invoicing", "warranty"];
+  const person = { id: role, email: user.email, role, modules, settings: resolveNotificationSettings(a.settingRows, modules), prefs: preferencesFromRow(a.prefsRow) };
+  const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+  const manual = [
+    { id: "NTF-demo-1", type: "Demo request approved", message: "DR-0142 for St. Luke's Global City was approved — ready for dispatch.", section: "inventory", createdAt: ago(0.5) },
+    { id: "NTF-sign-in", type: "New sign-in", message: "Signed in on Safari on iPhone from a new device.", targetUser: user.email, createdAt: ago(2) },
+    { id: "NTF-po-9", type: "New PO", message: "PO-2026-0911 from Asian Hospital needs invoicing.", section: "invoicing", audience: ["Accounting", "Superadmin", "CEO"], createdAt: ago(26) },
+    { id: "NTF-exp-3", type: "Expense request", message: "EXP-0388 (₱18,450 fuel and tolls) is waiting for approval.", section: "replenishments", createdAt: ago(50) },
+    { id: "NTF-ticket", type: "Support ticket", message: "Ticket PI-0057 (centrifuge noise, Naga) passed to Engineering.", section: "product-issues", createdAt: ago(80) },
+    { id: "NTF-memo", type: "Memo", message: "Holiday schedule for December has been posted.", section: "memos", createdAt: ago(200) },
+  ];
+  const plan = planFanOut([...generateNotices(seedData(seedScale), new Date()), ...manual], [person], new Map([[role, new Map([["seed", { message: "", record: "", title: "" }]])]]), new Date());
+  return (noticeRows[role] = plan.inserts.map((row, i) => ({ ...row, created_at: row.notice_id.startsWith("GEN-") ? ago(i * 7 + 0.2) : row.created_at, read_at: i % 3 === 2 ? ago(0) : null })));
+};
+
 const authedRoutes = {
   ...accountRoutes,
+  "GET /api/notifications": (role, _body, url) => notificationPage(noticesFor(role), { tab: url.searchParams.get("tab") || "all", page: Number(url.searchParams.get("page") || 1), size: Number(url.searchParams.get("size") || 10) }),
+  "GET /api/notifications/unread": (role) => ({ unread: noticesFor(role).filter((row) => row.in_app && !row.read_at).length }),
+  "POST /api/notifications/read": (role, body) => {
+    const rows = noticesFor(role).filter((row) => (body?.ids || []).includes(row.notice_id));
+    rows.forEach((row) => { row.read_at = body?.read === false ? null : new Date().toISOString(); });
+    return { ok: true, changed: rows.length };
+  },
+  "POST /api/notifications/read-all": (role, body) => {
+    const rows = noticesFor(role).filter((row) => row.in_app && !row.read_at && rowInTab(row, body?.tab || "all"));
+    rows.forEach((row) => { row.read_at = new Date().toISOString(); });
+    return { ok: true, changed: rows.length };
+  },
   "GET /api/recon": (role) => reconOverview(role),
   "POST /api/recon/run": (role, body) => { const run = reconRun(role, body?.check); return { ...reconOverview(role), run }; },
   "GET /api/auth/me": (role) => ({ user: { ...userFor(role), ...accountView(role) } }),
@@ -110,7 +145,8 @@ const authedRoutes = {
 const send = (res, status, body) => { res.writeHead(status, { "content-type": "application/json", "content-encoding": "gzip" }); res.end(gzipSync(JSON.stringify(body))); };
 
 createServer(async (req, res) => {
-  const { pathname } = new URL(req.url, "http://x");
+  const url = new URL(req.url, "http://x");
+  const { pathname } = url;
   if (pathname.startsWith("/api/")) {
     if (pathname === "/api/auth/login") {
       const { email } = await readBody(req);
@@ -147,7 +183,7 @@ createServer(async (req, res) => {
     const route = authedRoutes[`${req.method} ${pathname}`];
     if (!route) return send(res, 404, { error: `Fake backend has no ${req.method} ${pathname}` });
     try {
-      return send(res, 200, route(claim.role, ["POST", "PATCH", "PUT"].includes(req.method) ? await readBody(req) : undefined));
+      return send(res, 200, route(claim.role, ["POST", "PATCH", "PUT"].includes(req.method) ? await readBody(req) : undefined, url));
     } catch (error) {
       return send(res, 400, { error: error.message });
     }

@@ -156,6 +156,26 @@ create table if not exists notification_settings (
   constraint notification_settings_security_locked check (alert_type <> 'security' or (in_app and email))
 );
 
+create table if not exists user_notifications (
+  user_id uuid not null references profiles(id) on delete cascade,
+  notice_id text not null,
+  alert_type text not null check (alert_type in ('approvals', 'stock', 'money', 'service', 'recon', 'security', 'general')),
+  title text not null default '',
+  message text not null default '',
+  section text not null default 'notifications',
+  record text not null default '',
+  urgent boolean not null default false,
+  in_app boolean not null default true,
+  created_at timestamptz not null default now(),
+  read_at timestamptz,
+  email_status text not null default 'none' check (email_status in ('none', 'pending', 'held', 'sent', 'failed', 'skipped')),
+  emailed_at timestamptz,
+  primary key (user_id, notice_id)
+);
+create index if not exists user_notifications_user_created on user_notifications (user_id, created_at desc);
+create index if not exists user_notifications_unread on user_notifications (user_id) where read_at is null and in_app;
+create index if not exists user_notifications_email_due on user_notifications (email_status) where email_status in ('pending', 'held');
+
 create table if not exists backup_runs (
   id uuid primary key default gen_random_uuid(),
   state_key text not null default 'production',
@@ -280,6 +300,8 @@ alter table user_preferences enable row level security;
 alter table notification_settings enable row level security;
 create policy "Users can read own preferences" on user_preferences for select using ((select auth.uid()) = user_id);
 create policy "Users can read own notification settings" on notification_settings for select using ((select auth.uid()) = user_id);
+alter table user_notifications enable row level security;
+create policy "Users can read own notifications" on user_notifications for select using ((select auth.uid()) = user_id);
 
 create or replace function update_app_state(expected_revision bigint, next_data jsonb, actor uuid, state_key text default 'production')
 returns table(key text, revision bigint, updated_at timestamptz)
@@ -452,6 +474,8 @@ grant select, insert, update, delete on table user_preferences to service_role;
 grant select, insert, update, delete on table notification_settings to service_role;
 grant select on table user_preferences to authenticated;
 grant select on table notification_settings to authenticated;
+grant select, insert, update, delete on table user_notifications to service_role;
+grant select on table user_notifications to authenticated;
 grant select on table branches to authenticated;
 grant select on table profiles to authenticated;
 grant select on table module_permissions to authenticated;

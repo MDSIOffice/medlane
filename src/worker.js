@@ -2,6 +2,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { collectSample, collectLiveDetails, buildWeeklyReport, hasAccessToken } from "./perf-report.js";
 import { resolveNotificationSettings, notificationSettingPatch, preferencesFromRow, preferencePatchColumns, profilePatch, passwordAge, welcomeShowsNow } from "./account.js";
+import { generateNotices, planFanOut, emailsDue, dailySummaryRows, notificationPage, archiveCutoffIso, NOTIFICATION_TABS } from "./notifications.js";
 import { RECON_CHECKS, RECON_AREAS, RECON_INPUT_MODULES, runRecon, dataFromRows, mergeDifferences, getPath, setPath, sameValue, saleDocType, saleNo } from "./recon.js";
 
 const jsonHeaders = {
@@ -1981,6 +1982,174 @@ async function markPasswordChanged(env, userId) {
 /** Drops cached auth results for one app session so a revoked session stops working at once on this isolate. @param {string} sessionId */
 function forgetCachedSession(sessionId) {
   for (const key of authCache.keys()) if (key.includes(`|${sessionId}|`)) authCache.delete(key);
+}
+
+// ---- Notifications (user_notifications, 18 Nov 2026) -------------------------------------------
+// Every notice is copied once per person allowed to see it (src/notifications.js decides who, and
+// how — Account settings → Notifications). Manual notices are picked up for a person the moment
+// they open the page or the bell asks for a count; standing alerts are generated every 15 minutes
+// by the cron, which also fans them out to everyone and sends the emails.
+const NOTICE_SOURCE_MODULES = ["inventory", "pendingTransfers", "inventoryPurchaseOrders", "sales", "payments", "payables", "replenishments", "pendingCreditInvoices", "productIssues", "warranties"];
+const GENERATED_NOTICES_KEY = "generated-notices";
+const NOTICE_COLUMNS = "user_id,notice_id,alert_type,title,message,section,record,urgent,in_app,created_at,read_at,email_status,emailed_at";
+/** Per-isolate: when each person's manual notices were last synced. @type {Map<string, number>} */
+const noticeSyncedAt = new Map();
+const NOTICE_SYNC_MS = 20 * 1000;
+
+/** Manual notices from the shared list (generated ones there are the browser's old copies, skipped). @param {WorkerEnv} env */
+async function manualNotices(env) {
+  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.notifications&select=data`);
+  const cutoff = archiveCutoffIso();
+  return rows.map((/** @type {any} */ row) => row.data).filter((/** @type {any} */ notice) => notice && typeof notice === "object" && notice.id && !notice.generated && String(notice.createdAt || "") >= cutoff);
+}
+
+/** The standing alerts from the last cron run. @param {WorkerEnv} env @returns {Promise<any[]>} */
+async function storedGeneratedNotices(env) {
+  const saved = await monitoringState(env, GENERATED_NOTICES_KEY).catch(() => ({}));
+  return Array.isArray(saved?.notices) ? saved.notices : [];
+}
+
+/** @param {any} profile @param {any} prefsRow @param {any[]} settingRows @returns {import("./notifications.js").NoticeUser} */
+function noticeUserFrom(profile, prefsRow, settingRows) {
+  const modules = profile.modules || profile.customPermissions?.view || [];
+  const prefs = preferencesFromRow(prefsRow);
+  return { id: profile.id, email: String(profile.email || ""), role: profile.role, modules, settings: resolveNotificationSettings(settingRows, modules), prefs };
+}
+
+/** What each person already has: user id → notice id → wording. @param {WorkerEnv} env @param {string[]} userIds */
+async function existingNoticeIndex(env, userIds) {
+  /** @type {Map<string, Map<string, { message: string, record: string, title: string }>>} */
+  const index = new Map(userIds.map((id) => [id, new Map()]));
+  if (!userIds.length) return index;
+  const filter = userIds.length === 1 ? `user_id=eq.${encodeURIComponent(userIds[0])}` : `user_id=in.${encodeURIComponent(postgrestIn(userIds))}`;
+  const rows = await supabaseFetchAll(env, `/rest/v1/user_notifications?${filter}&select=user_id,notice_id,title,message,record`);
+  rows.forEach((/** @type {any} */ row) => index.get(row.user_id)?.set(row.notice_id, { title: row.title, message: row.message, record: row.record }));
+  return index;
+}
+
+/** Writes a fan-out plan: new rows (never overwriting someone's read state), then rewordings. @param {WorkerEnv} env @param {ReturnType<typeof planFanOut>} plan */
+async function applyNoticeFanOut(env, plan) {
+  for (let index = 0; index < plan.inserts.length; index += 500) {
+    await supabaseFetch(env, "/rest/v1/user_notifications?on_conflict=user_id,notice_id", {
+      method: "POST",
+      headers: { prefer: "resolution=ignore-duplicates,return=minimal" },
+      body: JSON.stringify(plan.inserts.slice(index, index + 500)),
+    });
+  }
+  for (const update of plan.updates) {
+    await supabaseFetch(env, `/rest/v1/user_notifications?user_id=eq.${encodeURIComponent(update.user_id)}&notice_id=eq.${encodeURIComponent(update.notice_id)}`, {
+      method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify(update.patch),
+    });
+  }
+  return { inserted: plan.inserts.length, updated: plan.updates.length };
+}
+
+/** Brings one person's rows up to date (throttled per isolate). @param {WorkerEnv} env @param {Profile} profile @param {{ force?: boolean }} [options] */
+async function syncNoticesForUser(env, profile, { force = false } = {}) {
+  const key = `${appStateKey(env)}|${profile.id}`;
+  if (!force && Date.now() - (noticeSyncedAt.get(key) || 0) < NOTICE_SYNC_MS) return;
+  noticeSyncedAt.set(key, Date.now());
+  const [manual, generated, prefsRow, settingRows, existing] = await Promise.all([
+    manualNotices(env), storedGeneratedNotices(env), preferencesRow(env, profile.id), notificationSettingRows(env, profile.id), existingNoticeIndex(env, [profile.id]),
+  ]);
+  await applyNoticeFanOut(env, planFanOut([...generated, ...manual], [noticeUserFrom(profile, prefsRow, settingRows)], existing));
+}
+
+/** Everyone who can receive notifications, with their modules, preferences and settings. @param {WorkerEnv} env @returns {Promise<import("./notifications.js").NoticeUser[]>} */
+async function allNoticeUsers(env) {
+  const [profiles, permissions, prefs, settings] = await Promise.all([
+    supabaseFetchAll(env, "/rest/v1/profiles?select=id,email,role"),
+    supabaseFetchAll(env, "/rest/v1/module_permissions?select=user_id,module_key,can_view,can_edit"),
+    supabaseFetchAll(env, "/rest/v1/user_preferences?select=*").catch(() => []),
+    supabaseFetchAll(env, "/rest/v1/notification_settings?select=user_id,alert_type,in_app,email").catch(() => []),
+  ]);
+  /** @param {any[]} rows */
+  const byUser = (rows) => { const map = new Map(); rows.forEach((row) => { if (!map.has(row.user_id)) map.set(row.user_id, []); map.get(row.user_id).push(row); }); return map; };
+  const perms = byUser(permissions); const settingRows = byUser(settings);
+  const prefRows = new Map(prefs.map((/** @type {any} */ row) => [row.user_id, row]));
+  return profiles.filter((/** @type {any} */ p) => p.id && p.email).map((/** @type {any} */ p) => {
+    const { view } = moduleListsFor(p.role, perms.get(p.id) || []);
+    return noticeUserFrom({ ...p, modules: view }, prefRows.get(p.id) || null, settingRows.get(p.id) || []);
+  });
+}
+
+/** Cron, every 15 minutes: generate the standing alerts and give everyone theirs. @param {WorkerEnv} env */
+async function runNotificationGeneration(env) {
+  const state = await loadDigestState(env, NOTICE_SOURCE_MODULES);
+  const generated = generateNotices(state);
+  await saveMonitoringState(env, GENERATED_NOTICES_KEY, { at: new Date().toISOString(), notices: generated });
+  const [manual, users] = await Promise.all([manualNotices(env), allNoticeUsers(env)]);
+  const existing = await existingNoticeIndex(env, users.map((user) => user.id));
+  const result = await applyNoticeFanOut(env, planFanOut([...generated, ...manual], users, existing));
+  return { generated: generated.length, ...result };
+}
+
+/** @param {any} row */
+function noticeEmailItem(row) {
+  const link = `${PUBLIC_APP_ORIGIN}/dashboard?section=${encodeURIComponent(row.section || "notifications")}`;
+  return `<tr><td style="padding:10px 0;border-bottom:1px solid #e3eef5;"><strong style="color:#0b2540;">${escapeHtml(row.title)}</strong>${row.urgent ? ' <span style="color:#b42318;font-size:12px;font-weight:700;">URGENT</span>' : ""}<br><span style="color:#41566b;">${escapeHtml(row.message)}</span><br><a href="${link}" style="color:#0a6fb5;font-size:13px;">Open in Medlane OS</a></td></tr>`;
+}
+
+/** @param {string} title @param {string} intro @param {any[]} rows */
+function noticeEmailHtml(title, intro, rows) {
+  const manage = `${PUBLIC_APP_ORIGIN}/dashboard?section=user-settings&tab=notifications`;
+  return brandedEmailHtml({ title, intro, bodyHtml: `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">${rows.map(noticeEmailItem).join("")}</table><p style="color:#6b7f92;font-size:12px;margin-top:16px;">Choose which alerts you get by email in <a href="${manage}" style="color:#0a6fb5;">Account settings → Notifications</a>. Security alerts are always sent.</p>` });
+}
+
+/** @param {any[]} rows @returns {[string, any[]][]} */
+function groupRowsByUser(rows) {
+  /** @type {Map<string, any[]>} */
+  const map = new Map();
+  rows.forEach((row) => { if (!map.has(row.user_id)) map.set(row.user_id, []); map.get(row.user_id)?.push(row); });
+  return [...map.entries()];
+}
+
+/** Cron, every 5 minutes: email what's due — one email per person, quiet hours respected. @param {WorkerEnv} env */
+async function runNotificationEmails(env) {
+  const due = await supabaseFetchAll(env, `/rest/v1/user_notifications?email_status=in.(pending,held)&select=${NOTICE_COLUMNS}&order=created_at.asc`);
+  if (!due.length) return { sent: 0 };
+  const users = new Map((await allNoticeUsers(env)).map((user) => [user.id, user]));
+  let sent = 0;
+  for (const [userId, rows] of groupRowsByUser(due)) {
+    const user = users.get(userId);
+    const ready = user ? emailsDue(/** @type {any[]} */ (rows), user) : [];
+    if (!user || !ready.length) continue;
+    const subject = ready.length === 1 ? `Medlane OS: ${ready[0].title}` : `Medlane OS: ${ready.length} new notifications`;
+    let status = "sent";
+    try { await sendResendEmail(env, { to: user.email, subject, html: noticeEmailHtml(subject.replace(/^Medlane OS: /, ""), "New in Medlane OS for you:", ready) }); sent += 1; } catch { status = "failed"; }
+    const keys = ready.map((row) => row.notice_id);
+    await supabaseFetch(env, `/rest/v1/user_notifications?user_id=eq.${encodeURIComponent(userId)}&notice_id=in.${encodeURIComponent(postgrestIn(keys))}`, {
+      method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ email_status: status, emailed_at: new Date().toISOString() }),
+    });
+  }
+  return { sent };
+}
+
+/** Cron, 07:00 Manila: each person's unread notices from the last 24 hours, if they want the summary. @param {WorkerEnv} env */
+async function runNotificationDailySummary(env) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const rows = await supabaseFetchAll(env, `/rest/v1/user_notifications?read_at=is.null&in_app=is.true&created_at=gte.${encodeURIComponent(since)}&select=${NOTICE_COLUMNS}&order=created_at.desc`);
+  const users = new Map((await allNoticeUsers(env)).map((user) => [user.id, user]));
+  let sent = 0;
+  for (const [userId, mine] of groupRowsByUser(rows)) {
+    const user = users.get(userId);
+    const list = user ? dailySummaryRows(/** @type {any[]} */ (mine), user) : [];
+    if (!user || !list.length) continue;
+    const subject = `Medlane OS daily summary: ${list.length} unread`;
+    try { await sendResendEmail(env, { to: user.email, subject, html: noticeEmailHtml("Your daily summary", "Unread notifications from the last 24 hours:", list.slice(0, 25)) }); sent += 1; } catch { /* logged by sendResendEmail */ }
+  }
+  return { sent };
+}
+
+/** Cron, daily: notices past 90 days are archived (deleted from user_notifications). @param {WorkerEnv} env */
+async function pruneUserNotifications(env) {
+  await supabaseFetch(env, `/rest/v1/user_notifications?created_at=lt.${encodeURIComponent(archiveCutoffIso())}`, { method: "DELETE", headers: { prefer: "return=minimal" } });
+  return { pruned: true };
+}
+
+/** This person's in-app rows from the last 90 days. @param {WorkerEnv} env @param {string} userId */
+async function userNoticeRows(env, userId) {
+  return supabaseFetchAll(env, `/rest/v1/user_notifications?user_id=eq.${encodeURIComponent(userId)}&in_app=is.true&created_at=gte.${encodeURIComponent(archiveCutoffIso())}&select=${NOTICE_COLUMNS}&order=created_at.desc`);
 }
 
 /** @param {Request} request @param {WorkerEnv} env */
@@ -4924,6 +5093,21 @@ async function runFiveMinuteScheduledTasks(event, env) {
     // ticks :00 :10 :20 :30 :40 :50 → digest lane; ticks :05 :15 :25 :35 :45 :55 → backup lane
     tasks.push(runNextPendingAutomationJob(env, Number(scheduled.minute) % 10 === 0 ? digestJobs : backupJobs));
   }
+  // Notifications: standing alerts generated and fanned out every 15 minutes (off the :00/:15/:30/:45
+  // board-monitor ticks and out of the 18:00 digest hour), emails sent every tick (one per person,
+  // quiet hours respected), the 07:00 daily summary, and the 90-day archive pruned at 03:20.
+  tasks.push(runNotificationEmails(env).catch((error) => console.error(JSON.stringify({ message: "Notification emails failed", error: error.message }))));
+  if (!inDigestHour && ["10", "25", "40", "55"].includes(scheduled.minute)) {
+    tasks.push(runNotificationGeneration(env).catch((error) => console.error(JSON.stringify({ message: "Notification generation failed", error: error.message }))));
+  }
+  if (scheduled.hour === "07" && ["00", "15", "30", "45"].includes(scheduled.minute)) {
+    const { dayKey } = manilaPeriodKeys(scheduled);
+    tasks.push(runOncePerPeriod(env, "notification-daily-summary", dayKey, () => runNotificationDailySummary(env)));
+  }
+  if (scheduled.hour === "03" && scheduled.minute === "20") {
+    const { dayKey } = manilaPeriodKeys(scheduled);
+    tasks.push(runOncePerPeriod(env, "notification-prune", dayKey, () => pruneUserNotifications(env)));
+  }
   // 08:00 Asia/Manila birthday greetings, retried every 15 minutes for the rest of the day if a
   // send fails (Discord outage, transient error, etc.) — runOncePerPeriod's completion flag
   // means it only actually posts once the greeting succeeds for today's dayKey, so a healthy
@@ -5730,6 +5914,41 @@ export default {
           body: JSON.stringify([{ user_id: authUser.id, alert_type: change.type, ...next, updated_at: new Date().toISOString() }]),
         });
         return json({ ok: true, notificationSettings: resolveNotificationSettings(await notificationSettingRows(env, authUser.id), profile.modules || []) });
+      }
+
+      // ---- Notifications page (per-person rows in user_notifications) ----
+      if (url.pathname === "/api/notifications" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        await syncNoticesForUser(env, profile);
+        const rows = await userNoticeRows(env, profile.id);
+        return json(notificationPage(rows, { tab: url.searchParams.get("tab") || "all", page: Number(url.searchParams.get("page") || 1), size: Number(url.searchParams.get("size") || 10) }));
+      }
+      if (url.pathname === "/api/notifications/unread" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        await syncNoticesForUser(env, profile);
+        const rows = await supabaseFetch(env, `/rest/v1/user_notifications?user_id=eq.${encodeURIComponent(profile.id)}&in_app=is.true&read_at=is.null&created_at=gte.${encodeURIComponent(archiveCutoffIso())}&select=notice_id&limit=100`);
+        return json({ unread: Array.isArray(rows) ? rows.length : 0 });
+      }
+      if ((url.pathname === "/api/notifications/read" || url.pathname === "/api/notifications/read-all") && request.method === "POST") {
+        const { profile } = await authenticatedProfile(request, env);
+        const body = await request.json().catch(() => ({}));
+        const read = body?.read !== false;
+        let filter = `user_id=eq.${encodeURIComponent(profile.id)}`;
+        if (url.pathname === "/api/notifications/read") {
+          const ids = (Array.isArray(body?.ids) ? body.ids : []).map((/** @type {any} */ id) => String(id || "").trim()).filter(Boolean).slice(0, 200);
+          if (!ids.length) return json({ error: "Choose at least one notification" }, { status: 400 });
+          filter += `&notice_id=in.${encodeURIComponent(postgrestIn(ids))}`;
+        } else {
+          // "Mark all read" applies to the tab being looked at.
+          const tab = String(body?.tab || "all");
+          if (!NOTIFICATION_TABS.includes(/** @type {any} */ (tab))) return json({ error: "Unknown tab" }, { status: 400 });
+          filter += "&read_at=is.null&in_app=is.true";
+          if (!["all", "unread"].includes(tab)) filter += `&alert_type=eq.${encodeURIComponent(tab)}`;
+        }
+        const changed = await supabaseFetch(env, `/rest/v1/user_notifications?${filter}&select=notice_id`, {
+          method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ read_at: read ? new Date().toISOString() : null }),
+        });
+        return json({ ok: true, changed: Array.isArray(changed) ? changed.length : 0 });
       }
 
       if (url.pathname === "/api/account/sessions/revoke" || url.pathname === "/api/account/sessions/revoke-others") {
