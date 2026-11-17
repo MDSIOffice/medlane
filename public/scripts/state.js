@@ -356,11 +356,12 @@ const roleEditableModules = {
   Engineering: ["inventory", "notifications", "user-settings", "product-issues"],
   HR: ["replenishments", "reports", "notifications", "user-settings", "memos"],
 };
-// Support Tracker: Product Specialist, Admin, CEO and Superadmin can REQUEST (create) service
-// reports. Engineering and Product Specialist can only update status on existing reports; every other role
-// is view-only. Mirrored server-side in canAccessKey() + assertSupportReportChangesAllowed().
-const supportReportRequesterRoles = ["Product Specialist", "Admin", "CEO", "Superadmin"];
-const supportReportEditorRoles = [...supportReportRequesterRoles, "Engineering"];
+// Support Tracker: Engineering, Product Specialist, Admin, CEO and Superadmin can REQUEST (create)
+// service reports. Engineering and Product Specialist can only update status on existing reports;
+// Superadmin/CEO can also correct a report's details. Every other role is view-only. Mirrored
+// server-side in canAccessKey() + assertSupportReportChangesAllowed().
+const supportReportRequesterRoles = ["Engineering", "Product Specialist", "Admin", "CEO", "Superadmin"];
+const supportReportEditorRoles = supportReportRequesterRoles;
 function canRequestSupportReport() { return supportReportRequesterRoles.includes(currentUser?.role) && canEditModule("product-issues"); }
 function editableModules() {
   // Same reasoning as effectiveModules(): Superadmin/CEO always get their full editable set so a

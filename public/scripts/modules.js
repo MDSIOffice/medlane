@@ -2828,7 +2828,7 @@ function isStockViewOnly() { return !isDemoOnlyRole() && (currentUser?.role === 
 /** Inventory tabs this user sees: demo requests only, stock (+ demo requests for requesters), or everything. */
 function inventoryVisibleTabs() {
   if (isDemoOnlyRole()) return ["demos"];
-  if (isStockViewOnly()) return canRequestDemo() ? ["stocks", "demos"] : ["stocks"];
+  if (isStockViewOnly()) return ["stocks", ...(canCreateSupplierPo() ? ["purchasing"] : []), ...(canRequestDemo() ? ["demos"] : [])];
   return INVENTORY_TABS;
 }
 /** @param {any[]} lines */
@@ -6078,8 +6078,42 @@ function attachedFilesFor(recordType, recordId) {
 function renderServiceReportUploadSlot(recordType, recordId) {
   const slot = qs("#attachment-slot");
   if (!slot) return;
-  const uploaded = attachedFilesFor(recordType, recordId).length > 0;
-  slot.innerHTML = `${attachedFilesHtml(recordType, recordId)}<label class="doc-upload-button ${uploaded ? "uploaded" : "missing"}"><span>Attachment</span><strong>${uploaded ? "Uploaded" : "Choose File"}</strong><em>${uploaded ? "Replace" : "Choose document"}</em><input class="doc-file-input physical-copy-input" type="file" accept="image/*,.pdf,application/pdf" data-record-type="${escapeHtml(recordType)}" data-record-id="${escapeHtml(recordId)}" data-rerender="service-report-modal" /></label>`;
+  const files = attachedFilesFor(recordType, recordId);
+  const uploaded = files.length > 0;
+  const list = uploaded ? `<div class="attached-files-list">${files.map((file) => removableFileChipHtml(file, "service-report-modal", recordType, recordId)).join("")}</div>` : "";
+  slot.innerHTML = `${list}<label class="doc-upload-button ${uploaded ? "uploaded" : "missing"}"><span>Attachment</span><strong>${uploaded ? `${plural(files.length, "file")} attached` : "Choose File"}</strong><em>${uploaded ? "Add another" : "Choose document"}</em><input class="doc-file-input physical-copy-input" type="file" accept="image/*,.pdf,application/pdf" data-record-type="${escapeHtml(recordType)}" data-record-id="${escapeHtml(recordId)}" data-rerender="service-report-modal" /></label>`;
+}
+
+/** Support Tracker attachments the server lets this person remove (see assertFileRemovable). @param {FileObject} file */
+function canRemoveAttachment(file) {
+  if (!["productIssue", "instrumentalServiceReport"].includes(String(file.record_type || ""))) return false;
+  if (!supportReportEditorRoles.includes(currentUser?.role) || !canEditModule("product-issues")) return false;
+  return ["Superadmin", "CEO"].includes(currentUser?.role) || (Boolean(file.uploaded_by) && file.uploaded_by === currentUser?.id);
+}
+/** A file chip that opens the file, plus a remove button when allowed. @param {FileObject} file @param {string} rerender @param {string} recordType @param {string} recordId */
+function removableFileChipHtml(file, rerender, recordType, recordId) {
+  const open = `<button class="attached-file-chip" type="button" data-view-file="${escapeHtml(file.id)}">📎 ${escapeHtml(file.file_name)}</button>`;
+  if (!canRemoveAttachment(file)) return open;
+  return `<span class="attached-file-removable">${open}<button class="attached-file-remove" type="button" data-remove-file="${escapeHtml(file.id)}" data-rerender="${escapeHtml(rerender)}" data-record-type="${escapeHtml(recordType)}" data-record-id="${escapeHtml(recordId)}" aria-label="Remove ${escapeHtml(file.file_name)}" title="Remove this file">×</button></span>`;
+}
+/** Asks once, then removes an attachment and redraws where it was shown. @param {HTMLElement} button */
+async function removeAttachment(button) {
+  const id = String(button.dataset.removeFile || "");
+  const file = uploadedFilesCache.find((entry) => entry.id === id);
+  if (!file) return toast("File not found. Refresh and try again.");
+  if (!(await confirmFinalSave(`Remove ${file.file_name}?`, "It will no longer show on this report. Superadmin can still recover it from the database if this was a mistake."))) return;
+  try {
+    await MedlaneAPI.deleteFile(id);
+  } catch (/** @type {any} */ error) {
+    return toast(error.message || "Could not remove the file.");
+  }
+  await refreshUploadedFiles();
+  log("Removed attachment", "Support Tracker", `${file.record_id || ""}: ${file.file_name}`, { save: false });
+  toast(`${file.file_name} removed.`);
+  const { rerender, recordType, recordId } = button.dataset;
+  if (rerender === "service-report-modal") renderServiceReportUploadSlot(recordType, recordId);
+  else if (rerender === "product-issue-detail") renderProductIssueDetail(String(recordId));
+  if (document.body.dataset.activeSection === "product-issues") renderProductIssues();
 }
 
 /** @param {string} recordType @param {string} recordId */
@@ -7759,6 +7793,34 @@ function canActOnProductIssue(report) {
   return currentUser?.role === (report.currentActor || report.originRole || "Sales");
 }
 
+/** Superadmin/CEO may correct a report's details (wrong info, typos) at any status. */
+function canCorrectSupportReport() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
+/** Report id being corrected in the service report form, or null for a new report. @type {string | null} */
+let editingProductIssueId = null;
+/** Opens the service report form filled with an existing report, for a Superadmin/CEO correction. @param {string} id */
+function openProductIssueEdit(id) {
+  if (!canCorrectSupportReport()) return toast("Only Superadmin or CEO can edit a support report.");
+  const report = data.productIssues.find((item) => item.id === id);
+  if (!report) return toast("Support report not found.");
+  const type = report.reportType === "instrumental" ? "instrumentalServiceReport" : "productIssue";
+  openModal(type, { productIssueEdit: report });
+  editingProductIssueId = report.id;
+  qs("#modal-title").textContent = `Edit ${report.id}`;
+  qs("#modal-kicker").textContent = "Correction";
+  const fill = (/** @type {string} */ name, /** @type {any} */ value) => { const el = qs(`#modal-fields [name="${name}"]`); if (el) el.value = value ?? ""; };
+  fill("id", report.id);
+  qs("#id").readOnly = true;
+  for (const name of ["startDate", "companyName", "address", "equipment", "serialNo", "concerns", "remarks"]) fill(name, /** @type {any} */ (report)[name]);
+  // Older reports may hold a value that isn't one of today's options (e.g. two types ticked on
+  // paper): keep it selectable so opening the form never silently changes it.
+  const typeSelect = qs("#typeOfSupport");
+  const current = String(report.typeOfSupport || "");
+  if (typeSelect && current && !supportTypeOptions.includes(current)) typeSelect.insertAdjacentHTML("beforeend", `<option>${escapeHtml(current)}</option>`);
+  if (typeSelect) typeSelect.value = current;
+  ensureUploadedFilesLoaded(() => renderServiceReportUploadSlot(type, report.id));
+  renderServiceReportUploadSlot(type, report.id);
+}
+
 /** @param {any} report */
 function productIssueActionsMenu(report) {
   const actor = report.currentActor || report.originRole || "Sales";
@@ -7777,7 +7839,8 @@ function productIssueActionsMenu(report) {
   ].join("") : (report.status === "Resolved" ? `<small>Resolved &amp; locked</small>` : locked ? `<small>Locked to ${escapeHtml(actor)}</small>` : "");
   const fileCount = productIssueFiles(report).length;
   const attachments = `<button class="mini-button" data-product-issue-timeline="${escapeHtml(report.id)}">${fileCount ? `Photos / files (${fileCount})` : "Attachments"}</button>`;
-  return `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-product-issue-print="${escapeHtml(report.id)}">Print</button>${attachments}${statusButtons}</div></details>`;
+  const editDetails = canCorrectSupportReport() ? `<button class="mini-button" data-product-issue-edit="${escapeHtml(report.id)}">Edit details</button>` : "";
+  return `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-product-issue-print="${escapeHtml(report.id)}">Print</button>${attachments}${editDetails}${statusButtons}</div></details>`;
 }
 
 function renderProductIssues() {
@@ -7815,7 +7878,7 @@ function productIssueAttachmentsHtml(report) {
   const type = report.reportType === "instrumental" ? "instrumentalServiceReport" : "productIssue";
   const canUpload = supportReportEditorRoles.includes(currentUser?.role) && canEditModule("product-issues");
   const list = files.length
-    ? `<div class="attached-files-list">${files.map((file) => `<button class="attached-file-chip" type="button" data-view-file="${escapeHtml(file.id)}">📎 ${escapeHtml(file.file_name)}</button>`).join("")}</div>`
+    ? `<div class="attached-files-list">${files.map((file) => removableFileChipHtml(file, "product-issue-detail", String(file.record_type || type), report.id)).join("")}</div>`
     : `<p class="muted">${uploadedFilesLoaded ? "No photos or files attached yet." : "Loading attachments…"}</p>`;
   const upload = canUpload ? `<button class="ghost-button" type="button" data-upload-copy="${escapeHtml(report.id)}">${files.length ? "Add another photo / file" : "Attach photo / file"}</button><input type="file" accept="image/*,.pdf,application/pdf" class="physical-copy-input" data-record-type="${type}" data-record-id="${escapeHtml(report.id)}" data-rerender="product-issue-detail" data-doc-name="Attachment" hidden />` : "";
   return `<section class="product-issue-attachments"><p><strong>Attachments${files.length ? ` (${files.length})` : ""}</strong></p>${list}${upload}</section>`;
@@ -8958,9 +9021,16 @@ const PURCHASING_STATUS = /** @type {Record<string, { label: string, tone: UiTon
 });
 
 /** Supplier purchasing is for roles that can see supplier POs (not the demo-only roles). */
-function supplierPurchasingVisible() { return canViewModule("inventory") && !isDemoOnlyRole() && !isStockViewOnly(); }
-// Sales / Accounting raise supplier POs from the Purchase Orders module (server keeps them to Pending Approval).
-function canCreateSupplierPo() { return canEditModule("inventory") && !isDemoOnlyRole() && !isStockViewOnly(); }
+function supplierPurchasingVisible() { return canViewModule("inventory") && !isDemoOnlyRole() && (!isStockViewOnly() || canCreateSupplierPo()); }
+// Accounting and Logistics may raise supplier POs whenever they can see Inventory (Accounting's stock
+// stays read-only). Mirrors SUPPLIER_PO_RAISER_ROLES in worker.js; the server keeps Accounting's
+// POs to Pending Approval, and approval stays Superadmin/CEO only.
+const SUPPLIER_PO_RAISER_ROLES = ["Accounting", "Logistics"];
+function canCreateSupplierPo() {
+  if (isDemoOnlyRole()) return false;
+  if (SUPPLIER_PO_RAISER_ROLES.includes(currentUser?.role) && canViewModule("inventory")) return true;
+  return canEditModule("inventory") && !isStockViewOnly();
+}
 
 /**
  * Facts about one supplier PO used across the page.
@@ -12878,13 +12948,14 @@ const modalConfigs = {
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => [ALL_RECEIVING_BRANCHES, ...platformBranches()]], ["date", "PO Date", "date"], ["promisedDate", "Supplier Promised Delivery (optional)", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => activeClients().map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
   user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
-  productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
-  instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support"], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
+  productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support", "select-choose", supportTypeOptions], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
+  instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support", "select-choose", supportTypeOptions], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
 };
 
 /** @param {any} type @param {any} [edit] */
 function openModal(type, edit = null) {
   modalType = type;
+  editingProductIssueId = null;
   editingExpenseId = null;
   cancelReplaceSaleId = type === "cancelReplace" ? edit?.oldInvoice || null : null;
   modalReadOnly = Boolean(edit?.readOnly);
@@ -12904,6 +12975,10 @@ function openModal(type, edit = null) {
       const hasValues = values.length > 0;
       const optionsHtml = hasValues ? values.map((/** @type {any} */ value) => `<option>${escapeHtml(value)}</option>`).join("") : `<option value="">No ${label.toLowerCase()} available yet</option>`;
       return `<div class="field${full}"><label for="${name}">${label}</label><select id="${name}" name="${name}" ${hasValues ? "required" : ""}>${optionsHtml}</select></div>`;
+    }
+    if (kind === "select-choose") {
+      const values = typeof options === "function" ? options() : options;
+      return `<div class="field${full}"><label for="${name}">${label}</label><select id="${name}" name="${name}" required><option value="" disabled selected>Choose ${escapeHtml(label.toLowerCase())}</option>${values.map((/** @type {any} */ value) => `<option>${escapeHtml(value)}</option>`).join("")}</select></div>`;
     }
     if (kind === "tin") return `<div class="field${full}"><label for="${name}">${label}</label><input id="${name}" name="${name}" type="text" inputmode="numeric" placeholder="000-000-000-000" maxlength="15" pattern="\\d{3}-\\d{3}-\\d{3}-\\d{3}" title="Enter a 12-digit TIN as 000-000-000-000" data-tin-input /></div>`;
     if (kind === "datalist" || kind === "datalist-optional") {

@@ -80,6 +80,11 @@ function withoutViewOnlyDefaults(role, modules) {
 }
 /** @type {AppRole[]} */
 const DEMO_REQUESTER_ROLES = [...DEMO_ONLY_ROLES, "Superadmin", "CEO"];
+// Roles that may raise supplier (inventory) purchase orders whenever they can see Inventory, even
+// with Inventory view-only (Accounting). Accounting is still held to new Pending Approval POs with
+// no status changes (assertFinancialApprovalAllowed); approval stays Superadmin/CEO only.
+/** @type {AppRole[]} */
+const SUPPLIER_PO_RAISER_ROLES = ["Accounting", "Logistics"];
 
 const DISCORD_ROLE_IDS = {
   nagaTeam: "1356861232480780421",
@@ -2374,11 +2379,12 @@ const DEMO_TRANSITIONS = {
 };
 
 // Engineering / Product Specialist may only move an EXISTING support report through its status
-// workflow (no other fields). Product Specialists may also file NEW reports; Engineering may not.
+// workflow (no other fields), and may both file NEW reports. Correcting an existing report's
+// details is Superadmin/CEO (and Admin) only.
 /** @type {AppRole[]} */
 const SUPPORT_STATUS_ONLY_ROLES = ["Engineering", "Product Specialist"];
 /** Status-only roles that may still file a new report. @type {AppRole[]} */
-const SUPPORT_REQUESTER_ROLES = ["Product Specialist"];
+const SUPPORT_REQUESTER_ROLES = ["Product Specialist", "Engineering"];
 const SUPPORT_STATUS_FIELDS = new Set(["status", "currentActor", "resolvedBy", "resolvedAt", "history", "actionsTaken"]);
 // Calendar events: anyone may add one (as themselves); only its creator or Superadmin/CEO may
 // change or remove (soft-delete via `removed`) an existing one.
@@ -2426,7 +2432,7 @@ async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
     const prev = storedByKey.get(row.record_key);
     if (!prev) {
       if (SUPPORT_REQUESTER_ROLES.includes(profile?.role)) continue;
-      throw new Error("Only Product Specialist, Admin, CEO or Superadmin can request a service report");
+      throw new Error("Only Engineering, Product Specialist, Admin, CEO or Superadmin can request a service report");
     }
     /** @type {Record<string, any>} */
     const next = row.data || {};
@@ -2808,6 +2814,21 @@ function modulesForKey(key) {
   return Object.entries(moduleRecordKeys).filter(([, keys]) => keys.includes(key)).map(([module]) => module);
 }
 
+/** Record types whose attachments can be removed from the app (Support Tracker reports). */
+const REMOVABLE_FILE_RECORD_TYPES = ["productIssue", "instrumentalServiceReport"];
+/**
+ * Throws unless this person may remove this attachment: Support Tracker files only, edit access to
+ * the report, and either they uploaded it or they are Superadmin/CEO.
+ * @param {Profile} profile @param {string} userId @param {{ record_type?: string, uploaded_by?: string | null }} file
+ */
+function assertFileRemovable(profile, userId, file) {
+  const recordType = String(file?.record_type || "");
+  if (!REMOVABLE_FILE_RECORD_TYPES.includes(recordType)) throw new Error("Only Support Tracker attachments can be removed");
+  if (!canAccessKey(profile, fileRecordTypeKey[recordType], "edit")) throw new Error("You do not have permission to remove this file");
+  if (["Superadmin", "CEO"].includes(profile?.role)) return;
+  if (!file.uploaded_by || file.uploaded_by !== userId) throw new Error("Only the person who uploaded this file, or Superadmin/CEO, can remove it");
+}
+
 /** @param {Profile} profile @param {string} key @param {AccessMode} [mode] */
 function canAccessKey(profile, key, mode = "view") {
   if (["Superadmin", "CEO"].includes(profile?.role)) return true;
@@ -2819,6 +2840,7 @@ function canAccessKey(profile, key, mode = "view") {
   // Engineering/Product Specialist may only update status (assertSupportReportChangesAllowed).
   if (mode === "edit" && key === "productIssues" && !["Admin", "Engineering", "Product Specialist"].includes(profile?.role)) return false;
   const allowed = profile?.customPermissions?.[mode] || [];
+  if (mode === "edit" && key === "inventoryPurchaseOrders" && SUPPLIER_PO_RAISER_ROLES.includes(profile?.role) && canAccessKey(profile, key, "view")) return true;
   // Sales raises supplier POs through the Purchase Orders module, not Inventory edit.
   if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
   if (mode === "edit" && EXPENSE_PLANNING_KEYS.includes(key) && profile?.role !== "Admin") return false;
@@ -7208,6 +7230,21 @@ export default {
           throw error;
         }
         return json({ file: inserted[0] }, { status: 201 });
+      }
+
+      // Removing an attachment (Support Tracker only): the uploader, or Superadmin/CEO, with edit
+      // access to the report. Soft delete — the row gets deleted_at and the R2 object is kept, so a
+      // mistaken removal can still be recovered from the database.
+      if (url.pathname.startsWith("/api/files/") && request.method === "DELETE") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        requireWriteAccess(profile);
+        const id = decodeURIComponent(url.pathname.split("/").pop() || "");
+        const rows = await supabaseFetch(env, `/rest/v1/file_objects?id=eq.${encodeURIComponent(id)}&deleted_at=is.null&select=*`);
+        const file = rows[0];
+        if (!file) return json({ error: "File not found" }, { status: 404 });
+        assertFileRemovable(profile, authUser.id, file);
+        await supabaseFetch(env, `/rest/v1/file_objects?id=eq.${encodeURIComponent(id)}&deleted_at=is.null`, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ deleted_at: new Date().toISOString() }) });
+        return json({ ok: true, id });
       }
 
       if (url.pathname.startsWith("/api/files/") && request.method === "GET") {

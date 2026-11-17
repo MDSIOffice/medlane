@@ -449,6 +449,30 @@ async function submitModal(event) {
     toast(`${modalConfigs[modalType].title} saved.`);
     return;
   }
+  if (["productIssue", "instrumentalServiceReport"].includes(modalType) && editingProductIssueId) {
+    if (!canCorrectSupportReport()) return toast("Only Superadmin or CEO can edit a support report.");
+    if (!values.companyName?.trim()) return toast("Company name is required.");
+    const index = data.productIssues.findIndex((report) => report.id === editingProductIssueId);
+    if (index < 0) return toast("Support report not found.");
+    const previous = data.productIssues[index];
+    const fields = /** @type {const} */ (["startDate", "companyName", "address", "equipment", "serialNo", "typeOfSupport", "concerns", "remarks"]);
+    const changed = fields.filter((field) => String(previous[field] ?? "").trim() !== String(values[field] ?? "").trim());
+    if (!changed.length) { editingProductIssueId = null; qs("#demo-modal").close(); return toast("No changes to save."); }
+    const by = currentUser?.name || "System User";
+    const labels = { startDate: "date", companyName: "company", address: "address", equipment: "equipment", serialNo: "serial no.", typeOfSupport: "type of support", concerns: "concerns", remarks: "remarks" };
+    const next = /** @type {ProductIssue} */ ({ ...previous, ...Object.fromEntries(fields.map((field) => [field, String(values[field] ?? "").trim()])), history: [...(previous.history || []), { date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: previous.status || "Open", note: `Details corrected: ${changed.map((field) => labels[field]).join(", ")}`, by }] });
+    if (!(await confirmFinalSave(`Save changes to ${previous.id}?`))) return;
+    const saveResult = await persistRecords({ productIssues: [next] });
+    if (!saveResult?.ok) return;
+    data.productIssues[index] = next;
+    log("Edited support report", "Support Tracker", `${previous.id}: ${changed.map((field) => labels[field]).join(", ")}`, { save: false });
+    editingProductIssueId = null;
+    qs("#demo-modal").close();
+    form.reset();
+    renderAll();
+    toast(`${previous.id} updated.`);
+    return;
+  }
   if (["productIssue", "instrumentalServiceReport"].includes(modalType)) {
     if (!values.companyName?.trim()) return toast("Company name is required.");
     if (values.status === "Resolved" && !values.resolvedBy) return toast("Select who resolved this report.");
@@ -963,6 +987,10 @@ document.addEventListener("click", (event) => {
   if (removeSheetRow) removeInventorySheetRow(removeSheetRow);
   const uploadCopyButton = closestEl(event.target, "[data-upload-copy]");
   if (uploadCopyButton) /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (uploadCopyButton.parentElement).querySelector(".physical-copy-input"))?.click();
+  const removeFileButton = closestEl(event.target, "[data-remove-file]");
+  if (removeFileButton) { removeAttachment(removeFileButton); return; }
+  const productIssueEdit = closestEl(event.target, "[data-product-issue-edit]");
+  if (productIssueEdit) { closestEl(productIssueEdit, "details")?.removeAttribute("open"); openProductIssueEdit(String(productIssueEdit.dataset.productIssueEdit)); return; }
   const viewFileButton = closestEl(event.target, "[data-view-file]");
   if (viewFileButton) MedlaneAPI.viewFile(/** @type {string} */ (viewFileButton.dataset.viewFile)).catch((error) => toast(error.message || "Unable to open file."));
   const viewCollectionHistory = closestEl(event.target, "[data-view-collection-history]");

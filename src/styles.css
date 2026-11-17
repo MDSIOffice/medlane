@@ -1848,6 +1848,10 @@ button.calendar-cell:hover { background: var(--tint); }
 .client-doc-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .attached-file-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); color: var(--blue-dark); padding: 6px 12px; font-size: 12px; font-weight: 800; text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 0; }
 .attached-file-chip:hover { background: var(--tint-strong); }
+.attached-file-removable { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; min-width: 0; }
+.attached-file-removable .attached-file-chip { min-width: 0; }
+.attached-file-remove { flex: 0 0 auto; display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted); font-size: 17px; font-weight: 700; line-height: 1; cursor: pointer; }
+.attached-file-remove:hover, .attached-file-remove:focus-visible { border-color: var(--red, #d64545); color: var(--red, #d64545); background: color-mix(in srgb, var(--red, #d64545) 10%, transparent); }
 .action-menu-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .action-menu-list button { width: 100%; justify-content: center; }
 .payment-request-more-modal { max-width: 360px; width: 100%; }
@@ -2656,12 +2660,13 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-partner-grid li { flex: 0 1 calc((100% - 48px) / 4); min-width: 0; opacity: 0; transform: translateY(26px) scale(.96); }
 .lr-section.in-view .lr-partner-grid li { animation: lr-partner-in .6s cubic-bezier(.2, .8, .2, 1) calc(var(--i) * 90ms + 150ms) both; }
 .lr-partner { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 164px; padding: 22px 24px 18px; overflow: hidden; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; text-decoration: none; transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
-.lr-partner--balio { --brand: #4a9bb5; --brand-2: #4a9bb5; --wash-from: circle(0% at 50% 50%); --wash-to: circle(120% at 50% 50%); }
 .lr-partner--cypress { --brand: #0aa5e6; --brand-2: #0aa5e6; --wash-from: inset(0 0 100% 0); --wash-to: inset(0 0 0 0); }
 .lr-partner--imedikers { --brand: #2f6b52; --brand-2: #2f6b52; --wash-from: inset(0 100% 0 0); --wash-to: inset(0 0 0 0); }
 .lr-partner--imedisync { --brand: #2fa56f; --brand-2: #26266b; --wash-from: inset(100% 0 0 0); --wash-to: inset(0 0 0 0); }
 .lr-partner--lifotronic { --brand: #c8102e; --brand-2: #c8102e; --wash-from: polygon(0 0, 0 0, 0 100%, 0 100%); --wash-to: polygon(0 0, 130% 0, 100% 100%, 0 100%); }
 .lr-partner--vedalab { --brand: #0a62a6; --brand-2: #d8101e; --wash-from: inset(0 0 0 100%); --wash-to: inset(0 0 0 0); }
+.lr-partner--eaglenos { --brand: #273154; --brand-2: #273154; --wash-from: circle(0% at 50% 50%); --wash-to: circle(120% at 50% 50%); }
+.lr-partner--yd { --brand: #1d5fae; --brand-2: #6cbf45; --wash-from: inset(0 0 100% 0); --wash-to: inset(0 0 0 0); }
 .lr-partner--zybio { --brand: #1d4fa3; --brand-2: #1d4fa3; --wash-from: circle(0% at 0% 50%); --wash-to: circle(150% at 0% 50%); }
 /* Each partner's own colour sweep: plays once as it scrolls in, and again on hover. */
 .lr-partner::before { content: ""; position: absolute; inset: 0; background: linear-gradient(120deg, var(--brand), var(--brand-2)); opacity: 0; clip-path: var(--wash-from); transition: clip-path .5s ease, opacity .3s ease; pointer-events: none; }

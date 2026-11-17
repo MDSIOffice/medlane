@@ -307,15 +307,15 @@ test("every partner links to its own site in a new tab, and every logo loads", a
   await partners.last().scrollIntoViewIfNeeded();
   const found = await partners.evaluateAll((links) => links.map((link) => [link.getAttribute("aria-label").split(" website")[0], link.getAttribute("href"), link.target, link.rel]));
   expect(found).toEqual([
-    ["Balio Diagnostics", "https://baliodiagnostics.com/"], ["Cypress Diagnostics", "https://diagnostics.be/"], ["iMedikers", "http://i-medikers.com/"], ["iMediSync", "https://www.imedisync.com/"],
-    ["Lifotronic", "https://en.lifotronic.com/"], ["VedaLab", "https://www.vedalab.com/"], ["Zybio", "https://www.zybio.com/"],
+    ["Cypress Diagnostics", "https://diagnostics.be/"], ["Eaglenos", "https://www.eaglenos.com/en/"], ["iMedikers", "http://i-medikers.com/"], ["iMediSync", "https://www.imedisync.com/"],
+    ["Lifotronic", "https://en.lifotronic.com/"], ["VedaLab", "https://www.vedalab.com/"], ["YD Diagnostics", "http://yd-diagnostics.com/2012/eng/"], ["Zybio", "https://www.zybio.com/"],
   ].map((partner) => [...partner, "_blank", "noopener noreferrer"]));
   const logos = page.locator("#lr-partners img");
   for (const logo of await logos.all()) {
     await logo.scrollIntoViewIfNeeded();
     await expect.poll(() => logo.evaluate((image) => image.complete && image.naturalWidth > 0), await logo.getAttribute("alt")).toBe(true);
   }
-  await expect(logos).toHaveCount(7);
+  await expect(logos).toHaveCount(8);
   await expect(page.locator("#lr-partners .lr-partner-grid li").last()).toHaveCSS("opacity", "1");
   expect(problems).toEqual([]);
 });

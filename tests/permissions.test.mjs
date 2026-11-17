@@ -123,6 +123,18 @@ describe("module access", () => {
     assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "inventoryPurchaseOrders", "edit"), false);
     assert.equal(canAccessKey(as("Logistics", ["inventory"]), "inventoryPurchaseOrders", "edit"), true);
   });
+  test("Accounting and Logistics can raise supplier POs with Inventory view-only; their stock stays read-only", () => {
+    const viewOnly = (role) => ({ id: "u1", role, customPermissions: { enabled: true, view: ["inventory"], edit: [] } });
+    for (const role of ["Accounting", "Logistics"]) {
+      assert.equal(canAccessKey(viewOnly(role), "inventoryPurchaseOrders", "edit"), true, role);
+      assert.equal(canAccessKey(viewOnly(role), "inventory", "edit"), false, `${role} stock`);
+      assert.equal(canAccessKey(viewOnly(role), "stockReceipts", "edit"), false, `${role} receipts`);
+    }
+    // Not without seeing Inventory at all, and not for other roles.
+    assert.equal(canAccessKey(as("Accounting", ["purchase-orders"]), "inventoryPurchaseOrders", "edit"), false);
+    assert.equal(canAccessKey(viewOnly("Sales"), "inventoryPurchaseOrders", "edit"), false);
+    assert.equal(canAccessKey(viewOnly("HR"), "inventoryPurchaseOrders", "edit"), false);
+  });
   test("Logistics is blocked from logs and support", () => {
     assert.deepEqual(worker.ROLE_BLOCKED_MODULES.Logistics, ["logs", "product-issues"]);
   });
@@ -165,12 +177,41 @@ describe("support reports", () => {
     await check(env, STATE, as("Engineering"), [row("productIssues", "I1", { status: "Resolved", client: "Lab" })]);
     await assert.rejects(check(env, STATE, as("Engineering"), [row("productIssues", "I1", { status: "Open", client: "Other" })]), /can only update the status/);
   });
-  test("Engineering can't create one", async () => {
-    await assert.rejects(check(env, STATE, as("Engineering"), [row("productIssues", "I2", { status: "Open" })]), /can request a service report/);
+  test("Engineering and Product Specialist can file a new one", async () => {
+    await check(env, STATE, as("Engineering"), [row("productIssues", "I2", { status: "Open" })]);
     await check(env, STATE, as("Product Specialist"), [row("productIssues", "I2", { status: "Open" })]);
+    assert.equal(worker.canAccessKey(as("Engineering", ["product-issues"]), "productIssues", "edit"), true);
+  });
+  test("Superadmin and CEO can correct any field of an existing report", async () => {
+    mockSupabase({ productIssues: [stored("I1", { status: "Resolved", companyName: "Lab", typeOfSupport: "Technical Supprt" })] });
+    for (const role of ["Superadmin", "CEO"]) await check(env, STATE, as(role), [row("productIssues", "I1", { status: "Resolved", companyName: "Lab Inc.", typeOfSupport: "Technical Support" })]);
+    await assert.rejects(check(env, STATE, as("Engineering"), [row("productIssues", "I1", { status: "Resolved", companyName: "Lab Inc." })]), /can only update the status/);
   });
   test("other roles aren't limited by this check", async () => {
     await check(env, STATE, as("Admin"), [row("productIssues", "I2", { status: "Open" })]);
+  });
+});
+
+describe("removing attachments", () => {
+  const remove = worker.assertFileRemovable;
+  const file = (over = {}) => ({ record_type: "productIssue", uploaded_by: "u1", ...over });
+  test("the uploader can remove their own Support Tracker file", () => {
+    remove(as("Engineering", ["product-issues"]), "u1", file());
+    remove(as("Product Specialist", ["product-issues"]), "u1", file({ record_type: "instrumentalServiceReport" }));
+  });
+  test("someone else's file needs Superadmin/CEO", () => {
+    assert.throws(() => remove(as("Engineering", ["product-issues"]), "u1", file({ uploaded_by: "u2" })), /person who uploaded/);
+    assert.throws(() => remove(as("Admin", ["product-issues"]), "u1", file({ uploaded_by: null })), /person who uploaded/);
+    remove(as("CEO"), "u9", file({ uploaded_by: "u2" }));
+    remove(as("Superadmin"), "u9", file({ uploaded_by: null }));
+  });
+  test("needs edit access to the report", () => {
+    assert.throws(() => remove(as("Sales", []), "u1", file()), /permission/);
+  });
+  test("only Support Tracker files can be removed, even by Superadmin", () => {
+    for (const record_type of ["sale", "payable", "paymentRequest", "client-doc", "memo", "general"]) {
+      assert.throws(() => remove(as("Superadmin"), "u1", file({ record_type })), /Only Support Tracker/, record_type);
+    }
   });
 });
 
