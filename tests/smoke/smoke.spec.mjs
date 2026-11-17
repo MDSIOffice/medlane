@@ -536,8 +536,10 @@ async function spyOnIntro(page, { blockAutoplay = false } = {}) {
     const w = /** @type {any} */ (window);
     w.__plays = [];
     w.__introAt = null;
+    w.__unmutedAt = [];
     const play = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function () {
+      if (!this.__watchMute) { this.__watchMute = true; this.addEventListener("volumechange", () => { if (!this.muted && /welcome-glass-arpeggio/.test(decodeURIComponent(this.src))) w.__unmutedAt.push(performance.now()); }); }
       w.__plays.push({ src: decodeURIComponent(this.src), at: performance.now(), muted: this.muted, el: this, intro: document.getElementById("welcome-screen")?.classList.contains("wl-intro") || false });
       return block ? Promise.reject(new DOMException("blocked", "NotAllowedError")) : play.call(this).catch(() => null);
     };
@@ -554,6 +556,10 @@ test("the Welcome intro starts with the sign-in sound, counts up to the exact nu
   await logIn(page, "superadmin@medlane.test", { stayOnWelcome: true });
   const screen = page.locator("#welcome-screen");
   await expect(screen).toHaveClass(/wl-intro/);
+  // The Safari unlock on "Sign in" stays muted: it's only unmuted when the intro starts (an earlier
+  // unmute raced the pause in Safari and played the sound twice).
+  const timing = await page.evaluate(() => ({ unmuted: /** @type {any} */ (window).__unmutedAt, intro: /** @type {any} */ (window).__introAt }));
+  for (const at of timing.unmuted) expect(at).toBeGreaterThanOrEqual(timing.intro);
   // The sound starts in the same call that adds the intro class.
   const plays = await startupPlays(page);
   expect(plays.length).toBe(1);

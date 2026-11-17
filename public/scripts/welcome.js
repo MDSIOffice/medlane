@@ -395,8 +395,10 @@ function unlockWelcomeSound(email) {
   if (soundKnownOffFor(email)) return;
   const audio = preloadWelcomeSound();
   if (!audio || welcomeSound.played) return;
+  // It stays muted after the pause: unmuting here raced the pause in Safari, which then played the
+  // opening notes on "Sign in" and again on the Welcome screen. playWelcomeSound() unmutes it.
   audio.muted = true;
-  audio.play().then(() => { if (!welcomeSound.played) { audio.pause(); try { audio.currentTime = 0; } catch { /* ignore */ } } }).catch(() => null).finally(() => { audio.muted = false; });
+  audio.play().then(() => { if (!welcomeSound.played) { audio.pause(); try { audio.currentTime = 0; } catch { /* ignore */ } } }).catch(() => null);
 }
 
 /** Plays it from the start, once per Welcome view. A blocked autoplay is ignored and never retried. */
