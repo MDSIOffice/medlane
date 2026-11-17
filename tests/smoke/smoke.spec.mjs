@@ -422,7 +422,7 @@ test("with reduced motion the loader shows a still logo and only the bar moves",
   await page.goto("/login");
   const styles = await page.evaluate(() => {
     const get = (/** @type {string} */ sel, /** @type {string} */ prop) => getComputedStyle(/** @type {Element} */ (document.querySelector(sel))).getPropertyValue(prop);
-    return { draw: get(".app-loader .ml-orange", "animation-name"), dash: get(".app-loader .ml-orange", "stroke-dasharray"), pulse: get(".app-loader .ml-tile", "animation-name"), ring: get(".app-loader .ml-ring", "display"), bar: get(".app-loader-bar span", "animation-name"), barTime: get(".app-loader-bar span", "animation-duration") };
+    return { draw: get(".app-loader .ml-logo-fill", "animation-name"), dash: get(".app-loader .ml-logo-fill", "clip-path"), pulse: get(".app-loader .ml-tile", "animation-name"), ring: get(".app-loader .ml-ring", "display"), bar: get(".app-loader-bar span", "animation-name"), barTime: get(".app-loader-bar span", "animation-duration") };
   });
   expect(styles).toEqual({ draw: "none", dash: "none", pulse: "none", ring: "none", bar: "ml-bar", barTime: "3s" });
   await expect(page.locator("#loading-overlay")).toHaveAttribute("role", "status");
