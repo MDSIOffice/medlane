@@ -601,7 +601,7 @@
       </div>
 
       <nav class="nav" aria-label="Main navigation">
-        <a href="/dashboard?section=dashboard" class="nav-item active" data-section="dashboard" data-title="Dashboard" title="Dashboard" data-description="Executive overview of sales, collections, receivables, stock alerts, and urgent operational actions."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 10 3l7 6.5"/><path d="M5 8.5V17h10V8.5"/><path d="M8 17v-5h4v5"/></svg></span><span>Dashboard</span></a>
+        <a href="/dashboard?section=dashboard" class="nav-item active" data-section="dashboard" data-title="Dashboard" title="Dashboard" data-description="Operational home: what needs attention today, cash for the next 4 weeks and every module at a glance."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 10 3l7 6.5"/><path d="M5 8.5V17h10V8.5"/><path d="M8 17v-5h4v5"/></svg></span><span>Dashboard</span></a>
         <a href="/dashboard?section=calendar" class="nav-item" data-section="calendar" data-title="Calendar" title="Calendar" data-description="Shared team schedule — add events and see everyone's schedule."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12.5" rx="2"/><path d="M3 8.5h14"/><path d="M6.5 2.8v3M13.5 2.8v3"/></svg></span><span>Calendar</span></a>
         <a href="/dashboard?section=analytics" class="nav-item" data-section="analytics" data-title="Analytics" title="Analytics" data-description="Visual charts for branch sales, AR status, top products, collection efficiency, inventory health, and recommendations."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V10"/><path d="M10 17V4"/><path d="M16 17v-7"/><path d="M2.5 17h15"/></svg></span><span>Analytics</span></a>
         <a href="/dashboard?section=masterlists" class="nav-item" data-section="masterlists" data-title="Masterlists" title="Masterlists" data-description="Central source records for clients, reagents/items, suppliers, and employees used throughout the system."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.2c0-.7.6-1.2 1.3-1.2h3.4l1.6 1.8h6.4c.7 0 1.3.5 1.3 1.2v7.3c0 .7-.6 1.2-1.3 1.2H4.3c-.7 0-1.3-.5-1.3-1.2z"/></svg></span><span>Masterlists</span></a>
@@ -706,66 +706,17 @@
         </div>
       </section>
 
-      <section class="section active" id="dashboard">
-        <div class="toolbar dashboard-date-filter">
-          <div class="field"><label for="dashboard-date-from">Dashboard from</label><input id="dashboard-date-from" type="date" /></div>
-          <div class="field"><label for="dashboard-date-to">Dashboard until</label><input id="dashboard-date-to" type="date" /></div>
-          <button class="ghost-button" id="clear-dashboard-dates" type="button">All Dates</button>
-          <button class="ghost-button" id="dashboard-export-csv" type="button">Export CSV</button>
-          <button class="ghost-button" id="dashboard-export-pdf" type="button">Print / Export PDF</button>
-        </div>
-        <div class="stats-grid">
-          <article class="stat-card accent-blue"><span class="card-icon">₱</span><span>Total Sales</span><strong id="sales-total">PHP 0</strong><small>SI + TS</small></article>
-          <article class="stat-card accent-green"><span class="card-icon">●</span><span>Collections</span><strong id="collection-total">PHP 0</strong><small>Received payments</small></article>
-          <article class="stat-card accent-orange"><span class="card-icon">◌</span><span>Outstanding AR</span><strong id="outstanding-total">PHP 0</strong><small>Needs follow-up</small></article>
-          <article class="stat-card accent-red"><span class="card-icon">!</span><span>Stock Alerts</span><strong id="alert-total">0</strong><small>Low / expiring</small></article>
-        </div>
-
-        <div id="logistics-dashboard" hidden>
-          <div class="stats-grid" id="logistics-stats"></div>
-          <div class="dashboard-grid">
-            <article class="panel wide">
-              <div class="panel-header"><div><p class="eyebrow">Purchase Orders</p><h2>Open Inventory POs</h2></div><button class="ghost-button" type="button" data-go-section="inventory">Open Inventory</button></div>
-              <div class="table-card compact-table"><table id="logistics-po-table"></table></div>
-            </article>
-            <article class="panel">
-              <div class="panel-header"><div><p class="eyebrow">Inventory Risk</p><h2>Stock Health</h2></div></div>
-              <div class="chart-bars compact-chart" id="logistics-stock-health"></div>
-            </article>
-            <article class="panel">
-              <div class="panel-header"><div><p class="eyebrow">Expiry Watch</p><h2>Lots Expiring Soonest</h2></div></div>
-              <ul class="compact-list" id="logistics-expiry-list"></ul>
-            </article>
+      <section class="section active ui-scope" id="dashboard">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1" id="dashboard-greeting">Dashboard</h1></div>
+            <p class="ui-desc" id="dashboard-desc">Everything that needs attention today across sales, stock, money in and money out.</p>
           </div>
+          <div class="ui-actions" id="dashboard-actions"></div>
         </div>
-
-        <article class="panel" id="dashboard-trend-panel">
-          <div class="panel-header"><div><p class="eyebrow">Performance</p><h2>Sales &amp; Collections Trend</h2></div></div>
-          <div id="dashboard-trend-chart"></div>
-        </article>
-
-        <div class="dashboard-grid">
-          <article class="panel wide">
-            <div class="panel-header"><div><p class="eyebrow">Needs Attention</p><h2>Action Center</h2></div><span class="badge danger" id="urgent-count">0 urgent</span></div>
-            <div class="alert-list" id="alerts-list"></div>
-          </article>
-          <article class="panel" data-sales-dashboard>
-            <div class="panel-header"><div><p class="eyebrow">Region Performance</p><h2>Regions I-V and dealer areas</h2></div></div>
-            <div class="branch-bars" id="branch-bars"></div>
-          </article>
-          <article class="panel" data-sales-dashboard>
-            <div class="panel-header"><div><p class="eyebrow">Compliance</p><h2>Record Health</h2></div></div>
-            <ul class="compact-list" id="health-list"></ul>
-          </article>
-          <article class="panel">
-            <div class="panel-header"><div><p class="eyebrow">Recovery</p><h2>Backup Status</h2></div><span class="badge" id="backup-health-badge">Checking</span></div>
-            <ul class="compact-list" id="dashboard-backup-list"></ul>
-          </article>
-          <article class="panel">
-            <div class="panel-header"><div><p class="eyebrow">Tracker</p><h2>Calendar</h2></div></div>
-            <div id="dashboard-calendar-widget"></div>
-          </article>
-        </div>
+        <div class="ui-wa-host" data-wa-host="dashboard"></div>
+        <div class="ui-tabs" id="dashboard-tabs" role="tablist" aria-label="Dashboard sections"></div>
+        <div id="dashboard-tab-panel"></div>
       </section>
 
       <section class="section" id="calendar">
@@ -846,32 +797,17 @@
         <div class="ui-section" id="sales-tab-panel"></div>
       </section>
 
-      <section class="section" id="item-forecast">
-        <div class="section-header"><div><p class="eyebrow">Restock Planning</p><h2>Item Forecast</h2></div></div>
-        <p class="page-description">Based on each item's average monthly sales over the last 3 months, projected across the allocation window below, minus current stock on hand.</p>
-        <div class="toolbar">
-          <div class="view-toggle" id="item-forecast-preset-toggle" role="group" aria-label="Forward allocation months">
-            <button class="view-toggle-btn" data-forecast-months="2" type="button">+2 mo</button>
-            <button class="view-toggle-btn" data-forecast-months="3" type="button">+3 mo</button>
-            <button class="view-toggle-btn" data-forecast-months="4" type="button">+4 mo</button>
-            <button class="view-toggle-btn" data-forecast-months="5" type="button">+5 mo</button>
+      <section class="section ui-scope" id="item-forecast">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Item Forecast</h1></div>
+            <p class="ui-desc" id="forecast-desc">What to order, how much and when, from each item’s deliveries to clients over the last 90 days, the supplier’s lead time and 14 days of safety stock.</p>
           </div>
-          <div class="field"><label for="item-forecast-custom-months">Custom Months</label><input id="item-forecast-custom-months" type="number" min="1" max="24" step="1" /></div>
-          <button class="ghost-button" id="item-forecast-print" type="button">Print Forecast</button>
+          <div class="ui-actions" id="forecast-actions"></div>
         </div>
-        <div class="forecast-filter-panel">
-          <div class="forecast-filter-head"><div><p class="eyebrow">Filter Scope</p><h3>Refine Forecast</h3></div><div class="inline-actions"><span class="badge" id="item-forecast-filter-summary">All items</span><button class="ghost-button" id="item-forecast-clear-filters" type="button">Clear Filters</button></div></div>
-          <div class="forecast-filter-toolbar">
-            <div class="field"><label for="item-forecast-brand">Brand</label><select id="item-forecast-brand"><option value="">All Brands</option></select></div>
-            <div class="field"><label for="item-forecast-client">Client</label><select id="item-forecast-client"><option value="">All Clients</option></select></div>
-            <div class="field"><label for="item-forecast-item">Item</label><input id="item-forecast-item" name="item-forecast-item" list="item-forecast-item-options" placeholder="Search item or code" autocomplete="off" /><datalist id="item-forecast-item-options"></datalist></div>
-            <div class="field"><label for="item-forecast-division">Division</label><select id="item-forecast-division"><option value="">All Divisions</option></select></div>
-            <div class="field"><label for="item-forecast-region">Region</label><select id="item-forecast-region"><option value="">All Regions</option></select></div>
-            <div class="field"><label for="item-forecast-classification">Classification</label><select id="item-forecast-classification"><option value="">All Classifications</option></select></div>
-          </div>
-        </div>
-        <div class="visual-grid" id="item-forecast-visuals"></div>
-        <div class="table-card"><table id="item-forecast-table"></table></div>
+        <div class="ui-wa-host" data-wa-host="item-forecast"></div>
+        <div class="ui-tabs" id="forecast-tabs" role="tablist" aria-label="Item Forecast sections"></div>
+        <div id="forecast-tab-panel"></div>
       </section>
 
       <section class="section ui-scope" id="purchase-orders">
@@ -1544,7 +1480,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

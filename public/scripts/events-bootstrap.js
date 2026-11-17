@@ -801,6 +801,10 @@ async function removePlatformBranch(branch) {
   toast(`${branch} removed from platform branches.`);
 }
 qs("#users").addEventListener("click", (event) => { handleUsersClick(/** @type {Element} */ (event.target)); });
+qs("#item-forecast").addEventListener("click", (event) => { handleForecastClick(/** @type {Element} */ (event.target)); });
+qs("#item-forecast").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "forecast", () => forecastView, renderItemForecast); });
+qs("#dashboard").addEventListener("click", (event) => { handleDashboardClick(/** @type {Element} */ (event.target)); });
+qs("#dashboard").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "dash", () => dashboardView, renderDashboard); });
 qs("#welcome-screen")?.addEventListener("click", (event) => { handleWelcomeClick(/** @type {Element} */ (event.target)); });
 document.addEventListener("keydown", (event) => handleWelcomeKey(event));
 qs("#users").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "users", () => usersView, renderUsers); });
@@ -1032,45 +1036,6 @@ qs("#print-template-panel")?.addEventListener("change", (event) => {
   if (id === "pt-step-select") ptStepIn = Number(/** @type {AnyEl} */ (event.target).value);
 });
 qs("#load-more-collections-history").addEventListener("click", loadMoreCollectionsHistory);
-qs("#item-forecast-preset-toggle")?.addEventListener("click", (event) => {
-  const btn = closestEl(event.target, "[data-forecast-months]");
-  if (!btn) return;
-  itemForecastMonths = Number(/** @type {string} */ (btn.dataset.forecastMonths));
-  renderItemForecast();
-});
-qs("#item-forecast-custom-months")?.addEventListener("change", (event) => {
-  const value = Math.max(1, Math.min(24, Number(/** @type {AnyEl} */ (event.target).value) || 1));
-  itemForecastMonths = value;
-  renderItemForecast();
-});
-qsa("#item-forecast-brand, #item-forecast-client, #item-forecast-item, #item-forecast-division, #item-forecast-region, #item-forecast-classification").forEach((select) => select.addEventListener("change", () => {
-  itemForecastFilters = {
-    brand: qs("#item-forecast-brand")?.value || "",
-    client: qs("#item-forecast-client")?.value || "",
-    item: qs("#item-forecast-item")?.value || "",
-    division: qs("#item-forecast-division")?.value || "",
-    region: qs("#item-forecast-region")?.value || "",
-    classification: qs("#item-forecast-classification")?.value || "",
-  };
-  renderItemForecast();
-}));
-qs("#item-forecast-item")?.addEventListener("input", () => {
-  itemForecastFilters = {
-    brand: qs("#item-forecast-brand")?.value || "",
-    client: qs("#item-forecast-client")?.value || "",
-    item: qs("#item-forecast-item")?.value || "",
-    division: qs("#item-forecast-division")?.value || "",
-    region: qs("#item-forecast-region")?.value || "",
-    classification: qs("#item-forecast-classification")?.value || "",
-  };
-  renderItemForecast();
-});
-qs("#item-forecast-clear-filters")?.addEventListener("click", () => {
-  itemForecastFilters = { brand: "", client: "", item: "", division: "", region: "", classification: "" };
-  qsa("#item-forecast-brand, #item-forecast-client, #item-forecast-item, #item-forecast-division, #item-forecast-region, #item-forecast-classification").forEach((select) => { select.value = ""; });
-  renderItemForecast();
-});
-qs("#item-forecast-print")?.addEventListener("click", () => printItemForecast());
 qs("#open-stock-sheet").addEventListener("click", () => { renderStockSheet(); restoreStockSheetDraftIfMatching("", null); qs("#stock-sheet-modal").showModal(); });
 qs("#open-transfer-sheet").addEventListener("click", () => { renderTransferSheet(); restoreTransferSheetDraft(); qs("#transfer-sheet-modal").showModal(); });
 qs("#open-demo-request")?.addEventListener("click", () => { renderDemoRequestSheet(); qs("#demo-request-modal").showModal(); });
@@ -1588,11 +1553,6 @@ qs("#global-search").addEventListener("input", () => {
   clearTimeout(globalSearchRenderTimer);
   globalSearchRenderTimer = setTimeout(() => renderSection(), 150);
 });
-qs("#dashboard-date-from").addEventListener("change", renderDashboard);
-qs("#dashboard-date-to").addEventListener("change", renderDashboard);
-qs("#clear-dashboard-dates").addEventListener("click", () => { qs("#dashboard-date-from").value = ""; qs("#dashboard-date-to").value = ""; renderDashboard(); toast("Dashboard date filter cleared."); });
-qs("#dashboard-export-csv").addEventListener("click", exportDashboardCsv);
-qs("#dashboard-export-pdf").addEventListener("click", printDashboardReport);
 qs("#inventory-status").addEventListener("change", renderInventory);
 qs("#product-issue-status").addEventListener("change", renderProductIssues);
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));

@@ -68,6 +68,15 @@ describe("module access", () => {
       assert.equal(canAccessKey(as("Sales", ["sales"]), key, "view"), false);
     }
   });
+  test("forecast settings: Item Forecast users read, only Superadmin/CEO change them", () => {
+    assert.equal(canAccessKey(as("Sales", ["item-forecast"]), "forecastSettings", "view"), true);
+    assert.equal(canAccessKey(as("Admin", ["item-forecast"]), "forecastSettings", "view"), true);
+    assert.equal(canAccessKey(as("Admin", ["item-forecast"]), "forecastSettings", "edit"), false);
+    assert.equal(canAccessKey(as("Sales", ["item-forecast"]), "forecastSettings", "edit"), false);
+    assert.equal(canAccessKey(as("Logistics", ["inventory"]), "forecastSettings", "view"), false);
+    assert.equal(canAccessKey(as("Superadmin"), "forecastSettings", "edit"), true);
+    assert.equal(canAccessKey(as("CEO"), "forecastSettings", "edit"), true);
+  });
   test("an unknown key is denied", () => { assert.equal(canAccessKey(as("Admin", ["payables"]), "nope", "edit"), false); });
   test("no profile is denied", () => {
     assert.equal(canAccessKey(null, "payables", "view"), false);

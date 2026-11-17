@@ -3457,6 +3457,51 @@ html.lr-lb-open, html.lr-lb-open body { overflow: hidden; }
 .ui-scope .ui-meter span.t-red { background: var(--ui-red); }
 .ui-scope .ui-sub.tone-orange { color: var(--ui-orange-fg); font-weight: 600; }
 .ui-scope .ui-num.tone-red { color: var(--ui-red-fg); font-weight: 700; }
+.ui-scope b.tone-orange, .ui-scope .ui-num.tone-orange { color: var(--ui-orange-fg); }
+.ui-scope b.tone-blue { color: var(--ui-blue-fg); }
+.ui-scope .ui-num.tone-green { color: var(--ui-green-fg); font-weight: 700; }
+/* Compact table inside a dashboard card (usage by month, cash by week, modules at a glance). */
+/* Resets the legacy global table rules (980px min-width, sticky header and last column). */
+.ui-scope .ui-mini-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 13px; display: table; background: transparent; }
+.ui-scope .ui-mini-table th, .ui-scope .ui-mini-table td { padding: 9px 8px; border-bottom: 1px solid var(--ui-divider); text-align: left; vertical-align: top; position: static; z-index: auto; background: transparent; box-shadow: none; letter-spacing: normal; text-transform: none; font-size: 13px; }
+.ui-scope .ui-mini-table tbody tr:hover { background: transparent; }
+.ui-scope .ui-mini-table th:first-child, .ui-scope .ui-mini-table td:first-child { padding-left: 0; }
+.ui-scope .ui-mini-table th:last-child, .ui-scope .ui-mini-table td:last-child { padding-right: 0; }
+.ui-scope .ui-mini-table thead th { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ui-muted); white-space: nowrap; }
+.ui-scope .ui-mini-table tbody th { font-weight: 700; color: var(--ui-ink); white-space: nowrap; }
+.ui-scope .ui-mini-table td { color: var(--ui-ink-2); }
+.ui-scope .ui-mini-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ui-scope .ui-mini-table td.num { font-weight: 700; color: var(--ui-ink); }
+.ui-scope .ui-mini-table tr.neg td.num.net { color: var(--ui-red-fg); }
+.ui-scope .ui-mini-table tr.neg { background: var(--ui-red-bg); }
+.ui-scope .ui-mini-table tbody tr:last-child th, .ui-scope .ui-mini-table tbody tr:last-child td { border-bottom: 0; }
+.ui-scope .ui-mini-table .ui-link { min-height: 0; text-align: left; }
+.ui-scope .ui-card-note { margin: 0; font-size: 13px; line-height: 1.45; color: var(--ui-ink-2); background: var(--ui-head); border-radius: 8px; padding: 10px 12px; }
+.ui-scope .ui-tag { display: inline-block; font-size: 12px; font-weight: 700; color: var(--ui-subtle); }
+/* Dashboard lists: tasks, coming up, facts. */
+.ui-scope .dash-tasks li, .ui-scope .dash-timeline li { display: flex; align-items: flex-start; gap: 10px; }
+.ui-scope .dash-tasks .grow, .ui-scope .dash-timeline .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ui-scope .dash-tasks .grow strong, .ui-scope .dash-timeline .grow strong { font-size: 13.5px; font-weight: 700; color: var(--ui-ink); line-height: 1.35; }
+.ui-scope .dash-tasks .grow span, .ui-scope .dash-timeline .grow span { font-size: 12.5px; color: var(--ui-muted); }
+.ui-scope .dash-meta { flex: 0 0 auto; width: 96px; font-size: 11.5px; font-weight: 700; color: var(--ui-subtle); padding-top: 2px; line-height: 1.3; }
+.ui-scope .dash-timeline .dash-meta { width: 72px; font-variant-numeric: tabular-nums; }
+.ui-scope .dash-tasks .ui-btn { flex: 0 0 auto; }
+.ui-scope .dash-clear { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; }
+.ui-scope .dash-clear div { display: flex; flex-direction: column; gap: 2px; }
+.ui-scope .dash-clear span { font-size: 13px; color: var(--ui-muted); }
+.ui-scope .dash-facts { margin: 0; display: grid; gap: 0; }
+.ui-scope .dash-facts div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--ui-divider); }
+.ui-scope .dash-facts div:last-child { border-bottom: 0; }
+.ui-scope .dash-facts dt { font-size: 13px; color: var(--ui-ink-2); }
+.ui-scope .dash-facts dd { margin: 0; font-size: 13px; font-weight: 700; color: var(--ui-ink); text-align: right; font-variant-numeric: tabular-nums; }
+.ui-scope .dash-task-cell { display: flex; align-items: flex-start; gap: 8px; }
+.ui-scope .dash-task-cell .ui-dot { margin-top: 6px; }
+@media (max-width: 640px) {
+  .ui-scope .dash-tasks li { flex-wrap: wrap; }
+  .ui-scope .dash-meta { width: 100%; padding-top: 0; }
+  .ui-scope .dash-tasks .ui-btn { margin-left: 18px; }
+}
+.forecast-settings-h3 { margin: 18px 0 8px; font-size: 14px; font-weight: 800; }
 .ui-scope .ui-num.tone-green { color: var(--ui-green-fg); font-weight: 700; }
 .ui-scope #sales-tab-panel .ui-filterbar, .ui-scope #sales-tab-panel .ui-chips { margin-bottom: 0; }
 /* Redesigned pages carry their own page header; hide the app shell's duplicate title there. */
@@ -3682,6 +3727,8 @@ body[data-active-section="analytics"] .topbar-title,
 body[data-active-section="purchase-history"] .topbar-title,
 body[data-active-section="logs"] .topbar-title,
 body[data-active-section="reconciliation"] .topbar-title,
+body[data-active-section="dashboard"] .topbar-title,
+body[data-active-section="item-forecast"] .topbar-title,
 body[data-active-section="masterlists"] .topbar-title { display: none; }
 .ui-scope .logs-notifications { display: grid; gap: 16px; }
 .ui-scope .ui-client-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }

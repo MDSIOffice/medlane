@@ -436,6 +436,33 @@ WORKFLOW_RULES.reconciliation = [0, 1, 2].map((index) => ({ id: `recon-${index}`
   return { tone: /** @type {UiTone} */ (Number(diff.amount) >= 30000 ? "red" : "amber"), money: Number(diff.amount || 0), text: `${diff.title} — ${diff.ref}${Number(diff.amount) ? ` (${reconPeso(Number(diff.amount))})` : ""}`, action: diff.fix?.kind === "apply" && reconCanFix() ? "Fix" : "Review", attrs: diff.fix?.kind === "apply" && reconCanFix() ? { "data-recon-fix": diff.id } : { "data-wa-goto": `reconciliation|diffs|open|${diff.id}` } };
 } }));
 
+/** Days between branch stock counts before one is overdue (Recon settings `countEveryDays`, default 30). */
+function reconCountEveryDays() { return Number(reconState.data?.settings?.countEveryDays) > 0 ? Number(reconState.data?.settings?.countEveryDays) : 30; }
+/** Last posted stock count per branch and how many days ago it was. @returns {{ branch: string, at: string, days: number | null, overdue: boolean }[]} */
+function reconBranchCounts() {
+  if (!reconState.data) return [];
+  const every = reconCountEveryDays();
+  /** @type {Map<string, string>} */
+  const latest = new Map();
+  for (const count of /** @type {any[]} */ (reconState.data.stockCounts || [])) {
+    if (count?.status !== "Posted" || !count.branch) continue;
+    const at = fmtDateSafe(count.at || count.date);
+    if (at && at > (latest.get(count.branch) || "")) latest.set(count.branch, at);
+  }
+  return platformBranches().map((branch) => {
+    const at = latest.get(branch) || "";
+    const days = at ? Math.max(0, -daysUntil(at)) : null;
+    return { branch, at, days, overdue: days === null || days >= every };
+  });
+}
+WORKFLOW_RULES.reconciliation.push({ id: "recon-count-overdue", rule: () => {
+  const overdue = reconBranchCounts().filter((entry) => entry.overdue);
+  if (!overdue.length) return null;
+  const first = overdue[0];
+  const when = first.at ? `last counted ${uiDate(first.at)} (${plural(/** @type {number} */ (first.days), "day")})` : "no count posted yet";
+  return { tone: "amber", text: overdue.length === 1 ? `Count ${first.branch} stock — ${when}.` : `Count stock at ${overdue.map((entry) => entry.branch).join(" and ")} — ${first.branch} ${when}.`, action: "Start count", attrs: { "data-wa-goto": "reconciliation|count||" } };
+} });
+
 // ----- dialogs --------------------------------------------------------------------------------
 /**
  * A small form dialog (wrapped in a <form> so modal padding applies). Resolves with the form's

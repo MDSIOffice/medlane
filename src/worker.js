@@ -121,6 +121,9 @@ const moduleRecordKeys = {
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
   // Client POs (sales & invoicing). Supplier POs live under Inventory (inventoryPurchaseOrders above).
   "purchase-orders": ["purchaseOrders"],
+  // Item Forecast's own settings (safety days, cover days, lead-time fallbacks). Everyone with Item
+  // Forecast reads them; only Superadmin/CEO change them (canAccessKey).
+  "item-forecast": ["forecastSettings"],
   invoicing: ["sales", "pendingCreditInvoices"],
   sales: ["sales"],
   receivables: ["sales", "payments", "collectionContacts", "collectionContactHistory"],
@@ -2901,6 +2904,7 @@ function canAccessKey(profile, key, mode = "view") {
   // Sales raises supplier POs through the Purchase Orders module, not Inventory edit.
   if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
   if (mode === "edit" && EXPENSE_PLANNING_KEYS.includes(key) && profile?.role !== "Admin") return false;
+  if (mode === "edit" && key === "forecastSettings") return false;
   const modules = modulesForKey(key);
   return modules.some((module) => allowed.includes(module));
 }

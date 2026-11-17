@@ -416,7 +416,8 @@ function uiExportView(view, state) {
 /**
  * A recommendation for the Workflow assistant. `attrs` are data-* attributes the app's delegated
  * click handlers understand (usually `data-workflow-action`).
- * @typedef {{ text: string, action: string, attrs: UiAttrs, tone?: UiTone, money?: number }} UiRec
+ * `id` is the rule that produced it (filled in by workflowRecommendations).
+ * @typedef {{ text: string, action: string, attrs: UiAttrs, tone?: UiTone, money?: number, id?: string }} UiRec
  */
 
 const UI_WA_ICON_WARN = "M12 9v4M12 16.5v.01M12 3l9.5 17h-19z";

@@ -101,7 +101,9 @@ test("logging in draws the dashboard and the parts shared by every page", async 
   await logIn(page);
   await expect(page.locator("#logout-top-button").locator("..")).toContainText("Fake Superadmin");
   await expect(page.locator("#page-title")).toHaveText("Dashboard");
-  await expect(page.locator("#alerts-list .alert-item").first()).toBeVisible();
+  await expect(page.locator("#dashboard .ui-kpi").first()).toBeVisible();
+  await expect(page.locator("#dashboard")).toContainText("Needs attention today");
+  await expect(page.locator(".nav-item").first()).toHaveAttribute("data-section", "dashboard");
   expect(problems).toEqual([]);
 });
 
@@ -454,5 +456,76 @@ test("marking a collection deposited records the company bank it went into", asy
   expect(JSON.stringify(saved)).toContain('"depositBankAccount":"777-1"');
   await page.evaluate(() => /** @type {any} */ (window).showSection("collections"));
   await expect(page.locator("#collections")).toContainText("Deposited to Metrobank · 777-1");
+  expect(problems).toEqual([]);
+});
+
+// A fast-moving item: 180 units delivered in the last 90 days (2 a day), only 10 on hand and
+// nothing on order, so it must be "Order now" with a reorder point of 2 × (14 lead + 14 safety) = 56.
+function withFastItem(body) {
+  const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+  const d = body.data;
+  d.items.push({ code: "CBC-9", name: "CBC Diluent", brand: "Medlane", uom: "box", price: 800, cost: 500, category: "Reagent", minLevel: 20, archived: false });
+  d.inventory.push({ code: "CBC-9", item: "CBC Diluent", brand: "Medlane", branch: "Las Pinas", lot: "C1", expiry: day(200), qty: 10, min: 20 });
+  for (let i = 0; i < 6; i += 1) d.sales.push({ id: `SI-F${i}`, documentNo: `SI-F${i}`, type: "SI", client: "Naga City Lab", area: "Naga", po: "", noPo: true, date: day(-5 - i * 12), terms: 30, salesperson: "Fake Sales", lines: [{ item: "CBC Diluent", code: "CBC-9", qty: 30, price: 800, lot: "C1" }], qty: 30, amount: 24000, discount: 0, net: 24000, paid: 24000, status: "Active" });
+  return body;
+}
+
+test("Item Forecast flags a fast mover, shows the calculation and pre-fills a draft PO without saving", async ({ page }) => {
+  const { problems } = await watch(page);
+  await page.route("**/api/modules/state", async (route) => { const response = await route.fetch(); await route.fulfill({ response, json: withFastItem(await response.json()) }); });
+  const saves = [];
+  await page.route("**/api/modules/records", async (route) => { saves.push(route.request().postDataJSON()); await route.fulfill({ json: { ok: true, revision: 2 } }); });
+  await logIn(page);
+  await page.evaluate(() => /** @type {any} */ (window).showSection("item-forecast"));
+  const section = page.locator("#item-forecast");
+  for (const tab of ["Overview", "Reorder list", "All items", "Expiry risk"]) await expect(section.getByRole("tab", { name: new RegExp(tab) })).toBeVisible();
+  await expect(section.locator(".ui-kpi").first()).toContainText("Order now");
+  await expect(section.locator(".ui-kpi").first()).toContainText("1");
+  await expect(section).toContainText("Usage, last 6 months");
+  await section.getByRole("tab", { name: /Reorder list/ }).click();
+  await section.getByRole("button", { name: "CBC Diluent" }).first().click();
+  const detail = section.locator(".ui-detail-head").locator("..");
+  await expect(detail).toContainText("How it’s calculated");
+  await expect(detail).toContainText("Order now");
+  await expect(detail).toContainText("56"); // reorder point
+  // Order up to = ceil(2 × (14 + 60) + 28) = 176; available 10 → suggest 166.
+  await expect(detail).toContainText("166");
+  await section.getByRole("button", { name: "Create PO from list" }).first().click();
+  const form = page.locator("#demo-modal");
+  await expect(form).toBeVisible();
+  // Only one supplier has items to order, so the form opens straight away for it.
+  await expect(form.locator("#supplier")).toHaveValue("Reagent Supply Co");
+  await expect(form).toContainText("CBC Diluent");
+  // Opening the form writes no purchase order (the app's own notification sync may still save).
+  expect(JSON.stringify(saves)).not.toContain("inventoryPurchaseOrders");
+  expect(problems).toEqual([]);
+});
+
+test("Item Forecast settings are only offered to Superadmin and CEO", async ({ page }) => {
+  await watch(page);
+  await logIn(page);
+  await page.evaluate(() => /** @type {any} */ (window).showSection("item-forecast"));
+  await expect(page.locator("#forecast-actions")).toContainText("Forecast settings");
+  // currentUser is a top-level `let`, reachable by name from page scripts.
+  const allowed = await page.evaluate(() => { const was = currentUser.role; currentUser.role = "Logistics"; const ok = forecastCanEditSettings(); currentUser.role = was; return ok; });
+  expect(allowed).toBe(false);
+});
+
+test("the Dashboard task list and All tasks tab come from the module rules and open the record", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page);
+  const dash = page.locator("#dashboard");
+  await expect(dash).toContainText("Cash: next 4 weeks");
+  await expect(dash).toContainText("Modules at a glance");
+  await expect(dash).toContainText("Coming up");
+  const firstTask = dash.locator(".dash-tasks li").first();
+  await expect(firstTask).toBeVisible();
+  await dash.getByRole("tab", { name: /All tasks/ }).click();
+  await expect(dash.locator("table thead")).toContainText("Owner");
+  const rows = dash.locator("table tbody tr");
+  expect(await rows.count()).toBeGreaterThan(0);
+  // Each task's action goes to the page where it's handled.
+  await rows.first().locator("[data-dash-task]").click();
+  await expect(page.locator("body")).not.toHaveAttribute("data-active-section", "dashboard");
   expect(problems).toEqual([]);
 });

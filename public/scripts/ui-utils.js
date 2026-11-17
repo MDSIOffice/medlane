@@ -275,9 +275,6 @@ function dateInRange(dateValue, from = "", to = "") {
   const value = fmtDate(dateValue);
   return (!from || value >= from) && (!to || value <= to);
 }
-function getDashboardRange() {
-  return { from: qs("#dashboard-date-from")?.value || "", to: qs("#dashboard-date-to")?.value || "" };
-}
 /** @param {string} action @param {string} module @param {string} record @param {Record<string, any>} [options] */
 function log(action, module, record, options = {}) {
   MedlaneAPI.recordLog({ action, module, record: String(record ?? "") }).catch(() => {});

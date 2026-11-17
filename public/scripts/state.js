@@ -181,8 +181,6 @@ let cancelReplaceSaleId = null;
 let editingExpenseId = null;
 /** @type {any} */
 let clientHistoryTab = "invoices";
-let itemForecastMonths = 3;
-let itemForecastFilters = { brand: "", client: "", item: "", division: "", region: "", classification: "" };
 let transferRowUid = 0;
 let invoiceRowUid = 0;
 let stockSheetRowUid = 0;
@@ -237,7 +235,7 @@ const frontendModuleRecordKeys = {
   masterlists: ["clients", "items", "suppliers", "employees", "banks", "priceLists", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
   "purchase-orders": ["purchaseOrders"],
-  "item-forecast": [],
+  "item-forecast": ["forecastSettings"],
   sales: ["sales"],
   invoicing: ["sales", "pendingCreditInvoices"],
   collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
@@ -442,6 +440,7 @@ function emptyProductionData() {
     calendarEvents: [],
     expenseBudgets: [],
     recurringCosts: [],
+    forecastSettings: [],
   };
 }
 
@@ -521,6 +520,7 @@ function normalizeData(next) {
   next.calendarEvents ||= [];
   next.expenseBudgets ||= [];
   next.recurringCosts ||= [];
+  next.forecastSettings ||= [];
   next.pendingTransfers ||= [];
   next.pendingCreditInvoices ||= [];
   next.branchAddresses ||= { "Las Pinas": "13 Gumamela St. Pilar Village, Las Pinas City", Naga: "Naga City" };

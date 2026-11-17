@@ -386,6 +386,9 @@ interface ExpenseBudget { id: string; category: string; office?: string; monthly
 /** A cost that repeats (rent, utilities, subscriptions) so the cash forecast and budgets can expect it. */
 interface RecurringCost { id: string; name: string; category: string; office?: string; amount: number; every: "Monthly" | "Quarterly" | "Yearly"; nextDue: string; payee?: string; active?: boolean; updatedBy?: string; updatedAt?: string }
 
+/** Item Forecast settings as stored (data.forecastSettings[0]); Superadmin/CEO edit. */
+interface ForecastSettingsRecord { id: string; safetyDays?: number; coverDays?: number; defaultLeadDays?: number; supplierLeadDays?: Record<string, number>; updatedBy?: string; updatedAt?: string }
+
 interface AppData {
   purchaseOrders: ClientPO[];
   inventoryPurchaseOrders: InventoryPO[];
@@ -416,6 +419,8 @@ interface AppData {
   expenseBudgets: ExpenseBudget[];
   recurringCosts: RecurringCost[];
   priceLists: PriceList[];
+  /** Item Forecast settings: one record, id "settings" (see forecastSettingsFrom). */
+  forecastSettings: ForecastSettingsRecord[];
   [collection: string]: any;
 }
 

@@ -135,7 +135,7 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "warranty", "imports", "reports", "security", "product-issues"];
+const WORKFLOW_ASSIST_SECTIONS = ["warranty", "imports", "reports", "security", "product-issues"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -477,6 +477,8 @@ function workflowGoto(module, tab, scope, sel) {
   else if (module === "reconciliation") { if (RECON_TAB_LABELS[tab]) reconTab = tab; reconView = view; }
   else if (module === "masterlists") { if (MASTER_TAB_LABELS[tab]) masterPageTab = tab; masterView = view; }
   else if (module === "users") { if (USER_TAB_LABELS[tab]) usersPageTab = tab; usersView = view; usersRoleFilter = ""; }
+  else if (module === "item-forecast") { if (FORECAST_TAB_LABELS[tab]) forecastTab = tab; forecastView = view; }
+  else if (module === "dashboard") { if (DASHBOARD_TAB_LABELS[tab]) dashboardTab = tab; dashboardView = view; }
   else if (module === "purchase-history") {
     if (CLIENT_HISTORY_TAB_LABELS[tab]) clientHistoryPageTab = tab;
     if (clientHistoryPageTab === "profile") { if (sel) clientHistoryClient = sel; view.sel = ""; }
@@ -485,7 +487,7 @@ function workflowGoto(module, tab, scope, sel) {
   else return;
   if (document.body.dataset.activeSection !== module) showSection(module);
   else renderSection(module);
-  document.getElementById(`${module === "receivables-tracker" ? "receivables" : module}-tab-panel`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  document.getElementById(`${({ "receivables-tracker": "receivables", "item-forecast": "forecast" })[module] || module}-tab-panel`)?.scrollIntoView({ block: "start", behavior: "smooth" });
 }
 
 /** @param {string} module @returns {UiRec[]} */
@@ -505,8 +507,8 @@ function workflowRecommendations(module) {
   };
   /** @type {UiRec[]} */
   const recs = [];
-  for (const { rule } of rules) {
-    try { const rec = rule(ctx); if (rec) recs.push(rec); } catch (error) { console.warn("Workflow rule failed", error); }
+  for (const { id, rule } of rules) {
+    try { const rec = rule(ctx); if (rec) recs.push({ ...rec, id: rec.id || id }); } catch (error) { console.warn("Workflow rule failed", error); }
   }
   const rank = (/** @type {UiRec} */ rec) => { const at = WORKFLOW_TONE_RANK.indexOf(rec.tone || "amber"); return at < 0 ? 99 : at; };
   return recs.sort((a, b) => rank(a) - rank(b) || (b.money || 0) - (a.money || 0));
@@ -524,7 +526,8 @@ function todayTasks(modules) {
   const out = [];
   const seen = new Set();
   for (const module of modules) {
-    if (!canViewModule(module)) continue;
+    // Supplier-PO rules sit under "purchase-orders"; they show for anyone who can see supplier POs.
+    if (!(module === "purchase-orders" ? supplierPurchasingVisible() : canViewModule(module))) continue;
     for (const rec of workflowRecommendations(module)) {
       if (seen.has(rec.text)) continue;
       seen.add(rec.text);
@@ -2222,166 +2225,6 @@ function transferItemizedDetail(transfer) {
   return `<div class="mini-transfer-lines">${lines.map((line) => `<span><strong>${escapeHtml(line.item)}</strong> ${transferLineQty(line)} ${escapeHtml(line.uom || "")}<small>Lot ${escapeHtml(transferLineLot(line))} · Exp ${escapeHtml(transferLineExpiry(line))}</small></span>`).join("")}</div>`;
 }
 
-/** @param {any} [dashboardRange] */
-function dashboardVisibleSales(dashboardRange = getDashboardRange()) {
-  return byBranch(data.sales, "area").filter((sale) => currentUser?.role !== "Sales" || sale.salesperson === currentUser?.name).filter((sale) => dateInRange(sale.date, dashboardRange.from, dashboardRange.to));
-}
-
-// Logistics gets an inventory/PO dashboard instead of the sales one: open POs by stage, receipts
-// and transfers awaiting action, stock health and expiring lots. The sales widgets are hidden.
-function isLogisticsDashboard() { return currentUser?.role === "Logistics"; }
-
-function renderLogisticsDashboard() {
-  const pos = data.inventoryPurchaseOrders || [];
-  const openPos = pos.filter((po) => !inventoryPoTerminalStatuses.includes(po.status));
-  const pendingApproval = openPos.filter((po) => po.status === "Pending Approval");
-  const inTransit = openPos.filter((po) => ["Approved", "Sent to Supplier", "In Transit"].includes(po.status));
-  const forReceiving = receivingPurchaseOrders().filter((po) => ["For Receiving", "Partially Received"].includes(po.status));
-  const pendingReceipts = (data.stockReceipts || []).filter((receipt) => receipt.status === "Pending Approval");
-  const openTransfers = (data.pendingTransfers || []).filter((transfer) => !["Received", "Cancelled"].includes(transfer.status));
-  const demoForLogistics = (data.inventoryDemoRequests || []).filter((request) => request.status === "For Logistics Approval");
-  const stock = byBranch(data.inventory);
-  const invAlerts = stock.filter((item) => ["Low Stock", "Critical", "Near Expiry", "Expired"].includes(inventoryStatus(item)));
-  const stat = (/** @type {any} */ accent, /** @type {any} */ icon, /** @type {any} */ label, /** @type {any} */ value, /** @type {any} */ note) => `<article class="stat-card accent-${accent}"><span class="card-icon">${icon}</span><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`;
-  qs("#logistics-stats").innerHTML = [
-    stat("orange", "◌", "Pending PO Approval", pendingApproval.length, "Awaiting Superadmin"),
-    stat("blue", "🚚", "POs In Transit", inTransit.length, "Approved → in transit"),
-    stat("green", "📦", "For Receiving", forReceiving.length, `${pendingReceipts.length} receipt${pendingReceipts.length === 1 ? "" : "s"} awaiting approval`),
-    stat("red", "!", "Stock Alerts", invAlerts.length, "Low / expiring lots"),
-  ].join("");
-  table("#logistics-po-table", ["PO", "Supplier", "Branch", "Date", "Lines", "Status"], openPos.slice().reverse().slice(0, 12).map((po) => ({ focus: po.id, cells: [po.id, po.supplier || "-", po.branch || "-", po.date || "-", String((po.lines || []).length), `<span class="pill ${statusClass(po.status)}">${poStatusLabel(poHasPendingReceipt(po) ? "Receipt Pending Approval" : po.status)}</span>`] })));
-  qs("#logistics-stock-health").innerHTML = barRows(["Available", "Near Expiry", "Low Stock", "Critical", "Expired"].map((status) => [status, stock.filter((item) => inventoryStatus(item) === status).length]), (value) => `${value} lot${value === 1 ? "" : "s"}`, ["green", "orange", "orange", "red", "red"]);
-  const expiring = stock.filter((item) => item.expiry && item.expiry !== "N/A" && Number(item.qty || 0) > 0).sort((a, b) => daysUntil(a.expiry) - daysUntil(b.expiry)).slice(0, 8);
-  qs("#logistics-expiry-list").innerHTML = expiring.map((item) => `<li><span>${escapeHtml(item.item)}<small>Lot ${escapeHtml(item.lot || "-")} · ${escapeHtml(item.branch)} · ${Number(item.qty || 0)} on hand</small></span><strong>${isExpiredDate(item.expiry) ? "Expired" : `${daysUntil(item.expiry)} days`}</strong></li>`).join("") || `<li><span>No dated lots on hand</span><strong>—</strong></li>`;
-  const alerts = [
-    ...pendingReceipts.map((receipt) => ({ color: "orange", title: "Receipt awaiting approval", text: `${receipt.id}${receipt.poId ? ` for ${receipt.poId}` : ""} — ${(receipt.lines || []).length} line(s).`, section: "inventory", record: receipt.id })),
-    ...forReceiving.map((po) => ({ color: "orange", title: `PO ${po.status.toLowerCase()}`, text: `${po.id} from ${po.supplier || "supplier"} is ready to receive.`, section: "inventory", record: po.id })),
-    ...demoForLogistics.map((request) => ({ color: "orange", title: "Demo consumables need your approval", text: `${request.id} for ${request.client}.`, section: "inventory", record: request.id })),
-    ...openTransfers.map((transfer) => ({ color: transfer.status === "For Receiving" ? "orange" : "green", title: `Transfer ${String(transfer.status || "open").toLowerCase()}`, text: `${transfer.id}: ${transfer.from} → ${transfer.to}.`, section: "inventory", record: transfer.id })),
-    ...invAlerts.filter((item) => ["Critical", "Expired"].includes(inventoryStatus(item))).map((item) => ({ color: "red", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot })),
-  ].slice(0, 8);
-  qs("#urgent-count").textContent = `${alerts.length} to action`;
-  qs("#alerts-list").innerHTML = alerts.map((a) => `<div class="alert-item clickable" data-go-section="${a.section}" data-focus-record="${escapeHtml(a.record || "")}"><span class="alert-dot ${a.color}"></span><div><strong>${escapeHtml(a.title)}</strong><span>${escapeHtml(a.text)}</span></div></div>`).join("") || `<p class="page-description">Nothing needs action right now.</p>`;
-  renderDashboardBackupStatus();
-  registerCalendarWidget("dash-cal", "#dashboard-calendar-widget", true);
-  renderCalendarWidget("dash-cal");
-}
-
-function renderDashboard() {
-  defaultDateRangeIfEmpty("dashboard-date-from", "dashboard-date-to");
-  const logistics = isLogisticsDashboard();
-  const dashboard = qs("#dashboard");
-  dashboard?.classList.toggle("logistics-dashboard", logistics);
-  if (qs("#logistics-dashboard")) qs("#logistics-dashboard").hidden = !logistics;
-  if (logistics) return renderLogisticsDashboard();
-  syncCollectionContactsForBalances();
-  const dashboardRange = getDashboardRange();
-  const visibleSales = dashboardVisibleSales(dashboardRange);
-  const totalSales = visibleSales.reduce((sum, sale) => sum + sale.net, 0);
-  const totalPaid = visibleSales.reduce((sum, sale) => sum + sale.paid, 0);
-  const outstanding = visibleSales.reduce((sum, sale) => sum + Math.max(sale.net - sale.paid, 0), 0);
-  const invAlerts = byBranch(data.inventory).filter((item) => ["Low Stock", "Critical", "Near Expiry", "Expired"].includes(inventoryStatus(item)));
-  qs("#sales-total").textContent = peso.format(totalSales);
-  qs("#collection-total").textContent = peso.format(totalPaid);
-  qs("#outstanding-total").textContent = peso.format(outstanding);
-  qs("#alert-total").textContent = String(invAlerts.length);
-  const creditAlerts = data.clients.filter((client) => client.creditLimit > 0 && clientBalance(client.name) >= client.creditLimit * 0.85).map((client) => ({ color: clientBalance(client.name) > client.creditLimit ? "red" : "orange", title: "Credit limit watch", text: `${client.name}: ${peso.format(clientBalance(client.name))} / ${peso.format(client.creditLimit)} used.`, section: "masterlists", record: client.name }));
-  const transferAlerts = data.pendingTransfers.filter((transfer) => transfer.status === "For Receiving").map((transfer) => ({ color: "orange", title: "Stock transfer for receiving", text: `${transfer.id}: ${transfer.qty} ${transfer.item} from ${transfer.from} to ${transfer.to}.`, section: "inventory", record: transfer.id }));
-  const chequeAvailableAlerts = data.collectionContacts.filter((contact) => contact.status === "Cheque Available").map((contact) => ({ color: "green", title: "Cheque available", text: `${contact.client} has a cheque ready${contact.chequeInvoice ? ` for ${contact.chequeInvoice}` : ""}.`, section: "collections", record: contact.client }));
-  const salesAlerts = visibleSales.filter((sale) => ["Overdue", "Near Due"].includes(statusForSale(sale))).map((sale) => ({ color: statusForSale(sale) === "Overdue" ? "red" : "orange", title: `${statusForSale(sale)} invoice`, text: `${sale.id} for ${sale.client} has ${peso.format(sale.net - sale.paid)} balance.`, section: "receivables-tracker", record: sale.id }));
-  const stockAlerts = invAlerts.map((item) => ({ color: ["Critical", "Expired"].includes(inventoryStatus(item)) ? "red" : "orange", title: inventoryStatus(item), text: `${item.item} (${item.branch}) has ${item.qty} left. Lot ${item.lot}.`, section: "inventory", record: item.lot }));
-  const backupAlert = data.backupStatus?.stale ? [{ color: "red", title: "Backup overdue", text: "No successful backup has been recorded in the last 7 days.", section: "backup", record: data.backupStatus?.latest?.id || "backup" }] : [];
-  const alerts = [...backupAlert, ...chequeAvailableAlerts, ...salesAlerts, ...stockAlerts, ...creditAlerts, ...transferAlerts].slice(0, 8);
-  qs("#urgent-count").textContent = `${alerts.length} urgent${dashboardRange.from || dashboardRange.to ? " in range" : ""}`;
-  qs("#alerts-list").innerHTML = alerts.map((a) => `<div class="alert-item clickable" data-go-section="${a.section}" data-focus-record="${escapeHtml(a.record || "")}"><span class="alert-dot ${a.color}"></span><div><strong>${escapeHtml(a.title)}</strong><span>${escapeHtml(a.text)}</span></div></div>`).join("") || `<div class="alert-item"><span class="alert-dot green"></span><div><strong>All clear</strong><span>No urgent records for this area.</span></div></div>`;
-  const branches = platformAreas().map((branch) => ({ branch, amount: visibleSales.filter((s) => s.area === branch).reduce((sum, s) => sum + s.net, 0) }));
-  const max = Math.max(...branches.map((b) => b.amount), 1);
-  qs("#branch-bars").innerHTML = branches.map((b) => `<div class="branch-item"><header><span>${b.branch}</span><strong>${peso.format(b.amount)}</strong></header><div class="meter ${b.branch.includes("Dealer") ? "green" : ""}"><span style="width:${Math.max(4, Math.round((b.amount / max) * 100))}%"></span></div></div>`).join("") + graphNote("Computed from invoice net totals grouped by client sales area within the selected date range.");
-  const duplicateClientNames = data.clients.length - new Set(data.clients.map((client) => String(client.name || "").trim().toLowerCase()).filter(Boolean)).size;
-  const duplicateItemCodes = data.items.length - new Set(data.items.map((item) => String(item.code || "").trim().toLowerCase()).filter(Boolean)).size;
-  const duplicateReceipts = data.payments.length - new Set(data.payments.map((payment) => String(payment.receiptNo || "").trim().toLowerCase()).filter(Boolean)).size;
-  const pendingDeposit = data.payments.filter((payment) => ["For Deposit", "Posted Date"].includes(payment.collectionStatus)).length;
-  const bounced = data.payments.filter((payment) => String(payment.collectionStatus || "").toLowerCase().includes("bounce")).length;
-  qs("#health-list").innerHTML = [
-    [`${data.clients.length} client records`, duplicateClientNames ? `${duplicateClientNames} duplicate name risk` : "Names OK"],
-    [`${data.items.length} products`, duplicateItemCodes ? `${duplicateItemCodes} duplicate code risk` : "Codes OK"],
-    [`${data.sales.length} SI/TS/DR`, `${salesAlerts.length} AR alerts`],
-    [`${pendingDeposit} pending deposit`, bounced ? `${bounced} bounced payment${bounced === 1 ? "" : "s"}` : "No bounced payments"],
-    [`${invAlerts.length} stock alerts`, `${duplicateReceipts} duplicate receipt risk`],
-    ["Backup safety", "R2 restore + delete guard ready"],
-  ].map(([label, status]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(status)}</strong></li>`).join("");
-  renderDashboardBackupStatus();
-  registerCalendarWidget("dash-cal", "#dashboard-calendar-widget", true);
-  renderCalendarWidget("dash-cal");
-  const trendChart = qs("#dashboard-trend-chart");
-  if (trendChart) {
-    /** @type {Record<string, any>} */
-    const monthlyTrend = visibleSales.reduce((/** @type {Record<string, any>} */ acc, sale) => {
-      const month = sale.date.slice(0, 7);
-      if (!acc[month]) acc[month] = { sales: 0, collections: 0, outstanding: 0 };
-      acc[month].sales += sale.net;
-      acc[month].collections += sale.paid;
-      acc[month].outstanding += Math.max(sale.net - sale.paid, 0);
-      return acc;
-    }, {});
-    const trendMonths = Object.keys(monthlyTrend).sort((a, b) => a.localeCompare(b));
-    const renderTrend = (/** @type {any} */ width) => multiSeriesChart(trendMonths.map(monthLabel), [
-          { label: "Monthly Sales", type: "bar", gradient: ["#3db3cd", "#006eb6"], values: trendMonths.map((m) => monthlyTrend[m].sales), format: (v) => peso.format(v) },
-          { label: "Collections Received", type: "bar", gradient: ["#e07a38", "#a05320"], values: trendMonths.map((m) => monthlyTrend[m].collections), format: (v) => peso.format(v) },
-        ], { width }) + graphNote("Monthly invoice net totals vs. payments received, grouped by invoice month within the selected date range.");
-    trendChart.innerHTML = trendMonths.length ? renderTrend(trendChart.clientWidth) : `<p>No sales trend available for this view.</p>`;
-    // Redraw at the new pixel width when the panel resizes (window resize, sidebar toggle, rotation).
-    trendChart._trendRender = trendMonths.length ? renderTrend : null;
-    trendChart._trendWidth = trendChart.clientWidth;
-    if (!trendChart._trendObserver && typeof ResizeObserver === "function") {
-      trendChart._trendObserver = new ResizeObserver(() => {
-        const width = trendChart.clientWidth;
-        if (!trendChart._trendRender || !width || Math.abs(width - trendChart._trendWidth) < 8) return;
-        trendChart._trendWidth = width;
-        trendChart.innerHTML = trendChart._trendRender(width);
-      });
-      trendChart._trendObserver.observe(trendChart);
-    }
-  }
-}
-
-/** @param {any} visibleSales */
-function dashboardReportRows(visibleSales) {
-  const header = ["Document No.", "Type", "Client", "Area", "Salesperson", "Date", "Amount", "Paid", "Balance", "Status"];
-  const rows = visibleSales.map((/** @type {Sale} */ sale) => [sale.documentNo || sale.id, invoiceTypeLabel(sale.type), sale.client, sale.area, sale.salesperson || "-", sale.date, Number(sale.net || 0).toFixed(2), Number(sale.paid || 0).toFixed(2), Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0).toFixed(2), statusForSale(sale)]);
-  return [header, ...rows];
-}
-
-function exportDashboardCsv() {
-  const dashboardRange = getDashboardRange();
-  const visibleSales = dashboardVisibleSales(dashboardRange).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-  if (!visibleSales.length) return toast("No invoices in the current dashboard view to export.");
-  const period = dashboardRange.from || dashboardRange.to ? `${dashboardRange.from || "start"}_to_${dashboardRange.to || "now"}` : "all-dates";
-  downloadCsv(`dashboard-report-${period}.csv`, dashboardReportRows(visibleSales));
-  log("Exported dashboard report (CSV)", "Dashboard", period, { save: false });
-}
-
-/** @param {any} visibleSales @param {any} dashboardRange */
-function dashboardReportHtml(visibleSales, dashboardRange) {
-  const totalSales = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.net || 0), 0);
-  const totalPaid = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Number(sale.paid || 0), 0);
-  const outstanding = visibleSales.reduce((/** @type {number} */ sum, /** @type {Sale} */ sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
-  const invAlerts = byBranch(data.inventory).filter((item) => ["Low Stock", "Critical", "Near Expiry", "Expired"].includes(inventoryStatus(item)));
-  const branches = platformAreas().map((branch) => ({ branch, amount: visibleSales.filter((/** @type {any} */ s) => s.area === branch).reduce((/** @type {number} */ sum, /** @type {any} */ s) => sum + Number(s.net || 0), 0) })).filter((b) => b.amount > 0);
-  const rows = visibleSales.slice().sort((/** @type {any} */ a, /** @type {any} */ b) => String(a.date || "").localeCompare(String(b.date || ""))).map((/** @type {Sale} */ sale) => `<tr><td>${escapeHtml(sale.date)}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${escapeHtml(sale.client)}</td><td>${escapeHtml(sale.area || "-")}</td><td>${peso.format(sale.net)}</td><td>${peso.format(sale.paid)}</td><td>${peso.format(Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0))}</td><td>${escapeHtml(statusForSale(sale))}</td></tr>`).join("");
-  return `<section class="payment-request-print">${printableBrandHeaderHtml("Dashboard Report")}<div class="pr-meta"><span>Period: <strong>${escapeHtml(dashboardRange.from || "…")} to ${escapeHtml(dashboardRange.to || "…")}</strong></span><span>Branch: <strong>${escapeHtml(data.branch === "all" ? "All Branches" : data.branch)}</strong></span><span>Invoices: <strong>${visibleSales.length}</strong></span></div><div class="pr-meta"><span>Total Sales: <strong>${peso.format(totalSales)}</strong></span><span>Collections: <strong>${peso.format(totalPaid)}</strong></span><span>Outstanding AR: <strong>${peso.format(outstanding)}</strong></span><span>Stock Alerts: <strong>${invAlerts.length}</strong></span></div>${branches.length ? `<table><thead><tr><th>Region</th><th>Sales</th></tr></thead><tbody>${branches.map((b) => `<tr><td>${escapeHtml(b.branch)}</td><td>${peso.format(b.amount)}</td></tr>`).join("")}</tbody></table>` : ""}<table><thead><tr><th>Date</th><th>Document</th><th>Client</th><th>Area</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No invoices in this view.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
-}
-
-function printDashboardReport() {
-  const dashboardRange = getDashboardRange();
-  const visibleSales = dashboardVisibleSales(dashboardRange);
-  const dialog = qs("#payment-request-preview-modal");
-  qs("#payment-request-preview-title").textContent = "Dashboard Report";
-  qs("#payment-request-preview-content").innerHTML = dashboardReportHtml(visibleSales, dashboardRange);
-  if (!dialog.open) dialog.showModal();
-  log("Exported dashboard report (PDF)", "Dashboard", dashboardRange.from || dashboardRange.to ? `${dashboardRange.from || "start"} to ${dashboardRange.to || "now"}` : "all-dates", { save: false });
-}
-
 /** @type {Record<string, any>} */
 const calendarWidgetRegistry = {};
 /** @type {Record<string, any>} */
@@ -3117,43 +2960,6 @@ function renderInventory() {
   const sortedTransferHistory = [...data.transferHistory].sort((a, b) => transferHistoryTimestamp(b) - transferHistoryTimestamp(a));
   table("#transfer-history-table", ["Date", "Transfer", "Action", "Items", "From", "To", "User", "Notes"], sortedTransferHistory.slice(0, 20).map((entry) => [entry.date, `<button class="link-button dark" data-transfer-timeline="${escapeHtml(entry.transferId)}">${escapeHtml(entry.transferId)}</button>`, entry.action, `${entry.itemCount || 0} item${entry.itemCount === 1 ? "" : "s"}<small>${escapeHtml(entry.item || "")}</small>`, entry.from, entry.to, entry.user, entry.notes]));
   syncInventoryUrl();
-}
-
-let dashboardBackupStatusRequest = 0;
-async function renderDashboardBackupStatus() {
-  const list = qs("#dashboard-backup-list");
-  const badge = qs("#backup-health-badge");
-  if (!list || !badge || !MedlaneAPI?.backupStatus) return;
-  const requestId = ++dashboardBackupStatusRequest;
-  list.innerHTML = `<li><span>Latest backup</span><strong>Checking...</strong></li>`;
-  badge.className = "badge";
-  badge.textContent = "Checking";
-  try {
-    const [status, usage] = await Promise.all([
-      MedlaneAPI.backupStatus(),
-      MedlaneAPI.storageUsage().catch(() => null),
-    ]);
-    if (requestId !== dashboardBackupStatusRequest) return;
-    data.backupStatus = status;
-    const latest = status.latest;
-    const ageLabel = Number.isFinite(Number(status.ageHours)) ? `${Number(status.ageHours).toFixed(1)} hours ago` : "No backup recorded";
-    badge.className = `badge ${status.stale ? "danger" : "success"}`;
-    badge.textContent = status.stale ? "Overdue" : "Current";
-    const storagePercent = usage?.configured && usage.maxBytes ? Math.min(100, Math.round((usage.usedBytes / usage.maxBytes) * 100)) : null;
-    list.innerHTML = [
-      ["Last backup", latest ? formatSessionDate(latest.created_at) : "None"],
-      ["Type", latest ? String(latest.backup_type || "backup") : "No successful backup"],
-      ["Size", latest ? formatBytes(latest.size_bytes) : "-"],
-      ["Result", status.stale ? `Alert: ${ageLabel}` : `Successful: ${ageLabel}`],
-      ...(storagePercent !== null ? [["Storage used", `${formatBytes(/** @type {StorageUsageResponse} */ (usage).usedBytes)} of ${formatBytes(/** @type {StorageUsageResponse} */ (usage).maxBytes)} (${storagePercent}%)`]] : []),
-    ].map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join("");
-    if (status.stale && !qs("#alerts-list")?.textContent.includes("No successful backup")) renderDashboard();
-  } catch (/** @type {any} */ error) {
-    if (requestId !== dashboardBackupStatusRequest) return;
-    badge.className = "badge danger";
-    badge.textContent = "Unavailable";
-    list.innerHTML = `<li><span>Backup status</span><strong>${escapeHtml(error.message)}</strong></li>`;
-  }
 }
 
 function renderInventoryWorkflowTabs() {
@@ -7962,80 +7768,7 @@ function addMonthsToDate(date, months) {
   return d;
 }
 
-function itemForecastMonthKeys() { return [2, 1, 0].map((offset) => fmtDate(addMonthsToDate(today, -offset)).slice(0, 7)); }
-function itemForecastMonthLabels() { return [2, 1, 0].map((offset) => addMonthsToDate(today, -offset).toLocaleString("en-US", { month: "short", timeZone: "Asia/Manila" })); }
-
-// The Item box offers "code", "name" and "code · name" — any of them (or part of one) matches.
-/** @param {unknown} code @param {unknown} name @param {unknown} query */
-function forecastItemMatchesQuery(code, name, query) {
-  const wanted = String(query || "").trim().toLowerCase();
-  if (!wanted) return true;
-  const itemCode = String(code || "").toLowerCase();
-  const itemName = String(name || "").toLowerCase();
-  return itemCode.includes(wanted) || itemName.includes(wanted) || `${itemCode} · ${itemName}`.includes(wanted);
-}
-
-/** @param {any} allocationMonths */
-function itemForecastRows(allocationMonths) {
-  const fromDate = fmtDate(addMonthsToDate(today, -3));
-  const toDate = fmtDate(today);
-  const monthKeys = itemForecastMonthKeys();
-  /** @type {Record<string, any>} */
-  const qtyByCode = {};
-  /** @type {Record<string, any>} */
-  const monthlyQtyByCode = {};
-  const forecastFilters = /** @type {Record<string, any>} */ (itemForecastFilters || /** @type {Record<string, any>} */ ({}));
-  data.sales.filter((sale) => sale.status !== "Cancelled" && dateInRange(sale.date, fromDate, toDate)).forEach((sale) => {
-    const monthKey = String(sale.date || "").slice(0, 7);
-    /** @type {any[]} */ (sale.lines?.length ? sale.lines : [{ code: sale.code, qty: sale.qty }]).forEach((line) => {
-      if (!line.code) return;
-      const item = data.items.find((entry) => entry.code === line.code || entry.name === line.item) || /** @type {any} */ ({});
-      const client = data.clients.find((entry) => entry.name === sale.client) || /** @type {any} */ ({});
-      if (forecastFilters.brand && (line.brand || item.brand || sale.brand) !== forecastFilters.brand) return;
-      if (forecastFilters.client && sale.client !== forecastFilters.client) return;
-      if (forecastFilters.item && !forecastItemMatchesQuery(line.code || item.code, line.item || item.name, forecastFilters.item)) return;
-      if (forecastFilters.division && (sale.division || client.division || sale.area || client.area || "") !== forecastFilters.division) return;
-      if (forecastFilters.region && (sale.area || client.area || "") !== forecastFilters.region) return;
-      if (forecastFilters.classification && (item.classification || item.category || "") !== forecastFilters.classification) return;
-      qtyByCode[line.code] = (qtyByCode[line.code] || 0) + Number(line.qty || 0);
-      if (monthKeys.includes(monthKey)) {
-        monthlyQtyByCode[line.code] ||= {};
-        monthlyQtyByCode[line.code][monthKey] = (monthlyQtyByCode[line.code][monthKey] || 0) + Number(line.qty || 0);
-      }
-    });
-  });
-  /** @type {Record<string, any>} */
-  const stockByCode = {};
-  /** @type {Record<string, any>} */
-  const stockByCodeBranch = {};
-  data.inventory.forEach((stock) => {
-    stockByCode[stock.code] = (stockByCode[stock.code] || 0) + Number(stock.qty || 0);
-    stockByCodeBranch[stock.code] ||= {};
-    stockByCodeBranch[stock.code][stock.branch] = (stockByCodeBranch[stock.code][stock.branch] || 0) + Number(stock.qty || 0);
-  });
-  // The filters above only narrowed the sales totals; the item list itself has to honour them
-  // too, or every stocked item stays listed whatever is picked. Client/division/region describe
-  // who bought it, so with any of those set only items with matching sales are listed.
-  const salesScoped = Boolean(forecastFilters.client || forecastFilters.division || forecastFilters.region);
-  // The page's main Search bar (#global-search) narrows the list too — it re-renders this
-  // section on every keystroke but used to be ignored here.
-  const itemPasses = (/** @type {any} */ item) => (!forecastFilters.brand || item.brand === forecastFilters.brand)
-    && (!forecastFilters.item || forecastItemMatchesQuery(item.code, item.name, forecastFilters.item))
-    && includesSearch([item.code, item.name, item.brand, item.supplier, item.classification || item.category])
-    && (!forecastFilters.classification || (item.classification || item.category || "") === forecastFilters.classification);
-  return data.items.filter((item) => itemPasses(item) && (salesScoped ? qtyByCode[item.code] : qtyByCode[item.code] || stockByCode[item.code])).map((item) => {
-    const totalQty = qtyByCode[item.code] || 0;
-    const avgMonthlyQty = totalQty / 3;
-    const monthlyQty = monthKeys.map((key) => Math.round(monthlyQtyByCode[item.code]?.[key] || 0));
-    const projectedDemand = avgMonthlyQty * allocationMonths;
-    const currentStock = stockByCode[item.code] || 0;
-    const currentStockByBranch = stockByCodeBranch[item.code] || /** @type {Record<string, any>} */ ({});
-    const suggestedRestock = Math.max(0, Math.round(projectedDemand - currentStock));
-    return { item, totalQty, avgMonthlyQty, monthlyQty, projectedDemand, currentStock, currentStockByBranch, suggestedRestock };
-  }).sort((a, b) => b.suggestedRestock - a.suggestedRestock);
-}
-
-/** @param {string} selector @param {Record<string, any>} values @param {any} allLabel */
+/** Fills a filter <select> with sorted unique values plus an "All …" option, keeping the current choice. @param {string} selector @param {any[]} values @param {any} allLabel */
 function setForecastSelectOptions(selector, values, allLabel) {
   const select = qs(selector);
   if (!select) return;
@@ -8043,60 +7776,6 @@ function setForecastSelectOptions(selector, values, allLabel) {
   const unique = [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
   select.innerHTML = `<option value="">${escapeHtml(allLabel)}</option>${unique.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
   select.value = unique.includes(current) ? current : "";
-}
-
-/** @param {string} selector @param {Record<string, any>} values */
-function setForecastDatalistOptions(selector, values) {
-  const datalist = qs(selector);
-  if (!datalist) return;
-  const unique = [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
-  datalist.innerHTML = unique.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
-}
-
-function renderItemForecastFilters() {
-  setForecastSelectOptions("#item-forecast-brand", data.items.map((item) => item.brand), "All Brands");
-  setForecastSelectOptions("#item-forecast-client", data.clients.map((client) => client.name), "All Clients");
-  setForecastDatalistOptions("#item-forecast-item-options", data.items.flatMap((item) => [item.code, item.name, item.code && item.name ? `${item.code} · ${item.name}` : ""]));
-  setForecastSelectOptions("#item-forecast-division", [...data.clients.map((client) => client.division), ...data.sales.map((sale) => sale.division)].filter(Boolean), "All Divisions");
-  setForecastSelectOptions("#item-forecast-region", [...data.clients.map((client) => client.area), ...data.sales.map((sale) => sale.area)], "All Regions");
-  setForecastSelectOptions("#item-forecast-classification", data.items.map((item) => item.classification || item.category), "All Classifications");
-  const activeCount = Object.values(itemForecastFilters || /** @type {Record<string, any>} */ ({})).filter(Boolean).length;
-  if (qs("#item-forecast-filter-summary")) qs("#item-forecast-filter-summary").textContent = activeCount ? `${activeCount} active filter${activeCount === 1 ? "" : "s"}` : "All items";
-}
-
-function renderItemForecast() {
-  renderItemForecastFilters();
-  const rows = itemForecastRows(itemForecastMonths);
-  qsa("#item-forecast-preset-toggle .view-toggle-btn").forEach((btn) => btn.classList.toggle("active", Number(/** @type {string} */ (btn.dataset.forecastMonths)) === itemForecastMonths));
-  if (qs("#item-forecast-custom-months") && document.activeElement !== qs("#item-forecast-custom-months")) qs("#item-forecast-custom-months").value = itemForecastMonths;
-  const needsRestock = rows.filter((row) => row.suggestedRestock > 0);
-  const totalProjectedValue = rows.reduce((sum, row) => sum + row.projectedDemand * Number(row.item.price || 0), 0);
-  qs("#item-forecast-visuals").innerHTML = [
-    visualCard("↻", "Items Needing Restock", `${needsRestock.length} item${needsRestock.length === 1 ? "" : "s"}`, needsRestock.length ? barRows(needsRestock.slice(0, 10).map((row) => [row.item.name, row.suggestedRestock]), (value) => `${value} units`, ["red", "orange"]) : "<p>No items need restocking for this window.</p>", needsRestock.length ? "warning" : "success", "Suggested restock = projected demand (average monthly sales over the last 3 months × allocation months) minus current stock on hand."),
-    visualCard("₱", "Projected Demand Value", peso.format(totalProjectedValue), `<p>Estimated sales value for the selected +${itemForecastMonths}-month allocation window, at current item price.</p>`, "info", "Computed as projected demand quantity × item price, summed across all tracked items."),
-    visualCard("▤", "Tracked Items", `${rows.length} item${rows.length === 1 ? "" : "s"}`, `<p>Items with sales in the last 3 months or current stock on hand.</p>`, "info", "Items with zero recent sales and zero stock are excluded from this view."),
-  ].join("");
-  const monthLabels = itemForecastMonthLabels();
-  table("#item-forecast-table", ["Item Code", "Item Name", "Brand", `${monthLabels[0]} Sales`, `${monthLabels[1]} Sales`, `${monthLabels[2]} Sales`, "Avg Monthly Sales (3mo)", "Projected Demand", "Current Stock", "Stock (Las Piñas)", "Stock (Naga)", "Suggested Restock"], rows.map((row) => ({ focus: row.item.code, cells: [row.item.code, row.item.name, row.item.brand || "-", row.monthlyQty[0], row.monthlyQty[1], row.monthlyQty[2], row.avgMonthlyQty.toFixed(1), Math.round(row.projectedDemand), row.currentStock, row.currentStockByBranch["Las Pinas"] || 0, row.currentStockByBranch["Naga"] || 0, row.suggestedRestock > 0 ? `<span class="pill red">${row.suggestedRestock}</span>` : `<span class="pill green">0</span>`] })));
-}
-
-/** @param {any} rows @param {any} monthLabels @param {any} allocationMonths */
-function itemForecastReportHtml(rows, monthLabels, allocationMonths) {
-  const generatedAt = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
-  return `<section class="payment-request-print">${printableBrandHeaderHtml("Item Forecast")}<div class="pr-meta"><span>Allocation Window: <strong>+${allocationMonths} month${allocationMonths === 1 ? "" : "s"}</strong></span><span>Generated: <strong>${escapeHtml(generatedAt)}</strong></span><span>Items: <strong>${rows.length}</strong></span></div><table><thead><tr><th>Item Code</th><th>Item Name</th><th>Brand</th><th>${escapeHtml(monthLabels[0])} Sales</th><th>${escapeHtml(monthLabels[1])} Sales</th><th>${escapeHtml(monthLabels[2])} Sales</th><th>Avg Monthly (3mo)</th><th>Projected Demand</th><th>Current Stock</th><th>Stock (Las Piñas)</th><th>Stock (Naga)</th><th>Suggested Restock</th></tr></thead><tbody>${rows.map((/** @type {any} */ row) => `<tr><td>${escapeHtml(row.item.code)}</td><td>${escapeHtml(row.item.name)}</td><td>${escapeHtml(row.item.brand || "-")}</td><td>${row.monthlyQty[0]}</td><td>${row.monthlyQty[1]}</td><td>${row.monthlyQty[2]}</td><td>${row.avgMonthlyQty.toFixed(1)}</td><td>${Math.round(row.projectedDemand)}</td><td>${row.currentStock}</td><td>${row.currentStockByBranch["Las Pinas"] || 0}</td><td>${row.currentStockByBranch["Naga"] || 0}</td><td>${row.suggestedRestock}</td></tr>`).join("") || `<tr><td colspan="12">No items to report for the current filters.</td></tr>`}</tbody></table>${printableFooterHtml()}</section>`;
-}
-
-function printItemForecast() {
-  clearPrintTarget();
-  currentReportSaleId = null;
-  const rows = itemForecastRows(itemForecastMonths);
-  const monthLabels = itemForecastMonthLabels();
-  qs("#report-preview-title").textContent = "Item Forecast";
-  qs("#report-preview-description").textContent = `Restock projection for the +${itemForecastMonths}-month allocation window.`;
-  qs("#report-preview-content").innerHTML = itemForecastReportHtml(rows, monthLabels, itemForecastMonths);
-  if (qs("#report-preview-print")) qs("#report-preview-print").disabled = false;
-  if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
-  qs("#report-preview-modal").showModal();
 }
 
 function renderImports() {
@@ -10518,6 +10197,14 @@ function kpiPayablesDue(days) {
   const open = payableFactsAll().filter((fact) => fact.balance > 0.005 && fact.due <= horizon);
   return { amount: open.reduce((sum, fact) => sum + fact.balance, 0), overdue: open.filter((fact) => fact.overdue).reduce((sum, fact) => sum + fact.balance, 0), count: open.length };
 }
+/** Days to collect: open receivables ÷ the last 90 days' invoices × 90, and the average terms on them. @param {BizFacts} facts @param {number} arTotal */
+function kpiDso(facts, arTotal) {
+  const todayKey = fmtDate(today);
+  const ninety = fmtDate(addDays(new Date(`${todayKey}T00:00:00`), -89));
+  const recent = facts.sales.filter((sale) => { const day = fmtDateSafe(sale.date); return day >= ninety && day <= todayKey; });
+  const gross90 = recent.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
+  return { dso: gross90 > 0.005 ? Math.round((arTotal / gross90) * 90) : null, avgTerms: recent.length ? Math.round(recent.reduce((sum, sale) => sum + Number(sale.terms || 0), 0) / recent.length) : null };
+}
 /** Everything we still owe suppliers, and the overdue part. */
 function kpiPayablesOpen() {
   const open = payableFactsAll().filter((fact) => fact.balance > 0.005);
@@ -10542,11 +10229,7 @@ function analyticsOverviewHtml(facts, summaries) {
   const colNow = kpiCollectedIn(facts, monthStart, todayKey), colThen = kpiCollectedIn(facts, prev.start, prev.end);
   const change = (/** @type {number} */ now, /** @type {number} */ then) => { const pct = bizTrend(now, then); return pct === null ? null : { text: bizTrendText(pct, 1), good: pct >= 0 }; };
   const { total: arTotal, overdue: arOverdue } = kpiReceivables(summaries);
-  const ninety = fmtDate(addDays(new Date(`${todayKey}T00:00:00`), -89));
-  const recent = facts.sales.filter((sale) => inRange(fmtDateSafe(sale.date), ninety, todayKey));
-  const gross90 = recent.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
-  const dso = gross90 > 0.005 ? Math.round((arTotal / gross90) * 90) : null;
-  const avgTerms = recent.length ? Math.round(recent.reduce((sum, sale) => sum + Number(sale.terms || 0), 0) / recent.length) : null;
+  const { dso, avgTerms } = kpiDso(facts, arTotal);
   const margins = canSeeMargins();
   const marginNow = bizMargin(facts.monthCostedRev[11], facts.monthCost[11], facts.monthRev[11]);
   const marginLast = bizMargin(facts.monthCostedRev[10], facts.monthCost[10], facts.monthRev[10]);
@@ -12722,13 +12405,13 @@ async function loadMoreUserAuditLog() {
 let appInitialRenderComplete = false;
 /** @type {Record<string, any>} */
 const sectionRenderers = {
-  dashboard: renderDashboard,
+  dashboard: () => renderDashboard(),
   calendar: renderCalendarSection,
   analytics: renderAnalytics,
   masterlists: () => renderMasterlists(),
   inventory: renderInventory,
   sales: renderSales,
-  "item-forecast": renderItemForecast,
+  "item-forecast": () => renderItemForecast(),
   "purchase-orders": renderClientPurchaseOrders,
   invoicing: renderInvoicing,
   collections: renderCollections,
