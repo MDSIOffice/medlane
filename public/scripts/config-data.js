@@ -174,3 +174,9 @@ const initialData = {
     { name: "UnionBank", account: "Online Payments", notes: "Digital transfer account" },
   ],
 };
+
+/** Preferences for an account without saved ones (keep in sync with PREFERENCE_DEFAULTS in src/account.js). @type {UserPreferences} */
+const PREFERENCE_DEFAULTS_CLIENT = Object.freeze({
+  displayName: "", avatar: "", sound: true, welcome: /** @type {"daily"} */ ("daily"), startPage: /** @type {"dashboard"} */ ("dashboard"), rowsPerPage: 10,
+  defaultBranch: "all", dailySummary: true, quietHoursEnabled: true, quietStart: "20:00", quietEnd: "07:00", passwordChangedAt: "",
+});

@@ -338,7 +338,17 @@ function uiDate(value) {
 /** @typedef {{ q: string, sel: string, sort: { key: string, dir: number } | null, page: number, branch: string, scope: string, touched?: boolean, size?: number }} UiViewState */
 
 /** @returns {UiViewState} */
-function uiBlankViewState() { return { q: "", sel: "", sort: null, page: 0, branch: "all", scope: "" }; }
+function uiBlankViewState() { return { q: "", sel: "", sort: null, page: 0, branch: uiDefaultBranch(), scope: "" }; }
+/** "all" or the user's Default branch view (Account settings). */
+function uiDefaultBranch() { return typeof prefDefaultBranch === "function" ? prefDefaultBranch() : "all"; }
+/**
+ * The branch a view actually filters by: the state's branch when the view offers it, else "all".
+ * Keeps a default branch from emptying views that have no branch filter (Users, Audit Logs…).
+ * @param {UiView} view @param {UiViewState} state
+ */
+function uiViewBranch(view, state) {
+  return state.branch !== "all" && view.branchOptions?.some((option) => option.value === state.branch) ? state.branch : "all";
+}
 
 /** Reads a view state from URL params (q, sel, sort, dir, page, branch, status). @param {URLSearchParams} params @returns {UiViewState} */
 function uiViewStateFromQuery(params) {
@@ -348,14 +358,14 @@ function uiViewStateFromQuery(params) {
     sel: params.get("sel") || "",
     sort: sort ? { key: sort, dir: params.get("dir") === "asc" ? 1 : -1 } : null,
     page: Math.max(0, (Number(params.get("page")) || 1) - 1),
-    branch: params.get("branch") || "all",
+    branch: params.get("branch") || uiDefaultBranch(),
     scope: params.get("status") || "",
     ...(params.get("size") ? { size: uiPageSizeFrom(params.get("size")) } : {}),
   };
 }
 /** @param {URLSearchParams} params @param {UiViewState} state */
 function uiViewStateToQuery(params, state) {
-  if (state.branch !== "all") params.set("branch", state.branch);
+  if (state.branch !== uiDefaultBranch()) params.set("branch", state.branch);
   if (state.scope) params.set("status", state.scope);
   if (state.q) params.set("q", state.q);
   if (state.sort) { params.set("sort", state.sort.key); params.set("dir", state.sort.dir === 1 ? "asc" : "desc"); }
@@ -368,8 +378,9 @@ function uiViewStateToQuery(params, state) {
 function uiViewRows(view, state) {
   const scope = state.scope || view.defaultScope;
   const needle = state.q.trim().toLowerCase();
+  const branch = uiViewBranch(view, state);
   const filtered = view.rows
-    .filter((row) => state.branch === "all" || row.branches.includes(state.branch))
+    .filter((row) => branch === "all" || row.branches.includes(branch))
     .filter((row) => !scope || scope === "all" || row.scopes.includes(scope))
     .filter((row) => !view.extraFilter || view.extraFilter(row))
     .filter((row) => !needle || row.search.toLowerCase().includes(needle));
@@ -384,7 +395,8 @@ function uiViewHtml(view, state, prefix, pageSize = 25, { fullPager = false } = 
   if (fullPager) pageSize = state.size || uiDefaultPageSize();
   const attr = (/** @type {string} */ name) => `data-${prefix}-${name}`;
   const scope = state.scope || view.defaultScope;
-  const branchRows = view.rows.filter((row) => state.branch === "all" || row.branches.includes(state.branch));
+  const branch = uiViewBranch(view, state);
+  const branchRows = view.rows.filter((row) => branch === "all" || row.branches.includes(branch));
   const sorted = uiViewRows(view, state);
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   state.page = Math.min(Math.max(state.page, 0), pageCount - 1);
@@ -406,7 +418,7 @@ function uiViewHtml(view, state, prefix, pageSize = 25, { fullPager = false } = 
       .map(({ key, label, count, tone }) => ({ key, label, count, tone })),
     ...(view.defaultScope ? [allChip] : []),
   ] : [];
-  const filtersOn = Boolean(view.filtersOn || state.q || state.branch !== "all" || (state.scope && state.scope !== view.defaultScope));
+  const filtersOn = Boolean(view.filtersOn || state.q || branch !== "all" || (state.scope && state.scope !== view.defaultScope));
   const stats = view.stats.map((card) => card.scope === undefined ? card : { ...card, action: { [attr("scope")]: card.scope }, active: scope === card.scope });
   const hasBranches = view.branchOptions && view.rows.some((row) => row.branches.some(Boolean));
   const hasExport = view.actions.some((action) => action.includes(attr("export")));
@@ -415,7 +427,7 @@ function uiViewHtml(view, state, prefix, pageSize = 25, { fullPager = false } = 
     + (stats.length ? `<div class="ui-cards">${uiSummaryCards(stats)}</div>` : "")
     + uiFilterBar({
       title: view.title,
-      segment: hasBranches && view.branchOptions ? { label: "Branch", attr: attr("branch"), options: view.branchOptions, active: state.branch } : undefined,
+      segment: hasBranches && view.branchOptions ? { label: "Branch", attr: attr("branch"), options: view.branchOptions, active: branch } : undefined,
       search: { id: `${prefix}-search`, value: state.q, placeholder: view.placeholder, label: `Search ${view.title.toLowerCase()}` },
       extra: (view.toolbarExtra || "") + (hasExport ? "" : uiButton("Export", { [attr("export")]: "" }, { size: "sm" })),
     })

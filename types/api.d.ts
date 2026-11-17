@@ -14,7 +14,7 @@ interface OkResponse { ok: true }
 type OrApiError<T> = T & { error?: Error };
 
 // ---- Auth ----
-interface LoginResponse { session: ApiSession; user: Profile; previousSignIn?: { at: string, device: string, browser: string } | null }
+interface LoginResponse { session: ApiSession; user: Profile; previousSignIn?: { at: string, device: string, browser: string } | null; showWelcome?: boolean }
 interface RefreshResponse { session: ApiSession; user: Profile | null }
 interface MeResponse { user: Profile }
 interface ThemeResponse extends OkResponse { theme: string }
@@ -54,6 +54,9 @@ interface AppSessionRow {
   id: string; user_id: string; device_name: string; browser: string; ip_address: string | null; user_agent: string | null;
   created_at: string; last_seen_at: string; revoked_at: string | null; revoked_by: string | null; profile: ProfileRow | null;
 }
+/** GET /api/account — the signed-in user's own settings and live sessions. */
+interface AccountSession { id: string; device: string; browser: string; ipAddress: string; createdAt: string; lastSeenAt: string; current: boolean }
+interface AccountResponse { preferences: UserPreferences; notificationSettings: NotificationSetting[]; passwordAge: PasswordAge; sessions: AccountSession[] }
 interface UserSessionsResponse { user: ProfileRow | null; sessions: AppSessionRow[] }
 
 // ---- Logs ----

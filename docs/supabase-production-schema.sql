@@ -126,6 +126,36 @@ create table if not exists app_sessions (
   revoked_by uuid references profiles(id)
 );
 
+-- Account settings (2026-11-18-account-preferences-notification-settings.sql): per-user
+-- preferences and notification settings. Missing rows mean "use the defaults" (src/account.js).
+create table if not exists user_preferences (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  display_name text not null default '',
+  avatar_data text,
+  sound_enabled boolean not null default true,
+  welcome_mode text not null default 'daily' check (welcome_mode in ('daily', 'every', 'off')),
+  start_page text not null default 'dashboard' check (start_page in ('dashboard', 'inventory', 'sales', 'last')),
+  rows_per_page integer not null default 10 check (rows_per_page in (10, 25, 50)),
+  default_branch text not null default 'all',
+  daily_summary boolean not null default true,
+  quiet_hours_enabled boolean not null default true,
+  quiet_start time not null default '20:00',
+  quiet_end time not null default '07:00',
+  password_changed_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint user_preferences_avatar_size check (avatar_data is null or length(avatar_data) <= 120000)
+);
+
+create table if not exists notification_settings (
+  user_id uuid not null references profiles(id) on delete cascade,
+  alert_type text not null check (alert_type in ('approvals', 'stock', 'money', 'service', 'recon', 'security')),
+  in_app boolean not null,
+  email boolean not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, alert_type),
+  constraint notification_settings_security_locked check (alert_type <> 'security' or (in_app and email))
+);
+
 create table if not exists backup_runs (
   id uuid primary key default gen_random_uuid(),
   state_key text not null default 'production',
@@ -246,6 +276,10 @@ create policy "Users can read own app sessions" on app_sessions for select using
 
 drop policy if exists "Authenticated users can read backup metadata" on backup_runs;
 create policy "Authenticated users can read backup metadata" on backup_runs for select using ((select auth.role()) = 'authenticated');
+alter table user_preferences enable row level security;
+alter table notification_settings enable row level security;
+create policy "Users can read own preferences" on user_preferences for select using ((select auth.uid()) = user_id);
+create policy "Users can read own notification settings" on notification_settings for select using ((select auth.uid()) = user_id);
 
 create or replace function update_app_state(expected_revision bigint, next_data jsonb, actor uuid, state_key text default 'production')
 returns table(key text, revision bigint, updated_at timestamptz)
@@ -414,6 +448,10 @@ grant select, insert, update, delete on table file_objects to service_role;
 grant select, insert, update, delete on table storage_usage to service_role;
 grant select, insert, update, delete on table app_sessions to service_role;
 grant select, insert, update, delete on table backup_runs to service_role;
+grant select, insert, update, delete on table user_preferences to service_role;
+grant select, insert, update, delete on table notification_settings to service_role;
+grant select on table user_preferences to authenticated;
+grant select on table notification_settings to authenticated;
 grant select on table branches to authenticated;
 grant select on table profiles to authenticated;
 grant select on table module_permissions to authenticated;

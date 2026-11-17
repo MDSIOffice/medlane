@@ -192,13 +192,17 @@ function welcomeDateLine(now = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Manila" }).formatToParts(now).map((part) => [part.type, part.value]));
   return `${parts.weekday}, ${parts.day} ${parts.month} ${parts.year}`;
 }
+/** "dashboard", or the start page's name from Account settings → Preferences ("Inventory"…). */
+function welcomeStartLabel() {
+  const section = preferredStartSection();
+  if (section === "dashboard") return "dashboard";
+  return document.querySelector(`.nav-item[data-section="${section}"]`)?.getAttribute("data-title") || section;
+}
 /** Morning before 12:00, afternoon before 18:00, otherwise evening (Manila time). */
 function welcomeGreeting(now = new Date()) {
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Asia/Manila" }).format(now));
   const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
-  const raw = String(currentUser?.name || "").trim();
-  const name = raw && !raw.includes("@") ? raw.split(/\s+/)[0] : String(currentUser?.email || raw || "").split("@")[0];
-  return `Good ${part}, ${name}.`;
+  return `Good ${part}, ${greetingName()}.`;
 }
 /** "yesterday 17:20 · Chrome on macOS". @param {{ at: string, device: string, browser: string } | null} previous */
 function welcomeLastSignIn(previous) {
@@ -278,7 +282,7 @@ function welcomeHtml() {
       </div>
       <footer class="wl-foot">
         <span class="wl-secure"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path class="wl-check" d="M9 12l2 2 4-4"/></svg>${last ? "If the last sign-in above wasn’t you, change your password in User Settings." : "Signed in securely."}</span>
-        <button type="button" class="wl-continue" data-welcome-continue>Continue to dashboard${welcomeIcon("M5 12h14M13 6l6 6-6 6", 16)}</button>
+        <button type="button" class="wl-continue" data-welcome-continue>Continue to ${escapeHtml(welcomeStartLabel())}${welcomeIcon("M5 12h14M13 6l6 6-6 6", 16)}</button>
       </footer>
     </main>
   </div>`;
@@ -335,8 +339,9 @@ function welcomeStartIntro(screen) {
     welcomeCountUp(screen, performance.now());
     welcomeIntro.timers.push(window.setTimeout(() => { welcomeStopIntro(); if (welcomeIntro.redraw) welcomeRedraw(); }, WELCOME_INTRO_MS));
   }
-  // Blocked autoplay: the animation runs anyway, and the sound isn't retried later.
-  audio.play().catch(() => null);
+  // Blocked autoplay: the animation runs anyway, and the sound isn't retried later. With Sound
+  // effects off (Account settings → Preferences) the animation plays silently.
+  if (soundEffectsOn()) audio.play().catch(() => null);
 }
 
 /** Redraws the content in its final state (used when Recon results arrive late). */
@@ -392,7 +397,7 @@ function closeWelcomeScreen(go) {
   document.body.classList.remove("welcome-open");
   welcomeInert.forEach((el) => el.removeAttribute("inert"));
   welcomeInert = [];
-  if (go) go(); else showSection("dashboard");
+  if (go) go(); else showSection(preferredStartSection());
   const done = welcomeOnDone;
   welcomeOnDone = null;
   done?.();

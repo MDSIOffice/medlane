@@ -1520,6 +1520,7 @@ function canRestoreSection(sectionId) {
 /** @param {string} sectionId @param {Record<string, any>} [options] */
 function showSection(sectionId, options = {}) {
   document.body.dataset.activeSection = sectionId;
+  rememberLastSection(sectionId);
   // Keep the URL on the current page so a browser refresh stays here instead of bouncing to the
   // dashboard. Detail pages keep whatever list page the user came from.
   if (location.protocol !== "file:" && document.body.classList.contains("app-route") && canRestoreSection(sectionId)) history.replaceState(null, "", sectionId === "dashboard" ? "/dashboard" : `/dashboard?${sectionQueryString(sectionId)}`);
@@ -1565,8 +1566,11 @@ function applyRole() {
 function renderUserMenu() {
   if (!currentUser) return;
   const profile = getCurrentProfile();
-  qs("#welcome-name").textContent = firstName(profile.name);
-  qs("#user-initials").textContent = initials(profile.name);
+  qs("#welcome-name").textContent = greetingName();
+  const avatar = qs("#user-initials");
+  const photo = String(currentUser.preferences?.avatar || "");
+  avatar.classList.toggle("has-photo", Boolean(photo));
+  avatar.innerHTML = photo ? `<img src="${escapeHtml(photo)}" alt="" />` : escapeHtml(initials(profile.name));
   qs("#user-popover-name").textContent = profile.name;
   qs("#user-popover-role").hidden = false;
   const previewOf = /** @type {string | undefined} */ (currentUser.previewOf);
@@ -1603,20 +1607,6 @@ function switchRolePreview(role) {
   location.reload();
 }
 
-function renderUserSettings() {
-  if (!currentUser) return;
-  const profile = getCurrentProfile();
-  qs("#settings-name").value = profile.name || "";
-  qs("#settings-email").value = profile.email || "";
-  qs("#settings-phone").value = profile.phone || "";
-  qs("#settings-branch").value = profile.branch === "all" ? "All Areas" : profile.branch;
-  qs("#settings-role").value = profile.role || "";
-  qs("#settings-notes").value = profile.notes || "";
-  const permissionToggle = /** @type {AnyEl} */ (qs("#settings-custom-permissions")?.closest("label, .field, .settings-row") || qs("#settings-custom-permissions"));
-  if (permissionToggle) permissionToggle.hidden = true;
-  qs("#settings-permissions-panel").hidden = true;
-  qs("#settings-permissions-panel").innerHTML = "";
-}
 
 /** Fills Invoicing's "Approved-by names" form from the stored names. */
 function renderInvoiceApprovalNames() {
@@ -2751,7 +2741,7 @@ function inventoryQueryString() {
     uiViewStateToQuery(p, inventoryTabView);
     return p.toString();
   }
-  if (inventoryBranchView !== "all") p.set("branch", inventoryBranchView);
+  if (inventoryBranchView !== prefDefaultBranch()) p.set("branch", inventoryBranchView);
   if (inventoryStatusKey !== "all") p.set("status", inventoryStatusKey);
   if (inventorySearch) p.set("q", inventorySearch);
   if (inventorySort.key !== "expiry" || inventorySort.dir !== 1) { p.set("sort", inventorySort.key); p.set("dir", inventorySort.dir === 1 ? "asc" : "desc"); }
@@ -4676,6 +4666,7 @@ function sectionQueryString(sectionId) {
   if (sectionId === "replenishments") return expensesQueryString();
   if (sectionId === "analytics") return analyticsQueryString();
   if (sectionId === "logs") return logsQueryString();
+  if (sectionId === "user-settings") return accountQueryString();
   if (sectionId === "purchase-history") return clientHistoryQueryString();
   if (sectionId === "reconciliation") return reconQueryString();
   if (sectionId === "masterlists") return masterQueryString();
@@ -12479,7 +12470,8 @@ const sectionRenderers = {
   "print-templates": renderPrintTemplates,
   backup: renderBackup,
   logs: renderLogs,
-  "user-settings": renderUserSettings,
+  // Defined in account-page.js, which loads after this file.
+  "user-settings": () => renderUserSettings(),
   memos: renderMemos,
 };
 /** @param {string} [sectionId] */
@@ -12487,7 +12479,6 @@ function renderSection(sectionId = document.body.dataset.activeSection || "dashb
   sectionRenderers[sectionId]?.();
   if (WORKFLOW_ASSIST_SECTIONS.includes(sectionId)) renderWorkflowAssist(sectionId);
   renderUserMenu();
-  if (sectionId !== "user-settings") renderUserSettings();
 }
 function renderAll() {
   if (appInitialRenderComplete) return renderSection();

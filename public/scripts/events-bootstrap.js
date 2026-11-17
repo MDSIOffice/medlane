@@ -711,16 +711,6 @@ qs("#role-preview-start")?.addEventListener("click", () => {
   if (role) switchRolePreview(role);
 });
 qs("#role-preview-exit")?.addEventListener("click", () => switchRolePreview(""));
-qs("#settings-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const values = formObject(event.currentTarget);
-  const profile = { email: values.email, phone: values.phone, notes: values.notes };
-  currentUser = { ...currentUser, ...profile };
-  localStorage.setItem("medlane-session", JSON.stringify(currentUser));
-  renderUserMenu();
-  applyRole();
-  toast("User settings updated for this session. Profile persistence is managed by Admin users.");
-});
 qs("#invoice-approval-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!(await confirmFinalSave("Save invoice approval settings?"))) return;
@@ -731,10 +721,6 @@ qs("#invoice-approval-form").addEventListener("submit", async (event) => {
   toast("Invoice approved-by names saved.");
 });
 qs("#reset-demo-settings")?.addEventListener("click", () => toast("Production reset is disabled. Use Admin data tools or Supabase maintenance scripts."));
-qs("#open-password-modal").addEventListener("click", () => {
-  qs("#password-form").reset();
-  qs("#password-modal").showModal();
-});
 qs("#password-close").addEventListener("click", () => guardedDialogClose(() => qs("#password-modal").close()));
 qs("#password-cancel").addEventListener("click", () => qs("#password-modal").close());
 qs("#password-modal").addEventListener("click", (event) => { if (/** @type {AnyEl} */ (event.target).id === "password-modal") guardedDialogClose(() => qs("#password-modal").close()); });
@@ -758,6 +744,7 @@ qs("#password-form").addEventListener("submit", async (event) => {
   if (currentUser?.email) notify("Security", "Your password was changed.", "notifications", "", null, currentUser.email);
   saveData(["notifications"]);
   toast("Password updated.");
+  if (document.body.dataset.activeSection === "user-settings") { loadAccount(true); accountShowFlash("Password changed"); }
 });
 document.body.addEventListener("click", (event) => {
   const openDocs = closestEl(event.target, "[data-open-client-docs]");
@@ -813,6 +800,9 @@ async function removePlatformBranch(branch) {
   toast(`${branch} removed from platform branches.`);
 }
 qs("#users").addEventListener("click", (event) => { handleUsersClick(/** @type {Element} */ (event.target)); });
+qs("#user-settings").addEventListener("click", (event) => { handleAccountClick(/** @type {Element} */ (event.target)); });
+qs("#user-settings").addEventListener("change", (event) => { handleAccountChange(/** @type {Element} */ (event.target)); });
+qs("#user-settings").addEventListener("submit", (event) => { if (/** @type {Element} */ (event.target).id === "account-profile-form") { event.preventDefault(); accountSaveProfile(); } });
 qs("#item-forecast").addEventListener("click", (event) => { handleForecastClick(/** @type {Element} */ (event.target)); });
 qs("#item-forecast").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "forecast", () => forecastView, renderItemForecast); });
 qs("#dashboard").addEventListener("click", (event) => { handleDashboardClick(/** @type {Element} */ (event.target)); });
@@ -2018,7 +2008,9 @@ qs("#login-form").addEventListener("submit", async (event) => {
     if (loginForm) loginForm.dataset.submitting = "";
     return toast(error.message || "Invalid email or password.");
   }
+  const seededBranch = prefDefaultBranch();
   currentUser = payload.user;
+  applyPreferencesToViews(seededBranch);
   welcomePreviousSignIn = payload.previousSignIn || null;
   // Hand the credential to the browser's password manager so the next visit can offer the
   // Touch ID / Keychain prompt (and our auto-sign-in above can act on it).
@@ -2065,13 +2057,21 @@ qs("#login-form").addEventListener("submit", async (event) => {
   applyRole();
   renderAll();
   startAppVersionWatch();
-  // Every sign-in opens on the Welcome screen; the dashboard is already drawn underneath it. It hides
-  // the loader and starts the sign-in sound together with its entrance animation.
-  showWelcomeScreen(() => {
+  // The Welcome screen (Account settings → Preferences: once a day / every sign-in / off; the server
+  // decides from the previous sign-in) opens over the already-drawn app, hides the loader and starts
+  // the sign-in sound with its entrance animation. Without it, go straight to the start page.
+  const afterWelcome = () => {
     playDashboardLoginSound();
     toast(`Logged in as ${currentUser.name || currentUser.role}.`);
     maybeShowPasswordKycModal();
-  }, hideAppLoader);
+  };
+  if (payload.showWelcome === false) {
+    hideAppLoader();
+    showSection(preferredStartSection());
+    afterWelcome();
+  } else {
+    showWelcomeScreen(afterWelcome, hideAppLoader);
+  }
 });
 
 qs("#login-forgot")?.addEventListener("click", async () => {
@@ -2099,6 +2099,7 @@ qs("#login-forgot")?.addEventListener("click", async () => {
 });
 
 function playLoginSuccessSound() {
+  if (!soundEffectsOn()) return;
   const audio = new Audio("/Startup Sound.mp3");
   audio.volume = 0.55;
   audio.play().catch(() => null);
@@ -2128,6 +2129,7 @@ function playDashboardLoginSound() {
   if (!currentUser || sessionStorage.getItem("medlane-dashboard-sound-played") === "1") return;
   if (!visibleNotifications().some((notice) => notice.status === "Unread")) return;
   sessionStorage.setItem("medlane-dashboard-sound-played", "1");
+  if (!soundEffectsOn()) return;
   const audio = new Audio("/Notification Sound.mp3");
   audio.volume = 0.55;
   audio.play().catch(() => null);
@@ -2450,8 +2452,10 @@ async function hydrateAuthenticatedSession() {
     MedlaneAPI.setPreviewRole("");
     return MedlaneAPI.me();
   });
+  const seededBranch = prefDefaultBranch();
   currentUser = me.user;
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
+  applyPreferencesToViews(seededBranch);
   setAppLoaderStep("Loading stock and orders…");
   const serverState = await MedlaneAPI.loadAppState();
   if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state. Refusing to load blank data over it.");

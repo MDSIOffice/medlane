@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { seedData } from "./seed-data.mjs";
 import { RECON_AREAS, RECON_CHECKS, mergeDifferences, runRecon } from "../../src/recon.js";
+import { preferencesFromRow, preferencePatchColumns, resolveNotificationSettings, notificationSettingPatch, profilePatch, passwordAge } from "../../src/account.js";
 
 const port = Number(process.argv[2] || 8799);
 const seedScale = Number(process.argv[3] || 0);
@@ -52,7 +53,36 @@ const reconOverview = (role) => {
   };
 };
 
+// Account settings, kept per role for the life of the server (uses the real rules in src/account.js).
+const accounts = {};
+const accountFor = (role) => (accounts[role] ||= {
+  prefsRow: null, settingRows: [], name: `Fake ${role}`, phone: "",
+  sessions: [
+    { id: "00000000-0000-4000-8000-000000000001", device: "macOS", browser: "Chrome", ipAddress: "127.0.0.1", createdAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), current: true },
+    { id: "00000000-0000-4000-8000-000000000002", device: "iPhone", browser: "Safari", ipAddress: "10.0.0.8", createdAt: new Date(Date.now() - 3 * 3600e3).toISOString(), lastSeenAt: new Date(Date.now() - 2 * 3600e3).toISOString(), current: false },
+  ],
+});
+const accountView = (role) => {
+  const a = accountFor(role);
+  const preferences = preferencesFromRow(a.prefsRow);
+  return { preferences, notificationSettings: resolveNotificationSettings(a.settingRows, userFor(role).modules.length ? userFor(role).modules : ["purchase-orders", "inventory", "collections", "product-issues", "reconciliation"]), passwordAge: passwordAge(preferences.passwordChangedAt || new Date(Date.now() - 84 * 86400e3).toISOString(), null) };
+};
+const accountRoutes = {
+  "GET /api/account": (role) => ({ ...accountView(role), sessions: accountFor(role).sessions }),
+  "PATCH /api/account/preferences": (role, body) => { const a = accountFor(role); a.prefsRow = { ...(a.prefsRow || {}), ...preferencePatchColumns(body, { branches: null }) }; return { ok: true, preferences: accountView(role).preferences }; },
+  "PATCH /api/account/profile": (role, body) => { const a = accountFor(role); const p = profilePatch(body); a.name = p.fullName; a.phone = p.phone; a.prefsRow = { ...(a.prefsRow || {}), display_name: p.displayName }; return { ok: true, name: p.fullName, phone: p.phone, displayName: p.displayName }; },
+  "PUT /api/account/notification-settings": (role, body) => {
+    const a = accountFor(role); const c = notificationSettingPatch(body, ["purchase-orders", "inventory", "collections", "product-issues", "reconciliation"]);
+    const cur = accountView(role).notificationSettings.find((x) => x.type === c.type);
+    a.settingRows = [...a.settingRows.filter((r) => r.alert_type !== c.type), { alert_type: c.type, in_app: c.channel === "inApp" ? c.value : cur.inApp, email: c.channel === "email" ? c.value : cur.email }];
+    return { ok: true, notificationSettings: accountView(role).notificationSettings };
+  },
+  "POST /api/account/sessions/revoke": (role, body) => { const a = accountFor(role); const before = a.sessions.length; a.sessions = a.sessions.filter((x) => x.current || x.id !== body?.sessionId); return { ok: true, revoked: before - a.sessions.length }; },
+  "POST /api/account/sessions/revoke-others": (role) => { const a = accountFor(role); const before = a.sessions.length; a.sessions = a.sessions.filter((x) => x.current); return { ok: true, revoked: before - a.sessions.length }; },
+};
+
 const authedRoutes = {
+  ...accountRoutes,
   "GET /api/recon": (role) => reconOverview(role),
   "POST /api/recon/run": (role, body) => { const run = reconRun(role, body?.check); return { ...reconOverview(role), run }; },
   "GET /api/auth/me": (role) => ({ user: userFor(role) }),
@@ -115,7 +145,11 @@ createServer(async (req, res) => {
     if (req.method === "POST" && /^\/api\/recon\/(settings|stock-counts|bank-statements|cash-counts)$/.test(pathname)) { await readBody(req); return send(res, 200, { ok: true }); }
     const route = authedRoutes[`${req.method} ${pathname}`];
     if (!route) return send(res, 404, { error: `Fake backend has no ${req.method} ${pathname}` });
-    return send(res, 200, route(claim.role, req.method === "POST" ? await readBody(req) : undefined));
+    try {
+      return send(res, 200, route(claim.role, ["POST", "PATCH", "PUT"].includes(req.method) ? await readBody(req) : undefined));
+    } catch (error) {
+      return send(res, 400, { error: error.message });
+    }
   }
   let file = join(root, decodeURIComponent(pathname));
   try { if (!(await stat(file)).isFile()) throw new Error("not a file"); } catch { file = join(root, "index.html"); }

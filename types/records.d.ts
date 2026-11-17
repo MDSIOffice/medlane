@@ -474,7 +474,21 @@ interface Profile {
   themePreference: "dark" | "light";
   /** Set while a Superadmin/CEO previews another role: their real role. */
   previewOf?: AppRole;
+  /** Account settings, sent with login and /api/auth/me only (src/account.js). */
+  preferences?: UserPreferences;
+  notificationSettings?: NotificationSetting[];
+  passwordAge?: PasswordAge;
 }
+
+/** Account settings → Preferences (user_preferences row; src/account.js preferencesFromRow). */
+interface UserPreferences {
+  displayName: string; avatar: string; sound: boolean; welcome: "daily" | "every" | "off";
+  startPage: "dashboard" | "inventory" | "sales" | "last"; rowsPerPage: number; defaultBranch: string;
+  dailySummary: boolean; quietHoursEnabled: boolean; quietStart: string; quietEnd: string; passwordChangedAt: string;
+}
+/** One row of the Account settings notification matrix. */
+interface NotificationSetting { type: "approvals" | "stock" | "money" | "service" | "recon" | "security"; label: string; sub: string; inApp: boolean; email: boolean; locked: boolean }
+interface PasswordAge { days: number | null; dueInDays: number | null; status: "ok" | "due-soon" | "overdue" | "unknown" }
 
 /** A row of the Supabase profiles table, before profileForUser() turns it into a Profile. */
 interface ProfileRow {

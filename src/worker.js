@@ -1,6 +1,7 @@
 /** @typedef {{ content?: string, embeds?: any[], allowedMentions?: any, wait?: boolean }} DiscordOptions */
 import { DurableObject } from "cloudflare:workers";
 import { collectSample, collectLiveDetails, buildWeeklyReport, hasAccessToken } from "./perf-report.js";
+import { resolveNotificationSettings, notificationSettingPatch, preferencesFromRow, preferencePatchColumns, profilePatch, passwordAge, welcomeShowsNow } from "./account.js";
 import { RECON_CHECKS, RECON_AREAS, RECON_INPUT_MODULES, runRecon, dataFromRows, mergeDifferences, getPath, setPath, sameValue, saleDocType, saleNo } from "./recon.js";
 
 const jsonHeaders = {
@@ -1927,6 +1928,59 @@ async function markPasswordConfirmed(env, userId) {
   } catch (/** @type {any} */ error) {
     console.error(JSON.stringify({ message: "Failed to mark password confirmed", error: error.message }));
   }
+}
+
+// ---- Account settings (user_preferences + notification_settings) ------------------------------
+// Loaded with the session (login and /api/auth/me) — never on every request — so the Welcome
+// screen, sound and page sizes are right from the first paint. Before the 2026-11-18 migration
+// runs the tables don't exist; everything then falls back to the defaults instead of failing.
+
+/** @param {WorkerEnv} env @param {string} userId */
+async function preferencesRow(env, userId) {
+  const rows = await supabaseFetch(env, `/rest/v1/user_preferences?user_id=eq.${encodeURIComponent(userId)}&select=*`).catch(() => null);
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+/** @param {WorkerEnv} env @param {string} userId */
+async function notificationSettingRows(env, userId) {
+  const rows = await supabaseFetch(env, `/rest/v1/notification_settings?user_id=eq.${encodeURIComponent(userId)}&select=alert_type,in_app,email`).catch(() => null);
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** Preferences, notification settings and password age for the signed-in user. @param {WorkerEnv} env @param {Profile} profile */
+async function accountExtras(env, profile) {
+  const [row, settings, profileRows] = await Promise.all([
+    preferencesRow(env, profile.id),
+    notificationSettingRows(env, profile.id),
+    supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(profile.id)}&select=created_at`).catch(() => []),
+  ]);
+  const preferences = preferencesFromRow(row);
+  return {
+    preferences,
+    notificationSettings: resolveNotificationSettings(settings, profile.modules || []),
+    passwordAge: passwordAge(preferences.passwordChangedAt, profileRows?.[0]?.created_at),
+  };
+}
+
+/** Inserts or updates the user's user_preferences row. @param {WorkerEnv} env @param {string} userId @param {Record<string, unknown>} columns */
+async function upsertPreferences(env, userId, columns) {
+  await supabaseFetch(env, "/rest/v1/user_preferences?on_conflict=user_id", {
+    method: "POST",
+    headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify([{ user_id: userId, ...columns, updated_at: new Date().toISOString() }]),
+  });
+}
+
+/** Stamps the real password-change time (Account settings shows its age). @param {WorkerEnv} env @param {string} userId */
+async function markPasswordChanged(env, userId) {
+  await upsertPreferences(env, userId, { password_changed_at: new Date().toISOString() }).catch((/** @type {any} */ error) => {
+    console.error(JSON.stringify({ message: "Failed to stamp password change", error: error.message }));
+  });
+}
+
+/** Drops cached auth results for one app session so a revoked session stops working at once on this isolate. @param {string} sessionId */
+function forgetCachedSession(sessionId) {
+  for (const key of authCache.keys()) if (key.includes(`|${sessionId}|`)) authCache.delete(key);
 }
 
 /** @param {Request} request @param {WorkerEnv} env */
@@ -5551,7 +5605,8 @@ export default {
         const appSession = await createAppSession(env, request, session.user.id);
         ctx.waitUntil(recordSignInEvent(env, request, { ok: true, email: String(email || "").trim().toLowerCase(), profile: user, userId: session.user.id }));
         const previousSignIn = previous[0] ? { at: previous[0].created_at, device: previous[0].device_name || "", browser: previous[0].browser || "" } : null;
-        return json({ session: { ...session, app_session_id: appSession?.id || null }, user, previousSignIn });
+        const extras = await accountExtras(env, user);
+        return json({ session: { ...session, app_session_id: appSession?.id || null }, user: { ...user, ...extras }, previousSignIn, showWelcome: welcomeShowsNow(extras.preferences.welcome, previousSignIn?.at) });
       }
 
       if (url.pathname === "/api/auth/refresh") {
@@ -5616,7 +5671,89 @@ export default {
       if (url.pathname === "/api/auth/me") {
         if (request.method !== "GET") return methodNotAllowed();
         const { profile } = await authenticatedProfile(request, env);
-        return json({ user: { ...profile, previewableRoles: previewableRolesFor(profile.previewOf || profile.role) } });
+        return json({ user: { ...profile, ...(await accountExtras(env, profile)), previewableRoles: previewableRolesFor(profile.previewOf || profile.role) } });
+      }
+
+      // ---- Account settings: the signed-in user's own profile, preferences, alerts and sessions ----
+      if (url.pathname === "/api/account") {
+        if (request.method !== "GET") return methodNotAllowed();
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const [extras, sessions] = await Promise.all([
+          accountExtras(env, profile),
+          supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(authUser.id)}&revoked_at=is.null&select=id,device_name,browser,ip_address,created_at,last_seen_at&order=last_seen_at.desc&limit=20`),
+        ]);
+        const current = sessionHeader(request);
+        const live = sessions.filter((/** @type {any} */ row) => Date.now() - new Date(row.created_at).getTime() < APP_SESSION_MAX_AGE_MS);
+        return json({ ...extras, sessions: live.map((/** @type {any} */ row) => ({ id: row.id, device: row.device_name, browser: row.browser, ipAddress: row.ip_address || "", createdAt: row.created_at, lastSeenAt: row.last_seen_at, current: row.id === current })) });
+      }
+
+      if (url.pathname === "/api/account/profile") {
+        if (request.method !== "PATCH") return methodNotAllowed();
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (profile.previewOf) return json({ error: "Exit the role preview to change your own profile" }, { status: 400 });
+        let patch;
+        try { patch = profilePatch(await request.json()); } catch (/** @type {any} */ error) { return json({ error: error.message }, { status: 400 }); }
+        const before = { name: profile.name, phone: profile.phone };
+        const beforePrefs = preferencesFromRow(await preferencesRow(env, authUser.id));
+        await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(authUser.id)}`, {
+          method: "PATCH", headers: { prefer: "return=minimal" },
+          body: JSON.stringify({ full_name: patch.fullName, phone: patch.phone || null, updated_at: new Date().toISOString() }),
+        });
+        await upsertPreferences(env, authUser.id, { display_name: patch.displayName });
+        /** @type {[string, string, string][]} */
+        const fields = [["Full name", before.name || "", patch.fullName], ["Mobile", before.phone || "", patch.phone], ["Display name", beforePrefs.displayName, patch.displayName]];
+        const changes = fields.filter(([, from, to]) => from !== to).map(([field, from, to]) => ({ field, from, to }));
+        if (changes.length) ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: patch.fullName, role: profile.role, action: "Updated own profile", module: "Account settings", record: profile.email, changes }, authUser.id, auditContextForRequest(request)));
+        return json({ ok: true, name: patch.fullName, phone: patch.phone, displayName: patch.displayName });
+      }
+
+      if (url.pathname === "/api/account/preferences") {
+        if (request.method !== "PATCH") return methodNotAllowed();
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (profile.previewOf) return json({ error: "Exit the role preview to change your own preferences" }, { status: 400 });
+        let columns;
+        try { columns = preferencePatchColumns(await request.json(), { branches: null }); } catch (/** @type {any} */ error) { return json({ error: error.message }, { status: 400 }); }
+        await upsertPreferences(env, authUser.id, columns);
+        return json({ ok: true, preferences: preferencesFromRow(await preferencesRow(env, authUser.id)) });
+      }
+
+      if (url.pathname === "/api/account/notification-settings") {
+        if (request.method !== "PUT") return methodNotAllowed();
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (profile.previewOf) return json({ error: "Exit the role preview to change your own notification settings" }, { status: 400 });
+        let change;
+        try { change = notificationSettingPatch(await request.json(), profile.modules || []); } catch (/** @type {any} */ error) { return json({ error: error.message }, { status: 400 }); }
+        const current = resolveNotificationSettings(await notificationSettingRows(env, authUser.id), profile.modules || []).find((item) => item.type === change.type);
+        const next = { in_app: change.channel === "inApp" ? change.value : Boolean(current?.inApp), email: change.channel === "email" ? change.value : Boolean(current?.email) };
+        await supabaseFetch(env, "/rest/v1/notification_settings?on_conflict=user_id,alert_type", {
+          method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify([{ user_id: authUser.id, alert_type: change.type, ...next, updated_at: new Date().toISOString() }]),
+        });
+        return json({ ok: true, notificationSettings: resolveNotificationSettings(await notificationSettingRows(env, authUser.id), profile.modules || []) });
+      }
+
+      if (url.pathname === "/api/account/sessions/revoke" || url.pathname === "/api/account/sessions/revoke-others") {
+        if (request.method !== "POST") return methodNotAllowed();
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        const current = sessionHeader(request);
+        const all = url.pathname.endsWith("revoke-others");
+        const { sessionId } = all ? { sessionId: "" } : await request.json().catch(() => ({ sessionId: "" }));
+        if (!all && !/^[0-9a-f-]{36}$/i.test(String(sessionId || ""))) return json({ error: "Invalid session id" }, { status: 400 });
+        if (!all && sessionId === current) return json({ error: "Use Log out to end this session" }, { status: 400 });
+        // Only ever the caller's own sessions (user_id filter), never this one.
+        const filter = all
+          ? `user_id=eq.${encodeURIComponent(authUser.id)}&revoked_at=is.null${current ? `&id=neq.${encodeURIComponent(current)}` : ""}`
+          : `id=eq.${encodeURIComponent(sessionId)}&user_id=eq.${encodeURIComponent(authUser.id)}&revoked_at=is.null`;
+        const revoked = await supabaseFetch(env, `/rest/v1/app_sessions?${filter}`, {
+          method: "PATCH", headers: { prefer: "return=representation" },
+          body: JSON.stringify({ revoked_at: new Date().toISOString(), revoked_by: authUser.id }),
+        });
+        const rows = Array.isArray(revoked) ? revoked : [];
+        rows.forEach((/** @type {any} */ row) => forgetCachedSession(row.id));
+        for (const row of rows) {
+          ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Signed out a session", module: "Account settings", record: `${row.browser || "Browser"} on ${row.device_name || "device"}` }, authUser.id, auditContextForRequest(request)));
+        }
+        return json({ ok: true, revoked: rows.length });
       }
 
       if (url.pathname === "/api/app-state") {
@@ -5652,6 +5789,7 @@ export default {
         const payload = await response.json().catch(() => null);
         if (!response.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password setup failed" }, { status: 400 });
         if (payload?.id) await markPasswordConfirmed(env, payload.id);
+        if (payload?.id) await markPasswordChanged(env, payload.id);
         if (payload?.id) ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: payload.email || "", role: payload.user_metadata?.role || "", action: "Password set from email link", module: "Authentication", record: payload.email || payload.id }, payload.id, auditContextForRequest(request)));
         return json({ ok: true });
       }
@@ -5698,6 +5836,7 @@ export default {
         const payload = await updateResponse.json().catch(() => null);
         if (!updateResponse.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password update failed" }, { status: 400 });
         await markPasswordConfirmed(env, user.id);
+        await markPasswordChanged(env, user.id);
         ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: user.email || "", role: user.user_metadata?.role || "", action: "Password changed", module: "Authentication", record: user.email || user.id }, user.id, auditContextForRequest(request)));
         return json({ ok: true });
       }

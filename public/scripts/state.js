@@ -14,6 +14,17 @@ let currentOperationalReportKey = null; // set by applyOperationalReport() in mo
 let editContext = null;
 let modalReadOnly = false;
 let currentUser = JSON.parse(localStorage.getItem("medlane-session") || "null");
+// Account settings → Preferences, cached with the session in localStorage so the Welcome screen,
+// sound, page sizes and branch view are right from the first paint (no flash of the defaults).
+/** @returns {UserPreferences} */
+function userPreferences() { return { ...PREFERENCE_DEFAULTS_CLIENT, ...(currentUser?.preferences || {}) }; }
+/** Re-reads the preferences after sign-in or a change on Account settings. */
+function syncPreferences() { /** @type {any} */ (globalThis).medlanePrefs = userPreferences(); }
+syncPreferences();
+/** "all" or the branch lists open with (Account settings → Default branch view). */
+function prefDefaultBranch() { return String(/** @type {any} */ (globalThis).medlanePrefs?.defaultBranch || "all"); }
+/** View states that took their branch from the default rather than the URL; see applyPreferencesToViews. @type {UiViewState[]} */
+const defaultBranchViews = [];
 /** @param {string} theme */
 function applyThemePreference(theme) {
   document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
@@ -63,7 +74,7 @@ let inventoryWorkflowTab = INVENTORY_TABS.includes(inventoryUrlParams.get("tab")
 const inventoryStockParams = inventoryWorkflowTab === "stocks" ? inventoryUrlParams : new URLSearchParams();
 let inventoryCompactView = inventoryStockParams.get("compact") === "1";
 /** @type {string} */
-let inventoryBranchView = inventoryStockParams.get("branch") || "all"; // "all" or a branch name
+let inventoryBranchView = inventoryStockParams.get("branch") || prefDefaultBranch(); // "all" or a branch name
 /** @type {string} */
 let inventoryStatusKey = INVENTORY_STATUS_KEYS.includes(inventoryStockParams.get("status")) ? /** @type {string} */ (inventoryStockParams.get("status")) : "all";
 let inventorySearch = inventoryStockParams.get("q") || "";
@@ -80,9 +91,10 @@ let inventoryTabView = {
   sel: inventoryTabParams.get("sel") || "",
   sort: inventoryTabParams.get("sort") ? { key: /** @type {string} */ (inventoryTabParams.get("sort")), dir: inventoryTabParams.get("dir") === "asc" ? 1 : -1 } : null,
   page: Math.max(0, (Number(inventoryTabParams.get("page")) || 1) - 1),
-  branch: inventoryTabParams.get("branch") || "all",
+  branch: inventoryTabParams.get("branch") || prefDefaultBranch(),
   scope: inventoryTabParams.get("status") || "",
 };
+if (!inventoryTabParams.get("branch")) defaultBranchViews.push(inventoryTabView);
 let inventoryFocusQuery = "";
 // Sales page view state, seeded from ?section=sales&tab=…&status=…&q=…&sel=… (see salesQueryString).
 const SALES_TABS = /** @type {(string | null)[]} */ (["orders", "deliveries", "invoices"]);
@@ -93,8 +105,9 @@ let salesTab = SALES_TABS.includes(salesUrlParams.get("tab")) ? /** @type {strin
 /** @type {UiViewState} */
 let salesView = (() => {
   const sort = salesUrlParams.get("sort");
-  return { q: salesUrlParams.get("q") || "", sel: salesUrlParams.get("sel") || "", sort: sort ? { key: sort, dir: salesUrlParams.get("dir") === "asc" ? 1 : -1 } : null, page: Math.max(0, (Number(salesUrlParams.get("page")) || 1) - 1), branch: salesUrlParams.get("branch") || "all", scope: salesUrlParams.get("status") || "" };
+  return { q: salesUrlParams.get("q") || "", sel: salesUrlParams.get("sel") || "", sort: sort ? { key: sort, dir: salesUrlParams.get("dir") === "asc" ? 1 : -1 } : null, page: Math.max(0, (Number(salesUrlParams.get("page")) || 1) - 1), branch: salesUrlParams.get("branch") || prefDefaultBranch(), scope: salesUrlParams.get("status") || "" };
 })();
+if (!salesUrlParams.get("branch")) defaultBranchViews.push(salesView);
 /** Invoices tab: "all", "SI" or "TS". */
 let salesDocType = ["SI", "TS"].includes(salesUrlParams.get("type") || "") ? /** @type {string} */ (salesUrlParams.get("type")) : "all";
 
@@ -106,7 +119,10 @@ function moduleUrlSeed(section, tabs) {
   try { const p = new URLSearchParams(location.search); if (p.get("section") === section) params = p; } catch { /* no URL state */ }
   const tab = tabs.includes(params.get("tab") || "") ? /** @type {string} */ (params.get("tab")) : tabs[0];
   const sort = params.get("sort");
-  return { params, tab, view: { q: params.get("q") || "", sel: params.get("sel") || "", sort: sort ? { key: sort, dir: params.get("dir") === "asc" ? 1 : -1 } : null, page: Math.max(0, (Number(params.get("page")) || 1) - 1), branch: params.get("branch") || "all", scope: params.get("status") || "" } };
+  /** @type {UiViewState} */
+  const view = { q: params.get("q") || "", sel: params.get("sel") || "", sort: sort ? { key: sort, dir: params.get("dir") === "asc" ? 1 : -1 } : null, page: Math.max(0, (Number(params.get("page")) || 1) - 1), branch: params.get("branch") || prefDefaultBranch(), scope: params.get("status") || "", ...(params.get("size") ? { size: [10, 25, 50].includes(Number(params.get("size"))) ? Number(params.get("size")) : undefined } : {}) };
+  if (!params.get("branch")) defaultBranchViews.push(view);
+  return { params, tab, view };
 }
 const INVOICING_TABS = ["invoices", "credit"];
 const invoicingSeed = moduleUrlSeed("invoicing", INVOICING_TABS);
@@ -294,7 +310,7 @@ if (currentUser?.role && accounts[currentUser.role] && !currentUser.id && !curre
 /** @type {Record<string, string[]>} */
 const sectionMeta = {
   notifications: ["Notifications", "Review system alerts for credit limits, stock transfers, collections, and inventory risks."],
-  "user-settings": ["User Settings", "View and update your profile, contact details, and session preferences."],
+  "user-settings": ["Account settings", "Your profile, sign-in security, notifications and preferences."],
   "client-invoices": ["Client Invoice Timeline", "Review every invoice for one client using an order-status timeline."],
   "report-detail": ["Report Detail", "Focused report view with graphs, source records, and connected module actions."],
   "product-issue-detail": ["Support Report Detail", "Full status history and turnaround timeline for this technical support report."],
@@ -319,6 +335,17 @@ function platformAreas() {
   // array (bug: an account whose only pushed area was "Visayas Dealer" showed ONLY that option).
   const custom = Array.isArray(data?.platformAreas) ? data.platformAreas : [];
   return [...new Set([...initialData.platformAreas, ...custom])];
+}
+/**
+ * After sign-in (or a Preferences change): point every list that took its branch from the default
+ * — not from the URL — at the user's Default branch view, and refresh the pager default.
+ * @param {string} [previousDefault] the default those views were seeded with
+ */
+function applyPreferencesToViews(previousDefault = "all") {
+  syncPreferences();
+  const next = prefDefaultBranch();
+  for (const view of defaultBranchViews) if (view.branch === previousDefault) { view.branch = next; view.page = 0; }
+  if (inventoryBranchView === previousDefault) inventoryBranchView = next;
 }
 /** @returns {string[]} */
 function platformBranches() { return data?.platformBranches?.length ? data.platformBranches : initialData.platformBranches; }
@@ -401,6 +428,13 @@ function getCurrentProfile() {
 }
 /** @param {string} name */
 function firstName(name) { return String(name || "User").split(/\s+/)[0]; }
+/** What greetings call the signed-in user: their display name (Account settings), else first name. */
+function greetingName() {
+  const display = String(currentUser?.preferences?.displayName || "").trim();
+  if (display) return display;
+  const raw = String(currentUser?.name || "").trim();
+  return raw && !raw.includes("@") ? raw.split(/\s+/)[0] : String(currentUser?.email || raw || "User").split("@")[0];
+}
 /** @param {string} name */
 function initials(name) { return String(name || "U").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 

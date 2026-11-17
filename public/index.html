@@ -1183,23 +1183,18 @@
         <div class="memo-list" id="memo-list"></div>
       </section>
 
-      <section class="section" id="user-settings">
-        <div class="section-header"><div><p class="eyebrow">Account</p><h2>User Settings</h2></div></div>
-        <article class="panel settings-panel">
-          <form id="settings-form" class="form-grid">
-            <div class="field"><label for="settings-name">Display Name</label><input id="settings-name" name="name" readonly /></div>
-            <div class="field"><label for="settings-email">Email</label><input id="settings-email" name="email" type="email" required /></div>
-            <div class="field"><label for="settings-phone">Mobile Number</label><input id="settings-phone" name="phone" required /></div>
-            <div class="field"><label for="settings-branch">Default Area</label><input id="settings-branch" name="branch" readonly /></div>
-            <div class="field"><label for="settings-role">Role</label><input id="settings-role" name="role" readonly /></div>
-            <div class="field"><label>Password</label><button class="ghost-button" id="open-password-modal" type="button">Change Password</button></div>
-            <label class="ios-check-row full"><input id="settings-custom-permissions" name="customPermissions" type="checkbox" /><span></span><strong>Customize this user's viewable/editable permissions</strong></label>
-            <div class="field full" id="settings-permissions-panel"></div>
-            <div class="field full"><label for="settings-notes">Profile Notes</label><textarea id="settings-notes" name="notes"></textarea></div>
-            <div class="modal-actions full"><button class="primary-button" type="submit">Save Settings</button></div>
-          </form>
-        </article>
-        <article class="panel settings-panel game-launcher-panel">
+      <section class="section ui-scope" id="user-settings">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Account settings</h1></div>
+            <p class="ui-desc">Your profile, sign-in security, which notifications you get, and how Medlane OS behaves for you. Changes here only affect your account.</p>
+          </div>
+          <div class="ui-actions" id="account-actions"></div>
+        </div>
+        <div class="ui-wa-host" data-wa-host="user-settings"></div>
+        <div class="ui-tabs" id="account-tabs" role="tablist" aria-label="Account settings sections"></div>
+        <div id="account-tab-panel" class="acct-panel"></div>
+        <article class="panel settings-panel game-launcher-panel" id="account-game-panel" hidden>
           <div class="panel-header"><div><p class="eyebrow">Break Time</p><h2>Luksong Medlane</h2><p class="page-description">Jump ground stacks, duck flying audit banners — beat your best run.</p></div></div>
           <div class="game-launcher-row">
             <button class="primary-button" id="open-game-modal" type="button">Play Game</button>
@@ -1513,7 +1508,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

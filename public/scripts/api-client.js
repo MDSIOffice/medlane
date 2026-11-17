@@ -525,6 +525,20 @@ const MedlaneAPI = (() => {
     return request("/api/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
   }
 
+  // ---- Account settings (the signed-in user only) ----
+  /** @returns {Promise<AccountResponse>} */
+  async function loadAccount() { return request("/api/account"); }
+  /** @param {{ fullName: string, displayName: string, phone: string }} profile @returns {Promise<{ ok: true, name: string, phone: string, displayName: string }>} */
+  async function saveAccountProfile(profile) { return request("/api/account/profile", { method: "PATCH", body: JSON.stringify(profile) }); }
+  /** @param {Partial<UserPreferences>} patch @returns {Promise<{ ok: true, preferences: UserPreferences }>} */
+  async function saveAccountPreferences(patch) { return request("/api/account/preferences", { method: "PATCH", body: JSON.stringify(patch) }); }
+  /** @param {string} type @param {"inApp" | "email"} channel @param {boolean} value @returns {Promise<{ ok: true, notificationSettings: NotificationSetting[] }>} */
+  async function saveNotificationSetting(type, channel, value) { return request("/api/account/notification-settings", { method: "PUT", body: JSON.stringify({ type, channel, value }) }); }
+  /** @param {string} sessionId @returns {Promise<{ ok: true, revoked: number }>} */
+  async function signOutMySession(sessionId) { return request("/api/account/sessions/revoke", { method: "POST", body: JSON.stringify({ sessionId }) }); }
+  /** @returns {Promise<{ ok: true, revoked: number }>} */
+  async function signOutMyOtherSessions() { return request("/api/account/sessions/revoke-others", { method: "POST" }); }
+
   /** @returns {Promise<OkResponse>} */
   async function keepCurrentPasswordForKyc() {
     return request("/api/auth/password-kyc/keep", { method: "POST" });
@@ -746,5 +760,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, deleteFile, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, changeUserRole, sendUserPasswordReset, cancelInvite, revokeAllUserSessions, setUserDisabled, setUserSuperadmin, resetUserPermissions, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, reconLoad, reconRun, reconAction, reconInput, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
+  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, deleteFile, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, changeUserRole, sendUserPasswordReset, cancelInvite, revokeAllUserSessions, setUserDisabled, setUserSuperadmin, resetUserPermissions, setPassword, changePassword, keepCurrentPasswordForKyc, loadAccount, saveAccountProfile, saveAccountPreferences, saveNotificationSetting, signOutMySession, signOutMyOtherSessions, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, reconLoad, reconRun, reconAction, reconInput, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();
