@@ -118,6 +118,9 @@ const moduleRecordKeys = {
   // "inventory" permission below. Never granted for "edit": editing the catalog still requires
   // the "masterlists" (or "inventory", for stock) permission itself.
   "catalog-reference": ["items", "clients", "suppliers", "inventory"],
+  // Read-only company bank list (Masterlists → Banks) for people who record or deposit money:
+  // granted in moduleListsFor() to anyone who can view Collections or Payables. Never editable here.
+  "bank-reference": ["banks"],
   inventory: ["inventory", "pendingTransfers", "transferHistory", "inventoryPurchaseOrders", "inventoryDemoRequests", "stockReceipts"],
   // Client POs (sales & invoicing). Supplier POs live under Inventory (inventoryPurchaseOrders above).
   "purchase-orders": ["purchaseOrders"],
@@ -1877,6 +1880,7 @@ function moduleListsFor(role, permissions) {
   // an admin-screen concern. Deliberately view-only and not overridable per-user: editing the
   // catalog still requires the real "masterlists" permission.
   if (!view.includes("catalog-reference")) view.push("catalog-reference");
+  if (["collections", "payables"].some((module) => view.includes(module)) && !view.includes("bank-reference")) view.push("bank-reference");
   grantSupportTracker(role, view, edit);
   const blocked = ROLE_BLOCKED_MODULES[role] || [];
   if (blocked.length) {

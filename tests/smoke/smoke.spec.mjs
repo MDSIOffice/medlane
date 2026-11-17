@@ -610,3 +610,22 @@ test("with reduced motion the Welcome screen shows final values at once, still w
   expect((await startupPlays(page)).length).toBe(1);
   await context.close();
 });
+
+test("Add Collection: the bank field reads Bank Cheque Name for Multiple Cheques and lists the company banks", async ({ page }) => {
+  const { problems } = await watch(page);
+  await page.route("**/api/modules/state", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.banks = [{ name: "BDO", account: "0012-3456-78" }, { name: "Metrobank", account: "777-1" }];
+    await route.fulfill({ response, json: body });
+  });
+  await logIn(page);
+  await page.evaluate(() => openModal("paymentRequest"));
+  const label = page.locator("label[for='bank']");
+  await page.locator("#paymentType").selectOption("Multiple Cheques");
+  await expect(label).toHaveText("Bank Cheque Name");
+  await expect(page.locator("#bank option")).toContainText(["BDO", "Metrobank"]);
+  await page.locator("#paymentType").selectOption("Check");
+  await expect(label).toHaveText("Bank Name");
+  expect(problems).toEqual([]);
+});

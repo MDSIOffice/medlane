@@ -108,6 +108,17 @@ describe("module access", () => {
     for (const role of ["Sales", "Logistics"]) assert.ok(!moduleListsFor(role, stale).view.includes("product-issues"), `${role} still has no Support Tracker`);
     assert.ok(!moduleListsFor("Accounting", stale).view.includes("product-issues"));
   });
+  test("the company bank list is readable (never editable) by anyone who can open Collections or Payables", () => {
+    const { moduleListsFor, canAccessKey } = worker;
+    const profileFor = (role, permissions = []) => { const { view, edit } = moduleListsFor(role, permissions); return { role, customPermissions: { enabled: true, view, edit } }; };
+    const accounting = profileFor("Accounting");
+    assert.ok(canAccessKey(accounting, "banks", "view"), "Accounting sees the bank list");
+    assert.ok(!canAccessKey(accounting, "banks", "edit"), "Accounting can't change it");
+    // Saved rows that only grant Collections still bring the read-only bank list.
+    const collectionsOnly = profileFor("Admin", [{ module_key: "collections", can_view: true, can_edit: true }]);
+    assert.ok(canAccessKey(collectionsOnly, "banks", "view") && !canAccessKey(collectionsOnly, "banks", "edit"));
+    for (const role of ["Logistics", "Engineering", "Product Specialist"]) assert.ok(!canAccessKey(profileFor(role), "banks", "view"), `${role} doesn't see the bank list`);
+  });
   test("role defaults match the agreed access list", () => {
     const { moduleListsFor } = worker;
     const accounting = moduleListsFor("Accounting", []);

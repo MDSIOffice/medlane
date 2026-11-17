@@ -6795,6 +6795,9 @@ function togglePaymentRequestChequeFields() {
     qs(`#${id}`).required = (["Check", "Multiple Cheques"].includes(type) && id === "bank") || (type === "Bank Transfer" && ["bank", "transferDate"].includes(id));
     if (!visible && id !== "bankAccount") qs(`#${id}`).value = "";
   });
+  // The bank here is the one the cheques are drawn on when it's several cheques.
+  const bankLabel = qs("label[for='bank']");
+  if (bankLabel) bankLabel.textContent = type === "Multiple Cheques" ? "Bank Cheque Name" : "Bank Name";
   ensureMultiChequeEditor();
   const editor = qs("#multi-cheque-editor");
   if (editor) {
