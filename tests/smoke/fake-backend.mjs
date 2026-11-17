@@ -85,7 +85,7 @@ const authedRoutes = {
   ...accountRoutes,
   "GET /api/recon": (role) => reconOverview(role),
   "POST /api/recon/run": (role, body) => { const run = reconRun(role, body?.check); return { ...reconOverview(role), run }; },
-  "GET /api/auth/me": (role) => ({ user: userFor(role) }),
+  "GET /api/auth/me": (role) => ({ user: { ...userFor(role), ...accountView(role) } }),
   "GET /api/modules/state": () => ({ data: seedData(seedScale), revision: 1, changesCursor: "cursor-1", pagination: {} }),
   "PUT /api/modules/state": () => ({ revision: 2 }),
   "POST /api/modules/records": () => ({ revision: 2 }),
@@ -103,6 +103,7 @@ const authedRoutes = {
   "GET /api/reports": () => ({ reports: [] }),
   "GET /api/game/leaderboard": () => ({ entries: [] }),
   "GET /api/game/me": () => ({ score: null }),
+  "GET /api/game/score/me": () => ({ best: 0, badge: null, totalXp: 0, level: 1, xpToNextLevel: 100, skin: "classic" }),
 };
 
 // Compressed like production, so transfer sizes and timings mean something.
@@ -114,7 +115,7 @@ createServer(async (req, res) => {
     if (pathname === "/api/auth/login") {
       const { email } = await readBody(req);
       const role = roleFromEmail(email);
-      return send(res, 200, { session: newSession(role), user: userFor(role) });
+      return send(res, 200, { session: newSession(role), user: { ...userFor(role), ...accountView(role) } });
     }
     if (pathname === "/api/auth/refresh") {
       const { refreshToken } = await readBody(req);

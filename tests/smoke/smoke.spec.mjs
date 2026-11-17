@@ -538,14 +538,15 @@ async function spyOnIntro(page, { blockAutoplay = false } = {}) {
     w.__introAt = null;
     const play = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function () {
-      w.__plays.push({ src: decodeURIComponent(this.src), at: performance.now(), intro: document.getElementById("welcome-screen")?.classList.contains("wl-intro") || false });
+      w.__plays.push({ src: decodeURIComponent(this.src), at: performance.now(), muted: this.muted, el: this, intro: document.getElementById("welcome-screen")?.classList.contains("wl-intro") || false });
       return block ? Promise.reject(new DOMException("blocked", "NotAllowedError")) : play.call(this).catch(() => null);
     };
     new MutationObserver(() => { const s = document.getElementById("welcome-screen"); if (s?.classList.contains("wl-intro") && w.__introAt === null) w.__introAt = performance.now(); })
       .observe(document, { subtree: true, attributes: true, attributeFilter: ["class"] });
   }, blockAutoplay);
 }
-const startupPlays = (page) => page.evaluate(() => /** @type {any} */ (window).__plays.filter((p) => p.src.endsWith("Startup Sound.mp3")));
+// Audible plays of the Welcome sound (the muted play during Sign in only unlocks it for Safari).
+const startupPlays = (page) => page.evaluate(() => /** @type {any} */ (window).__plays.filter((p) => /\/sounds\/welcome-glass-arpeggio\.(webm|mp3)$/.test(p.src) && !p.muted).map(({ el, ...p }) => p));
 
 test("the Welcome intro starts with the sign-in sound, counts up to the exact numbers and plays once", async ({ page }) => {
   const { problems } = await watch(page);
@@ -571,13 +572,43 @@ test("the Welcome intro starts with the sign-in sound, counts up to the exact nu
   expect(problems).toEqual([]);
 });
 
-test("Continue works mid-animation", async ({ page }) => {
+test("Continue works mid-animation, and the sound fades out instead of playing on", async ({ page }) => {
   await watch(page);
   await spyOnIntro(page);
   await logIn(page, "accounting@medlane.test", { stayOnWelcome: true });
   await expect(page.locator("#welcome-screen")).toHaveClass(/wl-intro/);
+  await page.waitForTimeout(300);
   await page.keyboard.press("Enter");
   await expect(page.locator("#welcome-screen")).toBeHidden();
+  // Chrome gets the WebM; it's stopped (after a 150ms fade) and rewound, never left playing.
+  const sound = () => page.evaluate(() => { const p = /** @type {any} */ (window).__plays.filter((x) => !x.muted && /welcome-glass-arpeggio/.test(x.src)).pop(); return p ? { src: p.src, paused: p.el.paused, time: p.el.currentTime, loop: p.el.loop } : null; });
+  expect((await sound())?.src).toMatch(/welcome-glass-arpeggio\.webm$/);
+  await expect.poll(async () => (await sound())?.paused, { timeout: 1000 }).toBe(true);
+  expect((await sound())?.time).toBe(0);
+  expect((await sound())?.loop).toBe(false);
+});
+
+test("with Sound effects off the Welcome intro runs silently and the sound file is never downloaded", async ({ page }) => {
+  const { problems } = await watch(page);
+  await spyOnIntro(page);
+  // Turn Sound effects off on Account settings, then sign out and back in.
+  await logIn(page, "sales@medlane.test");
+  await page.goto("/dashboard?section=user-settings&tab=preferences");
+  await page.getByRole("switch", { name: "Sound effects" }).click();
+  await expect(page.getByRole("switch", { name: "Sound effects" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator("#account-flash")).toContainText("Saved");
+  await page.click("#user-menu-toggle");
+  await page.click("#logout-top-button");
+  await page.waitForURL("**/login*");
+  const fetched = [];
+  page.on("request", (request) => { if (/welcome-glass-arpeggio/.test(request.url())) fetched.push(request.url()); });
+  await page.evaluate(() => { /** @type {any} */ (window).__plays = []; });
+  await logIn(page, "sales@medlane.test", { stayOnWelcome: true });
+  await expect(page.locator("#welcome-screen")).toHaveClass(/wl-intro/);
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => /** @type {any} */ (window).__plays.filter((p) => /arpeggio/.test(p.src)).length)).toBe(0);
+  expect(fetched).toEqual([]);
+  expect(problems).toEqual([]);
 });
 
 test("with autoplay blocked the Welcome intro still runs and the sound isn't retried", async ({ page }) => {

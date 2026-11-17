@@ -66,6 +66,7 @@ async function loadAccount(force = false) {
 function persistCurrentUser() {
   try { localStorage.setItem("medlane-session", JSON.stringify(currentUser)); } catch { /* storage full or blocked */ }
   syncPreferences();
+  if (currentUser?.email) rememberSoundPreference(currentUser.email, !soundEffectsOn());
 }
 
 function accountPrefs() { return accountState.data?.preferences || userPreferences(); }

@@ -1984,6 +1984,8 @@ qs("#login-form").addEventListener("submit", async (event) => {
   const loginForm = qs("#login-form");
   if (loginForm?.dataset.submitting === "true") return;
   if (loginForm) loginForm.dataset.submitting = "true";
+  // Inside the Sign in gesture: get the Welcome sound loading (and unlocked for Safari).
+  unlockWelcomeSound(String(qs("#login-email")?.value || ""));
   const loginButton = /** @type {HTMLButtonElement | null} */ (loginForm?.querySelector("button[type='submit']"));
   const originalLabel = loginButton?.textContent || "Login";
   if (loginButton) {
@@ -2011,6 +2013,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
   const seededBranch = prefDefaultBranch();
   currentUser = payload.user;
   applyPreferencesToViews(seededBranch);
+  if (currentUser?.email) rememberSoundPreference(currentUser.email, !soundEffectsOn());
   welcomePreviousSignIn = payload.previousSignIn || null;
   // Hand the credential to the browser's password manager so the next visit can offer the
   // Touch ID / Keychain prompt (and our auto-sign-in above can act on it).
@@ -2098,11 +2101,10 @@ qs("#login-forgot")?.addEventListener("click", async () => {
   }
 });
 
+/** The sign-in sound when the Welcome screen can't be shown (same sound, same rules). */
 function playLoginSuccessSound() {
-  if (!soundEffectsOn()) return;
-  const audio = new Audio("/Startup Sound.mp3");
-  audio.volume = 0.55;
-  audio.play().catch(() => null);
+  welcomeSound.played = false;
+  playWelcomeSound();
 }
 
 function maybeShowPasswordKycModal() {
@@ -2456,6 +2458,7 @@ async function hydrateAuthenticatedSession() {
   currentUser = me.user;
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
   applyPreferencesToViews(seededBranch);
+  if (currentUser?.email) rememberSoundPreference(currentUser.email, !soundEffectsOn());
   setAppLoaderStep("Loading stock and orders…");
   const serverState = await MedlaneAPI.loadAppState();
   if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state. Refusing to load blank data over it.");
