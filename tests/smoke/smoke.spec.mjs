@@ -1001,3 +1001,81 @@ test("Warranty: adding a unit, and a duplicate serial is refused", async ({ page
   expect(saves.flatMap((r) => r.warranties || []).filter((u) => /z3-new-1/i.test(u.serial))).toHaveLength(1);
   expect(problems).toEqual([]);
 });
+
+test("Calendar: month grid, select a day, filter a type, add an all-day branch event", async ({ page }) => {
+  const { problems } = await watch(page);
+  const saves = captureSaves(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=calendar");
+  const panel = page.locator("#calendar-tab-panel");
+  await expect(panel.locator(".cal-cell")).toHaveCount(42);
+  await expect(panel.locator(".cal-weekdays span").first()).toHaveText("Mon");
+  await expect(panel.locator(".cal-cell.is-today")).toHaveCount(1);
+  await expect(panel.locator(".cal-day")).toContainText("Weekly ops meeting");
+  await expect(panel).not.toContainText("Cancelled dinner");
+  // The clash: Engineer 2 has a visit at 9:00 and a PM at 10:00 the same day.
+  await expect(page.locator('[data-wa-host="calendar"]')).toContainText("Engineer 2 is booked for");
+
+  const visitDay = await panel.locator(".cal-cell", { hasText: "Visit: Sam" }).getAttribute("data-cal-day");
+  await panel.locator(`[data-cal-day="${visitDay}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`day=${visitDay}`));
+  const day = panel.locator(".cal-day");
+  await expect(day).toContainText("Visit: Sample Lab C");
+  await expect(day.getByRole("button", { name: "Open in Support Tracker" })).toBeVisible();
+  await expect(day.getByRole("button", { name: "Open in Warranty" })).toBeVisible();
+
+  // Switch Service & installs off: both disappear from the day and the grid.
+  await panel.locator('[data-cal-type="service"]').click();
+  await expect(panel.locator('[data-cal-type="service"]')).toHaveAttribute("aria-pressed", "false");
+  await expect(day).toContainText("2 events hidden by the filters");
+  await panel.locator('[data-cal-type="service"]').click();
+
+  await day.getByRole("button", { name: "Open in Warranty" }).click();
+  await expect(page).toHaveURL(/section=warranty.*tab=pm/);
+  await expect(page.locator("#warranty-tab-panel .ui-detail")).toContainText("EXU-2501-00977");
+
+  await page.goto("/dashboard?section=calendar");
+  await page.locator("#calendar-actions").getByRole("button", { name: "Add event" }).click();
+  const dialog = page.locator("dialog.sup-dialog");
+  await dialog.locator("#sup-title").fill("Stock count");
+  await dialog.locator('input[name="allDay"]').check({ force: true });
+  await dialog.locator("#sup-branch").selectOption("Naga");
+  await dialog.locator("#sup-note").fill("Whole Naga warehouse");
+  await dialog.getByRole("button", { name: "Add event" }).click();
+  await expect.poll(() => saves.flatMap((r) => r.calendarEvents || []).find((e) => e.title === "Stock count")).toMatchObject({ allDay: true, time: "", type: "internal", branch: "Naga", note: "Whole Naga warehouse", assigneeEmail: "superadmin@medlane.test" });
+  await expect(panel.locator(".cal-day")).toContainText("All day");
+  expect(problems).toEqual([]);
+});
+
+test("Calendar: next 2 weeks, and the private iCal link", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=calendar&tab=agenda");
+  const panel = page.locator("#calendar-tab-panel");
+  await expect(panel.locator(".cal-agenda-day").first()).toContainText("Today");
+  await expect(panel).toContainText("PDC from Naga City Lab");
+  await expect(panel).not.toContainText("Cancelled dinner");
+  await expect(panel.locator(".cal-agenda-day")).toHaveCount(6);
+
+  await page.locator("#calendar-actions").getByRole("button", { name: "Subscribe (iCal)" }).click();
+  const dialog = page.locator("dialog.cal-subscribe");
+  await expect(dialog).toContainText("You don't have a link yet");
+  await dialog.getByRole("button", { name: "Create my link" }).click();
+  await expect(dialog.locator("#cal-feed-url")).toHaveValue(/\/api\/calendar\/feed\/.+\.ics$/);
+  await expect(dialog.getByRole("button", { name: "Turn off" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Turn off" }).click();
+  await expect(dialog).toContainText("You don't have a link yet");
+  await dialog.getByRole("button", { name: "Done" }).click();
+  expect(problems).toEqual([]);
+});
+
+test("Calendar: people only see events for their modules and branch", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page, "sales@medlane.test");
+  await page.goto("/dashboard?section=calendar&tab=agenda");
+  const panel = page.locator("#calendar-tab-panel");
+  await expect(panel).toContainText("Weekly ops meeting");
+  await expect(panel).not.toContainText("PM: Sample Diagnostic D");
+  await expect(panel).not.toContainText("Office rent due");
+  expect(problems).toEqual([]);
+});

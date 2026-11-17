@@ -495,7 +495,9 @@ async function supportVisit(id) {
   if (values.date < fmtDate(today)) return toast("Visits can only be scheduled for today or later.");
   const visitAt = new Date(`${values.date}T${values.time}:00+08:00`).toISOString();
   /** @type {CalendarEvent} */
-  const event = { id: `EVT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, title: `Visit: ${report.companyName} · ${report.equipment || "unit"} (${report.id})`, date: values.date, time: values.time, createdBy: currentUser?.name || currentUser?.email || "User", createdByUser: currentUser?.email || "", createdByRole: currentUser?.role || "", createdAt: new Date().toISOString() };
+  const event = { id: `EVT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, title: `Visit: ${report.companyName} · ${report.equipment || "unit"} (${report.id})`, date: values.date, time: values.time, createdBy: currentUser?.name || currentUser?.email || "User", createdByUser: currentUser?.email || "", createdByRole: currentUser?.role || "", createdAt: new Date().toISOString(),
+    type: "service", source: "support-visit", sourceId: String(report.id), module: "product-issues", branch: supportBranch(report),
+    ...(report.engineerEmail ? { assigneeEmail: String(report.engineerEmail).toLowerCase(), assigneeName: String(report.engineer || "") } : {}) };
   const note = `Visit set for ${supportWhen(Date.parse(visitAt))}${values.note?.trim() ? `: ${values.note.trim()}` : ""}`;
   await supportSave(report, { visitAt, ticketStatus: "On-site visit set", visitEventIds: [...(Array.isArray(report.visitEventIds) ? report.visitEventIds : []), event.id] }, { status: "On-site visit set", note, log: "Scheduled support visit" }, { calendarEvents: [event] });
 }

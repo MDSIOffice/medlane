@@ -482,6 +482,18 @@ interface CalendarEvent {
   /** Who the event is for (e.g. the engineer doing a PM visit). */
   assigneeEmail?: string;
   assigneeName?: string;
+  /** deliveries | arrivals | service | moneyin | moneyout | internal (CalendarRules.TYPES). */
+  type?: string;
+  /** No time: the whole day (time is ""). */
+  allDay?: boolean;
+  /** Only people at this branch see it. */
+  branch?: string;
+  note?: string;
+  /** Added by an action elsewhere: "support-visit" (sourceId = ticket) or "warranty-pm" (sourceId = unit serial). */
+  source?: string;
+  sourceId?: string;
+  /** Only people who can open this module see it. */
+  module?: string;
   removed?: boolean;
   removedBy?: string;
 }

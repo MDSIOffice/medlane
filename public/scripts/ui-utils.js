@@ -737,7 +737,7 @@ function workflowFacts() {
 }
 
 // The Calendar is a shared team schedule: only events people add (data.calendarEvents) appear —
-// invoices, POs, expenses and other dated records are deliberately no longer shown here.
+// invoices, POs, expenses and other dated records are deliberately not shown (calendar-page.js).
 /** @param {string} time */
 function calendarTimeLabel(time) {
   const match = /^(\d{2}):(\d{2})$/.exec(String(time || ""));
@@ -745,88 +745,11 @@ function calendarTimeLabel(time) {
   const hours = Number(match[1]);
   return `${((hours + 11) % 12) + 1}:${match[2]} ${hours < 12 ? "AM" : "PM"}`;
 }
-// Each event is colored by the department (role) of the person who added it. createdByRole is
-// stamped by the server; older events fall back to the creator's role from the users list.
-/** @type {{ key: string, label: string, roles: string[] }[]} */
-const CALENDAR_DEPARTMENTS = [
-  { key: "management", label: "Management", roles: ["Superadmin", "CEO", "Admin"] },
-  { key: "sales", label: "Sales", roles: ["Sales"] },
-  { key: "accounting", label: "Accounting", roles: ["Accounting"] },
-  { key: "logistics", label: "Logistics", roles: ["Logistics"] },
-  { key: "engineering", label: "Engineering", roles: ["Engineering"] },
-  { key: "product", label: "Product Specialist", roles: ["Product Specialist"] },
-  { key: "hr", label: "HR", roles: ["HR"] },
-];
-const CALENDAR_OTHER_DEPARTMENT = { key: "other", label: "Other", roles: /** @type {string[]} */ ([]) };
-/** @param {CalendarEvent} entry */
-function calendarEventDepartment(entry) {
-  const email = String(entry.createdByUser || "").toLowerCase();
-  const role = entry.createdByRole || (email ? (data.users || []).find((/** @type {any} */ user) => String(user?.email || "").toLowerCase() === email)?.role : "") || "";
-  return CALENDAR_DEPARTMENTS.find((dept) => dept.roles.includes(role)) || CALENDAR_OTHER_DEPARTMENT;
-}
 /** @param {CalendarEvent} entry */
 function canChangeCalendarEvent(entry) {
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
   return Boolean(entry.createdByUser) && entry.createdByUser.toLowerCase() === String(currentUser?.email || "").toLowerCase();
 }
-/** @param {number} year @param {number} month */
-function calendarEventsForMonth(year, month) {
-  /** @type {Record<string, any[]>} */
-  const events = {};
-  const prefix = `${year}-${String(month).padStart(2, "0")}-`;
-  (data.calendarEvents || [])
-    .filter((entry) => !entry.removed && String(entry.date || "").startsWith(prefix))
-    .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")))
-    .forEach((entry) => {
-      const dept = calendarEventDepartment(entry);
-      (events[entry.date] ||= []).push({ id: entry.id, type: calendarTimeLabel(entry.time), label: entry.title, by: entry.createdBy || "", tone: "blue", dept: dept.key, deptLabel: dept.label, canChange: canChangeCalendarEvent(entry) });
-    });
-  return events;
-}
-
-const calendarToneOrder = ["red", "orange", "purple", "teal", "blue", "green", "gray"];
-/** @param {number} year @param {number} month @param {Record<string, Record<string, any>[]>} events @param {Record<string, any>} [opts] */
-function calendarWidgetHtml(year, month, events, opts = {}) {
-  const { compact = false, idPrefix = "calendar" } = opts;
-  const firstOfMonth = new Date(year, month - 1, 1);
-  const startOffset = firstOfMonth.getDay();
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const todayKey = fmtDate(today);
-  const monthName = firstOfMonth.toLocaleDateString("en-PH", { month: "long", year: "numeric" });
-  const cells = [];
-  for (let i = 0; i < startOffset; i += 1) cells.push(`<div class="calendar-cell outside" aria-hidden="true"></div>`);
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const key = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const dayEvents = (events[key] || []).slice().sort((a, b) => calendarToneOrder.indexOf(a.tone) - calendarToneOrder.indexOf(b.tone));
-    const shown = compact ? 3 : 2;
-    const marks = compact
-      ? dayEvents.slice(0, shown).map((entry) => `<span class="calendar-dot ${entry.dept ? `dept dept-${entry.dept}` : entry.tone}"></span>`).join("")
-      : dayEvents.slice(0, shown).map((entry) => `<span class="calendar-chip${entry.dept ? ` dept dept-${entry.dept}` : ""}" title="${escapeHtml(`${entry.type} · ${entry.label}${entry.by ? ` — ${entry.by}` : ""}${entry.deptLabel ? ` (${entry.deptLabel})` : ""}`)}">${escapeHtml(entry.type)} ${escapeHtml(entry.label)}</span>`).join("");
-    const overflow = dayEvents.length > shown ? `<span class="calendar-more">+${dayEvents.length - shown}</span>` : "";
-    cells.push(`<button type="button" class="calendar-cell${key === todayKey ? " is-today" : ""}${key < todayKey ? " is-past" : ""}${dayEvents.length ? " has-events" : ""}" data-calendar-day="${key}"><strong>${day}</strong><span class="${compact ? "calendar-dots" : "calendar-chips"}">${marks}${overflow}</span></button>`);
-  }
-  return `<div class="calendar-widget${compact ? " compact" : ""}" data-calendar-year="${year}" data-calendar-month="${month}" data-calendar-prefix="${idPrefix}">
-    <div class="calendar-widget-header">
-      <button type="button" class="icon-button" data-calendar-nav="-1" aria-label="Previous month">‹</button>
-      <strong>${escapeHtml(monthName)}</strong>
-      <button type="button" class="icon-button" data-calendar-nav="1" aria-label="Next month">›</button>
-    </div>
-    ${compact ? "" : `<div class="calendar-widget-actions"><button type="button" class="primary-button" data-calendar-add="">Add Event</button></div>`}
-    ${compact ? "" : `<div class="calendar-legend" aria-label="Event colors by department">${CALENDAR_DEPARTMENTS.map((dept) => `<span class="calendar-legend-item"><span class="calendar-dot dept dept-${dept.key}"></span>${escapeHtml(dept.label)}</span>`).join("")}</div>`}
-    <div class="calendar-weekday-row">${["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => `<span>${d}</span>`).join("")}</div>
-    <div class="calendar-grid">${cells.join("")}</div>
-    <div class="calendar-day-detail" id="${idPrefix}-day-detail" hidden></div>
-  </div>`;
-}
-/** @param {string} dateKey @param {any[]} entries */
-function calendarDayDetailHtml(dateKey, entries) {
-  const label = new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-  const rows = entries.length
-    ? entries.map((entry) => `<div class="alert-item calendar-event-row"><span class="alert-dot ${entry.dept ? `dept dept-${entry.dept}` : entry.tone}"></span><div><strong>${escapeHtml(entry.type)} · ${escapeHtml(entry.label)}</strong><span>${entry.by ? `Added by ${escapeHtml(entry.by)}${entry.deptLabel && entry.dept !== "other" ? ` · ${escapeHtml(entry.deptLabel)}` : ""}` : ""}</span></div>${entry.canChange ? `<button type="button" class="mini-button danger-button" data-calendar-remove="${escapeHtml(entry.id)}">Remove</button>` : ""}</div>`).join("")
-    : `<div class="alert-item"><span class="alert-dot green"></span><div><strong>Nothing scheduled</strong><span>No events on this date yet.</span></div></div>`;
-  return `<div class="calendar-day-detail-header"><strong>${escapeHtml(label)}</strong>${dateKey >= fmtDate(today) ? `<button type="button" class="ghost-button" data-calendar-add="${escapeHtml(dateKey)}">Add event on this day</button>` : ""}</div>${rows}`;
-}
-
 // --- Custom combobox replacing native <input list> + <datalist> suggestions ---------------
 // Chromium renders the native datalist popup as browser UI outside page CSS, and it paints
 // with a broken/see-through background when it opens above a <dialog> shown via showModal()

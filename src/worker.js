@@ -5,6 +5,7 @@ import { resolveNotificationSettings, notificationSettingPatch, preferencesFromR
 import { activityRow, activityRowsInOrder, activityQuery, activityPage, activityScope, activityTab, deviceKey, isSignIn as isActivitySignIn, isFailedSignIn, FAILED_SIGNIN_WINDOW_MS, ACTIVITY_TABS } from "./activity.js";
 import "../public/scripts/support-rules.js";
 import "../public/scripts/warranty-rules.js";
+import "../public/scripts/calendar-rules.js";
 import { generateNotices, planFanOut, emailsDue, dailySummaryRows, notificationPage, archiveCutoffIso, NOTIFICATION_TABS } from "./notifications.js";
 import { RECON_CHECKS, RECON_AREAS, RECON_INPUT_MODULES, runRecon, dataFromRows, mergeDifferences, getPath, setPath, sameValue, saleDocType, saleNo } from "./recon.js";
 
@@ -2778,7 +2779,9 @@ async function assertCalendarEventChangesAllowed(env, stateKey, profile, rows) {
     if (!next.removed) {
       if (!String(next.title || "").trim()) throw new Error("Calendar event needs a name");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(next.date || ""))) throw new Error("Calendar event needs a valid date");
-      if (!/^\d{2}:\d{2}$/.test(String(next.time || ""))) throw new Error("Calendar event needs a valid time");
+      if (!next.allDay && !/^\d{2}:\d{2}$/.test(String(next.time || ""))) throw new Error("Calendar event needs a valid time");
+      if (next.type !== undefined && !/** @type {typeof CalendarRules} */ (/** @type {any} */ (globalThis).CalendarRules).TYPE_KEYS.includes(String(next.type))) throw new Error("Unknown calendar event type");
+      if (String(next.note || "").length > 2000) throw new Error("Calendar event note is too long");
       // Only today or later (Manila) for new events or a moved date; old past events stay removable.
       if ((!prev || String(prev.date || "") !== String(next.date || "")) && String(next.date) < shortDate()) throw new Error("Calendar event can only be scheduled for today or a future date");
     }
@@ -3373,8 +3376,77 @@ function notificationVisibleTo(profile, notice) {
 
 /** @param {AppRecordRow[]} records @param {Profile} profile @param {AccessMode} [mode] */
 function filterRecordsForProfile(records, profile, mode = "view") {
-  return records.filter((row) => canAccessKey(profile, row.module_name, mode)
+  return records.filter((row) => (canAccessKey(profile, row.module_name, mode) && (mode !== "view" || row.module_name !== "calendarEvents" || calendarEventVisibleTo(profile, row.data)))
     || (mode === "view" && row.module_name === "notifications" && notificationVisibleTo(profile, row.data)));
+}
+
+/**
+ * Calendar events are shared, but an event tied to a module (a Warranty PM, a Support visit) or a
+ * branch only goes to people who can open that module and work at that branch (CalendarRules).
+ * Removed events still go out so open pages drop them.
+ * @param {Profile} profile @param {any} event
+ */
+function calendarEventVisibleTo(profile, event) {
+  const Rules = /** @type {typeof CalendarRules} */ (/** @type {any} */ (globalThis).CalendarRules);
+  return Rules.visibleTo({ ...(event || {}), removed: false }, { role: profile?.role, email: profile?.email, modules: profile?.customPermissions?.view || profile?.modules || [], branch: profile?.branch });
+}
+
+// ---- Calendar iCal feed ------------------------------------------------------------------------
+// Each person can turn on a private, read-only .ics link: /api/calendar/feed/<user id>.<version>.<sig>.ics
+// The signature is an HMAC of the user id and a random version kept in the calendarFeeds record
+// (never sent to the browser state), so a new link or "Turn off" invalidates the old one. The feed
+// shows exactly what that person sees on the Calendar today (role, modules, branch) and stops
+// working when their account is deactivated.
+const CALENDAR_FEED_MODULE = "calendarFeeds";
+/** @param {WorkerEnv} env @param {string} userId @param {string} version */
+async function calendarFeedSignature(env, userId, version) {
+  const secret = /** @type {any} */ (env).CALENDAR_FEED_SECRET || `calendar-feed|${env.SUPABASE_SERVICE_ROLE_KEY || ""}`;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${userId}.${version}`)));
+  return btoa(String.fromCharCode(...mac)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+/** @param {WorkerEnv} env @param {string} origin @param {string} userId @param {string} version */
+async function calendarFeedUrl(env, origin, userId, version) { return `${origin}/api/calendar/feed/${userId}.${version}.${await calendarFeedSignature(env, userId, version)}.ics`; }
+/** @param {WorkerEnv} env @param {string} userId @returns {Promise<{ version?: string, enabled?: boolean, createdAt?: string } | null>} */
+async function calendarFeedRecord(env, userId) {
+  const rows = /** @type {StoredRow[]} */ (await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.${CALENDAR_FEED_MODULE}&record_key=eq.${encodeURIComponent(userId)}&select=record_key,data`));
+  return Array.isArray(rows) && rows[0] ? /** @type {any} */ (rows[0].data || {}) : null;
+}
+/** @param {WorkerEnv} env @param {string} userId @param {Record<string, any>} data */
+async function saveCalendarFeedRecord(env, userId, data) {
+  await supabaseFetch(env, UPSERT_PATH, {
+    method: "POST",
+    headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify([{ state_key: appStateKey(env), module_name: CALENDAR_FEED_MODULE, record_key: userId, data, updated_by: userId }]),
+  });
+}
+/** Constant-time string compare. @param {string} a @param {string} b */
+function sameSecret(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+/**
+ * The .ics body for a feed token, or null when the link is wrong, turned off, replaced or the
+ * account is deactivated.
+ * @param {WorkerEnv} env @param {string} token "<user id>.<version>.<sig>"
+ */
+async function calendarFeedIcs(env, token) {
+  const [userId, version, sig, ...rest] = String(token || "").split(".");
+  if (!userId || !version || !sig || rest.length || !/^[0-9a-f-]{8,64}$/i.test(userId) || !/^[0-9a-f]{8,32}$/.test(version)) return null;
+  if (!sameSecret(sig, await calendarFeedSignature(env, userId, version))) return null;
+  const feed = await calendarFeedRecord(env, userId);
+  if (!feed?.enabled || feed.version !== version) return null;
+  const authUser = await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(userId)}`).catch(() => null);
+  if (!authUser || authUser.banned_until) return null;
+  const profile = await profileForUser(env, userId, authUser.email).catch(() => null);
+  if (!profile || !canAccessKey(profile, "calendarEvents", "view")) return null;
+  const Rules = /** @type {typeof CalendarRules} */ (/** @type {any} */ (globalThis).CalendarRules);
+  const since = Rules.addDays(shortDate(), -60);
+  const rows = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.calendarEvents&select=record_key,data`));
+  const events = rows.map((row) => /** @type {any} */ (row.data || {})).filter((event) => !event.removed && String(event.date || "") >= since && calendarEventVisibleTo(profile, event));
+  return Rules.toIcs(events, { name: `Medlane · ${profile.name || profile.email}` });
 }
 
 /** @param {string} key @param {any} value @param {number} index */
@@ -4248,7 +4320,7 @@ const PERF_MODULE = "perf-snapshots";
 const RESET_MARKER_MODULE = "system-reset";
 // Recon's own records are served by /api/recon (Superadmin/CEO) and never part of app state.
 const RECON_MODULES = ["reconRuns", "reconDifferences", "stockMovements", "stockCounts", "bankStatements", "cashCounts", "reconSettings"];
-const NON_STATE_MODULES = ["logs", PERF_MODULE, RESET_MARKER_MODULE, ...GAME_MODULES, ...RECON_MODULES];
+const NON_STATE_MODULES = ["logs", PERF_MODULE, RESET_MARKER_MODULE, ...GAME_MODULES, ...RECON_MODULES, "calendarFeeds"];
 
 /** @param {WorkerEnv} env @param {string} stateKey @returns {Promise<string | null>} */
 async function dataResetAt(env, stateKey) {
@@ -6278,6 +6350,34 @@ export default {
         const snapshot = await readDigestMessageSnapshot(env, url.searchParams.get("id"));
         if (!snapshot) return json({ error: "Digest message not found or no longer retained" }, { status: 404 });
         return json({ html: snapshot.html, subject: snapshot.meta.subject || "", role: snapshot.meta.role || "", periodLabel: snapshot.meta.periodLabel || "", createdAt: snapshot.meta.createdAt || "" });
+      }
+
+      // ---- Calendar: private iCal feed (the .ics itself needs no sign-in; the link is the key) ----
+      if (url.pathname.startsWith("/api/calendar/feed/") && request.method === "GET") {
+        const token = decodeURIComponent(url.pathname.slice("/api/calendar/feed/".length)).replace(/\.ics$/, "");
+        const body = await calendarFeedIcs(env, token);
+        if (body === null) return new Response("This calendar link is no longer valid.", { status: 404, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+        return new Response(body, { headers: { "content-type": "text/calendar; charset=utf-8", "content-disposition": "inline; filename=medlane.ics", "cache-control": "private, max-age=300" } });
+      }
+      if (url.pathname === "/api/calendar/feed") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (!canAccessKey(profile, "calendarEvents", "view")) return json({ error: "You do not have access to the Calendar" }, { status: 403 });
+        if (request.method === "GET") {
+          const feed = await calendarFeedRecord(env, profile.id);
+          return json({ enabled: Boolean(feed?.enabled && feed.version), url: feed?.enabled && feed.version ? await calendarFeedUrl(env, url.origin, profile.id, feed.version) : "", createdAt: feed?.createdAt || "" });
+        }
+        if (request.method === "POST") {
+          // A new link every time: the previous one stops working.
+          const version = [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
+          const createdAt = new Date().toISOString();
+          await saveCalendarFeedRecord(env, profile.id, { version, enabled: true, createdAt, email: profile.email });
+          return json({ enabled: true, url: await calendarFeedUrl(env, url.origin, profile.id, version), createdAt });
+        }
+        if (request.method === "DELETE") {
+          await saveCalendarFeedRecord(env, profile.id, { enabled: false, email: profile.email, turnedOffAt: new Date().toISOString() });
+          return json({ enabled: false, url: "" });
+        }
+        return methodNotAllowed();
       }
 
       // ---- Support Tracker: the Engineering users tickets can be assigned to ----

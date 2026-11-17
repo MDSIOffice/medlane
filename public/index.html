@@ -752,11 +752,17 @@
         <div id="dashboard-tab-panel"></div>
       </section>
 
-      <section class="section" id="calendar">
-        <div class="section-header"><div><p class="eyebrow">Tracker</p><h2>Calendar</h2></div></div>
-        <article class="panel">
-          <div id="calendar-page-widget"></div>
-        </article>
+      <section class="section ui-scope" id="calendar">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Calendar</h1></div>
+            <p class="ui-desc">The team’s schedule: events people add, plus the service visits and PM bookings made from Support Tracker and Warranty. You only see events for the modules and branch you work with.</p>
+          </div>
+          <div class="ui-actions" id="calendar-actions"></div>
+        </div>
+        <div class="ui-wa-host" data-wa-host="calendar"></div>
+        <div class="ui-tabs" id="calendar-tabs" role="tablist" aria-label="Calendar views"></div>
+        <div id="calendar-tab-panel"></div>
       </section>
 
       <section class="section ui-scope" id="analytics">
@@ -1543,7 +1549,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "notifications-page.js", "activity-page.js", "support-rules.js", "support-page.js", "warranty-rules.js", "warranty-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "notifications-page.js", "activity-page.js", "support-rules.js", "support-page.js", "warranty-rules.js", "warranty-page.js", "calendar-rules.js", "calendar-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

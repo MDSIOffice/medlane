@@ -10,6 +10,7 @@ const PAGES = [
   { section: "activity-log", tabs: ["all", "changes", "approvals", "signins", "exports", "flagged"], name: "activity" },
   { section: "product-issues", tabs: ["overview", "open", "engineers", "resolved"], name: "support" },
   { section: "warranty", tabs: ["overview", "units", "pm", "claims"], name: "warranty" },
+  { section: "calendar", tabs: ["month", "agenda"], name: "calendar" },
 ];
 
 test.skip(!process.env.SCREENS, "Set SCREENS=1 to capture screenshots");

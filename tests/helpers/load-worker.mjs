@@ -9,7 +9,7 @@ const EXPOSED = [
   "canWrite", "canAccessKey", "moduleListsFor", "userFromProfileAndAuth", "requireWriteAccess", "requireUserAdmin", "requireMemoAdmin", "requireBackupAdmin",
   "requireDigestAdmin", "requirePoApprover", "requirePoReceiver", "requirePaymentRequestApprover", "requireStockReceiptApprover",
   "authenticatedUser", "validateNewSaleRows", "assertFinancialApprovalAllowed", "assertCreditApprovalAllowed",
-  "assertDemoRequestTransitionsAllowed", "assertSupportReportChangesAllowed", "assertWarrantyChangesAllowed", "assertPurchaseOrderClientsNotArchived",
+  "assertDemoRequestTransitionsAllowed", "assertSupportReportChangesAllowed", "assertWarrantyChangesAllowed", "calendarFeedIcs", "calendarFeedSignature", "calendarEventVisibleTo", "assertPurchaseOrderClientsNotArchived",
   "demoRequestInitialStatus", "validateReceivingLines", "validRole", "roleModules", "ROLE_BLOCKED_MODULES",
   "boardMonitorsDue", "dailyDigestHours", "odometerReminderMessage", "assertSaveNotStale",
   "createBackup", "restoreBackupObject", "persistedKeys", "assertMigratedStockAllowed",

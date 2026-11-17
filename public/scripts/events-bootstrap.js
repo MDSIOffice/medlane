@@ -620,24 +620,6 @@ document.body.addEventListener("click", (event) => {
   if (createSoa) return previewSoa(/** @type {string} */ (createSoa.dataset.createSoa));
   const invoiceFlow = closestEl(event.target, "[data-invoice-flow]");
   if (invoiceFlow) return renderInvoiceFlowDetail(/** @type {string} */ (invoiceFlow.dataset.invoiceFlow));
-  const calendarNav = closestEl(event.target, "[data-calendar-nav]");
-  if (calendarNav) {
-    const widget = closestEl(calendarNav, ".calendar-widget");
-    const prefix = widget?.dataset.calendarPrefix;
-    if (prefix) navigateCalendarWidget(prefix, Number(/** @type {string} */ (calendarNav.dataset.calendarNav)));
-    return;
-  }
-  const calendarAdd = closestEl(event.target, "[data-calendar-add]");
-  if (calendarAdd) return addCalendarEventDialog(/** @type {string} */ (calendarAdd.dataset.calendarAdd || ""));
-  const calendarRemove = closestEl(event.target, "[data-calendar-remove]");
-  if (calendarRemove) return removeCalendarEvent(/** @type {string} */ (calendarRemove.dataset.calendarRemove));
-  const calendarDay = closestEl(event.target, "[data-calendar-day]");
-  if (calendarDay) {
-    const widget = closestEl(calendarDay, ".calendar-widget");
-    const prefix = widget?.dataset.calendarPrefix;
-    if (prefix) showCalendarDayDetail(prefix, /** @type {string} */ (calendarDay.dataset.calendarDay));
-    return;
-  }
   const target = closestEl(event.target, "[data-go-section]");
   if (!target) return;
   goToFocused(/** @type {string} */ (target.dataset.goSection), target.dataset.focusRecord || "");
@@ -1557,6 +1539,7 @@ qs("#global-search").addEventListener("input", () => {
 qs("#inventory-status").addEventListener("change", renderInventory);
 qs("#product-issues").addEventListener("click", handleSupportClick);
 qs("#warranty").addEventListener("click", handleWarrantyClick);
+qs("#calendar").addEventListener("click", handleCalendarClick);
 qs("#warranty").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "warranty", () => warrantyView, renderWarranty); });
 qs("#product-issues").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "support", () => supportView, renderProductIssues); });
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));

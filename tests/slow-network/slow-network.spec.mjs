@@ -126,10 +126,10 @@ for (const [name, profile] of Object.entries(PROFILES)) {
 
     // A real save under the slow connection: add a calendar event and wait for "Saved".
     await page.locator('.nav-item[data-section="calendar"]').click();
-    await page.locator("#calendar [data-calendar-add]").first().click();
+    await page.locator("#calendar-actions [data-cal-add]").first().click();
     const title = `Slow-net check ${name} ${Date.now()}`;
-    await page.fill("#calendar-event-title", title);
-    await page.fill("#calendar-event-time", "10:30");
+    await page.fill("#sup-title", title);
+    await page.fill("#sup-time", "10:30");
     const saveStarted = Date.now();
     await page.locator('dialog[open] button[value="confirm"]').click();
     await expect(page.locator("#save-status-text")).toHaveText(/Saved/, { timeout: 180_000 });
@@ -177,9 +177,9 @@ test("Connection drops mid-save: change is kept and saved when it comes back", a
   const net = await throttle(page, PROFILES["Fast 3G"]);
   await signIn(page, "admin@medlane.local");
   await page.locator('.nav-item[data-section="calendar"]').click();
-  await page.locator("#calendar [data-calendar-add]").first().click();
+  await page.locator("#calendar-actions [data-cal-add]").first().click();
   const title = `Offline check ${Date.now()}`;
-  await page.fill("#calendar-event-title", title);
+  await page.fill("#sup-title", title);
   page.__expectOffline = true;
   await net.offline();
   await page.locator('dialog[open] button[value="confirm"]').click();

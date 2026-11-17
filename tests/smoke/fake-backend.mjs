@@ -159,6 +159,9 @@ const activityFor = (role, url) => {
 const authedRoutes = {
   ...accountRoutes,
   "GET /api/activity": (role, _body, url) => activityFor(role, url),
+  "GET /api/calendar/feed": () => ({ enabled: false, url: "" }),
+  "POST /api/calendar/feed": () => ({ enabled: true, url: "http://127.0.0.1/api/calendar/feed/u.0a1b2c3d.sig.ics", createdAt: new Date().toISOString() }),
+  "DELETE /api/calendar/feed": () => ({ enabled: false, url: "" }),
   "GET /api/support/engineers": () => ({ engineers: [{ id: "eng-1", email: "engineering@medlane.test", name: "Engineer 1", branch: "Las Pinas" }, { id: "eng-2", email: "engineer2@medlane.test", name: "Engineer 2", branch: "Naga" }] }),
   "GET /api/notifications": (role, _body, url) => notificationPage(noticesFor(role), { tab: url.searchParams.get("tab") || "all", page: Number(url.searchParams.get("page") || 1), size: Number(url.searchParams.get("size") || 10) }),
   "GET /api/notifications/unread": (role) => ({ unread: noticesFor(role).filter((row) => row.in_app && !row.read_at).length }),

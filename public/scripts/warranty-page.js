@@ -499,6 +499,7 @@ async function warrantySchedulePm(unit) {
     id: `EVT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     title: `PM: ${unit.client} · ${f.model} (${unit.serial || "no serial"})${engineer ? ` · ${engineer.name}` : ""}`,
     date: values.date, time: values.time, createdBy: currentUser?.name || "", createdByUser: String(currentUser?.email || "").toLowerCase(), createdAt: new Date().toISOString(),
+    type: "service", source: "warranty-pm", sourceId: warrantyUnitId(unit), module: "warranty", branch: f.branch,
     ...(engineer ? { assigneeEmail: engineer.email, assigneeName: engineer.name } : {}),
   };
   const next = { ...unit, pmScheduledFor: values.date, pmEngineer: engineer?.name || "", pmEventIds: [...(Array.isArray(unit.pmEventIds) ? unit.pmEventIds : []), event.id] };
