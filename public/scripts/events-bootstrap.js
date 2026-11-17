@@ -44,43 +44,6 @@ async function syncBackendUsers() {
   if (staleCount) saveData();
 }
 
-/** @param {Record<string, any>} values @param {any} view @param {any} edit */
-function confirmInviteUser(values, view, edit) {
-  return new Promise((resolve) => {
-    const dialog = document.createElement("dialog");
-    dialog.className = "modal invite-confirm-modal";
-    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Confirm Invite</p><h2>Preview User Access</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="report-preview-grid"><div class="report-preview-card"><small>Name</small><strong>${escapeHtml(values.name)}</strong></div><div class="report-preview-card"><small>Email</small><strong>${escapeHtml(values.email)}</strong></div><div class="report-preview-card"><small>Role</small><strong>${escapeHtml(values.role)}</strong></div><div class="report-preview-card"><small>Branch</small><strong>All branches</strong></div></div><p class="page-description">This will send a Supabase invitation email and create/update the user profile.</p><div class="invoice-tax-summary"><div class="invoice-meta"><span>View Access</span><strong>${view.length} modules</strong></div><div class="invoice-meta"><span>Edit Access</span><strong>${edit.length} modules</strong></div></div><div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button" value="confirm">Confirm & Send Invite</button></div></form>`;
-    document.body.appendChild(dialog);
-    dialog.addEventListener("close", () => { const ok = dialog.returnValue === "confirm"; dialog.remove(); resolve(ok); });
-    dialog.showModal();
-  });
-}
-
-let inviteInFlight = false;
-/** @param {Record<string, any>} values @param {any} view @param {any} edit */
-async function handleUserInvite(values, view, edit) {
-  if (inviteInFlight) return toast("An invite for this user is already in progress.");
-  inviteInFlight = true;
-  try {
-    const confirmed = await confirmInviteUser(values, view, edit);
-    if (!confirmed) return;
-    toast("Sending invitation email...");
-    const result = await MedlaneAPI.inviteUser({ ...values, modules: view, editModules: edit });
-    mergeUsersFromBackend([result.user]);
-    await syncBackendUsers();
-    log("Invited user", "Users", `${result.user.email} · ${result.user.role}`);
-    const deliveryNote = result.emailDelivery?.sent ? "Email sent via Resend" : result.emailDelivery?.reason || "Email not sent";
-    notify("User Invite", `${result.user.email} ${result.existing ? "already exists and was loaded" : "was invited"} as ${result.user.role}. ${deliveryNote}.`, "users", result.user.email);
-    renderAll();
-    toast(`${result.user.email} invited. ${deliveryNote}.`);
-  } catch (/** @type {any} */ error) {
-    console.error("Invite user failed", error);
-    toast(`Invite failed: ${error.message || "Unable to invite user."}`);
-  } finally {
-    inviteInFlight = false;
-  }
-}
-
 /** @param {string} password */
 function passwordPolicyError(password) {
   const value = String(password || "");
@@ -499,21 +462,6 @@ async function submitModal(event) {
     toast(`${modalConfigs[modalType].title} saved.`);
     return;
   }
-  if (modalType === "user") {
-    if (!canManageUsers()) return toast("Only Superadmin/CEO can add users.");
-    const email = String(values.email || "").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast("Enter a valid email address.");
-    if (data.users.some((user) => String(user.email || "").trim().toLowerCase() === email && !userIsArchived(user))) return toast("A user with this email already exists.");
-    values.email = email;
-    values.branch = "all";
-    if (values.role === "Superadmin") values.superadminPermissions = true;
-    const view = qsa("input[name='userViewModules']:checked").map((input) => input.value);
-    const edit = qsa("input[name='userEditModules']:checked").map((input) => input.value).filter((module) => view.includes(module));
-    qs("#demo-modal").close();
-    form.reset();
-    handleUserInvite(values, view, edit);
-    return;
-  }
 }
 
 qsa(".nav-item").forEach((button) => button.addEventListener("click", (event) => {
@@ -852,114 +800,9 @@ async function removePlatformBranch(branch) {
   renderAll();
   toast(`${branch} removed from platform branches.`);
 }
-qs("#users-table").addEventListener("click", async (event) => {
-  const resendButton = closestEl(event.target, "[data-resend-invite]");
-  if (resendButton) return resendUserInvite(Number(/** @type {string} */ (resendButton.dataset.resendInvite)));
-  const statusButton = closestEl(event.target, "[data-toggle-user-disabled]");
-  if (statusButton) return toggleUserDisabled(Number(/** @type {string} */ (statusButton.dataset.toggleUserDisabled)));
-  const resetButton = closestEl(event.target, "[data-reset-user-password]");
-  if (resetButton) return setUserPasswordPrompt(Number(/** @type {string} */ (resetButton.dataset.resetUserPassword)));
-  const copyLinkButton = closestEl(event.target, "[data-copy-invite-link]");
-  if (copyLinkButton) return copyInviteLink(Number(/** @type {string} */ (copyLinkButton.dataset.copyInviteLink)));
-  const resetPermissionsButton = closestEl(event.target, "[data-reset-user-permissions]");
-  if (resetPermissionsButton) return resetUserPermissions(Number(/** @type {string} */ (resetPermissionsButton.dataset.resetUserPermissions)));
-  const button = closestEl(event.target, "[data-archive-user]");
-  if (!button) return;
-  if (!canManageUsers()) return toast("Only Superadmin/CEO can archive users.");
-  const index = Number(/** @type {string} */ (button.dataset.archiveUser));
-  const user = data.users[index];
-  if (!user) return;
-  if (String(user.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase()) return toast("You cannot archive your own account.");
-  const reason = prompt(`Reason for archiving ${user.name || user.email}:`, "Archived by admin");
-  if (!String(reason || "").trim()) return toast("Archive reason is required.");
-  if (!(await confirmFinalSave(`Archive ${user.name || user.email}?`))) return;
-  const result = /** @type {OrApiError<UserStatusResponse>} */ (await MedlaneAPI.setUserDisabled(user.email || user.username, true, String(reason).trim()).catch((error) => ({ error })));
-  if (result.error) return toast(result.error.message || "Unable to archive user.");
-  await syncBackendUsers();
-  const archivedUser = data.users.find((entry) => String(entry.email || entry.username || "").trim().toLowerCase() === String(user.email || user.username || "").trim().toLowerCase()) || user;
-  archivedUser.inviteStatus = "Archived";
-  archivedUser.disabledReason = String(reason).trim();
-  archivedUser.archivedAt = new Date().toISOString();
-  archivedUser.archivedBy = currentUser?.email || currentUser?.name || "System User";
-  log("Archived user", "Users", `${user.email || user.name} · ${user.role}`);
-  saveData();
-  renderUsers();
-  toast(`${user.name || user.email} archived.`);
-});
-
-/** @param {number} index */
-async function toggleUserDisabled(index) {
-  if (!canManageUsers()) return toast("Only Superadmin/CEO can disable users.");
-  const user = data.users[index];
-  if (!user?.email) return toast("User email is required.");
-  if (user.email === currentUser?.email) return toast("You cannot disable your own account.");
-  const disabled = !/disabled|archived/i.test(user.inviteStatus || "Active");
-  const verb = disabled ? "disable" : "enable";
-  if (!confirm(`${disabled ? "Disable" : "Enable"} ${user.name || user.email}?`)) return;
-  const reason = disabled ? prompt(`Reason for disabling ${user.name || user.email}:`) : "";
-  if (disabled && !String(reason || "").trim()) return toast("Disable reason is required.");
-  const result = /** @type {OrApiError<UserStatusResponse>} */ (await MedlaneAPI.setUserDisabled(user.email, disabled, reason || "").catch((error) => ({ error })));
-  if (result.error) return toast(result.error.message || `Unable to ${verb} user.`);
-  user.inviteStatus = disabled ? "Disabled" : "Active";
-  user.disabledReason = disabled ? String(reason).trim() : "";
-  if (!disabled) { delete user.archivedAt; delete user.archivedBy; }
-  await syncBackendUsers();
-  log(`${disabled ? "Disabled" : "Enabled"} user`, "Users", `${user.email} · ${user.role}`);
-  saveData();
-  renderUsers();
-  toast(`${user.name || user.email} ${disabled ? "disabled" : "enabled"}.`);
-}
-
-/** @param {number} index */
-async function resendUserInvite(index) {
-  if (!canManageUsers()) return toast("Only Superadmin/CEO can resend invitations.");
-  const user = data.users[index];
-  if (!user?.email) return toast("User email is required.");
-  const result = /** @type {OrApiError<ResendInviteResponse>} */ (await MedlaneAPI.resendInvite(user.email).catch((error) => ({ error })));
-  if (result.error) return toast(result.error.message || "Unable to resend invite.");
-  toast(result.emailDelivery?.sent ? `Invitation resent to ${user.email}.` : result.emailDelivery?.reason || "Invite link generated, but email was not sent.");
-}
-
-/** @param {number} index */
-async function resetUserPermissions(index) {
-  if (!canManageUsers()) return toast("Only Superadmin/CEO can reset user permissions.");
-  const user = data.users[index];
-  if (!user?.email) return toast("User email is required.");
-  if (!confirm(`Reset ${user.name || user.email}'s permissions to ${user.role}'s current default modules? Any custom view/edit access granted to them individually will be cleared.`)) return;
-  const result = /** @type {OrApiError<ResetPermissionsResponse>} */ (await MedlaneAPI.resetUserPermissions(user.email).catch((error) => ({ error })));
-  if (result.error) return toast(result.error.message || "Unable to reset permissions.");
-  Object.assign(user, result.user);
-  // The server writes this audit entry (with the module list before → after).
-  saveData();
-  renderUsers();
-  toast(`${user.name || user.email}'s permissions reset to ${user.role} defaults.`);
-}
-qs("#users-table").addEventListener("change", async (event) => {
-  const checkbox = closestEl(event.target, "[data-user-superadmin]");
-  if (!checkbox) return;
-  if (!canManageUsers()) { checkbox.checked = !checkbox.checked; return toast("Only Superadmin/CEO can grant Superadmin permissions."); }
-  const index = Number(/** @type {string} */ (checkbox.dataset.userSuperadmin));
-  const user = data.users[index];
-  if (!user) return;
-  const granted = checkbox.checked;
-  if (String(user.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase()) {
-    checkbox.checked = !granted;
-    return toast("You cannot change your own Superadmin permission.");
-  }
-  checkbox.disabled = true;
-  const result = /** @type {OrApiError<SuperadminResponse>} */ (await MedlaneAPI.setUserSuperadmin(user.email, granted).catch((error) => ({ error })));
-  checkbox.disabled = false;
-  if (result.error) {
-    checkbox.checked = !granted;
-    return toast(result.error.message || "Unable to update Superadmin permission.");
-  }
-  user.role = result.role || user.role;
-  user.superadminPermissions = granted;
-  user.customPermissions = { enabled: false, view: [], edit: [] };
-  // The server writes this audit entry ("Role changed", with before → after).
-  renderUsers();
-  toast(`${user.name} Superadmin permissions ${granted ? "granted" : "removed"}.`);
-});
+qs("#users").addEventListener("click", (event) => { handleUsersClick(/** @type {Element} */ (event.target)); });
+qs("#users").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "users", () => usersView, renderUsers); });
+document.addEventListener("change", (event) => usersSyncCanDo(/** @type {Element} */ (event.target)));
 document.addEventListener("input", (event) => {
   if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target);
   if (/** @type {AnyEl} */ (event.target).matches(".transfer-lot")) updateTransferBalanceHint(closestEl(event.target, "tr"));
@@ -1651,7 +1494,6 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (/** @type {AnyEl} */ (event.target).id === "supplier" && modalType === "item") syncItemSupplierBrand();
   if (/** @type {AnyEl} */ (event.target).id === "companyName" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) syncProductIssueClientAddress();
   if (/** @type {AnyEl} */ (event.target).id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
-  if (/** @type {AnyEl} */ (event.target).id === "role" && modalType === "user") syncInviteUserPermissions();
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-uom-input")) syncInvoiceRowExpiryRequired(closestEl(event.target, ".invoice-line-row"));
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-lot-input")) syncInvoiceRowLot(event.target);
@@ -1789,8 +1631,6 @@ qs("#run-manual-backup")?.addEventListener("click", runManualBackup);
 qs("#run-manual-digest-daily")?.addEventListener("click", () => runManualDigest("Daily"));
 qs("#run-manual-digest-weekly")?.addEventListener("click", () => runManualDigest("Weekly"));
 qs("#run-birthday-test")?.addEventListener("click", runManualBirthdayTest);
-qs("#role-tester-select")?.addEventListener("change", renderRoleTester);
-qs("#user-status-filter")?.addEventListener("change", (event) => { userStatusFilter = /** @type {AnyEl} */ (event.target).value; renderUsers(); });
 
 /** @param {string} title @param {string} [detail] @param {number} [progress] @param {string} [tone] */
 function setBackupStatus(title, detail = "", progress = 0, tone = "active") {
@@ -2325,39 +2165,6 @@ function showWelcomeTransition(name, done) {
   }, 2950);
 }
 
-/** @param {number} index */
-async function setUserPasswordPrompt(index) {
-  if (!canManageUsers()) return toast("Only Superadmin/CEO can set passwords.");
-  const user = data.users[index];
-  const email = String(user?.email || "").trim().toLowerCase();
-  if (!user || !email) return toast("User email is required before setting a password.");
-  const password = prompt(`Set a new password for ${user.name || email}:\n\nMust be 8+ characters with a letter, a number, and a special character.`);
-  if (password === null) return;
-  const policyError = passwordPolicyError(password);
-  if (policyError) return toast(policyError);
-  if (!(await confirmFinalSave(`Set a new password for ${user.name || email}?`))) return;
-  const result = /** @type {OrApiError<OkResponse>} */ (await MedlaneAPI.setUserPassword(email, password).catch((error) => ({ error })));
-  if (result.error) return toast(result.error.message || "Unable to set password.");
-  log("Set user password", "Users", email);
-  toast(`Password set for ${user.name || email}. Share it with them securely.`);
-}
-
-/** @param {number} index */
-async function copyInviteLink(index) {
-  if (!canManageUsers()) return toast("Only Superadmin/CEO can generate invite links.");
-  const user = data.users[index];
-  const email = String(user?.email || "").trim().toLowerCase();
-  if (!user || !email) return toast("User email is required to generate an invite link.");
-  toast("Generating invite link...");
-  const result = /** @type {OrApiError<InviteLinkResponse>} */ (await MedlaneAPI.getInviteLink(email).catch((error) => ({ error })));
-  if (result.error) return toast(result.error.message || "Unable to generate invite link.");
-  try {
-    await navigator.clipboard.writeText(result.actionLink);
-    toast(`Invite link copied for ${user.name || email}.`);
-  } catch {
-    prompt(`Copy this invite link for ${user.name || email}:`, result.actionLink);
-  }
-}
 
 /** @param {string} email @param {string} token */
 function openPasswordResetPage(email, token) {

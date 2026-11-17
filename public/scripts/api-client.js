@@ -443,9 +443,24 @@ const MedlaneAPI = (() => {
     return withTransientRetry(() => request(`/api/stock-receipts/${encodeURIComponent(id)}/edit`, { method: "POST", body: JSON.stringify({ lines, ...meta }) }));
   }
 
-  /** @param {string} email @param {string} password @returns {Promise<OkResponse>} */
-  async function setUserPassword(email, password) {
-    return request("/api/users/set-password", { method: "POST", body: JSON.stringify({ email, password }) });
+  /** @param {string} email @param {string} role @returns {Promise<OkResponse & { role: string }>} */
+  async function changeUserRole(email, role) {
+    return request("/api/users/role", { method: "POST", body: JSON.stringify({ email, role }) });
+  }
+
+  /** Emails a password reset link (passwords are never set by an admin). @param {string} email @returns {Promise<ResendInviteResponse>} */
+  async function sendUserPasswordReset(email) {
+    return request("/api/users/reset-password", { method: "POST", body: JSON.stringify({ email }) });
+  }
+
+  /** @param {string} email @returns {Promise<OkResponse>} */
+  async function cancelInvite(email) {
+    return request("/api/users/invite/cancel", { method: "POST", body: JSON.stringify({ email }) });
+  }
+
+  /** @param {string} userId @returns {Promise<OkResponse>} */
+  async function revokeAllUserSessions(userId) {
+    return request("/api/users/sessions/revoke-all", { method: "POST", body: JSON.stringify({ userId }) });
   }
 
   /** @param {string | undefined} email @param {boolean} disabled @param {string} [reason] @returns {Promise<UserStatusResponse>} */
@@ -461,11 +476,6 @@ const MedlaneAPI = (() => {
   /** @param {string} email @returns {Promise<ResetPermissionsResponse>} */
   async function resetUserPermissions(email) {
     return request("/api/users/reset-permissions", { method: "POST", body: JSON.stringify({ email }) });
-  }
-
-  /** @param {string} email @param {string} confirmation @returns {Promise<OkResponse>} */
-  async function deleteUser(email, confirmation) {
-    return request("/api/users/delete", { method: "POST", body: JSON.stringify({ email, confirmation }) });
   }
 
   /** @param {string} accessToken @param {string} password @returns {Promise<OkResponse>} */
@@ -736,5 +746,5 @@ const MedlaneAPI = (() => {
     return payload?.version || "";
   }
 
-  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, deleteFile, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, setUserPassword, setUserDisabled, setUserSuperadmin, resetUserPermissions, deleteUser, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, reconLoad, reconRun, reconAction, reconInput, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
+  return { session, setPreviewRole, getPreviewRole, dataLoadedAt: () => dataLoadedAt, loadChanges, setSession, request, refreshSession, login, forgotPassword, me, loadAppState, saveAppState, saveRecords, uploadFile, listFiles, deleteFile, viewFile, inviteUser, listUsers, resendInvite, getInviteLink, changeUserRole, sendUserPasswordReset, cancelInvite, revokeAllUserSessions, setUserDisabled, setUserSuperadmin, resetUserPermissions, setPassword, changePassword, keepCurrentPasswordForKyc, setTheme, recordLog, listLogs, auditSummary, getDigestMessage, loadModulePage, listUserSessions, revokeUserSession, listBackups, backupStatus, storageUsage, listBackupObjects, runBackup, runDigest, runBirthdayGreetingTest, downloadBackup, downloadBackupObject, restoreBackup, listReports, printableInvoice, printablePaymentRequest, printableTransfer, printableInventoryPurchaseOrder, printableFinancialRequest, printableProductIssue, approvePurchaseOrder, advancePurchaseOrder, cancelPurchaseOrder, submitStockReceipt, approveStockReceipt, cancelStockReceipt, editStockReceipt, reconLoad, reconRun, reconAction, reconInput, createMemo, acknowledgeMemo, startGameSession, submitGameScore, myGameScore, setGameSkin, listGameLeaderboard, fetchAppVersion };
 })();

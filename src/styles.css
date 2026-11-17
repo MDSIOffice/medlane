@@ -4047,6 +4047,28 @@ body[data-active-section="masterlists"] .topbar-title { display: none; }
 .recon-modal .field { display: grid; gap: 6px; }
 .recon-modal .field.full { grid-column: 1 / -1; }
 .recon-modal .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+/* Side drawer variant (Users: invite, change role). */
+.modal.recon-modal-drawer { width: min(480px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0 0 0 auto; border-radius: 18px 0 0 18px; overflow-y: auto; animation: drawerIn 0.22s ease-out; }
+.recon-modal-drawer form { align-content: start; min-height: calc(100dvh - 64px); }
+.recon-modal-drawer .modal-actions { position: sticky; bottom: 0; margin-top: auto; padding: 12px 0 16px; background: var(--panel-solid); box-shadow: 0 -10px 16px -12px rgba(15, 23, 42, 0.25); }
+@keyframes drawerIn { from { transform: translateX(32px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.users-role-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin: 0; padding: 0; border: 0; }
+.users-role-picker legend { margin-bottom: 6px; font-weight: 700; font-size: 13px; }
+.users-role-card { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.users-role-card:has(input:checked) { border-color: var(--blue); background: var(--tint); }
+.users-role-card input { margin-top: 3px; accent-color: var(--blue); }
+.users-role-card strong { display: block; font-size: 14px; }
+.users-role-card small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.users-branch-note { margin: 0; color: var(--muted); font-size: 13px; }
+.users-cando { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.users-cando h3 { margin: 0 0 8px; font-size: 14px; }
+.users-cando ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.users-cando li { display: flex; justify-content: space-between; gap: 12px; }
+.users-cando em { color: var(--muted); font-style: normal; }
+.users-cando em.edit { color: var(--green); font-weight: 600; }
+.users-cando p { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+@keyframes drawerFade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .modal.recon-modal-drawer { animation: drawerFade 0.15s ease-out; } }
 .recon-preview { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--tint); }
 .recon-preview h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .recon-preview ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }

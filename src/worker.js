@@ -1179,7 +1179,7 @@ function brandedEmailHtml({ title, eyebrow = "Medlane Diagnostic Solutions", int
 
 /** @param {{ fullName: any, email: string, role: any, actionLink: any, origin: any }} options */
 function brandedInviteEmailHtml({ fullName, email, role, actionLink, origin }) {
-  const body = `<p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#f59e0b;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#10213d;text-decoration:none;font-weight:900;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f3fbff;border:1px solid #bfe7fb;border-left:5px solid #f59e0b;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#003f73;">Account details</strong><div>Email: ${escapeHtml(email)}</div><div>Role: ${escapeHtml(role)}</div></div><p style="margin:18px 0 0;color:#4f6b86;font-size:13px;line-height:1.55;">If the button does not work, open this secure link:<br><a href="${escapeHtml(actionLink)}" style="color:#0077bd;word-break:break-all;">${escapeHtml(actionLink)}</a></p>`;
+  const body = `<p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account. The link works once and expires in 24 hours.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#f59e0b;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#10213d;text-decoration:none;font-weight:900;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f3fbff;border:1px solid #bfe7fb;border-left:5px solid #f59e0b;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#003f73;">Account details</strong><div>Email: ${escapeHtml(email)}</div><div>Role: ${escapeHtml(role)}</div></div><p style="margin:18px 0 0;color:#4f6b86;font-size:13px;line-height:1.55;">If the button does not work, open this secure link:<br><a href="${escapeHtml(actionLink)}" style="color:#0077bd;word-break:break-all;">${escapeHtml(actionLink)}</a></p>`;
   return brandedEmailHtml({ title: "Welcome to Medlane OS", intro: "Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.", bodyHtml: body, origin });
 }
 
@@ -1192,7 +1192,7 @@ function passwordResetEmailHtml({ fullName, email, actionLink, origin }) {
 /** @param {{ fullName: any, email: string, role: any, actionLink: any, origin: any }} options */
 function inviteEmailHtml({ fullName, email, role, actionLink, origin }) {
   const year = new Date().getFullYear();
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to Medlane OS</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:12px 0 6px;font-size:34px;line-height:1.05;">Welcome to Medlane OS</h1><p style="margin:0;font-size:16px;line-height:1.6;opacity:.96;">Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.</p></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#fff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f4f9ff;border:1px solid #d8ebfb;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#005a9c;">Security reminder</strong><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Create a password with at least 8 characters, one letter, one number, and one special character. Never share your password or invitation link.</p></div><p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#4c6280;">If the button does not work, copy and paste this link into your browser:</p><p style="word-break:break-all;margin:0 0 18px;font-size:13px;line-height:1.6;color:#0077bd;">${escapeHtml(actionLink)}</p><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Account email: <strong>${escapeHtml(email)}</strong><br>Login site: <a href="${escapeHtml(origin)}" style="color:#0077bd;">${escapeHtml(origin)}</a></p></td></tr><tr><td style="padding:22px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. This message was sent for account access setup. If you did not expect this invitation, ignore this email or contact your administrator.</td></tr></table></td></tr></table></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Welcome to Medlane OS</title></head><body style="margin:0;background:#eef6ff;font-family:Arial,Helvetica,sans-serif;color:#10213d;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#eaf6ff,#fff5f5);padding:32px 14px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:28px;overflow:hidden;border:1px solid #cfe5f7;box-shadow:0 24px 70px rgba(16,33,61,.14);"><tr><td style="background:linear-gradient(135deg,#005a9c,#008bd2 62%,#ef4b4f);padding:30px;color:#fff;"><div style="font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;">Medlane Diagnostic Solutions</div><h1 style="margin:12px 0 6px;font-size:34px;line-height:1.05;">Welcome to Medlane OS</h1><p style="margin:0;font-size:16px;line-height:1.6;opacity:.96;">Your secure workspace for inventory, invoicing, collections, reports, and audit-ready operations.</p></td></tr><tr><td style="padding:30px;"><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">Hi <strong>${escapeHtml(fullName)}</strong>,</p><p style="margin:0 0 18px;font-size:16px;line-height:1.65;">You have been invited to Medlane OS as <strong>${escapeHtml(role)}</strong>. Use the button below to create your password and activate your account. The link works once and expires in 24 hours.</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:26px 0;"><tr><td style="border-radius:999px;background:#0077bd;"><a href="${escapeHtml(actionLink)}" style="display:inline-block;padding:15px 26px;color:#fff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">Accept Invitation</a></td></tr></table><div style="background:#f4f9ff;border:1px solid #d8ebfb;border-radius:18px;padding:18px;margin:20px 0;"><strong style="display:block;margin-bottom:8px;color:#005a9c;">Security reminder</strong><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Create a password with at least 8 characters, one letter, one number, and one special character. Never share your password or invitation link.</p></div><p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#4c6280;">If the button does not work, copy and paste this link into your browser:</p><p style="word-break:break-all;margin:0 0 18px;font-size:13px;line-height:1.6;color:#0077bd;">${escapeHtml(actionLink)}</p><p style="margin:0;font-size:14px;line-height:1.6;color:#4c6280;">Account email: <strong>${escapeHtml(email)}</strong><br>Login site: <a href="${escapeHtml(origin)}" style="color:#0077bd;">${escapeHtml(origin)}</a></p></td></tr><tr><td style="padding:22px 30px;background:#f8fbff;border-top:1px solid #e1eef8;color:#60738f;font-size:12px;line-height:1.6;">© ${year} Medlane Diagnostic Solutions, Inc. This message was sent for account access setup. If you did not expect this invitation, ignore this email or contact your administrator.</td></tr></table></td></tr></table></body></html>`;
 }
 
 /** @param {any} env @param {{ action: string, module: string, record: any, extra?: any }} entry */
@@ -1699,6 +1699,19 @@ async function generateSupabaseActionLink(/** @type {any} */ env, /** @type {any
     if (existing) return { authUser: existing, actionLink: "", linkError: detail };
   }
   throw new Error(`Could not create Supabase user: ${detail}`);
+}
+
+/** Refuses to resend or copy a link for someone who already accepted. @param {WorkerEnv} env @param {string} email */
+async function assertInviteOpen(env, email) {
+  const target = await findAuthUserByEmail(env, email);
+  if (target && inviteInfo(target).state === "accepted") throw new Error("Only invites that haven't been accepted can be resent. Send a password reset instead.");
+}
+/** Restarts the 24-hour clock (and lifts a cancelled invite) after a new link was made. @param {WorkerEnv} env @param {string} email @param {Profile} profile */
+async function stampInviteSent(env, email, profile) {
+  const target = await findAuthUserByEmail(env, email);
+  if (!target?.id) return;
+  const cancelled = Boolean(target.user_metadata?.invite_cancelled_at);
+  await updateAuthMetadata(env, target, { invite_sent_at: new Date().toISOString(), invited_by: profile.name || profile.email || "", invite_cancelled_at: "" }, { ban: cancelled ? "none" : undefined });
 }
 
 /** @param {WorkerEnv} env @param {string} email @param {any} origin */
@@ -2712,12 +2725,68 @@ function applyReceivingLines(po, lines, inventory) {
 }
 
 /** @param {any} authUser */
-function userStatusFromAuth(authUser) {
+function userStatusFromAuth(authUser, now = Date.now()) {
   if (!authUser) return "Profile only";
+  const invite = inviteInfo(authUser, now);
+  if (invite.state === "cancelled") return "Invite cancelled";
   if (authUser.banned_until) return "Disabled";
-  if (authUser.confirmed_at || authUser.email_confirmed_at) return "Active";
-  if (authUser.invited_at) return "Pending Invite";
-  return "Pending";
+  if (invite.state === "accepted") return "Active";
+  if (invite.state === "expired") return "Invite expired";
+  return "Pending Invite";
+}
+
+// Invite links are Supabase's own single-use links; a new link replaces the old one. The app counts
+// an invite as expired 24 hours after it was last sent (Supabase's email link expiry is set to match).
+const INVITE_TTL_HOURS = 24;
+/**
+ * Where an account's invitation stands. "accepted" once the person has confirmed their email by
+ * opening a link; "cancelled" when an admin withdrew it; otherwise pending until 24 hours after the
+ * last send, then expired.
+ * @param {any} authUser @param {number} [now]
+ * @returns {{ state: "accepted" | "cancelled" | "pending" | "expired", sentAt: string, expiresAt: string, invitedBy: string }}
+ */
+function inviteInfo(authUser, now = Date.now()) {
+  const meta = authUser?.user_metadata || {};
+  const sentAt = String(meta.invite_sent_at || authUser?.invited_at || "");
+  const invitedBy = String(meta.invited_by || "");
+  if (authUser?.confirmed_at || authUser?.email_confirmed_at) return { state: "accepted", sentAt, expiresAt: "", invitedBy };
+  const sentMs = Date.parse(sentAt);
+  const expiresAt = Number.isFinite(sentMs) ? new Date(sentMs + INVITE_TTL_HOURS * 3600000).toISOString() : "";
+  if (meta.invite_cancelled_at) return { state: "cancelled", sentAt, expiresAt, invitedBy };
+  return { state: expiresAt && Date.parse(expiresAt) > now ? "pending" : "expired", sentAt, expiresAt, invitedBy };
+}
+
+/**
+ * Error text when a change would leave nobody able to manage the system, "" when it's fine. A
+ * Superadmin counts as active when their account is accepted and not disabled.
+ * @param {{ profiles: { id: string, role: string }[], authById: Map<string, any>, targetId: string, nextRole?: string, disabling?: boolean }} options
+ */
+function superadminGuardError({ profiles, authById, targetId, nextRole, disabling = false }) {
+  const target = profiles.find((row) => row.id === targetId);
+  if (!target || target.role !== "Superadmin") return "";
+  if (!disabling && (!nextRole || nextRole === "Superadmin")) return "";
+  const active = profiles.filter((row) => {
+    const auth = authById.get(row.id);
+    return row.role === "Superadmin" && row.id !== targetId && auth && !auth.banned_until && inviteInfo(auth).state === "accepted";
+  });
+  return active.length ? "" : "At least one active Superadmin must remain";
+}
+
+/** Merges fields into a Supabase Auth user's metadata (and optionally lifts or sets a ban). @param {WorkerEnv} env @param {any} authUser @param {Record<string, unknown>} patch @param {{ ban?: string }} [options] */
+async function updateAuthMetadata(env, authUser, patch, { ban } = {}) {
+  await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(authUser.id)}`, {
+    method: "PUT",
+    body: JSON.stringify({ ...(ban ? { ban_duration: ban } : {}), user_metadata: { ...(authUser.user_metadata || {}), ...patch } }),
+  });
+}
+
+/** Profiles plus Auth users, keyed by id, for the Superadmin guard. @param {WorkerEnv} env */
+async function loadAccountsForGuard(env) {
+  const [profiles, authPayload] = await Promise.all([
+    supabaseFetch(env, "/rest/v1/profiles?select=id,role,email"),
+    supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000"),
+  ]);
+  return { profiles, authById: new Map((authPayload.users || []).map((/** @type {any} */ user) => [user.id, user])) };
 }
 
 /** @param {ProfileRow | null | undefined} profile @param {any} authUser @param {string} [email] */
@@ -2745,28 +2814,15 @@ function userFromProfileAndAuth(profile, authUser, permissions = []) {
     superadminPermissions: role === "Superadmin" || Boolean(profile?.is_superadmin),
     inviteStatus: userStatusFromAuth(authUser),
     disabledReason: authUser?.user_metadata?.disabled_reason || "",
+    disabledAt: authUser?.user_metadata?.disabled_at || "",
     access: `${role} with ${view.length} view / ${edit.length} edit modules`,
+    hasCustomAccess: permissions.length > 0,
+    lastSignInAt: authUser?.last_sign_in_at || "",
+    createdAt: profile?.created_at || authUser?.created_at || "",
+    invite: authUser ? inviteInfo(authUser) : null,
   };
 }
 
-/** @param {WorkerEnv} env @param {{ id: string, email: string, name: any }} options */
-async function userDeleteBlockers(env, { id, email, name }) {
-  const needles = [id, email, name].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
-  /** @type {any[]} */
-  const blockers = [];
-  if (!needles.length) return blockers;
-  const sessions = id ? await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(id)}&revoked_at=is.null&select=id`) .catch(() => []) : [];
-  if (sessions.length) blockers.push(`${sessions.length} active device session${sessions.length === 1 ? "" : "s"}`);
-  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&select=module_name,record_key,data`);
-  const ignored = new Set(["users", "logs", "notifications"]);
-  for (const row of rows) {
-    if (ignored.has(row.module_name)) continue;
-    const text = JSON.stringify(row.data || {}).toLowerCase();
-    if (needles.some((needle) => text.includes(needle))) blockers.push(`${row.module_name}: ${row.record_key}`);
-    if (blockers.length >= 12) break;
-  }
-  return blockers;
-}
 
 /** @param {any} role @param {any} view */
 function roleEditableFallback(role, view) {
@@ -3002,7 +3058,7 @@ function auditSensitivity(entry) {
   if (Array.isArray(entry?.changes) && entry.changes.length) return "Changed a watched field";
   if (/^(exported|downloaded)\b/i.test(action)) return "Export";
   if (/price|discount|stock adjusted|edited stock|credit/i.test(action)) return "Money or stock";
-  if (/role|permission|superadmin|password|invited user|archived user|disabled user|enabled user|forced device logout/i.test(action)) return "Access";
+  if (/role|permission|superadmin|password|invite|archived user|disabled user|enabled user|deactivated user|reactivated user|forced device logout|signed out all sessions/i.test(action)) return "Access";
   if (/cancel|void|revert|restored|deleted|removed|clear/i.test(action)) return "Cancelled or removed";
   return "";
 }
@@ -5554,6 +5610,7 @@ export default {
         const payload = await response.json().catch(() => null);
         if (!response.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password setup failed" }, { status: 400 });
         if (payload?.id) await markPasswordConfirmed(env, payload.id);
+        if (payload?.id) ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: payload.email || "", role: payload.user_metadata?.role || "", action: "Password set from email link", module: "Authentication", record: payload.email || payload.id }, payload.id, auditContextForRequest(request)));
         return json({ ok: true });
       }
 
@@ -5599,6 +5656,7 @@ export default {
         const payload = await updateResponse.json().catch(() => null);
         if (!updateResponse.ok) return json({ error: payload?.msg || payload?.message || payload?.error || "Password update failed" }, { status: 400 });
         await markPasswordConfirmed(env, user.id);
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: user.email || "", role: user.user_metadata?.role || "", action: "Password changed", module: "Authentication", record: user.email || user.id }, user.id, auditContextForRequest(request)));
         return json({ ok: true });
       }
 
@@ -6774,11 +6832,20 @@ export default {
         const { profile } = await authenticatedProfile(request, env);
         if (request.method !== "GET") return methodNotAllowed();
         requireUserAdmin(profile);
-        const [profiles, permissions, authPayload] = await Promise.all([
+        const [profiles, permissions, authPayload, sessionRows] = await Promise.all([
           supabaseFetch(env, "/rest/v1/profiles?select=*"),
           supabaseFetch(env, "/rest/v1/module_permissions?select=user_id,module_key,can_view,can_edit"),
           supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000").catch(() => ({ users: [] })),
+          supabaseFetch(env, "/rest/v1/app_sessions?select=user_id,last_seen_at,revoked_at&order=last_seen_at.desc&limit=5000").catch(() => []),
         ]);
+        /** @type {Map<string, { lastSeen: string, openSessions: number }>} */
+        const sessionsByUser = new Map();
+        for (const row of /** @type {any[]} */ (sessionRows)) {
+          const entry = sessionsByUser.get(row.user_id) || { lastSeen: "", openSessions: 0 };
+          if (!entry.lastSeen) entry.lastSeen = row.last_seen_at || "";
+          if (!row.revoked_at) entry.openSessions += 1;
+          sessionsByUser.set(row.user_id, entry);
+        }
         const authUsers = authPayload.users || [];
         const profileById = new Map(profiles.map((/** @type {any} */ item) => [item.id, item]));
         const authById = new Map(authUsers.map((/** @type {any} */ item) => [item.id, item]));
@@ -6787,7 +6854,12 @@ export default {
           return map;
         }, new Map());
         const ids = new Set([...profileById.keys(), ...authById.keys()]);
-        const users = [...ids].map((id) => userFromProfileAndAuth(profileById.get(id), authById.get(id), permissionByUser.get(id) || []));
+        const users = [...ids].map((id) => {
+          const user = userFromProfileAndAuth(profileById.get(id), authById.get(id), permissionByUser.get(id) || []);
+          const sessions = sessionsByUser.get(id);
+          const lastActiveAt = [sessions?.lastSeen || "", user.lastSignInAt || ""].sort().pop() || "";
+          return { ...user, lastActiveAt, openSessions: sessions?.openSessions || 0 };
+        });
         return json({ users: users.sort((a, b) => String(a.email || a.name).localeCompare(String(b.email || b.name))) });
       }
 
@@ -6797,22 +6869,23 @@ export default {
         requireUserAdmin(profile);
         const body = await request.json();
         const email = cleanEmail(body.email);
-        const fullName = String(body.name || "").trim();
         const role = String(body.role || "").trim();
+        // Everyone works across both branches.
         const branch = "all";
-        const view = Array.isArray(body.modules) ? body.modules.filter(Boolean) : roleModules[/** @type {AppRole} */ (role)] || [];
+        // Role defaults apply live unless an explicit custom module list is sent.
+        const custom = Array.isArray(body.modules);
+        const view = custom ? body.modules.filter(Boolean) : [];
         const edit = Array.isArray(body.editModules) ? body.editModules.filter((/** @type {any} */ module) => view.includes(module)) : view;
-        if (!fullName) return json({ error: "Name is required" }, { status: 400 });
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        const fullName = String(body.name || "").trim() || email.split("@")[0];
         if (!validRole(role)) return json({ error: "Invalid role" }, { status: 400 });
         const existingProfiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
         const existingAuthUser = await findAuthUserForProfileOrEmail(env, existingProfiles[0], email);
 
-        if (existingProfiles.length && existingAuthUser && userStatusFromAuth(existingAuthUser) === "Active") {
-          // A real, fully-registered user already exists: return it as-is instead of re-inviting.
-          const existingPermissions = await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(existingProfiles[0].id)}&select=user_id,module_key,can_view,can_edit`);
-          const existingUser = userFromProfileAndAuth(existingProfiles[0], existingAuthUser, existingPermissions);
-          return json({ user: existingUser, existing: true, emailDelivery: { sent: false, reason: "User profile already exists" } });
+        if (existingAuthUser) {
+          const invite = inviteInfo(existingAuthUser);
+          if (invite.state === "accepted") return json({ error: existingAuthUser.banned_until ? "This person already has an account, but it is deactivated. Reactivate it instead." : "This person already has an account." }, { status: 409 });
+          if (invite.state === "pending") return json({ error: "An invite is already waiting for this email. Resend it instead." }, { status: 409 });
         }
 
         if (existingProfiles.length && !existingAuthUser) {
@@ -6839,15 +6912,11 @@ export default {
         }
         if (!authUser?.id) throw new Error("Could not create or find the Supabase user account");
 
-        if (authUser.banned_until) {
-          // Re-inviting a previously disabled/archived account must lift the ban — otherwise the
-          // invite link works but the account still can't sign in afterward.
-          await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(authUser.id)}`, {
-            method: "PUT",
-            body: JSON.stringify({ ban_duration: "none", user_metadata: { ...(authUser.user_metadata || {}), disabled_reason: "", disabled_at: "" } }),
-          });
-          authUser = { ...authUser, banned_until: null };
-        }
+        // Stamp when (and by whom) it was sent — the 24-hour expiry counts from here. Re-inviting a
+        // cancelled or disabled account lifts the ban, or the link would work but sign-in wouldn't.
+        const invitePatch = { invite_sent_at: new Date().toISOString(), invited_by: profile.name || profile.email || "", invite_cancelled_at: "", disabled_reason: "", disabled_at: "" };
+        await updateAuthMetadata(env, authUser, invitePatch, { ban: authUser.banned_until ? "none" : undefined });
+        authUser = { ...authUser, banned_until: null, user_metadata: { ...(authUser.user_metadata || {}), ...invitePatch } };
 
         await supabaseFetch(env, "/rest/v1/profiles?on_conflict=id", {
           method: "POST",
@@ -6855,7 +6924,8 @@ export default {
           body: JSON.stringify({ id: authUser.id, email, full_name: fullName, role, branch, is_superadmin: role === "Superadmin" }),
         });
         await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(authUser.id)}`, { method: "DELETE" }).catch(() => null);
-        if (view.length) {
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Invited user", module: "Users", record: `${email} · ${role}` }, profile.id, auditContextForRequest(request)));
+        if (custom && view.length) {
           await supabaseFetch(env, "/rest/v1/module_permissions", {
             method: "POST",
             body: JSON.stringify(view.map((/** @type {any} */ moduleKey) => ({ user_id: authUser.id, module_key: moduleKey, can_view: true, can_edit: edit.includes(moduleKey) }))),
@@ -6872,7 +6942,10 @@ export default {
         const { email: rawEmail } = await request.json();
         const email = cleanEmail(rawEmail);
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        await assertInviteOpen(env, email);
         const { actionLink, fullName, role } = await resolveInviteLink(env, email, requestOrigin(request));
+        await stampInviteSent(env, email, profile);
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Resent invite", module: "Users", record: `${email} · ${role}` }, profile.id, auditContextForRequest(request)));
         const emailDelivery = await sendResendEmail(env, { to: email, subject: "Your Medlane OS invitation link", html: brandedInviteEmailHtml({ fullName, email, role, actionLink: wrapAuthActionLink(actionLink, requestOrigin(request)), origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message }));
         return json({ ok: true, emailDelivery });
       }
@@ -6884,27 +6957,73 @@ export default {
         const { email: rawEmail } = await request.json();
         const email = cleanEmail(rawEmail);
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
-        const { actionLink } = await resolveInviteLink(env, email, requestOrigin(request));
-        return json({ actionLink });
+        await assertInviteOpen(env, email);
+        const { actionLink, role } = await resolveInviteLink(env, email, requestOrigin(request));
+        await stampInviteSent(env, email, profile);
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Copied a new invite link", module: "Users", record: `${email} · ${role}` }, profile.id, auditContextForRequest(request)));
+        return json({ actionLink: wrapAuthActionLink(actionLink, requestOrigin(request)) });
       }
 
-      if (url.pathname === "/api/users/set-password") {
+      if (url.pathname === "/api/users/invite/cancel") {
         const { profile } = await authenticatedProfile(request, env);
         if (request.method !== "POST") return methodNotAllowed();
         requireUserAdmin(profile);
-        const { email: rawEmail, password } = await request.json();
-        const email = cleanEmail(rawEmail);
+        const email = cleanEmail((await request.json()).email);
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
-        const policyError = passwordPolicyError(password);
-        if (policyError) return json({ error: policyError }, { status: 400 });
         const target = await findAuthUserByEmail(env, email);
-        if (!target?.id) return json({ error: "Supabase Auth user not found" }, { status: 404 });
-        await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, {
-          method: "PUT",
-          body: JSON.stringify({ password, email_confirm: true }),
-        });
+        if (!target?.id) return json({ error: "Invitation not found" }, { status: 404 });
+        if (inviteInfo(target).state === "accepted") return json({ error: "This invite was already accepted. Deactivate the user instead." }, { status: 409 });
+        // Never deleted: the account is blocked and marked cancelled, so a later invite can reuse it.
+        await updateAuthMetadata(env, target, { invite_cancelled_at: new Date().toISOString(), invite_cancelled_by: profile.name || profile.email || "" }, { ban: "876000h" });
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Cancelled invite", module: "Users", record: email }, profile.id, auditContextForRequest(request)));
         return json({ ok: true });
       }
+
+      if (url.pathname === "/api/users/role") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { email: rawEmail, role: rawRole } = await request.json();
+        const email = cleanEmail(rawEmail);
+        const role = String(rawRole || "").trim();
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        if (!validRole(role)) return json({ error: "Invalid role" }, { status: 400 });
+        if (email === cleanEmail(authUser.email)) return json({ error: "You cannot change your own role" }, { status: 400 });
+        const targets = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=id,role`);
+        const target = targets[0];
+        if (!target) return json({ error: "User profile not found" }, { status: 404 });
+        if (target.role === role) return json({ ok: true, role });
+        const guard = superadminGuardError({ ...(await loadAccountsForGuard(env)), targetId: target.id, nextRole: role });
+        if (guard) return json({ error: guard }, { status: 400 });
+        await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(target.id)}`, {
+          method: "PATCH",
+          headers: { prefer: "return=minimal" },
+          body: JSON.stringify({ role, base_role: null, is_superadmin: role === "Superadmin" }),
+        });
+        // Custom per-person access is cleared so the new role's access applies in full.
+        await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(target.id)}`, { method: "DELETE" }).catch(() => null);
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Role changed", module: "Users", record: email, changes: [{ field: "Role", from: auditValue(target.role), to: auditValue(role) }] }, profile.id, auditContextForRequest(request)));
+        return json({ ok: true, role });
+      }
+
+      if (url.pathname === "/api/users/reset-password") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const email = cleanEmail((await request.json()).email);
+        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        const target = await findAuthUserByEmail(env, email);
+        if (!target?.id) return json({ error: "User not found" }, { status: 404 });
+        if (inviteInfo(target).state !== "accepted") return json({ error: "They haven't accepted their invite yet. Resend the invite instead." }, { status: 409 });
+        if (target.banned_until) return json({ error: "This account is deactivated. Reactivate it first." }, { status: 409 });
+        const recovery = extractLinkResult(await supabaseAuthAdminFetch(env, "/auth/v1/admin/generate_link", { method: "POST", body: JSON.stringify({ type: "recovery", email, options: { redirect_to: `${requestOrigin(request)}/?login=1` } }) }));
+        if (!recovery?.actionLink) return json({ error: "The reset link could not be created. Try again." }, { status: 502 });
+        const names = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=full_name`);
+        const emailDelivery = await sendResendEmail(env, { to: email, subject: "Reset your Medlane OS password", html: passwordResetEmailHtml({ fullName: names[0]?.full_name || email, email, actionLink: wrapAuthActionLink(recovery.actionLink, requestOrigin(request)), origin: requestOrigin(request) }) }).catch((error) => ({ sent: false, reason: error.message }));
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: emailDelivery.sent ? "Sent password reset link" : "Password reset link not sent", module: "Users", record: email }, profile.id, auditContextForRequest(request)));
+        return json({ ok: true, emailDelivery });
+      }
+
 
       if (url.pathname === "/api/users/status") {
         const { authUser, profile } = await authenticatedProfile(request, env);
@@ -6919,6 +7038,11 @@ export default {
         const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
         const target = await findAuthUserForProfileOrEmail(env, profiles[0], email) || (authPayload.users || []).find((/** @type {any} */ user) => cleanEmail(user.email) === email);
         if (!target?.id) return json({ error: "Supabase Auth user not found" }, { status: 404 });
+        if (disabled) {
+          const guard = superadminGuardError({ ...(await loadAccountsForGuard(env)), targetId: profiles[0]?.id || target.id, disabling: true });
+          if (guard) return json({ error: guard }, { status: 400 });
+        }
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: disabled ? "Deactivated user" : "Reactivated user", module: "Users", record: disabled ? `${email}: ${String(reason).trim()}` : email }, profile.id, auditContextForRequest(request)));
         await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, {
           method: "PUT",
           body: JSON.stringify({ ban_duration: disabled ? "876000h" : "none", user_metadata: { ...(target.user_metadata || {}), disabled_reason: disabled ? String(reason).trim() : "", disabled_at: disabled ? new Date().toISOString() : "" } }),
@@ -6991,42 +7115,6 @@ export default {
         return json({ user: updatedUser });
       }
 
-      if (url.pathname === "/api/users/delete") {
-        const { authUser, profile } = await authenticatedProfile(request, env);
-        if (request.method !== "POST") return methodNotAllowed();
-        requireUserAdmin(profile);
-        const { email: rawEmail, confirmation } = await request.json();
-        const email = cleanEmail(rawEmail);
-        if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
-        if (email === cleanEmail(authUser.email)) return json({ error: "You cannot delete your own account" }, { status: 400 });
-        const profiles = await supabaseFetch(env, `/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=*`);
-        const authPayload = await supabaseAuthAdminFetch(env, "/auth/v1/admin/users?page=1&per_page=1000");
-        const target = await findAuthUserForProfileOrEmail(env, profiles[0], email) || (authPayload.users || []).find((/** @type {any} */ user) => cleanEmail(user.email) === email);
-        const fullName = userDisplayName(profiles[0], target, email);
-        if (String(confirmation || "").trim() !== fullName) return json({ error: `Type the user's full name exactly: ${fullName}` }, { status: 400 });
-        const userId = profiles[0]?.id || target?.id;
-        const blockers = await userDeleteBlockers(env, { id: userId, email, name: fullName });
-        if (blockers.length) return json({ error: `Cannot delete user with active or linked records: ${blockers.join(", ")}` }, { status: 409 });
-        // app_state/app_records/file_objects keep a nullable "who last touched this"
-        // reference to profiles.id. Deleting the profile (directly, or via cascade from
-        // the Auth admin delete below) fails on that foreign key unless those references
-        // are cleared first — the audit rows themselves are preserved, just detached.
-        if (userId) {
-          await supabaseFetch(env, `/rest/v1/app_state?updated_by=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ updated_by: null }) }).catch(() => null);
-          await supabaseFetch(env, `/rest/v1/app_records?updated_by=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ updated_by: null }) }).catch(() => null);
-          await supabaseFetch(env, `/rest/v1/file_objects?uploaded_by=eq.${encodeURIComponent(userId)}`, { method: "PATCH", headers: { prefer: "return=minimal" }, body: JSON.stringify({ uploaded_by: null }) }).catch(() => null);
-        }
-        // Delete the Supabase Auth account first so failures here are not silently
-        // hidden. If this throws, the profile/permissions rows are left intact so
-        // the delete can be retried, and the frontend surfaces a real error instead
-        // of reporting success while the Auth user (and its email) stays registered.
-        if (target?.id) {
-          await supabaseAuthAdminFetch(env, `/auth/v1/admin/users/${encodeURIComponent(target.id)}`, { method: "DELETE" });
-        }
-        if (userId) await supabaseFetch(env, `/rest/v1/module_permissions?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }).catch(() => null);
-        if (profiles[0]?.id) await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(profiles[0].id)}`, { method: "DELETE" }).catch(() => null);
-        return json({ ok: true });
-      }
 
       if (url.pathname === "/api/users/sessions") {
         const { profile } = await authenticatedProfile(request, env);
@@ -7042,6 +7130,23 @@ export default {
         const rows = await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(userId)}&select=id,user_id,device_name,browser,ip_address,created_at,last_seen_at,revoked_at&order=last_seen_at.desc`);
         const profiles = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,email,full_name,role`);
         return json({ user: profiles[0] || null, sessions: rows.map((/** @type {any} */ row) => ({ ...row, profile: profiles[0] || null })) });
+      }
+
+      if (url.pathname === "/api/users/sessions/revoke-all") {
+        const { authUser, profile } = await authenticatedProfile(request, env);
+        if (request.method !== "POST") return methodNotAllowed();
+        requireUserAdmin(profile);
+        const { userId } = await request.json();
+        if (!/^[0-9a-f-]{36}$/i.test(String(userId || ""))) return json({ error: "Invalid user id" }, { status: 400 });
+        if (userId === authUser.id) return json({ error: "Use Log out to end your own sessions" }, { status: 400 });
+        await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(userId)}&revoked_at=is.null`, {
+          method: "PATCH",
+          headers: { prefer: "return=minimal" },
+          body: JSON.stringify({ revoked_at: new Date().toISOString(), revoked_by: authUser.id }),
+        });
+        const names = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=email`);
+        ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Signed out all sessions", module: "Users", record: names[0]?.email || userId }, profile.id, auditContextForRequest(request)));
+        return json({ ok: true });
       }
 
       if (url.pathname === "/api/users/sessions/revoke") {

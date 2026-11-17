@@ -179,7 +179,6 @@ let cancelReplaceSaleId = null;
 // Set while the maker edits an expense request that an approver returned to them.
 /** @type {string | null} */
 let editingExpenseId = null;
-let userStatusFilter = "all";
 /** @type {any} */
 let clientHistoryTab = "invoices";
 let itemForecastMonths = 3;

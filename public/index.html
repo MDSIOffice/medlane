@@ -620,7 +620,7 @@
         <a href="/dashboard?section=reports" class="nav-item" data-section="reports" data-title="Reports" title="Reports" data-description="Preview and print management, compliance, inventory, collections, warranty, and audit reports."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="10" height="14" rx="1.3"/><path d="M7.5 2.5h5v2h-5z"/><path d="M7.5 9h5M7.5 12h5M7.5 15h3"/></svg></span><span>Reports</span></a>
         <a href="/dashboard?section=reconciliation" class="nav-item" data-section="reconciliation" data-title="Recon" title="Recon" data-description="Automatic checks that numbers agree across stock, orders, invoices, payments, bills and master data."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.3"/><path d="M6.8 10.2 9 12.4l4.2-4.6"/></svg></span><span>Recon</span></a>
         <a href="/dashboard?section=security" class="nav-item" data-section="security" data-title="Security" title="Security" data-description="Preview money-protection controls for compromised passwords, lost phones, approvals, and audit trails." hidden><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="9" width="11" height="8" rx="1.5"/><path d="M6.5 9V6.3a3.5 3.5 0 0 1 7 0V9"/></svg></span><span>Security</span></a>
-        <a href="/dashboard?section=users" class="nav-item" data-section="users" data-title="Users" title="Users" data-description="Manage user accounts, roles, branch access, and allowed modules."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.3" cy="6.8" r="2.6"/><path d="M2.5 17c0-2.9 2.1-5 4.8-5s4.8 2.1 4.8 5"/><circle cx="14.3" cy="7.3" r="2.1"/><path d="M13 12.2c1.9.3 3.5 2 3.5 4.8"/></svg></span><span>Users</span></a>
+        <a href="/dashboard?section=users" class="nav-item" data-section="users" data-title="Users" title="Users" data-description="Who can sign in, what each role can do, and open invitations."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.3" cy="6.8" r="2.6"/><path d="M2.5 17c0-2.9 2.1-5 4.8-5s4.8 2.1 4.8 5"/><circle cx="14.3" cy="7.3" r="2.1"/><path d="M13 12.2c1.9.3 3.5 2 3.5 4.8"/></svg></span><span>Users</span></a>
         <a href="/dashboard?section=logs" class="nav-item" data-section="logs" data-title="Audit Logs" title="Audit Logs" data-description="Review traceable user activity including edits, imports, exports, stock changes, and payment postings."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5h9M7.5 10h9M7.5 15h9"/><path d="M3.5 5h.01M3.5 10h.01M3.5 15h.01"/></svg></span><span>Audit Logs</span></a>
         <a href="/dashboard?section=print-templates" class="nav-item" data-section="print-templates" data-title="Print Templates" title="Print Templates" data-description="Create a custom field layout for SI, TS, or DR printing so future misalignment can be fixed once and reused for every print."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="12" height="14" rx="1.3"/><path d="M7 7h6M7 10h6M7 13h3"/><circle cx="14.5" cy="14.5" r="2.2"/></svg></span><span>Print Templates</span></a>
         <a href="/dashboard?section=backup" class="nav-item" data-section="backup" data-title="Backup" title="Backup" data-description="Manage optimized weekly, monthly, yearly, and manual backups."><span class="nav-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3.5h9l3 3v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z"/><path d="M6.5 3.5v4h6v-4"/><path d="M6.5 12h7v5.5h-7z"/></svg></span><span>Backup</span></a>
@@ -1190,14 +1190,17 @@
         </div>
       </section>
 
-      <section class="section" id="users">
-        <div class="section-header"><div><p class="eyebrow">Admin Editable</p><h2>Users And Permissions</h2></div><button class="primary-button" data-action="open-modal" data-type="user">Invite User</button></div>
-        <article class="panel role-tester-panel">
-          <div class="panel-header"><div><p class="eyebrow">Role Tester</p><h2>Preview role access</h2><p class="page-description">Check what a role can view and edit before assigning permissions.</p></div><select id="role-tester-select" aria-label="Preview role access"></select></div>
-          <div class="report-preview-grid" id="role-tester-output"></div>
-        </article>
-        <div class="toolbar"><select id="user-status-filter" aria-label="Filter users by status"><option value="all">All Statuses (excludes archived)</option></select></div>
-        <div class="table-card"><table id="users-table"></table></div>
+      <section class="section ui-scope" id="users">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Users</h1></div>
+            <p class="ui-desc">Who can sign in to Medlane OS, what each role can do, and invitations waiting to be accepted. New users get an email link to set their own password.</p>
+          </div>
+          <div class="ui-actions" id="users-actions"></div>
+        </div>
+        <div class="ui-wa-host" data-wa-host="users"></div>
+        <div class="ui-tabs" id="users-tabs" role="tablist" aria-label="Users sections"></div>
+        <div id="users-tab-panel"></div>
       </section>
 
       <section class="section" id="notifications">
@@ -1540,7 +1543,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

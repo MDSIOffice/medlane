@@ -16,7 +16,7 @@ const EXPOSED = [
   "takeStockBases", "rebaseStockRows", "withStockBase", "savedStockQty", "withStockLock", "loginThrottle",
   "applyPreviewRole", "previewableRolesFor", "sharedStateSnapshot", "supabaseFetch",
   "auditChangeEntries", "notificationVisibleTo", "filterRecordsForProfile", "auditSensitivity", "isSignInEntry", "manilaHour", "assertCalendarEventChangesAllowed", "trimPerRecordLogs", "trimPaginatedModuleRows", "PER_RECORD_LOG_LIMITS", "PAGINATED_MODULE_PAGE_SIZE", "NON_STATE_MODULES", "loadStateRows", "newPurchaseOrderNotices", "newestNoticesFirst", "recordKeyFor",
-  "requireReconViewer", "requireReconFixer", "reconDifferenceAction", "saveReconInput", "runReconJob", "reconOverview", "stockMovementRows", "stockMovementSource", "movementCutoff", "pruneStockMovements", "RECON_RUN_SLOTS", "assertFileRemovable",
+  "requireReconViewer", "requireReconFixer", "reconDifferenceAction", "saveReconInput", "runReconJob", "reconOverview", "stockMovementRows", "stockMovementSource", "movementCutoff", "pruneStockMovements", "RECON_RUN_SLOTS", "assertFileRemovable", "inviteInfo", "superadminGuardError", "userStatusFromAuth",
 ];
 
 registerHooks({

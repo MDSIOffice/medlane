@@ -94,9 +94,6 @@ function moduleWorkflowItems(section) {
     notifications: [
       { title: "Actionable alerts", text: "Open each alert directly instead of searching module tables.", tone: "info" },
     ],
-    users: [
-      { title: "Role-based queues", text: "Keep each user focused on modules and approvals for their role.", tone: "info" },
-    ],
   };
   return (queues[section] || []).filter(Boolean).slice(0, 4);
 }
@@ -138,7 +135,7 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "warranty", "imports", "reports", "security", "users", "product-issues"];
+const WORKFLOW_ASSIST_SECTIONS = ["dashboard", "warranty", "imports", "reports", "security", "product-issues"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -11954,91 +11951,6 @@ function dedupedUsers() {
   });
   return [...map.values()];
 }
-/** @param {string} [status] */
-function userStatusClass(status = "Active") {
-  const value = String(status).toLowerCase();
-  if (value.includes("active")) return "green";
-  if (value.includes("pending") || value.includes("invite")) return "orange";
-  if (value.includes("not sent") || value.includes("disabled") || value.includes("archived")) return "red";
-  return "gray";
-}
-function renderRoleTester() {
-  const select = qs("#role-tester-select");
-  const output = qs("#role-tester-output");
-  if (!select || !output) return;
-  const roles = Object.keys(accounts);
-  const selected = roles.includes(select.value) ? select.value : currentUser?.role || roles[0];
-  select.innerHTML = roles.map((role) => `<option value="${escapeHtml(role)}">${escapeHtml(role)}</option>`).join("");
-  select.value = selected;
-  const view = accounts[selected]?.modules || [];
-  const edit = roleEditableModules[selected] || [];
-  const restricted = permissionModules().filter((module) => !view.includes(module));
-  output.innerHTML = [
-    ["View Access", `${view.length} modules`, view.join(", ") || "None"],
-    ["Edit Access", `${edit.length} modules`, edit.join(", ") || "None"],
-    ["Hidden", `${restricted.length} modules`, restricted.join(", ") || "None"],
-    ["Risk Level", ["Superadmin", "CEO"].includes(selected) ? "Full platform control" : edit.length ? "Operational editor" : "View / task limited", "Use custom permissions for exceptions."],
-  ].map(([title, value, note]) => `<div class="report-preview-card"><small>${escapeHtml(title)}</small><strong>${escapeHtml(value)}</strong><span>${escapeHtml(note)}</span></div>`).join("");
-}
-/** @param {AppUser} user */
-function userInviteStatus(user) {
-  return user?.inviteStatus || "Active";
-}
-
-// A backend sync rewrites an archived user's inviteStatus back to "Disabled" (Supabase only
-// knows "banned"), so the durable archived signal is the archivedAt stamp set on archive.
-/** @param {AppUser} user */
-function userIsArchived(user) {
-  return Boolean(user?.archivedAt) || /archived/i.test(userInviteStatus(user));
-}
-
-/** @param {AppUser} user */
-function userDisplayStatus(user) {
-  return userIsArchived(user) ? "Archived" : userInviteStatus(user);
-}
-
-function renderUsers() {
-  qs("#users [data-action='open-modal'][data-type='user']").hidden = !canManageUsers();
-  renderRoleTester();
-  const users = dedupedUsers();
-  const activeStatuses = [...new Set(users.filter((u) => !userIsArchived(u)).map(userInviteStatus))].sort();
-  const hasArchived = users.some(userIsArchived);
-  const filterValues = ["all", ...activeStatuses, ...(hasArchived ? ["Archived"] : [])];
-  if (!filterValues.includes(userStatusFilter)) userStatusFilter = "all";
-  const filterSelect = qs("#user-status-filter");
-  if (filterSelect) {
-    filterSelect.innerHTML = `<option value="all">All Statuses (excludes archived)</option>` +
-      activeStatuses.map((status) => `<option value="${escapeHtml(status)}"${status === userStatusFilter ? " selected" : ""}>${escapeHtml(status)}</option>`).join("") +
-      (hasArchived ? `<option value="Archived"${userStatusFilter === "Archived" ? " selected" : ""}>Archived</option>` : "");
-    filterSelect.value = userStatusFilter;
-  }
-  // Archived users are hidden in the default "all" view — they only show when the filter is
-  // explicitly set to "Archived".
-  const statusFiltered = users.filter((u) => {
-    if (userStatusFilter === "all") return !userIsArchived(u);
-    if (userStatusFilter === "Archived") return userIsArchived(u);
-    return !userIsArchived(u) && userInviteStatus(u) === userStatusFilter;
-  });
-  table("#users-table", ["Name", "Email", "Role", "Status", "Superadmin", "Access", "Actions"], statusFiltered.filter((u) => includesSearch(Object.values(u))).map((u) => {
-    const index = u._sourceIndex ?? data.users.indexOf(u);
-    const email = String(u.email || u.username || "").trim();
-    const displayName = String(u.name || u.full_name || "").trim();
-    const name = displayName && displayName.toLowerCase() !== email.toLowerCase() ? displayName : email || "-";
-    const isSuperadmin = u.superadminPermissions || u.role === "Superadmin";
-    const grantControl = `<label class="ios-check-row compact-doc-check user-superadmin-check"><input type="checkbox" data-user-superadmin="${index}" ${isSuperadmin ? "checked" : ""} ${canManageUsers() ? "" : "disabled"} /><span></span><strong>${isSuperadmin ? "Granted" : "Not granted"}</strong></label>`;
-    const accessSummary = u.customPermissions?.enabled ? `${u.customPermissions.view?.length || 0} view / ${u.customPermissions.edit?.length || 0} edit modules` : u.access || `${u.role} default permissions`;
-    const inviteStatus = userDisplayStatus(u);
-    const resend = String(inviteStatus).toLowerCase().includes("active") ? "" : `<button class="mini-button" data-resend-invite="${index}">Resend Invite</button>`;
-    const disabled = /disabled|archived/i.test(inviteStatus);
-    const isSelf = String(u.email || "").trim().toLowerCase() === String(currentUser?.email || "").trim().toLowerCase() || (u.id && u.id === currentUser?.id);
-    const statusAction = isSelf ? "" : `<button class="mini-button ${disabled ? "" : "danger-button"}" data-toggle-user-disabled="${index}">${disabled ? "Enable" : "Disable"}</button>`;
-    const statusCell = `<span class="pill ${userStatusClass(inviteStatus)}">${escapeHtml(inviteStatus)}</span>${u.disabledReason ? `<small>${escapeHtml(u.disabledReason)}</small>` : ""}`;
-    const archiveAction = isSelf ? "" : `<button class="mini-button danger-button" data-archive-user="${index}">Archive User</button>`;
-    const resetPermissionsAction = isSuperadmin ? "" : `<button class="mini-button" data-reset-user-permissions="${index}" title="Clears any custom view/edit modules saved for this user so they fall back to their role's current default module list">Reset Permissions to Role Defaults</button>`;
-    const actions = `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-view-user-sessions="${index}">Devices</button>${resend}${statusAction}${archiveAction}${resetPermissionsAction}</div></details>`;
-    return { focus: email || name, cells: [escapeHtml(name), email || "-", `<span class="pill ${statusClass(u.role)}">${escapeHtml(u.role)}</span>`, statusCell, grantControl, escapeHtml(accessSummary), canManageUsers() ? actions : "Superadmin/CEO only"] };
-  }));
-}
 /** @param {AppNotification} notice @param {any} index */
 function notificationItem(notice, index) {
   return `<div class="alert-item clickable" data-notice-index="${index}" data-go-section="${escapeHtml(notice.section || "notifications")}" data-focus-record="${escapeHtml(notice.record || "")}"><span class="alert-dot ${notice.status === "Unread" ? "orange" : "green"}"></span><div><strong>${escapeHtml(notice.type)} · ${escapeHtml(notice.status)}</strong><span>${escapeHtml(notice.message)} · ${escapeHtml(notice.date)}</span></div></div>`;
@@ -12734,7 +12646,7 @@ const sectionRenderers = {
   reports: renderReports,
   "report-detail": () => currentOperationalReportKey && applyOperationalReport(currentOperationalReportKey),
   reconciliation: () => renderReconciliation(),
-  users: renderUsers,
+  users: () => renderUsers(),
   notifications: renderNotifications,
   security: renderSecurity,
   "print-templates": renderPrintTemplates,
@@ -12863,7 +12775,6 @@ const modalConfigs = {
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => [ALL_RECEIVING_BRANCHES, ...platformBranches()]], ["date", "PO Date", "date"], ["promisedDate", "Supplier Promised Delivery (optional)", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => activeClients().map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
-  user: { title: "Invite User", fields: [["name", "Name"], ["email", "Email", "email"], ["role", "Role", "select", ["Superadmin", "Admin", "Sales", "Accounting", "Logistics", "Product Specialist", "Engineering", "CEO", "HR"]], ["permissions", "Custom Permissions", "user-permissions"]] },
   productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support", "select-choose", supportTypeOptions], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
   instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support", "select-choose", supportTypeOptions], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
 };
@@ -12909,7 +12820,6 @@ function openModal(type, edit = null) {
     if (kind === "hidden") return `<input id="${name}" name="${name}" type="hidden" />`;
     if (kind === "checkbox") return `<label class="ios-check-row"><input id="${name}" name="${name}" type="checkbox" value="true" /><span></span><strong>${label}</strong></label>`;
     if (kind === "doc-files") return `<div class="field full"><label>${label}</label><div class="doc-upload-grid modal-doc-upload-grid">${requiredClientDocs.map((doc) => `<label class="doc-upload-button missing"><span>${escapeHtml(doc)}</span><strong>Upload File</strong><em>Choose document</em><input class="doc-file-input" name="docsSelected" type="file" data-doc-name="${escapeHtml(doc)}" /></label>`).join("")}</div><input id="docs" name="docs" type="hidden" /></div>`;
-    if (kind === "user-permissions") return `<div class="field full user-permissions-field"><label>${label}</label><p class="field-help">Selecting a role preselects the allowed modules. Check extra boxes to grant additional view or edit access.</p><div id="user-permissions-panel"></div></div>`;
     if (kind === "benefit-checkboxes") return `<div class="field full"><label>${label}</label><div class="doc-checkbox-grid">${employeeBenefitOptions.map((benefit) => `<label class="ios-check-row compact-doc-check"><input name="benefitsSelected" type="checkbox" value="${escapeHtml(benefit)}" /><span></span><strong>${escapeHtml(benefit)}</strong></label>`).join("")}</div><input id="benefits" name="benefits" type="hidden" /></div>`;
     if (kind === "checkbox-group") {
       const values = typeof options === "function" ? options() : options;
@@ -12973,10 +12883,6 @@ function openModal(type, edit = null) {
   }
   if (type === "paymentRequest") qs("#modal-fields").insertAdjacentHTML("beforeend", renderPaymentRequestEditor(edit?.record?.items || [{}], edit?.preselectInvoice || null));
   if (type === "payable") togglePayableFields();
-  if (type === "user") {
-    qs("#role").value = "Admin";
-    syncInviteUserPermissions();
-  }
   if (["productIssue", "instrumentalServiceReport"].includes(type) && !edit) {
     qs("#id").value = nextProductIssueId(type);
     qs("#startDate").value = fmtDate(today);
@@ -13109,24 +13015,6 @@ function syncClientDocsHidden() {
   docsField.value = qsa("input[name='docsSelected']").filter((input) => input.files?.length || closestEl(input, ".doc-upload-button")?.classList.contains("uploaded")).map((input) => input.dataset.docName).join(", ");
 }
 
-function syncInviteUserPermissions() {
-  const panel = qs("#user-permissions-panel");
-  if (!panel) return;
-  const role = qs("#role")?.value || "Admin";
-  const viewDefaults = new Set(accounts[role]?.modules || []);
-  const editDefaults = new Set(roleEditableModules[role] || []);
-  const modules = permissionModules();
-  const groups = /** @type {[string, string[]][]} */ ([
-    ["Core", ["dashboard", "analytics", "notifications", "user-settings"]],
-    ["Master Data", ["masterlists", "users", "backup", "security", "logs", "print-templates"]],
-    ["Inventory & Orders", ["inventory", "item-forecast", "purchase-orders", "warranty"]],
-    ["Sales & Receivables", ["sales", "invoicing", "collections", "receivables-tracker", "purchase-history"]],
-    ["Support", ["product-issues"]],
-    ["Finance", ["payables", "replenishments", "reconciliation", "reports", "imports"]],
-  ]).map(([label, items]) => /** @type {[string, string[]]} */ ([label, items.filter((module) => modules.includes(module))])).filter(([, items]) => items.length);
-  const renderGroup = (/** @type {any} */ name, /** @type {any} */ items, /** @type {any} */ inputName, /** @type {any} */ defaults, /** @type {any} */ _index) => `<details class="permission-feature-group"><summary><strong>${escapeHtml(name)}</strong><span>${items.filter((/** @type {any} */ module) => defaults.has(module)).length}/${items.length} selected</span></summary><div>${items.map((/** @type {any} */ module) => `<label class="ios-check-row compact-doc-check"><input name="${inputName}" type="checkbox" value="${escapeHtml(module)}" ${defaults.has(module) ? "checked" : ""} /><span></span><strong>${escapeHtml(module)}</strong></label>`).join("")}</div></details>`;
-  panel.innerHTML = `<div class="invite-permission-grid"><section><h3>View Access</h3>${groups.map(([name, items], index) => renderGroup(name, items, "userViewModules", viewDefaults, index)).join("")}</section><section><h3>Edit Access</h3>${groups.map(([name, items], index) => renderGroup(name, items, "userEditModules", editDefaults, index)).join("")}</section></div>`;
-}
 
 function syncEmployeeBenefitsHidden() {
   const benefitsField = qs("#benefits");

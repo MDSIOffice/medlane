@@ -440,13 +440,13 @@ WORKFLOW_RULES.reconciliation = [0, 1, 2].map((index) => ({ id: `recon-${index}`
 /**
  * A small form dialog (wrapped in a <form> so modal padding applies). Resolves with the form's
  * values on submit, or null when closed.
- * @param {{ eyebrow: string, title: string, sub?: string, body: string, submit: string, danger?: boolean, wide?: boolean }} options
+ * @param {{ eyebrow: string, title: string, sub?: string, body: string, submit: string, danger?: boolean, wide?: boolean, drawer?: boolean }} options
  * @returns {Promise<Record<string, string> | null>}
  */
-function reconDialog({ eyebrow, title, sub = "", body, submit, danger = false, wide = false }) {
+function reconDialog({ eyebrow, title, sub = "", body, submit, danger = false, wide = false, drawer = false }) {
   qs("#recon-dialog")?.remove();
   const dialog = document.createElement("dialog");
-  dialog.className = `modal recon-modal${wide ? " recon-modal-wide" : ""}`;
+  dialog.className = `modal recon-modal${wide ? " recon-modal-wide" : ""}${drawer ? " recon-modal-drawer" : ""}`;
   dialog.id = "recon-dialog";
   dialog.innerHTML = `<form method="dialog" id="recon-dialog-form">
     <div class="modal-header"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2>${escapeHtml(title)}</h2>${sub ? `<small>${escapeHtml(sub)}</small>` : ""}</div><button class="icon-button" type="button" data-recon-dialog-close aria-label="Close">x</button></div>
