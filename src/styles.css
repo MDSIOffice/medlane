@@ -236,14 +236,15 @@ body.app-route .landing-page { display: none !important; }
 .ml-ring { position: absolute; inset: 0; border-radius: 28px; border: 2px solid rgba(31, 95, 116, 0.35); animation: ml-ring 2.4s ease-out infinite; }
 .ml-ring-2 { border-color: rgba(217, 104, 43, 0.3); animation-delay: 1.2s; }
 .ml-tile { position: relative; width: 96px; height: 96px; border-radius: 24px; background: #FFFFFF; border: 1px solid #E3E9EE; display: grid; place-items: center; box-shadow: 0 10px 30px rgba(31, 95, 116, 0.1); animation: ml-pulse 2.4s ease-in-out infinite; }
-.ml-logo { width: 56px; height: 56px; }
-.ml-logo path { fill: none; stroke-width: 2.2; stroke-linejoin: round; }
-.ml-orange, .ml-teal { stroke-dasharray: 60; animation: ml-draw 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
-.ml-teal { animation-delay: 0.18s; }
+/* The real logo (medlane.jpg): a faded copy always shows; the full-colour copy wipes on and off over it. */
+.ml-logo { position: relative; display: block; width: 72px; height: 72px; }
+.ml-logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ml-logo-faint { opacity: 0.22; filter: grayscale(0.3); }
+.ml-logo-fill { clip-path: inset(0 100% 0 0); animation: ml-wipe 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+@keyframes ml-wipe { 0% { clip-path: inset(0 100% 0 0); } 45%, 80% { clip-path: inset(0 0 0 0); } 100% { clip-path: inset(0 0 0 100%); } }
 .ml-mark-sm { width: 72px; height: 72px; }
 .ml-mark-sm .ml-tile { width: 64px; height: 64px; border-radius: 18px; }
-.ml-mark-sm .ml-logo { width: 38px; height: 38px; }
-@keyframes ml-draw { 0% { stroke-dashoffset: 60; } 45%, 80% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -60; } }
+.ml-mark-sm .ml-logo { width: 48px; height: 48px; }
 @keyframes ml-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 10px 30px rgba(31, 95, 116, 0.1); } 50% { transform: scale(1.03); box-shadow: 0 14px 40px rgba(31, 95, 116, 0.18); } }
 @keyframes ml-ring { 0% { transform: scale(0.85); opacity: 0.55; } 100% { transform: scale(1.55); opacity: 0; } }
 @keyframes ml-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
@@ -2099,7 +2100,7 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .save-status-indicator.saving .save-status-logo::before, .print-loading-spinner { animation: spin 1.6s linear infinite !important; }
   .backup-progress.indeterminate span { animation: backupProgress 2.2s ease-in-out infinite !important; }
   /* Loader: static full-colour logo, no pulse or rings; only a slow progress bar keeps moving. */
-  .ml-orange, .ml-teal, .welcome-screen .ml-logo path { animation: none !important; stroke-dasharray: none !important; }
+  .ml-logo-fill { animation: none !important; clip-path: none !important; }
   .ml-tile { animation: none !important; }
   .ml-ring { display: none; }
   .app-loader-bar span { animation: ml-bar 3s ease-in-out infinite !important; }
