@@ -125,7 +125,7 @@ function uiCellNum(value) { return `<span class="ui-num">${escapeHtml(String(val
  *   cols: UiCol[], rows: UiRow[], caption: string, minWidth?: number, compact?: boolean,
  *   sort?: { key: string, dir: number }, sortAttr?: string,
  *   empty: { title: string, text: string, clearAttrs?: UiAttrs },
- *   foot: { shown: number, total: number, page: number, pageCount: number, pageAttr: string, note?: string, hidden?: boolean },
+ *   foot: { shown: number, total: number, page: number, pageCount: number, pageAttr: string, note?: string, hidden?: boolean, size?: number, sizeAttr?: string },
  *   after?: string, totals?: string[]
  * }} options
  */
@@ -148,8 +148,84 @@ function uiDataTable({ cols, rows, caption, minWidth = 900, compact = false, sor
     ? `<div class="ui-table-scroll"><table class="ui-table${compact ? " compact" : ""}" style="min-width:${Number(minWidth) || 0}px"><caption class="sr-only">${escapeHtml(caption)}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${totalsRow}</table></div>`
     : `<div class="ui-empty"><strong>${escapeHtml(empty.title)}</strong><span>${escapeHtml(empty.text)}</span>${empty.clearAttrs ? uiButton("Clear filters", empty.clearAttrs, { size: "sm" }) : ""}</div>`;
   const pageText = foot.pageCount > 1 ? ` · page ${foot.page + 1} of ${foot.pageCount}` : "";
-  const footHtml = foot.hidden ? "" : `<div class="ui-foot"><span>Showing ${foot.shown} of ${foot.total}${pageText}${foot.note ? ` · ${escapeHtml(foot.note)}` : ""}</span><div class="ui-pager">${uiButton("Previous", { [foot.pageAttr]: "prev" }, { size: "xs", disabled: foot.page <= 0 })}${uiButton("Next", { [foot.pageAttr]: "next" }, { size: "xs", disabled: foot.page >= foot.pageCount - 1 })}</div></div>`;
+  const footHtml = foot.hidden ? "" : foot.sizeAttr ? uiPager({ total: foot.total, page: foot.page + 1, size: foot.size || uiDefaultPageSize(), attr: foot.pageAttr, sizeAttr: foot.sizeAttr, note: foot.note }) : `<div class="ui-foot"><span>Showing ${foot.shown} of ${foot.total}${pageText}${foot.note ? ` · ${escapeHtml(foot.note)}` : ""}</span><div class="ui-pager">${uiButton("Previous", { [foot.pageAttr]: "prev" }, { size: "xs", disabled: foot.page <= 0 })}${uiButton("Next", { [foot.pageAttr]: "next" }, { size: "xs", disabled: foot.page >= foot.pageCount - 1 })}</div></div>`;
   return `<div class="ui-card ui-table-card">${tableHtml}${footHtml}${after}</div>`;
+}
+
+// ---- Pagination ---------------------------------------------------------------------------
+/** Page sizes the rows-per-page switch offers. */
+const UI_PAGE_SIZES = [10, 25, 50];
+
+/** The signed-in user's "Rows per page" preference (Account settings), else 10. @returns {number} */
+function uiDefaultPageSize() {
+  const pref = Number(/** @type {any} */ (globalThis).medlanePrefs?.rowsPerPage);
+  return UI_PAGE_SIZES.includes(pref) ? pref : 10;
+}
+
+/** A page size from a URL value, falling back to the user's default. @param {unknown} value @returns {number} */
+function uiPageSizeFrom(value) {
+  const size = Number(value);
+  return UI_PAGE_SIZES.includes(size) ? size : uiDefaultPageSize();
+}
+
+/**
+ * Page buttons for a 1-based `page` of `pages`: every page when there are ≤ 7, otherwise
+ * first, last and the current page's neighbours with "…" for the gaps (1 … 4 5 6 … 12).
+ * @param {number} page @param {number} pages @returns {(number | "…")[]}
+ */
+function uiPageNumbers(page, pages) {
+  const total = Math.max(1, Math.floor(pages) || 1);
+  const p = Math.min(Math.max(1, Math.floor(page) || 1), total);
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  /** @type {(number | "…")[]} */
+  const out = [1];
+  // Near either end, show 5 pages on that side so the button count stays at 7.
+  const start = p <= 4 ? 2 : p >= total - 3 ? total - 4 : p - 1;
+  const end = p <= 4 ? 5 : p >= total - 3 ? total - 1 : p + 1;
+  if (start > 2) out.push("…");
+  for (let i = start; i <= end; i++) out.push(i);
+  if (end < total - 1) out.push("…");
+  out.push(total);
+  return out;
+}
+
+/**
+ * Clamped page window for `total` rows: 1-based page, page count and the 1-based from/to range.
+ * @param {number} total @param {number} page @param {number} size
+ */
+function uiPageWindow(total, page, size) {
+  const count = Math.max(0, Math.floor(total) || 0);
+  const per = Math.max(1, Math.floor(size) || 10);
+  const pages = Math.max(1, Math.ceil(count / per));
+  const p = Math.min(Math.max(1, Math.floor(page) || 1), pages);
+  return { page: p, pages, size: per, offset: (p - 1) * per, from: count ? (p - 1) * per + 1 : 0, to: Math.min(count, p * per), total: count };
+}
+
+/**
+ * Full pager: "Showing X–Y of Z", a 10/25/50 rows-per-page switch, Prev / numbered pages / Next.
+ * Clicks go through `data-<attr>` = page number | "prev" | "next" and `data-<sizeAttr>` = size.
+ * @param {{ total: number, page: number, size: number, attr: string, sizeAttr: string, note?: string }} options page is 1-based
+ */
+function uiPager({ total, page, size, attr, sizeAttr, note = "" }) {
+  const w = uiPageWindow(total, page, size);
+  const label = w.total ? `Showing ${w.from}–${w.to} of ${w.total}` : "Nothing to show";
+  const nums = uiPageNumbers(w.page, w.pages).map((n) => n === "…"
+    ? `<span class="ui-pg-gap" aria-hidden="true">…</span>`
+    : `<button type="button" class="ui-pg-num" ${attr}="${n}"${n === w.page ? ` aria-current="page"` : ""} aria-label="Page ${n}">${n}</button>`).join("");
+  const arrow = (/** @type {string} */ dir, /** @type {boolean} */ off, /** @type {string} */ path) => `<button type="button" class="ui-pg-arrow" ${attr}="${dir}" aria-label="${dir === "prev" ? "Previous" : "Next"} page"${off ? " disabled" : ""}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg></button>`;
+  const sizes = UI_PAGE_SIZES.map((n) => `<button type="button" ${sizeAttr}="${n}" aria-pressed="${n === w.size}">${n}</button>`).join("");
+  return `<nav class="ui-pg" aria-label="Pagination"><span class="ui-pg-label">${label}${note ? ` · ${escapeHtml(note)}` : ""}</span><div class="ui-pg-controls"><div class="ui-pg-size"><span>Rows per page</span><div role="group" aria-label="Rows per page">${sizes}</div></div><div class="ui-pg-pages">${arrow("prev", w.page <= 1, "M15 6l-6 6 6 6")}${nums}${arrow("next", w.page >= w.pages, "M9 6l6 6-6 6")}</div></div></nav>`;
+}
+
+/**
+ * Resolves a pager click against a 1-based page: returns the new page, or null when the click
+ * wasn't on this pager. @param {string} value "prev" | "next" | page number @param {number} page @param {number} pages
+ */
+function uiPagerTarget(value, page, pages) {
+  if (value === "prev") return Math.max(1, page - 1);
+  if (value === "next") return Math.min(pages, page + 1);
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, pages) : null;
 }
 
 const UI_CLOSE_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
@@ -259,7 +335,7 @@ function uiDate(value) {
  *   extraFilter?: (row: UiViewRow) => boolean, filtersOn?: boolean, totals?: (rows: UiViewRow[]) => string[]
  * }} UiView
  */
-/** @typedef {{ q: string, sel: string, sort: { key: string, dir: number } | null, page: number, branch: string, scope: string, touched?: boolean }} UiViewState */
+/** @typedef {{ q: string, sel: string, sort: { key: string, dir: number } | null, page: number, branch: string, scope: string, touched?: boolean, size?: number }} UiViewState */
 
 /** @returns {UiViewState} */
 function uiBlankViewState() { return { q: "", sel: "", sort: null, page: 0, branch: "all", scope: "" }; }
@@ -274,6 +350,7 @@ function uiViewStateFromQuery(params) {
     page: Math.max(0, (Number(params.get("page")) || 1) - 1),
     branch: params.get("branch") || "all",
     scope: params.get("status") || "",
+    ...(params.get("size") ? { size: uiPageSizeFrom(params.get("size")) } : {}),
   };
 }
 /** @param {URLSearchParams} params @param {UiViewState} state */
@@ -283,6 +360,7 @@ function uiViewStateToQuery(params, state) {
   if (state.q) params.set("q", state.q);
   if (state.sort) { params.set("sort", state.sort.key); params.set("dir", state.sort.dir === 1 ? "asc" : "desc"); }
   if (state.page > 0) params.set("page", String(state.page + 1));
+  if (state.size && state.size !== uiDefaultPageSize()) params.set("size", String(state.size));
   if (state.sel) params.set("sel", state.sel);
 }
 
@@ -298,8 +376,12 @@ function uiViewRows(view, state) {
   return uiSortRows(filtered, state.sort || view.defaultSort);
 }
 
-/** @param {UiView} view @param {UiViewState} state @param {string} prefix @param {number} [pageSize] */
-function uiViewHtml(view, state, prefix, pageSize = 25) {
+/**
+ * @param {UiView} view @param {UiViewState} state @param {string} prefix @param {number} [pageSize]
+ * @param {{ fullPager?: boolean }} [options] fullPager: numbered pages + 10/25/50 switch, sized by the user's preference
+ */
+function uiViewHtml(view, state, prefix, pageSize = 25, { fullPager = false } = {}) {
+  if (fullPager) pageSize = state.size || uiDefaultPageSize();
   const attr = (/** @type {string} */ name) => `data-${prefix}-${name}`;
   const scope = state.scope || view.defaultScope;
   const branchRows = view.rows.filter((row) => state.branch === "all" || row.branches.includes(state.branch));
@@ -344,7 +426,7 @@ function uiViewHtml(view, state, prefix, pageSize = 25) {
       caption: view.title, minWidth: view.minWidth,
       sort: state.sort || view.defaultSort, sortAttr: attr("sort"),
       empty: filtersOn && view.rows.length ? { title: "Nothing matches these filters", text: "Try another branch or status, or clear the search.", clearAttrs: { [attr("clear")]: "" } } : { title: view.empty[0], text: view.empty[1] },
-      foot: { shown: pageRows.length, total: sorted.length, page: state.page, pageCount, pageAttr: attr("page") },
+      foot: { shown: pageRows.length, total: sorted.length, page: state.page, pageCount, pageAttr: attr("page"), ...(fullPager ? { size: pageSize, sizeAttr: attr("size") } : {}) },
       after: view.after ? view.after(state.page >= pageCount - 1) : "",
       totals: view.totals && sorted.length ? view.totals(sorted) : undefined,
     })}${detail ? `<aside class="ui-card ui-detail" id="${prefix}-detail" aria-label="${escapeHtml(detail.label)}">${uiDetailPanel(detail)}</aside>` : ""}</div>`;
@@ -379,7 +461,12 @@ function uiViewClick(target, prefix, { state, view, render, extraReset }) {
     const current = s.sort || view().defaultSort;
     return change(() => { s.sort = { key, dir: current.key === key ? -current.dir : 1 }; });
   }
-  if ((el = find("page"))) { const next = value(el, "page") === "next"; return change(() => { s.page += next ? 1 : -1; s.touched = true; }, { resetPage: false }); }
+  if ((el = find("page"))) {
+    const raw = value(el, "page");
+    const n = Number(raw);
+    return change(() => { s.page = raw === "next" ? s.page + 1 : raw === "prev" ? s.page - 1 : Number.isInteger(n) && n >= 1 ? n - 1 : s.page; s.touched = true; }, { resetPage: false });
+  }
+  if ((el = find("size"))) { const size = uiPageSizeFrom(value(el, "size")); return change(() => { s.size = size; }); }
   if (find("clear")) return change(() => { s.q = ""; s.branch = "all"; s.scope = ""; extraReset?.(); }, { closeDetail: true });
   if (find("export")) { uiExportView(view(), s); return true; }
   return false;

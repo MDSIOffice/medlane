@@ -490,7 +490,6 @@ document.body.addEventListener("click", (event) => {
   }
   const sortButton = closestEl(event.target, "[data-sort-col]");
   if (sortButton) return sortTable(sortButton);
-  if (!closestEl(event.target, ".notification-menu")) { qs("#notification-popover").hidden = true; qs("#notification-toggle").setAttribute("aria-expanded", "false"); }
   if (!closestEl(event.target, ".user-menu")) { qs("#user-popover").hidden = true; qs("#user-menu-toggle").setAttribute("aria-expanded", "false"); }
   const assistantGoto = closestEl(event.target, "[data-wa-goto]");
   if (assistantGoto) { const [module, tab, scope, sel] = String(assistantGoto.dataset.waGoto || "").split("|"); return workflowGoto(module, tab, scope, sel); }
@@ -647,22 +646,25 @@ document.body.addEventListener("click", (event) => {
     renderNotifications();
   }
   goToFocused(/** @type {string} */ (target.dataset.goSection), target.dataset.focusRecord || "");
-  qs("#notification-popover").hidden = true;
 });
+// Top bar: the bell opens Notifications and the name/avatar opens Account settings (plain links,
+// so middle-click / new tab still work; a normal click stays in the app).
 qs("#notification-toggle").addEventListener("click", (event) => {
-  event.stopPropagation();
-  const popover = qs("#notification-popover");
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button) return;
+  event.preventDefault();
+  showSection("notifications");
+});
+qs("#user-account-link").addEventListener("click", (event) => {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button) return;
+  event.preventDefault();
   qs("#user-popover").hidden = true;
   qs("#user-menu-toggle").setAttribute("aria-expanded", "false");
-  popover.hidden = !popover.hidden;
-  /** @type {AnyEl} */ (event.currentTarget).setAttribute("aria-expanded", String(!popover.hidden));
+  renderUserSettings();
+  showSection("user-settings");
 });
-qs("#view-all-notifications").addEventListener("click", () => { qs("#notification-popover").hidden = true; qs("#notification-toggle").setAttribute("aria-expanded", "false"); showSection("notifications"); });
 qs("#user-menu-toggle").addEventListener("click", (event) => {
   event.stopPropagation();
   const popover = qs("#user-popover");
-  qs("#notification-popover").hidden = true;
-  qs("#notification-toggle").setAttribute("aria-expanded", "false");
   popover.hidden = !popover.hidden;
   /** @type {AnyEl} */ (event.currentTarget).setAttribute("aria-expanded", String(!popover.hidden));
 });
