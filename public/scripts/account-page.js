@@ -199,7 +199,8 @@ function accountPreferencesHtml() {
 }
 
 /** Whether "View my activity" can open anything for this user. */
-function canSeeOwnActivity() { return canViewModule("logs"); }
+/** Everyone can see their own activity (the server limits it to them). */
+function canSeeOwnActivity() { return true; }
 
 function renderUserSettings() {
   const panel = qs("#account-tab-panel");
@@ -383,7 +384,7 @@ async function accountSignOutOthers() {
 
 /** Opens the activity log filtered to the signed-in user (optionally the Sign-ins tab). @param {string} tab */
 function openMyActivity(tab) {
-  openActivityLogFor(String(currentUser?.name || currentUser?.email || ""), tab === "signins" ? "signins" : "activity");
+  openActivityFor(String(currentUser?.name || currentUser?.email || ""), tab === "signins" ? "signins" : "all");
 }
 
 /** Activity log searched for one person, on the given tab. @param {string} user @param {string} tab */

@@ -1514,7 +1514,7 @@ function renderInvoiceComputePreview() {
 // Record-detail pages aren't restorable (they need the record chosen in memory).
 /** @param {string} sectionId */
 function canRestoreSection(sectionId) {
-  return Boolean(qs(`section.section#${CSS.escape(sectionId)}`)) && (effectiveModules().includes(sectionId) || ["notifications", "user-settings", "memos"].includes(sectionId));
+  return Boolean(qs(`section.section#${CSS.escape(sectionId)}`)) && (effectiveModules().includes(sectionId) || ["notifications", "user-settings", "memos", "activity-log"].includes(sectionId));
 }
 
 /** @param {string} sectionId @param {Record<string, any>} [options] */
@@ -4668,6 +4668,7 @@ function sectionQueryString(sectionId) {
   if (sectionId === "logs") return logsQueryString();
   if (sectionId === "user-settings") return accountQueryString();
   if (sectionId === "notifications") return notificationsQueryString();
+  if (sectionId === "activity-log") return activityQueryString();
   if (sectionId === "purchase-history") return clientHistoryQueryString();
   if (sectionId === "reconciliation") return reconQueryString();
   if (sectionId === "masterlists") return masterQueryString();
@@ -12455,6 +12456,7 @@ const sectionRenderers = {
   reconciliation: () => renderReconciliation(),
   users: () => renderUsers(),
   notifications: () => renderNotificationsPage(),
+  "activity-log": () => renderActivityLog(),
   security: renderSecurity,
   "print-templates": renderPrintTemplates,
   backup: renderBackup,

@@ -2,6 +2,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { collectSample, collectLiveDetails, buildWeeklyReport, hasAccessToken } from "./perf-report.js";
 import { resolveNotificationSettings, notificationSettingPatch, preferencesFromRow, preferencePatchColumns, profilePatch, passwordAge, welcomeShowsNow } from "./account.js";
+import { activityRow, activityRowsInOrder, activityQuery, activityPage, activityScope, activityTab, deviceKey, isSignIn as isActivitySignIn, isFailedSignIn, FAILED_SIGNIN_WINDOW_MS, ACTIVITY_TABS } from "./activity.js";
 import { generateNotices, planFanOut, emailsDue, dailySummaryRows, notificationPage, archiveCutoffIso, NOTIFICATION_TABS } from "./notifications.js";
 import { RECON_CHECKS, RECON_AREAS, RECON_INPUT_MODULES, runRecon, dataFromRows, mergeDifferences, getPath, setPath, sameValue, saleDocType, saleNo } from "./recon.js";
 
@@ -241,6 +242,9 @@ async function supabaseFetchOnce(env, path, init = {}) {
 async function supabaseFetch(env, path, init = {}) {
   requireEnv(env, ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
   const result = await supabaseFetchWithRetry(env, path, init);
+  // Audit entries are also appended to the append-only activity_log (whichever code wrote them).
+  const auditRows = auditRowsInWrite(path, init);
+  if (auditRows.length) await mirrorAuditRows(env, auditRows);
   const modules = liveModulesForWrite(path, init);
   if (modules.length) {
     // Someone just saved: the next full load must read fresh data, not a shared snapshot.
@@ -458,7 +462,7 @@ function auditLogRow(stateKey, profile, userId, context, { action, module, recor
     data: {
       date: manilaTimestamp(), user: profile?.name || profile?.email || "System User", role: profile?.role || "Unknown", action, module, record,
       ...(changes?.length ? { changes: changes.slice(0, 60) } : {}),
-      device: context?.device, browser: context?.browser, ipAddress: context?.ipAddress, userAgent: context?.userAgent, serverCapturedAt: context?.serverCapturedAt,
+      device: context?.device, browser: context?.browser, location: context?.location, ipAddress: context?.ipAddress, userAgent: context?.userAgent, serverCapturedAt: context?.serverCapturedAt,
     },
   };
 }
@@ -2096,6 +2100,117 @@ function noticeEmailHtml(title, intro, rows) {
   return brandedEmailHtml({ title, intro, bodyHtml: `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">${rows.map(noticeEmailItem).join("")}</table><p style="color:#6b7f92;font-size:12px;margin-top:16px;">Choose which alerts you get by email in <a href="${manage}" style="color:#0a6fb5;">Account settings → Notifications</a>. Security alerts are always sent.</p>` });
 }
 
+// ---- User activity log (activity_log, append-only, 18 Nov 2026) ---------------------------------
+// Every audit entry written to app_records "logs" (whichever code path wrote it) is appended to
+// activity_log from supabaseFetch below, classified by src/activity.js. Older entries are copied in
+// once by the scheduled job (runActivityBackfill). Inserts only ever use ignore-duplicates, never a
+// merge: the database rejects any UPDATE/DELETE on this table.
+const ACTIVITY_BACKFILL_KEY = "activity-backfill";
+/** Per-isolate: whether the one-time copy has finished (so Audit Logs can read activity_log). */
+let activityBackfillDoneAt = 0;
+let activityBackfillCheckedAt = 0;
+
+/** The audit rows in an app_records write, if any. @param {string} path @param {any} init */
+function auditRowsInWrite(path, init) {
+  if (!String(path).startsWith("/rest/v1/app_records") || String(init?.method || "GET").toUpperCase() !== "POST") return [];
+  try {
+    const body = JSON.parse(init.body || "[]");
+    return (Array.isArray(body) ? body : [body]).filter((row) => row?.module_name === "logs" && row.record_key && row.data && typeof row.data === "object");
+  } catch { return []; }
+}
+
+/** History the flags need for sign-ins: has this person used this device before; recent failures. @param {WorkerEnv} env @param {any} row */
+async function activityFlagContext(env, row) {
+  const entry = row.data || {};
+  if (!isActivitySignIn(entry)) return {};
+  const base = `/rest/v1/activity_log?state_key=eq.${encodeURIComponent(row.state_key)}&kind=eq.signin`;
+  if (isFailedSignIn(entry)) {
+    const email = String(entry.email || entry.record || "").toLowerCase();
+    if (!email) return {};
+    const since = new Date(Date.now() - FAILED_SIGNIN_WINDOW_MS).toISOString();
+    const rows = await supabaseFetchWithRetry(env, `${base}&email=eq.${encodeURIComponent(email)}&action=eq.${encodeURIComponent("Failed sign-in")}&created_at=gte.${encodeURIComponent(since)}&select=id&limit=50`, {});
+    return { recentFailures: (Array.isArray(rows) ? rows.length : 0) + 1 };
+  }
+  if (!row.updated_by) return {};
+  const rows = await supabaseFetchWithRetry(env, `${base}&user_id=eq.${encodeURIComponent(row.updated_by)}&action=neq.${encodeURIComponent("Failed sign-in")}&select=device,browser&order=created_at.desc&limit=200`, {});
+  if (!Array.isArray(rows) || !rows.length) return { knownDevice: null };
+  const here = deviceKey(entry);
+  return { knownDevice: rows.some((/** @type {any} */ seen) => deviceKey(seen) === here) };
+}
+
+/** Appends activity_log rows; duplicates (same source entry) are skipped, never overwritten. @param {WorkerEnv} env @param {any[]} rows */
+async function appendActivityRows(env, rows) {
+  for (let index = 0; index < rows.length; index += 500) {
+    await supabaseFetchWithRetry(env, "/rest/v1/activity_log?on_conflict=source_key", {
+      method: "POST", headers: { prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify(rows.slice(index, index + 500)),
+    });
+  }
+}
+
+/** Mirrors audit entries just written into activity_log. Never fails the write it follows. @param {WorkerEnv} env @param {any[]} sources */
+async function mirrorAuditRows(env, sources) {
+  try {
+    const rows = [];
+    for (const source of sources) rows.push(activityRow(source, await activityFlagContext(env, source).catch(() => ({}))));
+    await appendActivityRows(env, rows);
+  } catch (/** @type {any} */ error) {
+    // Before the 2026-11-18 migration the table doesn't exist; the one-time copy catches up later.
+    console.warn(JSON.stringify({ message: "activity_log append skipped", error: error?.message }));
+  }
+}
+
+/** One-time copy of every older audit entry, oldest first so the flags can be worked out. @param {WorkerEnv} env */
+async function runActivityBackfill(env) {
+  const stateKey = appStateKey(env);
+  const sources = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&select=record_key,state_key,data,updated_by,updated_at&order=updated_at.asc`);
+  await appendActivityRows(env, activityRowsInOrder(sources));
+  const done = { at: new Date().toISOString(), copied: sources.length };
+  await saveMonitoringState(env, ACTIVITY_BACKFILL_KEY, done);
+  activityBackfillDoneAt = Date.now();
+  return done;
+}
+
+/** True once the copy has run (cached for 5 minutes per isolate). @param {WorkerEnv} env */
+async function activityLogReady(env) {
+  if (activityBackfillDoneAt) return true;
+  if (Date.now() - activityBackfillCheckedAt < 5 * 60 * 1000) return false;
+  activityBackfillCheckedAt = Date.now();
+  const state = await monitoringState(env, ACTIVITY_BACKFILL_KEY).catch(() => ({}));
+  if (state?.at) activityBackfillDoneAt = Date.now();
+  return Boolean(state?.at);
+}
+
+/**
+ * Audit rows for the Audit Logs page, shaped { data, updated_at }: from activity_log once it holds
+ * everything, else from app_records as before. @param {WorkerEnv} env
+ * @param {{ gte: string, lt?: string, limit?: number, all?: boolean }} range
+ */
+async function auditLogRows(env, { gte, lt, limit, all = false }) {
+  const stateKey = encodeURIComponent(appStateKey(env));
+  if (await activityLogReady(env)) {
+    let path = `/rest/v1/activity_log?state_key=eq.${stateKey}&created_at=gte.${encodeURIComponent(gte)}${lt ? `&created_at=lt.${encodeURIComponent(lt)}` : ""}&select=data,created_at&order=created_at.desc,id.desc`;
+    if (!all) path += `&limit=${limit || 200}`;
+    const rows = all ? await supabaseFetchAll(env, path) : await supabaseFetch(env, path);
+    return rows.map((/** @type {any} */ row) => ({ data: row.data, updated_at: row.created_at }));
+  }
+  let path = `/rest/v1/app_records?state_key=eq.${stateKey}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(gte)}${lt ? `&updated_at=lt.${encodeURIComponent(lt)}` : ""}&select=data,updated_at&order=updated_at.desc`;
+  if (!all) path += `&limit=${limit || 200}`;
+  return all ? supabaseFetchAll(env, path) : supabaseFetch(env, path);
+}
+
+/** Midnight today in Manila, as an ISO instant. @param {Date} [now] */
+function manilaMidnightIso(now = new Date()) {
+  return new Date(`${now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })}T00:00:00+08:00`).toISOString();
+}
+
+/** Row count for an activity_log query (one row fetched). @param {WorkerEnv} env @param {string} query */
+async function activityCount(env, query) {
+  const q = new URLSearchParams(query);
+  q.set("select", "id"); q.set("limit", "1"); q.delete("offset"); q.delete("order");
+  const { total } = await supabaseFetchWithTotal(env, `/rest/v1/activity_log?${q}`, {});
+  return total ?? 0;
+}
+
 /** @param {any[]} rows @returns {[string, any[]][]} */
 function groupRowsByUser(rows) {
   /** @type {Map<string, any[]>} */
@@ -3344,7 +3459,7 @@ async function recordSignInEvent(env, request, { ok, email, profile, userId }) {
     record: String(email || "").slice(0, 200),
     event: ok ? "signin" : "signin-failed",
     email: String(email || "").slice(0, 200),
-    device: context.device, browser: context.browser, ipAddress: context.ipAddress, userAgent: context.userAgent, serverCapturedAt: context.serverCapturedAt,
+    device: context.device, browser: context.browser, location: context.location, ipAddress: context.ipAddress, userAgent: context.userAgent, serverCapturedAt: context.serverCapturedAt,
   };
   await supabaseFetch(env, "/rest/v1/app_records", {
     method: "POST",
@@ -3355,11 +3470,10 @@ async function recordSignInEvent(env, request, { ok, email, profile, userId }) {
 
 /** Counts behind the Audit Logs overview for the last `days` days (plus the same span before, for comparison). @param {WorkerEnv} env @param {number} days */
 async function auditSummary(env, days) {
-  const stateKey = appStateKey(env);
   const now = Date.now();
   const since = new Date(now - days * 86400000).toISOString();
   const prevSince = new Date(now - 2 * days * 86400000).toISOString();
-  const rows = await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(prevSince)}&select=data,updated_at&order=updated_at.desc`);
+  const rows = await auditLogRows(env, { gte: prevSince, all: true });
   const today = manilaDay(now);
   /** @type {Record<string, number>} */ const byDay = {};
   /** @type {Record<string, number>} */ const byModule = {};
@@ -3404,13 +3518,16 @@ async function auditSummary(env, days) {
 /** @param {Request} request */
 function auditContextForRequest(request) {
   const userAgent = request.headers.get("user-agent") || "";
-  return { device: deviceName(userAgent), browser: browserName(userAgent), ipAddress: clientIp(request), userAgent, serverCapturedAt: new Date().toISOString() };
+  // Cloudflare's rough location for the connecting IP ("Makati City, Metro Manila").
+  const cf = /** @type {any} */ (request).cf || {};
+  const location = [cf.city, cf.region].filter(Boolean).join(", ") || (cf.country ? String(cf.country) : "");
+  return { device: deviceName(userAgent), browser: browserName(userAgent), location, ipAddress: clientIp(request), userAgent, serverCapturedAt: new Date().toISOString() };
 }
 
 /** @param {any} entry @param {any} auditContext */
 function enrichAuditLogEntry(entry, auditContext) {
   if (!entry || typeof entry !== "object") return entry;
-  return { ...entry, device: auditContext.device, browser: auditContext.browser, ipAddress: auditContext.ipAddress, userAgent: auditContext.userAgent, serverCapturedAt: entry.serverCapturedAt || auditContext.serverCapturedAt };
+  return { ...entry, device: auditContext.device, browser: auditContext.browser, location: auditContext.location, ipAddress: auditContext.ipAddress, userAgent: auditContext.userAgent, serverCapturedAt: entry.serverCapturedAt || auditContext.serverCapturedAt };
 }
 
 /** @param {any} data @param {string} userId @param {string} stateKey @param {any} [allowedKeys] @param {any} [auditContext] */
@@ -3524,6 +3641,7 @@ async function writeAuditTrace(env, stateKey, { actor, role, action, module, rec
     ...(Array.isArray(changes) && changes.length ? { changes } : {}),
     device: context?.device,
     browser: context?.browser,
+    location: context?.location,
     ipAddress: context?.ipAddress,
     userAgent: context?.userAgent,
     serverCapturedAt: context?.serverCapturedAt,
@@ -5093,6 +5211,9 @@ async function runFiveMinuteScheduledTasks(event, env) {
     // ticks :00 :10 :20 :30 :40 :50 → digest lane; ticks :05 :15 :25 :35 :45 :55 → backup lane
     tasks.push(runNextPendingAutomationJob(env, Number(scheduled.minute) % 10 === 0 ? digestJobs : backupJobs));
   }
+  // One-time copy of older audit entries into activity_log; retried each tick until the
+  // migration has run and the copy succeeds, then never again.
+  if (!(await activityLogReady(env))) tasks.push(runOncePerPeriod(env, "activity-backfill", "v1", () => runActivityBackfill(env)).catch((error) => console.error(JSON.stringify({ message: "Activity backfill failed", error: error.message }))));
   // Notifications: standing alerts generated and fanned out every 15 minutes (off the :00/:15/:30/:45
   // board-monitor ticks and out of the 18:00 digest hour), emails sent every tick (one per person,
   // quiet hours respected), the 07:00 daily summary, and the 90-day archive pruned at 03:20.
@@ -6076,6 +6197,7 @@ export default {
           record: record || "",
           device: context.device,
           browser: context.browser,
+          location: context.location,
           ipAddress: context.ipAddress,
           userAgent: context.userAgent,
           serverCapturedAt: context.serverCapturedAt,
@@ -6096,6 +6218,43 @@ export default {
         return json({ html: snapshot.html, subject: snapshot.meta.subject || "", role: snapshot.meta.role || "", periodLabel: snapshot.meta.periodLabel || "", createdAt: snapshot.meta.createdAt || "" });
       }
 
+      // ---- User activity log: everyone may open it; the server decides whose entries they see ----
+      if (url.pathname === "/api/activity" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        const stateKey = appStateKey(env);
+        const scope = activityScope(profile);
+        const tab = activityTab(url.searchParams.get("tab") || "all");
+        const q = url.searchParams.get("q") || "";
+        // Filtering by one person is for those who can see everyone; others only ever get their own.
+        const user = scope.all ? (url.searchParams.get("user") || "").trim() : "";
+        const options = { stateKey, profile, q, user };
+        const { query, page, size } = activityQuery({ ...options, tab, page: Number(url.searchParams.get("page") || 1), size: Number(url.searchParams.get("size") || 25) });
+        const today = manilaMidnightIso();
+        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+        const countFor = (/** @type {string} */ key, /** @type {string} */ since = "") => activityCount(env, activityQuery({ ...options, tab: key, since }).query);
+        const scoped = (/** @type {Record<string, string>} */ extra) => { const p = new URLSearchParams(activityQuery({ stateKey, profile, since: today }).query); Object.entries(extra).forEach(([k, v]) => p.set(k, v)); return p.toString(); };
+        try {
+          const [{ payload, total }, ...counts] = await Promise.all([
+            supabaseFetchWithTotal(env, `/rest/v1/activity_log?${query}`, {}),
+            ...ACTIVITY_TABS.map((key) => countFor(key)),
+            activityCount(env, scoped({ kind: "neq.signin" })),
+            activityCount(env, scoped({ kind: "eq.signin", action: "neq.Failed sign-in" })),
+            countFor("flagged", weekAgo),
+          ]);
+          const tabCounts = Object.fromEntries(ACTIVITY_TABS.map((key, index) => [key, counts[index]]));
+          const [actionsToday, signInsToday, flagged7d] = counts.slice(ACTIVITY_TABS.length);
+          return json({ ...activityPage(Array.isArray(payload) ? payload : [], total, { page, size }), tab, counts: tabCounts, stats: { actionsToday, signInsToday, flagged7d }, scope: { all: scope.all, readOnly: scope.readOnly, user } });
+        } catch (/** @type {any} */ error) {
+          if (/activity_log/i.test(String(error?.message || ""))) return json({ error: "The activity log isn't set up yet (run the 2026-11-18 activity-log migration)." }, { status: 503 });
+          throw error;
+        }
+      }
+      if (url.pathname === "/api/activity/backfill" && request.method === "POST") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (profile.role !== "Superadmin") return json({ error: "Only Superadmin can copy older entries into the activity log" }, { status: 403 });
+        return json({ ok: true, ...(await runActivityBackfill(env)) });
+      }
+
       if (url.pathname === "/api/logs/summary" && request.method === "GET") {
         const { profile } = await authenticatedProfile(request, env);
         if (!["Superadmin", "CEO"].includes(profile.role) && (!profile.customPermissions?.view?.includes("logs") || (ROLE_BLOCKED_MODULES[profile.role] || []).includes("logs"))) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
@@ -6106,7 +6265,6 @@ export default {
       if (url.pathname === "/api/logs" && request.method === "GET") {
         const { profile } = await authenticatedProfile(request, env);
         if (!["Superadmin", "CEO"].includes(profile.role) && (!profile.customPermissions?.view?.includes("logs") || (ROLE_BLOCKED_MODULES[profile.role] || []).includes("logs"))) return json({ error: "You do not have permission to view audit logs" }, { status: 403 });
-        const stateKey = appStateKey(env);
         const now = new Date();
         const dateFrom = url.searchParams.get("dateFrom") || new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
         const dateTo = url.searchParams.get("dateTo") || now.toISOString();
@@ -6130,9 +6288,7 @@ export default {
         let exhausted = false;
         for (let iteration = 0; iteration < 10 && entries.length < limit; iteration++) {
           const batchSize = limit * 4;
-          let query = `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.logs&updated_at=gte.${encodeURIComponent(dateFrom)}&updated_at=lt.${encodeURIComponent(cursor)}`;
-          query += `&select=data,updated_at&order=updated_at.desc&limit=${batchSize}`;
-          const rows = await supabaseFetch(env, query);
+          const rows = await auditLogRows(env, { gte: dateFrom, lt: cursor, limit: batchSize });
           if (!rows.length) { exhausted = true; break; }
           for (const row of rows) {
             const entry = { ...row.data, updatedAt: row.updated_at };

@@ -176,6 +176,59 @@ create index if not exists user_notifications_user_created on user_notifications
 create index if not exists user_notifications_unread on user_notifications (user_id) where read_at is null and in_app;
 create index if not exists user_notifications_email_due on user_notifications (email_status) where email_status in ('pending', 'held');
 
+-- Append-only activity log (see docs/migrations/2026-11-18-activity-log.sql).
+create table if not exists activity_log (
+  id bigint generated always as identity primary key,
+  source_key text not null unique,            -- the app_records "logs" record_key it came from
+  state_key text not null,
+  created_at timestamptz not null,
+  inserted_at timestamptz not null default now(),
+  user_id uuid,                               -- no foreign key: history outlives deleted accounts
+  actor text not null default '',
+  role text not null default '',
+  email text not null default '',
+  action text not null default '',
+  module text not null default '',
+  record text not null default '',
+  kind text not null check (kind in ('signin', 'created', 'edited', 'approved', 'voided', 'stock', 'exported', 'access', 'other')),
+  flag_reason text,
+  device text not null default '',
+  browser text not null default '',
+  location text not null default '',
+  ip_address text not null default '',
+  data jsonb not null default '{}'::jsonb
+);
+
+create index if not exists activity_log_state_created on activity_log (state_key, created_at desc, id desc);
+create index if not exists activity_log_user_created on activity_log (user_id, created_at desc);
+create index if not exists activity_log_kind_created on activity_log (kind, created_at desc);
+create index if not exists activity_log_flagged on activity_log (created_at desc) where flag_reason is not null;
+create index if not exists activity_log_signin_email on activity_log (email, created_at desc) where kind = 'signin';
+
+create or replace function activity_log_is_append_only() returns trigger
+language plpgsql as $$
+begin
+  raise exception 'activity_log is append-only: % is not allowed', tg_op using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists activity_log_no_update_delete on activity_log;
+create trigger activity_log_no_update_delete before update or delete on activity_log
+  for each row execute function activity_log_is_append_only();
+drop trigger if exists activity_log_no_truncate on activity_log;
+create trigger activity_log_no_truncate before truncate on activity_log
+  for each statement execute function activity_log_is_append_only();
+
+alter table activity_log enable row level security;
+drop policy if exists "Users can read own activity" on activity_log;
+create policy "Users can read own activity" on activity_log for select using ((select auth.uid()) = user_id);
+
+revoke all on table activity_log from public, anon, authenticated, service_role;
+grant select, insert on table activity_log to service_role;
+grant select on table activity_log to authenticated;
+grant usage, select on sequence activity_log_id_seq to service_role;
+
+
 create table if not exists backup_runs (
   id uuid primary key default gen_random_uuid(),
   state_key text not null default 'production',

@@ -747,3 +747,48 @@ test("the bell opens Notifications", async ({ page }) => {
   await expect(page.locator("#notifications.active")).toBeVisible();
   await expect(page.locator("#ntf-panel .ntf-row").first()).toBeVisible();
 });
+
+test("Activity log: Superadmin sees everyone, tabs filter, detail shows before → after, Filter by user", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=users");
+  await page.locator("#users").getByRole("button", { name: "Activity log" }).click();
+  await expect(page.locator("#activity-log.active")).toBeVisible();
+  const panel = page.locator("#act-panel");
+  await expect(panel.locator("tbody tr").first()).toBeVisible();
+  for (const name of ["All activity", "Changes", "Approvals", "Sign-ins", "Exports & access", "Flagged"]) await expect(page.locator("#act-tabs").getByRole("tab", { name: new RegExp(`^${name}`) })).toBeVisible();
+  await expect(page.locator("#act-stats")).toContainText("Flagged · last 7 days");
+  // Flagged: the new-device sign-in, the void, the reason-less stock change, the client export.
+  await page.locator("#act-tabs").getByRole("tab", { name: /^Flagged/ }).click();
+  await expect(page).toHaveURL(/tab=flagged/);
+  await expect(panel).toContainText("Exported clients CSV");
+  await expect(panel).toContainText("Voided invoice");
+  // Detail: before → after, then narrow to one person.
+  await page.locator("#act-tabs").getByRole("tab", { name: /^All activity/ }).click();
+  await panel.getByRole("row").filter({ hasText: "OR-77310" }).locator("[data-act-select]").click();
+  const detail = page.locator("#activity-detail");
+  await expect(detail).toContainText("₱48,000.00");
+  await expect(detail).toContainText("₱84,000.00");
+  await detail.getByRole("button", { name: /^Filter by Joy/ }).click();
+  await expect(page).toHaveURL(/user=Joy/);
+  await expect(panel.locator("tbody tr")).not.toHaveCount(0);
+  for (const name of await panel.locator("tbody tr td:nth-child(2) .ui-strong").allTextContents()) expect(name).toBe("Joy Santos");
+  // Search runs on the server.
+  await panel.getByRole("button", { name: /Stop filtering/ }).click();
+  await page.fill("#act-search", "SI-0004812");
+  await expect(panel.locator("tbody tr")).toHaveCount(1);
+  expect(problems).toEqual([]);
+});
+
+test("Activity log: other roles see only their own, from Account settings → View my activity", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page, "sales@medlane.test");
+  await page.goto("/dashboard?section=user-settings");
+  await page.getByRole("button", { name: "View my activity" }).click();
+  await expect(page.locator("#activity-log.active")).toBeVisible();
+  const panel = page.locator("#act-panel");
+  await expect(panel.locator("tbody tr").first()).toBeVisible();
+  for (const name of await panel.locator("tbody tr td:nth-child(2) .ui-strong").allTextContents()) expect(name).toBe("Ana Cruz");
+  await expect(page.locator("#act-desc")).toContainText("Your own");
+  expect(problems).toEqual([]);
+});

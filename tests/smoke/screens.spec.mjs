@@ -6,6 +6,7 @@ const OUT = new URL("../../screens/implementation/", import.meta.url).pathname;
 const PAGES = [
   { section: "user-settings", tabs: ["profile", "security", "notifications", "preferences"], name: "account" },
   { section: "notifications", tabs: ["all", "unread", "approvals", "stock", "money", "service", "security"], name: "notifications" },
+  { section: "activity-log", tabs: ["all", "changes", "approvals", "signins", "exports", "flagged"], name: "activity" },
 ];
 
 test.skip(!process.env.SCREENS, "Set SCREENS=1 to capture screenshots");
@@ -33,6 +34,7 @@ for (const theme of ["light", "dark"]) {
         for (const tab of tabs) {
           await page.goto(`/dashboard?section=${section}&tab=${tab}`);
           await expect(page.locator(`#${section}.active`)).toBeVisible();
+          await expect(page.locator("#loading-overlay")).toBeHidden();
           await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
           await page.waitForTimeout(400);
           await page.screenshot({ path: `${OUT}${name}-${tab}-${theme}-${width}.png`, fullPage: true });

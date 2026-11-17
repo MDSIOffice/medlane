@@ -644,6 +644,8 @@ document.body.addEventListener("click", (event) => {
 // Top bar: the bell opens Notifications and the name/avatar opens Account settings (plain links,
 // so middle-click / new tab still work; a normal click stays in the app).
 qs("#notifications").addEventListener("click", handleNotificationsClick);
+qs("#activity-log").addEventListener("click", handleActivityClick);
+qs("#activity-log").addEventListener("input", handleActivityInput);
 qs("#notification-toggle").addEventListener("click", (event) => {
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.button) return;
   event.preventDefault();

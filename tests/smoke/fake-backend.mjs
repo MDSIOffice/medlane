@@ -8,6 +8,7 @@ import { gzipSync } from "node:zlib";
 import { seedData } from "./seed-data.mjs";
 import { RECON_AREAS, RECON_CHECKS, mergeDifferences, runRecon } from "../../src/recon.js";
 import { generateNotices, planFanOut, notificationPage, rowInTab } from "../../src/notifications.js";
+import { activityRowsInOrder, activityScope, activityPage as activityPageOf, activityTab, activitySearchTerm, ACTIVITY_TABS, ACTIVITY_TAB_KINDS } from "../../src/activity.js";
 import { preferencesFromRow, preferencePatchColumns, resolveNotificationSettings, notificationSettingPatch, profilePatch, passwordAge } from "../../src/account.js";
 
 const port = Number(process.argv[2] || 8799);
@@ -104,8 +105,60 @@ const noticesFor = (role) => {
   return (noticeRows[role] = plan.inserts.map((row, i) => ({ ...row, created_at: row.notice_id.startsWith("GEN-") ? ago(i * 7 + 0.2) : row.created_at, read_at: i % 3 === 2 ? ago(0) : null })));
 };
 
+// Activity log: a week of realistic entries run through the real classifier (src/activity.js).
+let activityRows = null;
+const activityAll = () => {
+  if (activityRows) return activityRows;
+  const people = [["Fake Superadmin", "Superadmin", "superadmin"], ["Joy Santos", "Accounting", "accounting"], ["Ana Cruz", "Sales", "sales"], ["Ramon Dela Cruz", "Logistics", "logistics"]];
+  const h = (n) => new Date(Date.now() - n * 3600e3).toISOString();
+  const steps = [
+    [0, 0.2, "Signed in", "Authentication", "superadmin@medlane.test", { event: "signin", browser: "Chrome", device: "macOS" }],
+    [1, 0.5, "Approved payable", "Payables", "PAY-2026-0142", { changes: [{ field: "Status", from: "For Approval", to: "Approved" }] }],
+    [2, 0.8, "Created sales invoice", "Invoicing", "SI-0004812", {}],
+    [2, 1.1, "Exported clients CSV", "Masterlists", "Clients (214 rows)", {}],
+    [3, 1.6, "Stock adjusted", "Inventory", "MDX-CRP-500 · LOT 24B117", { changes: [{ field: "Qty", from: "40", to: "36" }] }],
+    [1, 2.4, "Edited collection", "Collections", "OR-77310", { changes: [{ field: "Amount", from: "₱48,000.00", to: "₱84,000.00" }, { field: "Bank", from: "BDO", to: "Metrobank" }] }],
+    [2, 3.2, "Signed in", "Authentication", "sales@medlane.test", { event: "signin", browser: "Safari", device: "iPhone" }],
+    [0, 5, "Changed role", "Users", "logistics@medlane.test", { changes: [{ field: "Role", from: "Logistics", to: "Admin" }] }],
+    [1, 7, "Voided invoice", "Invoicing", "SI-0004790", {}],
+    [3, 20, "Received transfer", "Inventory", "TR-0311 · Naga", {}],
+    [2, 26, "Signed in", "Authentication", "sales@medlane.test", { event: "signin", browser: "Chrome", device: "Windows" }],
+    [1, 30, "Downloaded report", "Reports", "Collections & AR", {}],
+    [0, 49, "Edited client", "Masterlists", "St. Luke's Medical Center", { changes: [{ field: "Terms", from: "30", to: "45" }] }],
+  ];
+  const sources = steps.slice().reverse().map(([who, hours, action, module, record, extra], i) => {
+    const [user, role, key] = people[who];
+    return { record_key: `logs-${i}`, state_key: "production", updated_by: key, updated_at: h(hours), data: { user, role, action, module, record, browser: ["Chrome", "Edge", "Safari", "Chrome"][who], device: ["macOS", "Windows", "macOS", "Android"][who], location: ["Makati City, Metro Manila", "Makati City, Metro Manila", "Naga, Bicol", "Cebu City, Central Visayas"][who], ipAddress: "203.177.12.4", serverCapturedAt: h(hours), ...extra } };
+  });
+  // Ana's earlier sign-in history, so the iPhone one reads as a new device.
+  sources.unshift({ record_key: "logs-old", state_key: "production", updated_by: "sales", updated_at: h(60), data: { user: "Ana Cruz", role: "Sales", action: "Signed in", event: "signin", module: "Authentication", record: "sales@medlane.test", browser: "Chrome", device: "Windows", serverCapturedAt: h(60) } });
+  activityRows = activityRowsInOrder(sources).map((row, i) => ({ ...row, id: i + 1 }));
+  return activityRows;
+};
+const activityFor = (role, url) => {
+  const scope = activityScope({ id: role.toLowerCase(), role });
+  const tab = activityTab(url.searchParams.get("tab") || "all");
+  const user = scope.all ? url.searchParams.get("user") || "" : "";
+  const term = activitySearchTerm(url.searchParams.get("q") || "").toLowerCase();
+  const mine = activityAll().filter((row) => scope.all || row.user_id === role.toLowerCase()).filter((row) => !user || row.actor === user)
+    .filter((row) => !term || [row.actor, row.action, row.record, row.module].some((v) => String(v).toLowerCase().includes(term)));
+  const inTab = (row, key) => key === "all" || (key === "flagged" ? Boolean(row.flag_reason) : ACTIVITY_TAB_KINDS[key].includes(row.kind));
+  const rows = mine.filter((row) => inTab(row, tab)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const size = [10, 25, 50].includes(Number(url.searchParams.get("size"))) ? Number(url.searchParams.get("size")) : 25;
+  const pages = Math.max(1, Math.ceil(rows.length / size));
+  const page = Math.min(Math.max(1, Number(url.searchParams.get("page")) || 1), pages);
+  const today = new Date(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }) + "T00:00:00+08:00").toISOString();
+  return {
+    ...activityPageOf(rows.slice((page - 1) * size, page * size), rows.length, { page, size }), tab,
+    counts: Object.fromEntries(ACTIVITY_TABS.map((key) => [key, mine.filter((row) => inTab(row, key)).length])),
+    stats: { actionsToday: mine.filter((r) => r.created_at >= today && r.kind !== "signin").length, signInsToday: mine.filter((r) => r.created_at >= today && r.kind === "signin").length, flagged7d: mine.filter((r) => r.flag_reason).length },
+    scope: { ...scope, user },
+  };
+};
+
 const authedRoutes = {
   ...accountRoutes,
+  "GET /api/activity": (role, _body, url) => activityFor(role, url),
   "GET /api/notifications": (role, _body, url) => notificationPage(noticesFor(role), { tab: url.searchParams.get("tab") || "all", page: Number(url.searchParams.get("page") || 1), size: Number(url.searchParams.get("size") || 10) }),
   "GET /api/notifications/unread": (role) => ({ unread: noticesFor(role).filter((row) => row.in_app && !row.read_at).length }),
   "POST /api/notifications/read": (role, body) => {

@@ -381,7 +381,7 @@ function renderUsers() {
   const counts = /** @type {Record<string, number | undefined>} */ ({ people: usersAccounts().filter((user) => usersState(user) === "active").length, invites: usersInvites().filter((user) => usersState(user) !== "cancelled").length, roles: USER_ROLES.length });
   qs("#users-tabs").innerHTML = uiModuleTabs({ tabs: USER_TABS.map((key) => ({ key, label: USER_TAB_LABELS[key], count: counts[key] })), active: usersPageTab, attr: "data-users-tab" });
   const header = qs("#users-actions");
-  if (header) header.innerHTML = (canViewModule("logs") ? uiButton("Activity log", { "data-go-section": "logs" }) : "") + (canManageUsers() ? uiButton("Invite user", { "data-users-invite": "" }, { primary: true }) : "");
+  if (header) header.innerHTML = uiButton("Activity log", { "data-go-section": "activity-log" }) + (canManageUsers() ? uiButton("Invite user", { "data-users-invite": "" }, { primary: true }) : "");
   renderModuleAssistant("users");
   uiRender(panel, uiViewHtml(usersTabModel(usersPageTab), usersView, "users"));
   syncModuleUrl("users", usersQueryString());

@@ -311,6 +311,7 @@ if (currentUser?.role && accounts[currentUser.role] && !currentUser.id && !curre
 const sectionMeta = {
   notifications: ["Notifications", "Review system alerts for credit limits, stock transfers, collections, and inventory risks."],
   "user-settings": ["Account settings", "Your profile, sign-in security, notifications and preferences."],
+  "activity-log": ["User activity log", "Sign-ins, changes, approvals and exports."],
   "client-invoices": ["Client Invoice Timeline", "Review every invoice for one client using an order-status timeline."],
   "report-detail": ["Report Detail", "Focused report view with graphs, source records, and connected module actions."],
   "product-issue-detail": ["Support Report Detail", "Full status history and turnaround timeline for this technical support report."],
