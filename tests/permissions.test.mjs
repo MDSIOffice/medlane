@@ -99,7 +99,7 @@ describe("module access", () => {
     for (const role of ["Accounting", "Logistics", "Engineering", "Product Specialist", "HR"]) assert.ok(!moduleListsFor(role, []).view.includes("item-forecast"), `${role} has no Item Forecast`);
     for (const role of ["Superadmin", "CEO", "Admin", "Sales"]) assert.ok(moduleListsFor(role, []).view.includes("item-forecast"), `${role} has Item Forecast`);
     const admin = moduleListsFor("Admin", []);
-    assert.ok(admin.view.includes("imports") && admin.view.includes("settings"));
+    assert.ok(admin.view.includes("imports") && !admin.view.includes("settings"));
     assert.ok(!admin.view.includes("users") && !admin.view.includes("backup"));
     for (const role of ["Logistics", "Engineering", "Product Specialist"]) {
       for (const module of ["reports", "reconciliation", "analytics", "item-forecast"]) assert.ok(!moduleListsFor(role, []).view.includes(module), `${role} has no ${module}`);

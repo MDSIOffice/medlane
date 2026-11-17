@@ -1567,96 +1567,13 @@ function renderUserSettings() {
   qs("#settings-permissions-panel").innerHTML = "";
 }
 
-function renderPlatformSettings() {
-  const lockedBranches = new Set(platformBranches().filter((branch) => branchUsageReasons(branch).length));
+/** Fills Invoicing's "Approved-by names" form from the stored names. */
+function renderInvoiceApprovalNames() {
   const approvals = invoiceApprovals();
   if (qs("#approved-si")) qs("#approved-si").value = approvals.SI || "ECTOSOC";
   if (qs("#approved-ts")) qs("#approved-ts").value = approvals.TS || "ECTOSOC";
   if (qs("#approved-dr")) qs("#approved-dr").value = approvals.DR || "ECTOSOC";
   if (qs("#invoice-approval-form")) qs("#invoice-approval-form").dataset.focusRecord = "Invoice approvals";
-  if (qs("#dev-settings-panel")) qs("#dev-settings-panel").hidden = !isDevEnvironment();
-  if (qs("#platform-branch-list")) qs("#platform-branch-list").innerHTML = platformBranches().map((branch) => `<div class="platform-area-chip" data-focus-record="${escapeHtml(branch)}" data-focus-text="${escapeHtml(`${branch} ${branchAddresses()[branch] || "No address set"}`)}"><span>${escapeHtml(branch)}<small>${escapeHtml(branchAddresses()[branch] || "No address set")}</small></span><button class="mini-button" type="button" data-edit-branch-address="${escapeHtml(branch)}">Address</button>${lockedBranches.has(branch) ? `<small>Used by records</small>` : `<button class="mini-button danger-button" type="button" data-remove-platform-branch="${escapeHtml(branch)}">Remove</button>`}</div>`).join("");
-  renderSettingsTutorial();
-}
-
-function renderSettingsTutorial() {
-  const modules = [
-    { title: "Dashboard", role: "All users", submodules: [
-      ["KPI Cards", "Shows sales, collections, outstanding AR, and stock alerts.", "Use it as the first screen after login to understand today\'s workload.", "If Outstanding AR is high, open Receivables or Collections before creating more sales."],
-      ["Action Center", "Lists urgent issues by priority.", "Click an alert to jump to the exact module and record.", "Sales sees overdue clients and cheque pickup alerts; Logistics sees stock risks; Accounting sees collections/payables."],
-      ["Graphs and Workflow Assistant", "Explains what the system recommends next.", "Read the assistant cards and use their shortcut buttons.", "Use when a new employee is unsure which task to do first."],
-    ] },
-    { title: "Masterlists", role: "Admin/Superadmin edit; others by approval", submodules: [
-      ["Clients", "Stores client area, account type, terms, TIN, credit limit, contact info, and required documents.", "Add/update clients before PO, invoice, collection, or credit review.", "If a client is missing documents, upload files before approving more transactions."],
-      ["Items", "Stores product code, brand, UOM, source, supplier/client, lot, expiry, and category.", "Add items before inventory receiving or invoice encoding.", "Use default lot/expiry for common items, but confirm actual lot during receiving/invoicing."],
-      ["Suppliers", "Stores supplier name, brand supplied, address, and contact.", "Use it for Inventory PO and payable workflows.", "If a new reagent supplier is added, add supplier first, then create Inventory PO."],
-      ["Branches", "Stores physical inventory locations such as Las Pinas and Naga.", "Use it to manage branch addresses and remove unused branches.", "If stock must move between branches, branch names must exist here first."],
-      ["Employees", "Stores employee role, contact, benefits, and salary.", "Use for HR/admin employee records.", "Salary is Superadmin/CEO-only; other users see it masked."],
-      ["Banks", "Stores bank accounts used for collections and final payments.", "Add banks before cheque, bank deposit, or bank transfer posting.", "If a payment method needs a bank, select from this masterlist."],
-    ] },
-    { title: "Inventory", role: "Logistics; Admin/Superadmin approval", submodules: [
-      ["Stock By Branch", "Shows current available stock by branch, lot, expiry, quantity, and status.", "Filter by branch/status before confirming item availability.", "If an item is Expired, do not use it for invoice fulfillment."],
-      ["Inventory Purchase Order", "Creates supplier POs for restocking inventory.", "Enter supplier, PO date, itemized lines, lot, expiry, price, and discount.", "Use when purchasing reagents/supplies from suppliers; it does not deduct stock."],
-      ["Receive Stock", "Adds received supplier stock into branch inventory.", "Admin/Superadmin approves direct receiving; select Inventory PO to autofill rows.", "Use after delivered supplier items arrive and lot/expiry are confirmed."],
-      ["Stock Transfer", "Moves stock between physical branches.", "Logistics creates transfer requests; Admin/Superadmin dispatches/approves; receiving confirms quantity.", "Use when invoicing from Las Pinas but stock is only in Naga."],
-      ["Transfer History", "Audit trail for stock movement.", "Open history to see dispatch, receipt, incomplete, and missing-quantity events.", "Use during reconciliation when stock counts do not match."],
-    ] },
-    { title: "Purchase Orders", role: "Accounting/Admin/Superadmin", submodules: [
-      ["Create Client PO", "Records customer order intent before invoicing.", "Select client/date, add item lines, and save PO.", "Use when a customer sends an order but inventory has not been served yet."],
-      ["PO Status Cards", "Shows pending, partial, and served quantities.", "Review before creating SI/TS/DR.", "If only part of the PO is served, remaining quantity stays pending."],
-      ["Create Invoice/DR From PO", "Converts pending PO items into SI, TS, or DR.", "Click Create invoice/DR from a PO card.", "Use to avoid retyping client/order details and reduce document errors."],
-    ] },
-    { title: "Invoicing", role: "Accounting/Admin/Superadmin", submodules: [
-      ["Create SI", "Creates billable Sales Invoice with VAT details.", "Choose SI, document number, client, PO, stock branch, tax eligibility, and item lots.", "Use for official taxable sales billing."],
-      ["Create TS", "Creates Transmittal Slip for non-SI sales tracking.", "Choose TS and complete item/lot/expiry details.", "Use when items are transmitted but treated separately from SI billing."],
-      ["Create DR", "Creates Delivery Receipt without prices and excludes it from Sales totals.", "Choose DR and complete item/lot/expiry details.", "Use for deliveries where pricing should not appear on the document."],
-      ["Print Preview", "Shows data-only overlay for pre-printed SI/TS/DR forms.", "Open invoice card, click Print, then print from preview.", "Use Print Without Date if the physical form already has a date."],
-      ["Cancel only / Cancel & Replace", "Cancels a wrong invoice (returning its stock), optionally creating its replacement in the same step.", "Click Cancel only and enter the reason, or Cancel / Replace and enter the reason plus the new document details.", "Use for wrong document number, client, item, or tax setting after posting."],
-    ] },
-    { title: "Sales", role: "Sales personal; Accounting/Admin all", submodules: [
-      ["Sales List", "Reviews SI/TS sales records and payment status.", "Filter by document type or status.", "Sales users see personal sales; Accounting/Admin sees all."],
-      ["Sales Summary", "Shows displayed sales, collections, AR, invoice size, and risk amounts.", "Use cards to evaluate current sales performance.", "Use before weekly sales review or client follow-up."],
-      ["Credit Limit View", "Shows client AR exposure and credit status through Sales/Receivables links.", "Open client-related invoices and balances.", "Use before accepting another order from a client."],
-    ] },
-    { title: "Collections", role: "Accounting/Admin/Superadmin", submodules: [
-      ["Record Payment", "Posts payment against SI/TS/DR.", "Type document number, select method, enter receipt and amount.", "Use for cash, cheque, multiple cheques, bank deposit, or bank transfer."],
-      ["Multiple Cheques", "Tracks several cheque references under one collection.", "Add cheque rows with reference number, cheque date, and amount.", "Use when one client pays one invoice using multiple cheques."],
-      ["Collection Status", "Tracks bank handling status.", "Set For Deposit, Deposited, Bounced, or Posted Date.", "Use Posted Date when a cheque can be claimed on a future date."],
-      ["Payment Received", "Creates printable CV/payment received forms.", "Add employee/vendor, collector, CV number, items, deductions, and preview/print.", "Use for internal reimbursement, supplier fees, or priority payments received."],
-      ["Follow-up Map", "Tracks weekly client collection contact status.", "Open client area, choose channels, then select outcome.", "When marking Cheque Available, enter the invoice number for traceability."],
-      ["Follow-up History", "Shows all client contact outcomes.", "Click Follow-up History to open the full modal.", "Use to see who contacted the client, when, through what channel, and the result."],
-    ] },
-    { title: "Receivables", role: "Accounting/Admin/Superadmin; Sales view", submodules: [
-      ["Open AR Tracker", "Shows only invoices with unpaid balances.", "Filter status tabs and open client cards.", "Use daily to prioritize overdue and near-due invoices."],
-      ["Regional Receivables", "Groups open client invoices by region.", "Review by area before collection calls.", "Use when assigning field follow-ups by territory."],
-      ["Client Invoice Timeline", "Shows all invoices for one client.", "Open a client card from Receivables.", "Use before approving credit or discussing balances with client."],
-      ["Order Flow Detail", "Shows PO, invoice, delivery, payment, and collection stages.", "Click View Details on a tracker card.", "Use to trace why an order is still unpaid or incomplete."],
-    ] },
-    { title: "Payables", role: "Accounting/Admin/Superadmin", submodules: [
-      ["Payable Request", "Creates itemized supplier/vendor payable requests.", "Enter supplier/contact and item rows, then save.", "Use for supplier bills or utilities before approval."],
-      ["For Approval", "Lists payable requests waiting for approval/cancellation.", "Approve or cancel from the request table.", "Use to prevent unapproved supplier payments."],
-      ["Final Payables", "Approved payables waiting for payment confirmation.", "Confirm payment by cash, bank transfer, or cheque.", "Use after management approves but before accounting marks paid."],
-      ["Payables Ledger", "Shows total, paid, balance, cheque details, and status.", "Review table and KPI cards.", "Use to monitor supplier balance and payment risk."],
-    ] },
-    { title: "Expenses", role: "Accounting/Admin/Superadmin; HR where needed", submodules: [
-      ["Expense Request", "Creates itemized internal expense requests.", "Select type, requester, office, receipt/file, and item rows.", "Use for petty cash, per diem, operating expense, or revolving fund."],
-      ["Expense Approval", "Controls approval/cancellation of expense requests.", "Approve/cancel requests before payment confirmation.", "Use to separate requested expenses from payable expenses."],
-      ["Confirmed Expenses", "Approved expenses ready for payment.", "Confirm payment method and mark paid.", "Use when accounting releases reimbursement or fund replenishment."],
-      ["Expense Classification", "Groups expense totals by type.", "Review Analytics or Expense KPI cards.", "Use to identify high spending categories."],
-    ] },
-    { title: "Reports & Reconciliation", role: "Admin/Accounting/Superadmin", submodules: [
-      ["Reports", "Produces focused operational summaries.", "Open report cards and preview/print details.", "Use for management review or supporting schedules."],
-      ["Reconciliation Check", "Finds duplicate receipts, missing docs, cheque gaps, stock transfer issues, and credit risks.", "Choose date range/period and run reconciliation.", "Use before month-end closing or data cleanup."],
-      ["Reconciliation History", "Stores previous reconciliation results.", "Open History tab and load a run.", "Use to compare whether issues were resolved over time."],
-    ] },
-    { title: "Users, Settings, Notifications", role: "Superadmin settings; role-based notifications", submodules: [
-      ["Invite User", "Sends a secure email invitation and creates the user profile after Supabase accepts it.", "Select role to precheck default permissions, then customize by module group.", "The invited user accepts the email link and creates their own password."],
-      ["Superadmin Permission Grant", "Lets Superadmin promote/demote another user to Superadmin permissions.", "Check/uncheck the Superadmin box in Users table.", "Use when assigning another manager to control users/settings."],
-      ["Settings", "Stores platform-level settings and this manual.", "Only Superadmin/CEO can open Settings.", "Use to update signatories and tutorial guidance."],
-      ["Notifications", "Stores alerts, reminders, approvals, and workflow notices.", "Open notification bell or Notifications page.", "Use to review system warnings and mark alerts as seen."],
-    ] },
-  ];
-  qs("#settings-tutorial").innerHTML = modules.map((item, index) => `<details class="tutorial-module" ${index === 0 ? "open" : ""}><summary><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.role)}</span></summary><div class="tutorial-submodule-grid">${item.submodules.map(([name, purpose, how, scenario]) => `<article class="tutorial-submodule-card"><h3>${escapeHtml(name)}</h3><p><strong>Purpose:</strong> ${escapeHtml(purpose)}</p><p><strong>How to use:</strong> ${escapeHtml(how)}</p><p><strong>Scenario:</strong> ${escapeHtml(scenario)}</p></article>`).join("")}</div></details>`).join("");
 }
 
 // ---- Print Template Editor (SI/TS/DR custom layout) ----
@@ -12820,7 +12737,6 @@ const sectionRenderers = {
   users: renderUsers,
   notifications: renderNotifications,
   security: renderSecurity,
-  settings: renderPlatformSettings,
   "print-templates": renderPrintTemplates,
   backup: renderBackup,
   logs: renderLogs,
@@ -12838,7 +12754,7 @@ function renderAll() {
   if (appInitialRenderComplete) return renderSection();
   // Only what's visible on every page, plus the section on screen. showSection() draws the others
   // when they're opened. Everything here changes the page outside its own section.
-  renderBranchFilter(); renderNotifications(); renderMemoBadge(); renderPlatformSettings();
+  renderBranchFilter(); renderNotifications(); renderMemoBadge(); renderInvoiceApprovalNames();
   renderSection();
   appInitialRenderComplete = true;
 }
@@ -13202,7 +13118,7 @@ function syncInviteUserPermissions() {
   const modules = permissionModules();
   const groups = /** @type {[string, string[]][]} */ ([
     ["Core", ["dashboard", "analytics", "notifications", "user-settings"]],
-    ["Master Data", ["masterlists", "users", "settings", "backup", "security", "logs", "print-templates"]],
+    ["Master Data", ["masterlists", "users", "backup", "security", "logs", "print-templates"]],
     ["Inventory & Orders", ["inventory", "item-forecast", "purchase-orders", "warranty"]],
     ["Sales & Receivables", ["sales", "invoicing", "collections", "receivables-tracker", "purchase-history"]],
     ["Support", ["product-issues"]],

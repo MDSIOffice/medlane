@@ -35,10 +35,10 @@ function stampAssetUrls(page, env) {
 
 /** @type {Record<AppRole, string[]>} */
 const roleModules = {
-  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
-  CEO: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "settings", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Superadmin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  CEO: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "reconciliation", "security", "users", "backup", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   // Admin: everything except Users and Backup.
-  Admin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "security", "settings", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
+  Admin: ["dashboard", "analytics", "masterlists", "inventory", "item-forecast", "purchase-orders", "sales", "invoicing", "collections", "receivables-tracker", "client-invoices", "warranty", "purchase-history", "payables", "replenishments", "imports", "reports", "security", "notifications", "user-settings", "logs", "product-issues", "print-templates"],
   // Accounting sees Inventory read-only (ROLE_VIEW_ONLY_DEFAULTS). Masterlists isn't a default but
   // can still be granted per user from the Users page when they need it.
   Accounting: ["dashboard", "inventory", "purchase-orders", "invoicing", "collections", "receivables-tracker", "client-invoices", "payables", "replenishments", "imports", "print-templates", "notifications", "user-settings"],
@@ -2771,7 +2771,7 @@ async function userDeleteBlockers(env, { id, email, name }) {
 /** @param {any} role @param {any} view */
 function roleEditableFallback(role, view) {
   if (["Superadmin", "CEO", "Admin"].includes(role)) return view;
-  return view.filter((/** @type {any} */ module) => !["users", "settings", "backup", "security", "logs"].includes(module));
+  return view.filter((/** @type {any} */ module) => !["users", "backup", "security", "logs"].includes(module));
 }
 
 /** @param {string | null | undefined} email */
@@ -2866,7 +2866,7 @@ function notificationVisibleTo(profile, notice) {
   const email = String(profile?.email || "").toLowerCase();
   if (notice.targetUser) return Boolean(email) && String(notice.targetUser).toLowerCase() === email;
   const section = String(notice.section || "notifications");
-  if (["users", "settings", "backup", "security", "logs"].includes(section)) return false;
+  if (["users", "backup", "security", "logs"].includes(section)) return false;
   if (/user|account|permission|password|security|audit|login|logout|session/i.test(`${notice.type || ""} ${notice.message || ""}`)) return false;
   if (Array.isArray(notice.audience) && !notice.audience.includes(profile?.role)) return false;
   // Addressed to this role by name (e.g. a new PO for Accounting): shown even if this account's

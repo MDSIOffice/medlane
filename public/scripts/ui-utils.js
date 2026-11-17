@@ -268,7 +268,7 @@ function canSeeNotification(notice) {
   if (notice?.targetUser) return notice.targetUser === currentUser?.email;
   if (["Superadmin", "CEO"].includes(currentUser?.role)) return true;
   const section = notice?.section || "notifications";
-  if (["users", "settings", "backup", "security", "logs"].includes(section)) return false;
+  if (["users", "backup", "security", "logs"].includes(section)) return false;
   if (/user|account|permission|password|security|audit|login|logout|session/i.test(`${notice?.type || ""} ${notice?.message || ""}`)) return false;
   if (Array.isArray(notice?.audience) && !notice.audience.includes(currentUser?.role)) return false;
   if (Array.isArray(notice?.audience)) return true; // addressed to this role by name (mirrors worker.js)
@@ -579,7 +579,6 @@ function prepareFocusedSection(section, record) {
   if (section === "reports") return renderReports();
   if (section === "users") return renderUsers();
   if (section === "logs") return renderLogs();
-  if (section === "settings") return renderPlatformSettings();
   if (section === "security") return renderSecurity();
   if (section === "reconciliation") return renderReconciliation();
   if (section !== "inventory" || !record) return;

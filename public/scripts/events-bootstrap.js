@@ -831,7 +831,7 @@ async function editPlatformBranchAddress(branch) {
   data.branchAddresses ||= {};
   data.branchAddresses[branch] = nextAddress;
   log("Edited branch address", "Masterlists", branch);
-  notify("Settings", `${branch} branch address was updated.`, "settings", branch);
+  notify("Masterlists", `${branch} branch address was updated.`, "masterlists", branch);
   saveData();
   renderAll();
   toast(`${branch} address saved.`);
@@ -847,7 +847,7 @@ async function removePlatformBranch(branch) {
   if (data.branchAddresses) delete data.branchAddresses[branch];
   if (inventoryBranchTab === branch) inventoryBranchTab = platformBranches()[0] || "";
   log("Removed branch masterlist record", "Masterlists", branch);
-  notify("Settings", `${branch} was removed from platform branches.`, "settings", branch);
+  notify("Masterlists", `${branch} was removed from platform branches.`, "masterlists", branch);
   saveData();
   renderAll();
   toast(`${branch} removed from platform branches.`);

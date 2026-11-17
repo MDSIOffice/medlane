@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const SECTIONS = ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "sales", "purchase-orders", "invoicing", "collections", "receivables-tracker", "payables", "replenishments", "reports", "reconciliation", "warranty", "product-issues", "purchase-history", "imports", "users", "logs", "backup", "security", "settings", "print-templates"];
+const SECTIONS = ["dashboard", "calendar", "analytics", "masterlists", "inventory", "item-forecast", "sales", "purchase-orders", "invoicing", "collections", "receivables-tracker", "payables", "replenishments", "reports", "reconciliation", "warranty", "product-issues", "purchase-history", "imports", "users", "logs", "backup", "security", "print-templates"];
 const b64 = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
 const token = (role, expiresInSeconds) => `${b64({ alg: "none" })}.${b64({ role, exp: Math.floor(Date.now() / 1000) + expiresInSeconds })}.fake`;
 

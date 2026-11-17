@@ -585,7 +585,7 @@ async function masterAddBranch() {
   data.branchAddresses ||= {};
   data.branchAddresses[branch] = values.address.trim();
   log("Added branch masterlist record", "Masterlists", branch);
-  notify("Settings", `${branch} was added to platform branches.`, "settings", branch);
+  notify("Masterlists", `${branch} was added to platform branches.`, "masterlists", branch);
   saveData();
   renderAll();
   toast(`${branch} added to platform branches.`);

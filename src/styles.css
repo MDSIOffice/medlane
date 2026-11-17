@@ -1002,23 +1002,6 @@ select, .search-input {
 .permission-feature-group summary strong { flex: 1; color: var(--blue-dark); font-size: 13px; }
 .permission-feature-group summary span { color: var(--muted); font-size: 11px; font-weight: 900; white-space: nowrap; }
 .permission-feature-group > div { display: grid; gap: 8px; border-top: 1px solid var(--line); padding: 10px; }
-.tutorial-module { border: 1px solid rgba(0, 110, 182, 0.16); border-radius: 20px; background: var(--panel-solid); overflow: hidden; margin-bottom: 12px; }
-.tutorial-module summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; padding: 16px 18px; list-style: none; }
-.tutorial-module summary::-webkit-details-marker { display: none; }
-.tutorial-module summary::before { content: "+"; display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 auto; border-radius: 999px; background: var(--chip-blue-bg); color: var(--blue-dark); font-weight: 950; }
-.tutorial-module[open] summary::before { content: "-"; background: var(--blue); color: #fff; }
-.tutorial-module summary strong { flex: 1; color: var(--blue-dark); font-size: 17px; }
-.tutorial-module summary span { color: var(--muted); font-size: 12px; font-weight: 900; text-align: right; }
-.tutorial-detail-grid { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr); gap: 14px; border-top: 1px solid var(--line); background: var(--tint); padding: 16px; }
-.tutorial-detail-grid article { border: 1px solid var(--line); border-radius: 18px; background: var(--panel-solid); padding: 14px; }
-.tutorial-detail-grid h3 { margin-bottom: 10px; color: var(--blue-dark); font-size: 14px; }
-.tutorial-detail-grid ul { margin: 0; padding-left: 18px; color: var(--muted); line-height: 1.55; }
-.tutorial-detail-grid li + li { margin-top: 6px; }
-.tutorial-submodule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; border-top: 1px solid var(--line); background: var(--tint); padding: 16px; }
-.tutorial-submodule-card { display: grid; align-content: start; gap: 8px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-solid); padding: 14px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04); }
-.tutorial-submodule-card h3 { margin: 0; color: var(--blue-dark); font-size: 15px; }
-.tutorial-submodule-card p { margin: 0; color: var(--muted); line-height: 1.45; }
-.tutorial-submodule-card p strong { color: var(--ink); }
 .compact-doc-check { min-height: 42px; padding: 8px 10px; }
 .compact-doc-check span { width: 38px; height: 22px; }
 .compact-doc-check span::after { width: 16px; height: 16px; }
@@ -2077,7 +2060,6 @@ input[type="file"]::file-selector-button:hover { background: var(--tint-strong);
 .field input[readonly]:focus { outline-color: rgba(100, 116, 139, 0.28); }
 .field textarea { min-height: 92px; resize: vertical; }
 .password-rules { margin: 0; color: var(--muted); font-size: 13px; font-weight: 800; line-height: 1.45; }
-.platform-settings-panel { margin-top: 16px; }
 .platform-area-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .platform-area-chip { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--tint); padding: 8px 10px 8px 14px; }
 .platform-area-chip span { color: var(--ink); font-weight: 900; }
@@ -2372,10 +2354,6 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .stats-grid, .dashboard-grid, .invoice-grid, .report-grid, .invoice-workbench, .analytics-grid, .tracker-grid, .security-grid, .feature-strip, .form-grid, .recon-visual-grid, .master-overview, .visual-grid, .import-preview-summary { grid-template-columns: 1fr; }
   .modal.wide-modal .form-grid { grid-template-columns: 1fr; }
   .invite-permission-grid { grid-template-columns: 1fr; }
-  .tutorial-detail-grid { grid-template-columns: 1fr; }
-  .tutorial-module summary { align-items: flex-start; flex-direction: column; }
-  .tutorial-module summary::before { position: absolute; right: 16px; }
-  .tutorial-module summary strong, .tutorial-module summary span { padding-right: 42px; text-align: left; }
   .invoice-line-row { grid-template-columns: 1fr; }
   .payment-request-line-row, .payment-request-editor-actions { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .payment-request-total-field { width: 100%; }
