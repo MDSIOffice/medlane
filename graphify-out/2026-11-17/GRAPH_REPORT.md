@@ -1,17 +1,17 @@
 # Graph Report - medlane  (2026-11-17)
 
 ## Corpus Check
-- 132 files · ~2,058,940 words
+- 131 files · ~723,423 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 24 file(s) not represented in the graph (top: (none) 11, .csv 4, .css 3)
 
 ## Summary
-- 3679 nodes · 8222 edges · 175 communities (141 shown, 34 thin omitted)
+- 3678 nodes · 8222 edges · 174 communities (141 shown, 33 thin omitted)
 - Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 458 edges (avg confidence: 0.88)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `715619dd`
+- Built from commit: `d55a9e03`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -210,7 +210,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (175 total, 34 thin omitted)
+## Communities (174 total, 33 thin omitted)
 
 ### Community 0 - "public/scripts/state.js"
 Cohesion: 0.03
@@ -778,23 +778,23 @@ Nodes (3): confirmCloseDialog(), guardDialogEscape(), guardedDialogClose()
 
 ## Knowledge Gaps
 - **6 isolated node(s):** `@cloudflare/workers-types`, `clean-css-cli`, `supabase`, `typescript`, `wrangler` (+1 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1005 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **34 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1004 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **33 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `MedlaneAPI` connect `renderAll` to `fake-backend.mjs`, `sale-validation.test.mjs`, `renderAll`, `worker.js`, `renderProductIssueDetail`, `recordSystemLog`?**
-  _High betweenness centrality (0.204) - this node is a cross-community bridge._
+  _High betweenness centrality (0.201) - this node is a cross-community bridge._
 - **What connects `@cloudflare/workers-types`, `clean-css-cli`, `supabase` to the rest of the system?**
   _6 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `public/scripts/state.js` be split into smaller, more focused modules?**
   _Cohesion score 0.025170998632010944 - nodes in this community are weakly interconnected._
 - **Why does `MedlaneAPI` connect `renderAll` to `recordSystemLog`, `sale-validation.test.mjs`?**
-  _High betweenness centrality (0.181) - this node is a cross-community bridge._
+  _High betweenness centrality (0.175) - this node is a cross-community bridge._
 - **Should `scripts/state.js` be split into smaller, more focused modules?**
   _Cohesion score 0.05271629778672032 - nodes in this community are weakly interconnected._
 - **Why does `backupStatus()` connect `recordSystemLog` to `renderAll`, `renderAll`, `fetch`, `worker.js`, `supabaseFetch`?**
-  _High betweenness centrality (0.087) - this node is a cross-community bridge._
+  _High betweenness centrality (0.082) - this node is a cross-community bridge._
 - **Should `scripts/events-bootstrap.js` be split into smaller, more focused modules?**
   _Cohesion score 0.05909090909090909 - nodes in this community are weakly interconnected._

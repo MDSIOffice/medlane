@@ -30,9 +30,9 @@
     "semantic_hash": ""
   },
   "public/scripts/modules.js": {
-    "mtime": 1794905162.450714,
-    "seen": 1794905171.9401548,
-    "ast_hash": "9685c76d2557977d30ac13f0e3cc447b",
+    "mtime": 1794909124.2654052,
+    "seen": 1794909133.203016,
+    "ast_hash": "243e33c91f56a2c2cf166f2724c0a020",
     "semantic_hash": ""
   },
   "public/scripts/state.js": {
@@ -108,9 +108,9 @@
     "semantic_hash": "dec481b1abd5119d3fbbd2695bdaebb1"
   },
   "src/worker.js": {
-    "mtime": 1794905162.4514751,
-    "seen": 1794905171.9401789,
-    "ast_hash": "88d4375b272f326a2a56ec8eec9516bf",
+    "mtime": 1794909124.2662604,
+    "seen": 1794909133.203031,
+    "ast_hash": "c3c7d6be00f438ef99668d97f783c891",
     "semantic_hash": ""
   },
   "Notification Sound.mp3": {
@@ -138,8 +138,8 @@
     "semantic_hash": "3d9d21746de864aee3ce89215d63d438"
   },
   ".specify/scripts/bash/check-prerequisites.sh": {
-    "mtime": 1787482011.9013412,
-    "seen": 1792378575.067932,
+    "mtime": 1794909112.374,
+    "seen": 1794909133.2029881,
     "ast_hash": "e8f1e7d868ab35e0fa68e6a7aa50f707",
     "semantic_hash": ""
   },
@@ -750,8 +750,8 @@
     "semantic_hash": ""
   },
   "docs/migrations/2026-08-05-app-records-delete-guard.sql": {
-    "mtime": 1786599115.6467044,
-    "seen": 1792378679.404772,
+    "mtime": 1794909112.363,
+    "seen": 1794909133.2029939,
     "ast_hash": "c9425b998e5af459ce98663401116197",
     "semantic_hash": ""
   },
@@ -888,9 +888,9 @@
     "semantic_hash": ""
   },
   "tests/financial-approvals.test.mjs": {
-    "mtime": 1794905162.4516776,
-    "seen": 1794905171.940183,
-    "ast_hash": "f02d1c5ca73b3327529dcfd7a9d312b7",
+    "mtime": 1794909124.2664926,
+    "seen": 1794909133.2030349,
+    "ast_hash": "5432b3468447ad0f77f49ad99c24c0bf",
     "semantic_hash": ""
   },
   "tests/helpers/load-worker.mjs": {
@@ -972,9 +972,9 @@
     "semantic_hash": ""
   },
   "tests/smoke/smoke.spec.mjs": {
-    "mtime": 1794905162.4539704,
-    "seen": 1794905171.940198,
-    "ast_hash": "8da9106e27193b1a2be1111a5c579ef8",
+    "mtime": 1794909124.266689,
+    "seen": 1794909133.203049,
+    "ast_hash": "1a4bd3bf366f7aa621dc3db5e972b8cd",
     "semantic_hash": ""
   },
   "tools/annotate-params.py": {
