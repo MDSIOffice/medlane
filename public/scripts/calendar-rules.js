@@ -159,7 +159,7 @@ const CalendarRules = (() => {
         lines.push(`DTSTART:${start}`, `DTEND:${new Date(Date.parse(`${e.date}T${e.time}:00+08:00`) + 3600e3).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")}`);
       }
       lines.push(`SUMMARY:${icsText(e.title)}`, `CATEGORIES:${icsText(type.label)}`);
-      const description = [e.note, e.assigneeName ? `For ${e.assigneeName}` : "", e.createdBy ? `Added by ${e.createdBy}` : ""].filter(Boolean).join("\n");
+      const description = [e.note, e.assigneeName ? `For ${e.assigneeName}` : "", e.createdBy ? `Owner: ${e.createdBy}` : ""].filter(Boolean).join("\n");
       if (description) lines.push(`DESCRIPTION:${icsText(description)}`);
       if (e.branch) lines.push(`LOCATION:${icsText(e.branch)}`);
       lines.push("END:VEVENT");

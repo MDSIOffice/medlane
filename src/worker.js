@@ -2786,13 +2786,15 @@ async function assertCalendarEventChangesAllowed(env, stateKey, profile, rows) {
       if ((!prev || String(prev.date || "") !== String(next.date || "")) && String(next.date) < shortDate()) throw new Error("Calendar event can only be scheduled for today or a future date");
     }
     if (!prev) {
-      if (owner !== me && !isManagement) throw new Error("You can only add calendar events as yourself");
-      // The department color comes from the creator's real role, never from the client.
-      if (owner === me) next.createdByRole = profile?.role || "";
+      if (owner && owner !== me && !isManagement) throw new Error("You can only add calendar events as yourself");
+      // The owner is always whoever made it: stamped from the signed-in profile, never the browser.
+      next.createdByUser = me;
+      next.createdBy = String(profile?.name || profile?.email || next.createdBy || "");
+      next.createdByRole = profile?.role || "";
       continue;
     }
-    // An event keeps the department it was created under.
-    if (prev.createdByRole !== undefined) next.createdByRole = prev.createdByRole;
+    // An event keeps its owner for good, whoever edits or removes it later.
+    for (const field of ["createdByUser", "createdBy", "createdByRole"]) if (prev[field] !== undefined) next[field] = prev[field];
     const keys = ["title", "date", "time", "removed", "createdByUser"];
     const changed = keys.some((key) => String(prev[key] ?? "") !== String(next[key] ?? ""));
     if (changed && owner !== me && !isManagement) throw new Error("Only the person who added this calendar event can change or remove it");

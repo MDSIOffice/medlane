@@ -1042,7 +1042,9 @@ test("Calendar: month grid, select a day, filter a type, add an all-day branch e
   await dialog.locator("#sup-branch").selectOption("Naga");
   await dialog.locator("#sup-note").fill("Whole Naga warehouse");
   await dialog.getByRole("button", { name: "Add event" }).click();
-  await expect.poll(() => saves.flatMap((r) => r.calendarEvents || []).find((e) => e.title === "Stock count")).toMatchObject({ allDay: true, time: "", type: "internal", branch: "Naga", note: "Whole Naga warehouse", assigneeEmail: "superadmin@medlane.test" });
+  await expect.poll(() => saves.flatMap((r) => r.calendarEvents || []).find((e) => e.title === "Stock count")).toMatchObject({ allDay: true, time: "", type: "internal", branch: "Naga", note: "Whole Naga warehouse", createdByUser: "superadmin@medlane.test" });
+  expect(saves.flatMap((r) => r.calendarEvents || []).find((e) => e.title === "Stock count").assigneeEmail).toBeUndefined();
+  await expect(panel.locator(".cal-day")).toContainText("Owner: ");
   await expect(panel.locator(".cal-day")).toContainText("All day");
   expect(problems).toEqual([]);
 });

@@ -67,7 +67,7 @@ function calendarEventHtml(event) {
   const type = CalendarRules.typeInfo(CalendarRules.typeOf(event));
   const e = /** @type {any} */ (event);
   const when = e.allDay || !event.time ? "All day" : calendarTimeLabel(event.time);
-  const detail = [e.note, e.assigneeName ? `For ${e.assigneeName}` : "", e.branch ? supportBranchLabel(String(e.branch)) : "", event.createdBy ? `Added by ${event.createdBy}` : ""].filter(Boolean).map((s) => escapeHtml(String(s))).join(" · ");
+  const detail = [e.note, e.assigneeName ? `For ${e.assigneeName}` : "", e.branch ? supportBranchLabel(String(e.branch)) : "", event.createdBy ? `Owner: ${event.createdBy}` : ""].filter(Boolean).map((s) => escapeHtml(String(s))).join(" · ");
   const remove = canChangeCalendarEvent(event) ? `<button type="button" class="ui-link cal-remove" data-cal-remove="${escapeHtml(event.id)}" aria-label="Remove ${escapeHtml(event.title)}">Remove</button>` : "";
   return `<li class="cal-event">${calendarBar(type.color)}<div class="cal-event-time">${escapeHtml(when)}</div><div class="cal-event-body">
     <div class="cal-event-head"><span class="cal-type" style="--cal-color:${type.color}">${escapeHtml(type.label)}</span><strong>${escapeHtml(event.title)}</strong></div>
@@ -153,17 +153,10 @@ WORKFLOW_RULES.calendar = [
 ];
 
 // ----- adding and removing ------------------------------------------------------------------------------
-/** People an event can be for: the users list if this person can see it, else just themselves. */
-function calendarOwners() {
-  const me = { email: String(currentUser?.email || "").toLowerCase(), name: String(currentUser?.name || currentUser?.email || "Me") };
-  const users = (/** @type {any[]} */ (data.users || [])).filter((u) => u?.email && !u.disabled && u.status !== "Disabled").map((u) => ({ email: String(u.email).toLowerCase(), name: String(u.name || u.full_name || u.email) }));
-  return [me, ...users.filter((u) => u.email !== me.email).sort((a, b) => a.name.localeCompare(b.name))];
-}
 /** @param {string} [date] */
 async function calendarAddEvent(date = "") {
   if (!calendarCanAdd()) return toast("Editing is disabled for the Calendar in User Settings.");
   const day = date && date >= fmtDate(today) ? date : fmtDate(today);
-  const owners = calendarOwners();
   const values = await supportDialog({
     kicker: "Calendar", title: "Add an event", confirm: "Add event",
     body: `<div class="wty-form">
@@ -171,24 +164,23 @@ async function calendarAddEvent(date = "") {
       <div class="field"><label for="sup-date">Date</label><input id="sup-date" name="date" type="date" required min="${fmtDate(today)}" value="${day}" /></div>
       <div class="field"><label for="sup-time">Time</label><input id="sup-time" name="time" type="time" value="09:00" /></div>
       ${supportSelectHtml("type", "Type", CalendarRules.TYPES.map((t) => ({ value: t.key, label: t.label })), "internal")}
-      ${supportSelectHtml("owner", "Owner", owners.map((o) => ({ value: o.email, label: o.name })), owners[0].email)}
+      <div class="field"><label for="sup-owner">Owner</label><input id="sup-owner" value="${escapeHtml(String(currentUser?.name || currentUser?.email || "You"))}" readonly aria-describedby="sup-owner-help" /></div>
       ${supportSelectHtml("branch", "Branch", [{ value: "", label: "Everyone (all branches)" }, ...platformBranches().map((b) => ({ value: b, label: supportBranchLabel(b) }))], "")}
       <label class="ios-check-row cal-allday"><input type="checkbox" name="allDay" value="yes" /><span></span><strong>All day</strong></label>
       <div class="field full"><label for="sup-note">Note</label><textarea id="sup-note" name="note" maxlength="2000" placeholder="Where, what to bring, who else is going…"></textarea></div>
-    </div><p class="field-help">A branch event is only shown to people at that branch. Money and delivery types are only shown to people with those modules.</p>`,
+    </div><p class="field-help" id="sup-owner-help">You'll be the owner: only you (or Superadmin/CEO) can remove it. A branch event is only shown to people at that branch. Money and delivery types are only shown to people with those modules.</p>`,
   });
   if (!values) return;
   const title = String(values.title || "").trim();
   const allDay = values.allDay === "yes";
   if (!title || !values.date || (!allDay && !values.time)) return toast("Add a name, a date and a time (or tick All day).");
   if (values.date < fmtDate(today)) return toast("Events can only be added for today or a future date.");
-  const owner = owners.find((o) => o.email === values.owner) || owners[0];
   /** @type {CalendarEvent & Record<string, any>} */
   const entry = {
     id: `EVT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, title, date: values.date, time: allDay ? "" : values.time,
     createdBy: currentUser?.name || currentUser?.email || "User", createdByUser: String(currentUser?.email || "").toLowerCase(), createdByRole: currentUser?.role || "", createdAt: new Date().toISOString(),
     type: CalendarRules.TYPE_KEYS.includes(values.type) ? values.type : "internal", ...(allDay ? { allDay: true } : {}), ...(values.branch ? { branch: values.branch } : {}),
-    ...(String(values.note || "").trim() ? { note: String(values.note).trim() } : {}), assigneeEmail: owner.email, assigneeName: owner.name,
+    ...(String(values.note || "").trim() ? { note: String(values.note).trim() } : {}),
   };
   data.calendarEvents.push(entry);
   const saveResult = await persistRecords({ calendarEvents: [entry] });
@@ -205,7 +197,7 @@ async function calendarRemoveEvent(id) {
   const entry = (data.calendarEvents || []).find((e) => e.id === id);
   if (!entry || entry.removed) return;
   if (!canChangeCalendarEvent(entry)) return toast("Only the person who added this event can remove it.");
-  const ok = await confirmDetailsModal({ eyebrow: "Calendar", title: `Remove "${entry.title}"?`, fields: [["Date", entry.date], ["Time", /** @type {any} */ (entry).allDay || !entry.time ? "All day" : calendarTimeLabel(entry.time)], ["Added by", entry.createdBy || "-"]], confirmLabel: "Remove event", danger: true });
+  const ok = await confirmDetailsModal({ eyebrow: "Calendar", title: `Remove "${entry.title}"?`, fields: [["Date", entry.date], ["Time", /** @type {any} */ (entry).allDay || !entry.time ? "All day" : calendarTimeLabel(entry.time)], ["Owner", entry.createdBy || "-"]], confirmLabel: "Remove event", danger: true });
   if (!ok) return;
   entry.removed = true;
   entry.removedBy = currentUser?.name || currentUser?.email || "User";
