@@ -320,19 +320,29 @@ async function submitModal(event) {
       invoice: linkedSales.map((sale) => sale.documentNo || sale.id).join(", "),
       invoices: linkedSales.map((sale) => sale.documentNo || sale.id),
       invoiceClient: linkedSales[0]?.client || "",
+      // Collections no longer wait for approval: they're applied to the invoices on save (For Deposit).
       requestStatus: isCollection ? "Pending" : "Approved",
       approvedBy: isCollection ? "" : "Maria Emma F. Llorin",
       approvedRole: isCollection ? "" : "CEO",
       status: isCollection ? "Pending" : "Prepared",
-      history: [{ date: nowStamp, status: isCollection ? "Pending" : "Prepared", note: isCollection ? `Collection created for ${linkedSales.map((sale) => sale.documentNo || sale.id).join(", ")}.` : "CV voucher created.", by: currentUser?.name || "System User" }],
+      history: [{ date: nowStamp, status: isCollection ? "For Deposit" : "Prepared", note: isCollection ? `Collection recorded for ${linkedSales.map((sale) => sale.documentNo || sale.id).join(", ")}; applied to the invoice${linkedSales.length === 1 ? "" : "s"} and waiting for deposit.` : "CV voucher created.", by: currentUser?.name || "System User" }],
       createdAt: fmtDate(today),
     };
-    if (!(await confirmFinalSave("Save this payment request?"))) return;
+    /** @type {{ newPayments: any[], touchedSales: any[] }} */
+    let applied = { newPayments: [], touchedSales: [] };
+    /** @type {ReturnType<typeof collectionApplyPlan> | null} */
+    let plan = null;
+    if (isCollection) {
+      plan = collectionApplyPlan(paymentRequest);
+      if (plan.error !== undefined) return toast(plan.error);
+    }
+    if (!(await confirmFinalSave(isCollection ? "Save this collection? It's applied to the invoice straight away and waits for deposit." : "Save this payment request?"))) return;
+    if (plan && plan.error === undefined) applied = collectionApply(paymentRequest, plan);
     data.paymentRequests.unshift(/** @type {PaymentRequest} */ (/** @type {any} */ (paymentRequest)));
-    const saveResult = await persistRecords({ paymentRequests: [paymentRequest] });
+    const saveResult = await persistRecords({ paymentRequests: [paymentRequest], payments: applied.newPayments, sales: applied.touchedSales });
     if (!saveResult?.ok) return;
     log("Created payment request", "Collections", `${values.cvNo} · ${values.employee} · ${peso.format(total)}`, { save: false });
-    notify("Payment Received", `${values.cvNo} ${isCollection ? "pending approval" : "prepared"} for ${values.employee}.`, "collections", values.cvNo);
+    notify("Payment Received", `${values.cvNo} ${isCollection ? "recorded, waiting for deposit," : "prepared"} for ${values.employee}.`, "collections", values.cvNo);
     saveData(["notifications"]);
     qs("#demo-modal").close();
     form.reset();

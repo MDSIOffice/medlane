@@ -629,3 +629,42 @@ test("Add Collection: the bank field reads Bank Cheque Name for Multiple Cheques
   await expect(label).toHaveText("Bank Name");
   expect(problems).toEqual([]);
 });
+
+test("Collections: saved without approval; only Admin bounces or cancels; Accounting redeposits", async ({ browser }) => {
+  const seed = async (page) => page.route("**/api/modules/state", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.sales.push({ id: "SI-COLL", documentNo: "SI-COLL", type: "SI", client: "Naga City Lab", date: "2026-11-01", terms: 30, lines: [], amount: 10000, discount: 0, net: 10000, paid: 0, status: "Active" });
+    body.data.paymentRequests.push({ cvNo: "CR-BNC", employee: "Naga City Lab", invoice: "SI-COLL", invoices: ["SI-COLL"], paymentType: "Check", bank: "BDO", cheque: "111", total: 1000, requestStatus: "Approved", status: "Approved", date: "2026-11-10", items: [{ invoice: "SI-COLL", amount: 1000, netAmount: 1000 }] });
+    body.data.payments.push({ id: "CR-BNC|SI-COLL", receiptNo: "CR-BNC", paymentRequestCvNo: "CR-BNC", invoice: "SI-COLL", client: "Naga City Lab", method: "Check", amount: 1000, collectionStatus: "Bounced", appliedToInvoice: false, date: "2026-11-10" });
+    await route.fulfill({ response, json: body });
+  });
+  const actionsFor = (page, cv) => page.evaluate((id) => [].concat(collectionReceiptActions(collectionReceipts().find((r) => r.id === id))).join(""), cv);
+
+  const accounting = await browser.newPage();
+  await seed(accounting);
+  await logIn(accounting, "accounting@medlane.test");
+  // A new collection is applied straight away: no Pending, payment For Deposit, invoice paid.
+  const saved = await accounting.evaluate(() => {
+    const request = { cvNo: "CR-NEW", employee: "Naga City Lab", invoice: "SI-COLL", invoices: ["SI-COLL"], paymentType: "Cash", total: 4000, requestStatus: "Pending", items: [{ invoice: "SI-COLL", amount: 4000, netAmount: 4000 }] };
+    const plan = collectionApplyPlan(request);
+    if (plan.error !== undefined) return plan.error;
+    const { newPayments } = collectionApply(request, plan);
+    return { status: request.requestStatus, payment: newPayments.map((p) => p.collectionStatus), paid: data.sales.find((s) => s.id === "SI-COLL").paid };
+  });
+  expect(saved).toEqual({ status: "Approved", payment: ["For Deposit"], paid: 4000 });
+  const bouncedActions = await actionsFor(accounting, "CR-BNC");
+  expect(bouncedActions).toContain("data-collection-redeposit");
+  expect(bouncedActions).not.toContain("data-payment-request-cancel");
+  expect(bouncedActions).not.toContain(":Bounced");
+  await accounting.close();
+
+  const admin = await browser.newPage();
+  await seed(admin);
+  await logIn(admin, "admin@medlane.test");
+  await admin.evaluate(() => { data.payments.find((p) => p.id === "CR-BNC|SI-COLL").collectionStatus = "For Deposit"; });
+  const adminActions = await actionsFor(admin, "CR-BNC");
+  expect(adminActions).toContain(":Bounced");
+  expect(adminActions).toContain("data-payment-request-cancel");
+  await admin.close();
+});

@@ -809,21 +809,25 @@ function findItemForSheetRow(row, changedInput = null, allowPartial = false) {
 }
 /** @param {any} type */
 function collectionTagForType(type) { return type === "TS" ? "TS-PR" : ["DR", "DRS"].includes(type) ? "DR-CR" : "SI-CR"; }
-// A Bounced payment has exactly one way forward — a Superadmin redeposits it (optionally with a
-// corrected cheque number), which puts it back to For Deposit. Deposited/Posted Date are hidden
-// until then so a bounced cheque can't be marked Deposited without being redeposited first.
+// A Bounced payment has exactly one way forward — it's redeposited (optionally with a corrected
+// cheque number), which puts it back to For Deposit. Deposited/Posted Date are hidden until then
+// so a bounced cheque can't be marked Deposited without being redeposited first.
 /** @param {Payment} payment @param {string} buttonClass */
 function collectionStatusButtonsHtml(payment, buttonClass) {
   const receiptNo = escapeHtml(payment.receiptNo);
   if (payment.collectionStatus === "Bounced") {
     return canRedepositCollections()
       ? `<button class="${buttonClass}" data-collection-redeposit="${receiptNo}">Redeposit</button>`
-      : `<small>Bounced — awaiting Superadmin redeposit</small>`;
+      : `<small>Bounced — awaiting redeposit</small>`;
   }
-  return `<button class="${buttonClass}" data-collection-status="${receiptNo}:Deposited">Deposited</button><button class="${buttonClass} danger-button" data-collection-status="${receiptNo}:Bounced">Bounced</button><button class="${buttonClass}" data-collection-status="${receiptNo}:Posted Date">Posted Date</button>`;
+  return `<button class="${buttonClass}" data-collection-status="${receiptNo}:Deposited">Deposited</button>${canBounceOrCancelCollections() ? `<button class="${buttonClass} danger-button" data-collection-status="${receiptNo}:Bounced">Bounced</button>` : ""}<button class="${buttonClass}" data-collection-status="${receiptNo}:Posted Date">Posted Date</button>`;
 }
 
-function canRedepositCollections() { return ["Superadmin", "CEO"].includes(currentUser?.role); }
+// Collections need no approval. Anyone who can edit Collections marks Deposited / Post-dated and
+// redeposits a bounced cheque; only Admin, Superadmin and CEO mark Bounced or cancel a collection.
+// Mirrored server-side in assertFinancialApprovalAllowed().
+function canRedepositCollections() { return canEditModule("collections"); }
+function canBounceOrCancelCollections() { return ["Admin", "Superadmin", "CEO"].includes(String(currentUser?.role || "")) && canEditModule("collections"); }
 
 /** @param {any} request */
 function paymentRequestHistory(request) {
@@ -837,8 +841,8 @@ function paymentRequestActionsCell(request) {
     : "";
   const linkedPayment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
   const isDepositFinal = linkedPayment?.collectionStatus === "Deposited";
-  const isCancellable = request.requestStatus === "Pending";
-  const cancelBtn = isCancellable && canApprovePaymentRequests() ? `<button class="mini-button danger-button" data-payment-request-cancel="${escapeHtml(request.cvNo)}">Cancel</button>` : "";
+  const isCancellable = ["Pending", "Approved"].includes(request.requestStatus) && !paymentRequestPayments(request).some((payment) => payment.collectionStatus === "Deposited");
+  const cancelBtn = isCancellable && canBounceOrCancelCollections() ? `<button class="mini-button danger-button" data-payment-request-cancel="${escapeHtml(request.cvNo)}">Cancel</button>` : "";
   const perCheque = request.requestStatus === "Approved" && collectionChequeGroups(request.cvNo).length > 0;
   const statusActions = perCheque ? `<button class="mini-button" data-collections-goto-checks="${escapeHtml(request.cvNo)}">Update checks</button>`
     : request.requestStatus === "Approved" && linkedPayment && !isDepositFinal
@@ -899,15 +903,15 @@ function paymentRequestPayments(requestOrCvNo) {
 }
 
 /** @param {string} cvNo */
-async function approvePaymentRequest(cvNo) {
-  if (!canApprovePaymentRequests()) return toast("Only Superadmin or CEO can approve payment requests.");
-  const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
-  if (!request) return toast("Payment request not found.");
-  const invoiceIds = request.invoices?.length ? request.invoices : (request.invoice ? request.invoice.split(",").map((id) => id.trim()).filter(Boolean) : []);
-  if (!invoiceIds.length) return toast("This payment request is not linked to an invoice.");
-  if (request.requestStatus !== "Pending") return toast("This payment request has already been processed.");
+/**
+ * Checks a collection against its invoices before it's applied.
+ * @param {any} request @returns {{ error: string } | { error?: undefined, sales: any[], perInvoiceItems: any[], hasPerInvoiceAmounts: boolean, combinedBalance: number, requestedAmount: number, isFull: boolean }}
+ */
+function collectionApplyPlan(request) {
+  const invoiceIds = request.invoices?.length ? request.invoices : (request.invoice ? request.invoice.split(",").map((/** @type {string} */ id) => id.trim()).filter(Boolean) : []);
+  if (!invoiceIds.length) return { error: "This payment request is not linked to an invoice." };
   const sales = /** @type {any[]} */ (invoiceIds.map((/** @type {any} */ id) => findSaleByDocumentInput(id)).filter(Boolean));
-  if (!sales.length) return toast("Linked invoice(s) not found.");
+  if (!sales.length) return { error: "Linked invoice(s) not found." };
   // Requests created with the per-invoice itemized editor carry an explicit net amount for
   // each invoice (item.netAmount). Older requests only have one lump total, so fall back to
   // applying that sequentially, oldest invoice first — matches the payment behavior those
@@ -919,24 +923,26 @@ async function approvePaymentRequest(cvNo) {
   // Compare rounded to the centavo: combinedBalance is built from chained float subtraction/addition
   // across invoices, so a request for the "exact" balance can land a fraction of a centavo over it
   // (e.g. 3642.8600000000001) and wrongly trip a strict > comparison.
-  if (roundMoney(requestedAmount) - roundMoney(combinedBalance) > 0.01) return toast(`Cannot approve: requested ${peso.format(requestedAmount)} exceeds the combined remaining balance of ${peso.format(combinedBalance)}.`);
+  if (roundMoney(requestedAmount) - roundMoney(combinedBalance) > 0.01) return { error: `The amount ${peso.format(requestedAmount)} exceeds the combined remaining balance of ${peso.format(combinedBalance)}.` };
   const isFull = roundMoney(combinedBalance) - roundMoney(requestedAmount) <= 0.01;
-  const ok = await confirmDetailsModal({
-    eyebrow: "Confirm Approval",
-    title: `Approve ${request.cvNo}`,
-    fields: [["Invoice(s)", sales.map((sale) => sale.documentNo || sale.id).join(", ")], ["Client", sales[0].client], ["Requested Amount", peso.format(requestedAmount)], ["Combined Balance", peso.format(combinedBalance)]],
-    confirmLabel: "Approve & Record Payment",
-    note: hasPerInvoiceAmounts ? "This will apply the specified amount to each selected invoice." : isFull ? "This will fully settle the selected invoice(s)." : "This will be recorded as a partial payment, applied to the oldest invoice first.",
-  });
-  if (!ok) return;
-  const by = currentUser?.name || "System User";
+  return { sales, perInvoiceItems, hasPerInvoiceAmounts, combinedBalance, requestedAmount, isFull };
+}
+
+/**
+ * Applies a collection to its invoices: one payment per invoice (per cheque for Multiple Cheques),
+ * each For Deposit and counted against the invoice straight away. Marks the collection Approved
+ * (the "applied" state; a Bounced cheque reverses its payment). Does not save.
+ * @param {any} request @param {Exclude<ReturnType<typeof collectionApplyPlan>, { error: string }>} plan
+ */
+function collectionApply(request, plan) {
+  const { sales, perInvoiceItems, hasPerInvoiceAmounts, requestedAmount } = plan;
   /** @type {any[]} */
   const newPayments = [];
   /** @type {any[]} */
   const touchedSales = [];
   const applyPayment = (/** @type {Sale} */ sale, /** @type {any} */ applied) => {
     if (applied <= 0) return;
-    const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: request.paymentType === "Multiple Cheques" ? request.cheque || "" : "", chequeDate: request.chequeDate || "", cheques: Array.isArray(request.cheques) ? request.cheques.map((cheque) => ({ ...cheque })) : [], transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposit", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposit"), paymentRequestCvNo: request.cvNo };
+    const payment = { invoice: sale.documentNo || sale.id, tag: collectionTagForType(sale.type), receiptNo: request.cvNo, method: request.paymentType || "Cash", bank: request.bank || "", bankAccount: request.bankAccount || "", reference: request.paymentType === "Multiple Cheques" ? request.cheque || "" : "", chequeDate: request.chequeDate || "", cheques: Array.isArray(request.cheques) ? request.cheques.map((/** @type {ChequeLine} */ cheque) => ({ ...cheque })) : [], transferDate: request.transferDate || "", dateCollected: request.transferDate || fmtDate(today), dateRecorded: fmtDate(today), client: sale.client, amount: applied, collectionStatus: "For Deposit", appliedToInvoice: false, statusHistory: collectionStatusHistory("For Deposit"), paymentRequestCvNo: request.cvNo };
     data.payments.push(payment);
     // Applied as soon as it's posted (queued for deposit), not gated on deposit confirmation,
     // so the receivable balance reflects partial payments right away. Bounced reverses it back.
@@ -976,6 +982,28 @@ async function approvePaymentRequest(cvNo) {
   newPayments.forEach((payment) => { payment.id ||= `${payment.receiptNo}|${payment.invoice}`; });
   request.requestStatus = "Approved";
   request.status = "Approved";
+  return { newPayments, touchedSales };
+}
+
+/** Approves a collection made before approval was retired (Superadmin/CEO). @param {string} cvNo */
+async function approvePaymentRequest(cvNo) {
+  if (!canApprovePaymentRequests()) return toast("Only Superadmin or CEO can approve payment requests.");
+  const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
+  if (!request) return toast("Payment request not found.");
+  if (request.requestStatus !== "Pending") return toast("This payment request has already been processed.");
+  const plan = collectionApplyPlan(request);
+  if (plan.error !== undefined) return toast(plan.error);
+  const { sales, hasPerInvoiceAmounts, combinedBalance, requestedAmount, isFull } = plan;
+  const ok = await confirmDetailsModal({
+    eyebrow: "Confirm Approval",
+    title: `Approve ${request.cvNo}`,
+    fields: [["Invoice(s)", sales.map((sale) => sale.documentNo || sale.id).join(", ")], ["Client", sales[0].client], ["Requested Amount", peso.format(requestedAmount)], ["Combined Balance", peso.format(combinedBalance)]],
+    confirmLabel: "Approve & Record Payment",
+    note: hasPerInvoiceAmounts ? "This will apply the specified amount to each selected invoice." : isFull ? "This will fully settle the selected invoice(s)." : "This will be recorded as a partial payment, applied to the oldest invoice first.",
+  });
+  if (!ok) return;
+  const by = currentUser?.name || "System User";
+  const { newPayments, touchedSales } = collectionApply(request, plan);
   request.approvedBy = by;
   request.approvedAt = fmtDate(today);
   request.history = paymentRequestHistory(request);
@@ -990,36 +1018,36 @@ async function approvePaymentRequest(cvNo) {
   toast(`${request.cvNo} approved and queued for deposit.`);
 }
 
-/** @param {string} cvNo */
+/** Cancels a collection (Admin/Superadmin/CEO): every payment still counted against an invoice is taken off it, and the collection is final. @param {string} cvNo */
 async function cancelPaymentRequest(cvNo) {
-  if (!canApprovePaymentRequests()) return toast("Only Superadmin or CEO can cancel payment requests.");
+  if (!canBounceOrCancelCollections()) return toast("Only Admin, Superadmin or CEO can cancel a collection.");
   const request = data.paymentRequests.find((entry) => entry.cvNo === cvNo);
   if (!request) return toast("Payment request not found.");
-  if (request.requestStatus === "Cancelled") return toast("This payment request is already cancelled.");
-  if (request.requestStatus === "Approved") return toast("Approved payment requests cannot be cancelled. Update the collection status instead.");
-  const payment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
-  if (payment?.collectionStatus === "Deposited") return toast("This payment has already been deposited and can no longer be cancelled.");
-  const sale = request.invoice ? findSaleByDocumentInput(request.invoice) : null;
+  if (request.requestStatus === "Cancelled") return toast("This collection is already cancelled.");
+  const payments = paymentRequestPayments(request).filter((payment) => !payment.voided);
+  if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("Part of this collection is already deposited, so it can no longer be cancelled. Mark the cheque that failed as Bounced instead.");
+  const applied = payments.filter((payment) => payment.collectionStatus !== "Bounced");
   const { ok, reason } = await confirmDetailsModal({
     eyebrow: "Confirm Cancellation",
     title: `Cancel ${request.cvNo}`,
-    fields: [["Invoice", request.invoice || "-"], ["Client", request.employee], ["Total", peso.format(request.total || 0)], ["Status", request.requestStatus || request.status || "-"]],
-    confirmLabel: "Cancel Request",
+    fields: [["Invoice(s)", request.invoice || "-"], ["Client", request.employee], ["Total", peso.format(request.total || 0)], ["Status", request.requestStatus || request.status || "-"]],
+    confirmLabel: "Cancel Collection",
     danger: true,
     collectReason: true,
     reasonLabel: "Reason for cancellation",
-    note: payment ? "This will also reverse the recorded payment and the invoice's paid amount, since the payment has not been deposited yet." : "",
+    note: applied.length ? `This takes ${peso.format(applied.reduce((sum, payment) => sum + Number(payment.amount || 0), 0))} back off the invoice${new Set(applied.map((payment) => payment.invoice)).size === 1 ? "" : "s"}, and the collection can't be changed afterwards.` : "The collection can't be changed afterwards.",
   });
   if (!ok) return;
   if (!reason) return toast("A cancellation reason is required.");
   const by = currentUser?.name || "System User";
-  if (payment && sale) {
-    sale.paid = Math.max(Number(sale.paid || 0) - Number(payment.amount || 0), 0);
+  payments.forEach((payment) => {
+    // A bounced payment was already taken off its invoice.
+    if (payment.collectionStatus !== "Bounced") reverseCollectionPayment(payment);
     payment.collectionStatus = "Cancelled";
     payment.voided = true;
     payment.statusHistory ||= [];
     payment.statusHistory.push(...collectionStatusHistory("Cancelled"));
-  }
+  });
   request.requestStatus = "Cancelled";
   request.status = "Cancelled";
   request.cancelledBy = by;
@@ -1027,11 +1055,12 @@ async function cancelPaymentRequest(cvNo) {
   request.cancelReason = reason;
   request.history = paymentRequestHistory(request);
   request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Cancelled", note: `Cancelled by ${by}. Reason: ${reason}`, by });
-  const saveResult = await persistRecords({ paymentRequests: [request], payments: payment ? [payment] : [], sales: sale ? [sale] : [] });
+  const sales = [...new Map(/** @type {Sale[]} */ (payments.map((payment) => saleForPayment(payment)).filter(Boolean)).map((sale) => [sale.documentNo || sale.id, sale])).values()];
+  const saveResult = await persistRecords({ paymentRequests: [request], payments, sales });
   if (!saveResult?.ok) return;
-  log("Cancelled payment request", "Collections", `${request.cvNo}: ${reason}`, { save: false });
+  log("Cancelled collection", "Collections", `${request.cvNo}: ${reason}`, { save: false });
   notify("Payment Received", `${request.cvNo} cancelled.`, "collections", request.cvNo);
-  if (request.createdByUser) notify("Payment Received", `Your payment request ${request.cvNo} was cancelled.`, "notifications", request.cvNo, null, request.createdByUser);
+  if (request.createdByUser) notify("Payment Received", `Your collection ${request.cvNo} was cancelled.`, "notifications", request.cvNo, null, request.createdByUser);
   saveData(["notifications"]);
   renderAll();
   toast(`${request.cvNo} cancelled.`);
@@ -5088,15 +5117,17 @@ function collectionReceiptActions(receipt) {
   const cv = escapeHtml(receipt.id);
   const state = receipt.state;
   const buttons = [];
-  if (state === "approval" && canApprovePaymentRequests()) buttons.push(`<button data-payment-request-approve="${cv}">Approve</button>`, `<button class="danger-button" data-payment-request-cancel="${cv}">Cancel</button>`);
+  if (state === "approval" && canApprovePaymentRequests()) buttons.push(`<button data-payment-request-approve="${cv}">Approve</button>`);
   const chequeGroups = state === "approval" || state === "cancelled" ? [] : collectionChequeGroups(receipt.id);
   if (chequeGroups.length) chequeGroups.forEach((group) => buttons.push(...collectionChequeButtons(receipt.id, group, true)));
   else if (state === "deposit" || state === "pdc") {
     buttons.push(`<button data-collection-status="${cv}:Deposited">Mark deposited</button>`);
     if (state === "deposit") buttons.push(`<button data-collection-status="${cv}:Posted Date">Post-dated</button>`);
-    buttons.push(`<button class="danger-button" data-collection-status="${cv}:Bounced">Bounced</button>`);
+    if (canBounceOrCancelCollections()) buttons.push(`<button class="danger-button" data-collection-status="${cv}:Bounced">Bounced</button>`);
   }
   if (!chequeGroups.length && state === "bounced" && canRedepositCollections()) buttons.push(`<button data-collection-redeposit="${cv}">Redeposit</button>`);
+  // Cancel: any collection with nothing deposited yet (Admin/Superadmin/CEO).
+  if (receipt.request && ["approval", "deposit", "pdc", "bounced"].includes(state) && canBounceOrCancelCollections() && !paymentRequestPayments(receipt.id).some((payment) => payment.collectionStatus === "Deposited")) buttons.push(`<button class="danger-button" data-payment-request-cancel="${cv}">Cancel collection</button>`);
   const primary = buttons.length > 0;
   if (receipt.request) buttons.push(`<button data-payment-request-preview="${cv}">Preview / print</button>`, `<button data-payment-request-timeline="${cv}">View timeline</button>`);
   const firstSale = receipt.shares.map((share) => data.sales.find((sale) => sale.documentNo === share.invoice || sale.id === share.invoice)).find(Boolean);
@@ -5229,7 +5260,7 @@ function collectionsTabModel(tab) {
               { label: "For invoices", value: invoices.join(", ") || "—", mono: Boolean(invoices.length), wide: true },
             ],
             note: rowState === "pdc" ? { text: `Post-dated. Deposit on or after ${uiDate(receipt.payments.find((payment) => payment.postedDate)?.postedDate || cheque.date)}.`, tone: "amber" }
-              : rowState === "bounced" ? { text: "Returned by the bank. The invoice balance was restored; a Superadmin must redeposit it.", tone: "red" }
+              : rowState === "bounced" ? { text: "Returned by the bank. The invoice balance was restored until it is redeposited.", tone: "red" }
               : rowState === "approval" ? { text: "The receipt is waiting for Superadmin/CEO approval.", tone: "slate" } : undefined,
             actions: [...(group ? uiAdoptActions(collectionChequeButtons(receipt.id, group).join(""), { primaryFirst: true }).buttons : collectionReceiptActions(receipt)), uiButton("View receipt", { "data-collections-goto-receipt": receipt.id })],
           }),
@@ -5304,7 +5335,7 @@ function collectionsTabModel(tab) {
           note: receipt.state === "approval" ? { text: "Waiting for Superadmin/CEO approval. Invoices are updated once it's approved.", tone: "slate" }
             : receipt.state === "pdc" ? { text: `Post-dated${posted ? ` to ${uiDate(posted)}` : ""}. It already counts against the invoice; deposit it on or after that date.`, tone: "amber" }
             : receipt.state === "deposit" ? { text: "Applied to the invoice. Not yet banked.", tone: "orange" }
-            : receipt.state === "bounced" ? { text: "The check bounced, so the invoice balance was restored. A Superadmin must redeposit it.", tone: "red" }
+            : receipt.state === "bounced" ? { text: "The check bounced, so the invoice balance was restored. It needs to be redeposited.", tone: "red" }
             : receipt.state === "deposited" ? { text: "Deposited. This receipt can no longer be changed.", tone: "green" } : undefined,
           actions: collectionReceiptActions(receipt),
         };
@@ -6399,7 +6430,7 @@ function collectionChequeButtons(receiptNo, group, labelled = false) {
   return [
     `<button data-collection-status="${cv}:Deposited:${group.index}">Mark deposited${no}</button>`,
     ...(group.state === "deposit" ? [`<button data-collection-status="${cv}:Posted Date:${group.index}">Post-dated${no}</button>`] : []),
-    `<button class="danger-button" data-collection-status="${cv}:Bounced:${group.index}">Bounced${no}</button>`,
+    ...(canBounceOrCancelCollections() ? [`<button class="danger-button" data-collection-status="${cv}:Bounced:${group.index}">Bounced${no}</button>`] : []),
   ];
 }
 
@@ -6415,7 +6446,8 @@ async function updateCollectionPaymentStatus(receiptNo, status, chequeIndex = nu
   if (!payments.length) return toast(perCheque ? "No cheque on this collection is waiting for deposit." : "Collection not found.");
   const label = chequeIndex !== null ? `cheque ${payments[0].chequeNo || `#${chequeIndex + 1}`} (${receiptNo})` : receiptNo;
   if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited and can no longer be changed.");
-  if (payments.some((payment) => payment.collectionStatus === "Bounced")) return toast("This payment bounced — a Superadmin must Redeposit it first.");
+  if (payments.some((payment) => payment.collectionStatus === "Bounced")) return toast("This payment bounced — Redeposit it first.");
+  if (status === "Bounced" && !canBounceOrCancelCollections()) return toast("Only Admin, Superadmin or CEO can mark a payment Bounced.");
   const postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payments[0].postedDate || fmtDate(today)) || "" : "";
   // Deposited asks which bank account (Masterlists → Banks) it went into; that dialog is the confirmation.
   /** @type {{ bank: string, account: string } | null} */
@@ -6523,7 +6555,7 @@ function promptRedepositCheque(currentCheque, cheques = []) {
 
 /** @param {string} receiptNo @param {number | null} [chequeIndex] one bounced cheque of a Multiple Cheques collection */
 async function redepositCollectionPayment(receiptNo, chequeIndex = null) {
-  if (!canRedepositCollections()) return toast("Only Superadmin/CEO can redeposit a bounced payment.");
+  if (!canRedepositCollections()) return toast("Redepositing needs Collections edit access.");
   const { all, perCheque } = collectionPaymentsFor(receiptNo);
   if (!all.length) return toast("Collection not found.");
   if (perCheque && chequeIndex === null) return toast("Choose the bounced cheque to redeposit in Collections → Check register.");

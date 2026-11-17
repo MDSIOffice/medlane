@@ -56,17 +56,55 @@ describe("expense requests (replenishments)", () => {
 });
 
 describe("collection payment requests", () => {
+  // Collections no longer need approval: a new one is saved already applied (Approved).
   for (const role of NON_MANAGEMENT) {
-    test(`${role} cannot approve`, async () => {
+    test(`${role} can save a new collection already applied`, async () => {
+      mockSupabase({});
+      await check(env, STATE, as(role), [row("paymentRequests", "R9", { requestStatus: "Approved", status: "Approved" })]);
+    });
+    test(`${role} cannot approve a collection still Pending from before the change`, async () => {
+      mockSupabase({ paymentRequests: [stored("R1", { requestStatus: "Pending", status: "Pending" })] });
       await assert.rejects(check(env, STATE, as(role), [row("paymentRequests", "R1", { status: "approved" })]), /Only Superadmin\/CEO can approve payment/);
     });
   }
-  test("CEO can approve", async () => {
+  test("CEO can approve a Pending one", async () => {
+    mockSupabase({ paymentRequests: [stored("R1", { requestStatus: "Pending" })] });
     await check(env, STATE, as("CEO"), [row("paymentRequests", "R1", { requestStatus: "Approved" })]);
   });
   test("an already approved request can be edited", async () => {
     mockSupabase({ paymentRequests: [stored("R1", { status: "Approved" })] });
     await check(env, STATE, as("Admin"), [row("paymentRequests", "R1", { status: "Approved", note: "x" })]);
+  });
+  test("a cancelled collection can't be reopened", async () => {
+    mockSupabase({ paymentRequests: [stored("R1", { requestStatus: "Cancelled", status: "Cancelled" })] });
+    await assert.rejects(check(env, STATE, as("Accounting"), [row("paymentRequests", "R1", { requestStatus: "Approved", status: "Approved" })]), /can't be reopened/);
+  });
+  test("Admin can cancel a collection; Accounting can't", async () => {
+    mockSupabase({ paymentRequests: [stored("R1", { requestStatus: "Approved", status: "Approved" })] });
+    await check(env, STATE, as("Admin"), [row("paymentRequests", "R1", { requestStatus: "Cancelled", status: "Cancelled" })]);
+    await assert.rejects(check(env, STATE, as("Accounting"), [row("paymentRequests", "R1", { requestStatus: "Cancelled", status: "Cancelled" })]), /Only Admin, Superadmin or CEO can cancel/);
+  });
+});
+
+describe("collection payment status", () => {
+  test("Accounting marks a payment Deposited", async () => {
+    mockSupabase({ payments: [stored("P1", { collectionStatus: "For Deposit" })] });
+    await check(env, STATE, as("Accounting"), [row("payments", "P1", { collectionStatus: "Deposited" })]);
+  });
+  for (const status of ["Bounced", "Cancelled"]) {
+    test(`Accounting cannot mark a payment ${status}; Admin can`, async () => {
+      mockSupabase({ payments: [stored("P1", { collectionStatus: "For Deposit" })] });
+      await assert.rejects(check(env, STATE, as("Accounting"), [row("payments", "P1", { collectionStatus: status })]), /Only Admin, Superadmin or CEO/);
+      await check(env, STATE, as("Admin"), [row("payments", "P1", { collectionStatus: status })]);
+    });
+  }
+  test("Accounting redeposits a bounced payment (back to For Deposit)", async () => {
+    mockSupabase({ payments: [stored("P1", { collectionStatus: "Bounced" })] });
+    await check(env, STATE, as("Accounting"), [row("payments", "P1", { collectionStatus: "For Deposit" })]);
+  });
+  test("a bounced payment can't jump straight to Deposited", async () => {
+    mockSupabase({ payments: [stored("P1", { collectionStatus: "Bounced" })] });
+    await assert.rejects(check(env, STATE, as("Admin"), [row("payments", "P1", { collectionStatus: "Deposited" })]), /redeposited first/);
   });
 });
 

@@ -2529,15 +2529,16 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
       }
     }
 
-    // Collection payment requests: only Superadmin/CEO move one into Approved (the dedicated
-    // approver guard was never wired into these generic writers).
+    // Collections no longer need approval: a new one is saved already applied (Approved). Only
+    // collections made before that change, still Pending, need Superadmin/CEO to approve them.
     const prCandidates = rows.filter((row) => row.module_name === "paymentRequests" && (lower(row.data?.requestStatus) === "approved" || lower(row.data?.status) === "approved"));
     if (prCandidates.length) {
       const stored = await fetchStored("paymentRequests", prCandidates);
       for (const row of prCandidates) {
         const prev = stored.get(row.record_key);
-        if (prev && (lower(prev.requestStatus) === "approved" || lower(prev.status) === "approved")) continue;
-        throw new Error("Only Superadmin/CEO can approve payment requests");
+        if (!prev || lower(prev.requestStatus) === "approved" || lower(prev.status) === "approved") continue;
+        if (lower(prev.requestStatus) === "pending" || lower(prev.status) === "pending") throw new Error("Only Superadmin/CEO can approve payment requests");
+        throw new Error(`Collection ${row.record_key} is ${prev.requestStatus || prev.status} and can't be reopened`);
       }
     }
 
@@ -2588,15 +2589,31 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
     }
   }
 
-  // A bounced collection can only be moved on (redeposited) by a Superadmin or CEO — the client offers
-  // that as the one action on a Bounced payment, but the plain record save would otherwise let
-  // any collections user flip it straight back to For Deposit/Deposited.
-  if (!isManagement) {
-    const paymentCandidates = rows.filter((row) => row.module_name === "payments" && lower(row.data?.collectionStatus) !== "bounced");
-    if (paymentCandidates.length) {
-      const stored = await fetchStored("payments", paymentCandidates);
-      for (const row of paymentCandidates) {
-        if (lower(stored.get(row.record_key)?.collectionStatus) === "bounced") throw new Error("Only Superadmin/CEO can redeposit a bounced payment");
+  // Collection status rules (no approval step any more):
+  //  - only Admin/Superadmin/CEO mark a payment Bounced or cancel a collection;
+  //  - a Bounced payment moves on only by being redeposited (back to For Deposit) or cancelled —
+  //    anyone with Collections edit access may redeposit, but never straight to Deposited.
+  {
+    const canBounceOrCancel = ["Admin", "Superadmin", "CEO"].includes(String(role || ""));
+    const paymentRows = isManagement ? [] : rows.filter((row) => row.module_name === "payments");
+    if (paymentRows.length) {
+      const stored = await fetchStored("payments", paymentRows);
+      for (const row of paymentRows) {
+        const prev = stored.get(row.record_key);
+        const before = lower(prev?.collectionStatus);
+        const after = lower(row.data?.collectionStatus);
+        if (before === after) continue;
+        if (["bounced", "cancelled"].includes(after) && !canBounceOrCancel) throw new Error(`Only Admin, Superadmin or CEO can mark a payment ${row.data?.collectionStatus}`);
+        if (before === "bounced" && !["for deposit", "cancelled"].includes(after)) throw new Error("A bounced payment has to be redeposited first");
+      }
+    }
+    const cancelRows = rows.filter((row) => row.module_name === "paymentRequests" && (lower(row.data?.requestStatus) === "cancelled" || lower(row.data?.status) === "cancelled"));
+    if (cancelRows.length && !canBounceOrCancel) {
+      const stored = await fetchStored("paymentRequests", cancelRows);
+      for (const row of cancelRows) {
+        const prev = stored.get(row.record_key);
+        if (prev && (lower(prev.requestStatus) === "cancelled" || lower(prev.status) === "cancelled")) continue;
+        throw new Error("Only Admin, Superadmin or CEO can cancel a collection");
       }
     }
   }
