@@ -2040,7 +2040,6 @@ qs("#login-form").addEventListener("submit", async (event) => {
   // Sign-ins (and failed attempts) are recorded by the server's login endpoint.
   if (currentUser?.email) notify("Security", `New sign-in to your account (${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" })}).`, "notifications", "", null, currentUser.email);
   saveData(["notifications"]);
-  playLoginSuccessSound();
   setAppLoaderStep("Preparing your dashboard…");
   if (loginButton) {
     loginButton.disabled = false;
@@ -2054,13 +2053,13 @@ qs("#login-form").addEventListener("submit", async (event) => {
   applyRole();
   renderAll();
   startAppVersionWatch();
-  hideAppLoader();
-  // Every sign-in opens on the Welcome screen; the dashboard is already drawn underneath it.
+  // Every sign-in opens on the Welcome screen; the dashboard is already drawn underneath it. It hides
+  // the loader and starts the sign-in sound together with its entrance animation.
   showWelcomeScreen(() => {
     playDashboardLoginSound();
     toast(`Logged in as ${currentUser.name || currentUser.role}.`);
     maybeShowPasswordKycModal();
-  });
+  }, hideAppLoader);
 });
 
 qs("#login-forgot")?.addEventListener("click", async () => {

@@ -529,3 +529,84 @@ test("the Dashboard task list and All tasks tab come from the module rules and o
   await expect(page.locator("body")).not.toHaveAttribute("data-active-section", "dashboard");
   expect(problems).toEqual([]);
 });
+
+// Records every audio.play() call and the moment the Welcome intro class appears.
+async function spyOnIntro(page, { blockAutoplay = false } = {}) {
+  await page.addInitScript((block) => {
+    const w = /** @type {any} */ (window);
+    w.__plays = [];
+    w.__introAt = null;
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      w.__plays.push({ src: decodeURIComponent(this.src), at: performance.now(), intro: document.getElementById("welcome-screen")?.classList.contains("wl-intro") || false });
+      return block ? Promise.reject(new DOMException("blocked", "NotAllowedError")) : play.call(this).catch(() => null);
+    };
+    new MutationObserver(() => { const s = document.getElementById("welcome-screen"); if (s?.classList.contains("wl-intro") && w.__introAt === null) w.__introAt = performance.now(); })
+      .observe(document, { subtree: true, attributes: true, attributeFilter: ["class"] });
+  }, blockAutoplay);
+}
+const startupPlays = (page) => page.evaluate(() => /** @type {any} */ (window).__plays.filter((p) => p.src.endsWith("Startup Sound.mp3")));
+
+test("the Welcome intro starts with the sign-in sound, counts up to the exact numbers and plays once", async ({ page }) => {
+  const { problems } = await watch(page);
+  await spyOnIntro(page);
+  await logIn(page, "superadmin@medlane.test", { stayOnWelcome: true });
+  const screen = page.locator("#welcome-screen");
+  await expect(screen).toHaveClass(/wl-intro/);
+  // The sound starts in the same call that adds the intro class.
+  const plays = await startupPlays(page);
+  expect(plays.length).toBe(1);
+  expect(plays[0].intro).toBe(true);
+  expect(Math.abs(plays[0].at - await page.evaluate(() => /** @type {any} */ (window).__introAt))).toBeLessThan(20);
+  // Screen readers get the whole greeting as one sentence.
+  await expect(screen.getByRole("heading", { level: 1 })).toHaveAttribute("aria-label", /^Good (morning|afternoon|evening), \S+\.$/);
+  // Mid-count the numbers are moving; by the end each one is exactly its real value.
+  await page.waitForTimeout(2300);
+  const counts = await page.evaluate(() => [...document.querySelectorAll("[data-wl-count]")].map((el) => [el.textContent, el.nextElementSibling?.textContent]));
+  expect(counts.length).toBeGreaterThan(0);
+  for (const [shown, exact] of counts) expect(shown).toBe(exact);
+  // The class comes off once the sequence ends, and nothing replays it.
+  await expect(screen).not.toHaveClass(/wl-intro/, { timeout: 3000 });
+  expect((await startupPlays(page)).length).toBe(1);
+  expect(problems).toEqual([]);
+});
+
+test("Continue works mid-animation", async ({ page }) => {
+  await watch(page);
+  await spyOnIntro(page);
+  await logIn(page, "accounting@medlane.test", { stayOnWelcome: true });
+  await expect(page.locator("#welcome-screen")).toHaveClass(/wl-intro/);
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#welcome-screen")).toBeHidden();
+});
+
+test("with autoplay blocked the Welcome intro still runs and the sound isn't retried", async ({ page }) => {
+  const { problems } = await watch(page);
+  await spyOnIntro(page, { blockAutoplay: true });
+  await logIn(page, "logistics@medlane.test", { stayOnWelcome: true });
+  await expect(page.locator("#welcome-screen")).toHaveClass(/wl-intro/);
+  await expect(page.locator("#welcome-screen")).not.toHaveClass(/wl-intro/, { timeout: 5000 });
+  expect((await startupPlays(page)).length).toBe(1);
+  expect(problems).toEqual([]);
+});
+
+test("with reduced motion the Welcome screen shows final values at once, still with the sound", async ({ browser }) => {
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await watch(page);
+  await spyOnIntro(page);
+  await logIn(page, "superadmin@medlane.test", { stayOnWelcome: true });
+  const screen = page.locator("#welcome-screen");
+  await expect(screen.locator(".wl-row").first()).toBeVisible();
+  await page.waitForTimeout(400);
+  const state = await page.evaluate(() => ({
+    cls: document.getElementById("welcome-screen")?.className,
+    animations: [".wl-row", ".wl-tasks", ".wl-continue", ".wl-wi", ".wl-stats"].map((sel) => getComputedStyle(/** @type {Element} */ (document.querySelector(sel))).animationName),
+    counts: [...document.querySelectorAll("[data-wl-count]")].map((el) => el.textContent === el.nextElementSibling?.textContent),
+  }));
+  expect(state.cls).not.toMatch(/wl-intro|wl-pending/);
+  expect(state.animations).toEqual(["none", "none", "none", "none", "none"]);
+  expect(state.counts.every(Boolean)).toBe(true);
+  expect((await startupPlays(page)).length).toBe(1);
+  await context.close();
+});

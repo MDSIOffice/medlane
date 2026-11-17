@@ -124,7 +124,15 @@ function welcomeActions() {
 }
 
 // ----- at a glance ----------------------------------------------------------------------------------
-/** @typedef {{ label: string, value: string, sub: string }} WelcomeStat */
+/** `count` lets the entrance animation count up to the real value in the same format. @typedef {{ label: string, value: string, sub: string, count?: WelcomeCount }} WelcomeStat */
+/** @typedef {{ to: number, fmt: (n: number) => string }} WelcomeCount */
+/** Counts in the unit of the final value: ₱1.99M stays in millions (2 decimals), smaller amounts stay whole pesos. @param {number} to @returns {WelcomeCount} */
+function welcomeMoneyCount(to) {
+  const millions = Math.abs(to) >= 1e6;
+  return { to, fmt: (n) => { const sign = n < 0 ? "−" : ""; const abs = Math.abs(n); return millions ? `${sign}₱${(abs / 1e6).toFixed(2)}M` : `${sign}₱${Math.round(abs).toLocaleString("en-PH")}`; } };
+}
+/** @param {number} to @param {string} [unit] e.g. "lot" → "3 lots" @returns {WelcomeCount} */
+function welcomeIntCount(to, unit) { return { to, fmt: (n) => (unit ? plural(Math.round(n), unit) : String(Math.round(n))) }; }
 /** @returns {WelcomeStat[]} */
 function welcomeStats() {
   /** @type {Record<string, unknown>} */
@@ -143,28 +151,28 @@ function welcomeStats() {
   const stockSeen = canViewModule("inventory") && !isDemoOnlyRole();
   /** @type {Record<string, { show: boolean, build: () => WelcomeStat }>} */
   const pool = {
-    revenue: { show: canSales, build: () => { const now = kpiRevenueIn(facts(), periods.monthStart, periods.todayKey); return { label: `Revenue · ${month}`, value: pesoShort(now), sub: change(now, kpiRevenueIn(facts(), periods.prev.start, periods.prev.end)) || "Net of VAT" }; } },
-    collected: { show: canViewModule("collections"), build: () => { const now = kpiCollectedIn(facts(), periods.monthStart, periods.todayKey); return { label: `Collected · ${month}`, value: pesoShort(now), sub: change(now, kpiCollectedIn(facts(), periods.prev.start, periods.prev.end)) || "Month to date" }; } },
-    owed: { show: canAr, build: () => { const ar = kpiReceivables(summaries()); return { label: "Clients owe us", value: pesoShort(ar.total), sub: ar.overdue > 0.005 ? `${pesoShort(ar.overdue)} overdue` : "Nothing overdue" }; } },
-    arOverdue: { show: canAr, build: () => { const ar = kpiReceivables(summaries()); return { label: "Overdue receivables", value: pesoShort(ar.overdue), sub: ar.total > 0.005 ? `of ${pesoShort(ar.total)} clients owe` : "Nothing owed" }; } },
-    weOwe: { show: canViewModule("payables"), build: () => { const open = kpiPayablesOpen(); return { label: "We owe", value: pesoShort(open.amount), sub: open.overdue > 0.005 ? `${pesoShort(open.overdue)} overdue` : "Nothing overdue" }; } },
-    billsDue7: { show: canViewModule("payables"), build: () => { const due = kpiPayablesDue(7); return { label: "Bills due in 7 days", value: pesoShort(due.amount), sub: due.overdue > 0.005 ? `${pesoShort(due.overdue)} already overdue` : plural(due.count, "bill") }; } },
-    toDeposit: { show: canViewModule("collections"), build: () => { const waiting = kpiToDeposit(); return { label: "To deposit", value: pesoShort(waiting.amount), sub: waiting.count ? plural(waiting.count, "receipt") : "Nothing waiting" }; } },
-    expenses: { show: canViewModule("replenishments"), build: () => { const { spent, budget } = kpiExpensesMonth(); return { label: `Expenses · ${month}`, value: pesoShort(spent), sub: budget > 0 ? `${Math.round((spent / budget) * 100)}% of the ${pesoShort(budget)} budget` : "No budget set" }; } },
-    openOrders: { show: canViewModule("sales"), build: () => { const orders = salesOpenOrders(); return { label: "Open client orders", value: welcomePeso(orders.reduce((sum, po) => sum + salesOrderTotal(po), 0)), sub: plural(orders.length, "order") }; } },
+    revenue: { show: canSales, build: () => { const now = kpiRevenueIn(facts(), periods.monthStart, periods.todayKey); return { label: `Revenue · ${month}`, value: pesoShort(now), count: welcomeMoneyCount(now), sub: change(now, kpiRevenueIn(facts(), periods.prev.start, periods.prev.end)) || "Net of VAT" }; } },
+    collected: { show: canViewModule("collections"), build: () => { const now = kpiCollectedIn(facts(), periods.monthStart, periods.todayKey); return { label: `Collected · ${month}`, value: pesoShort(now), count: welcomeMoneyCount(now), sub: change(now, kpiCollectedIn(facts(), periods.prev.start, periods.prev.end)) || "Month to date" }; } },
+    owed: { show: canAr, build: () => { const ar = kpiReceivables(summaries()); return { label: "Clients owe us", value: pesoShort(ar.total), count: welcomeMoneyCount(ar.total), sub: ar.overdue > 0.005 ? `${pesoShort(ar.overdue)} overdue` : "Nothing overdue" }; } },
+    arOverdue: { show: canAr, build: () => { const ar = kpiReceivables(summaries()); return { label: "Overdue receivables", value: pesoShort(ar.overdue), count: welcomeMoneyCount(ar.overdue), sub: ar.total > 0.005 ? `of ${pesoShort(ar.total)} clients owe` : "Nothing owed" }; } },
+    weOwe: { show: canViewModule("payables"), build: () => { const open = kpiPayablesOpen(); return { label: "We owe", value: pesoShort(open.amount), count: welcomeMoneyCount(open.amount), sub: open.overdue > 0.005 ? `${pesoShort(open.overdue)} overdue` : "Nothing overdue" }; } },
+    billsDue7: { show: canViewModule("payables"), build: () => { const due = kpiPayablesDue(7); return { label: "Bills due in 7 days", value: pesoShort(due.amount), count: welcomeMoneyCount(due.amount), sub: due.overdue > 0.005 ? `${pesoShort(due.overdue)} already overdue` : plural(due.count, "bill") }; } },
+    toDeposit: { show: canViewModule("collections"), build: () => { const waiting = kpiToDeposit(); return { label: "To deposit", value: pesoShort(waiting.amount), count: welcomeMoneyCount(waiting.amount), sub: waiting.count ? plural(waiting.count, "receipt") : "Nothing waiting" }; } },
+    expenses: { show: canViewModule("replenishments"), build: () => { const { spent, budget } = kpiExpensesMonth(); return { label: `Expenses · ${month}`, value: pesoShort(spent), count: welcomeMoneyCount(spent), sub: budget > 0 ? `${Math.round((spent / budget) * 100)}% of the ${pesoShort(budget)} budget` : "No budget set" }; } },
+    openOrders: { show: canViewModule("sales"), build: () => { const orders = salesOpenOrders(); const total = orders.reduce((sum, po) => sum + salesOrderTotal(po), 0); return { label: "Open client orders", value: welcomePeso(total), count: welcomeMoneyCount(total), sub: plural(orders.length, "order") }; } },
     pendingDelivery: { show: canViewModule("sales"), build: () => {
       const docs = salesScopedDocuments().filter((sale) => sale.status !== "Cancelled" && (sale.deliveryStatus || "Pending") === "Pending");
       const late = docs.filter((sale) => daysUntil(sale.date) <= -3).length;
-      return { label: "Pending delivery", value: String(docs.length), sub: late ? `${late} issued 3+ days ago` : "None late" };
+      return { label: "Pending delivery", value: String(docs.length), count: welcomeIntCount(docs.length), sub: late ? `${late} issued 3+ days ago` : "None late" };
     } },
     itemsInStock: { show: stockSeen, build: () => {
       const codes = new Set(lots().filter((lot) => lot.status !== "Expired").map((lot) => lot.row.code));
       const low = lots().filter((lot) => ["Low Stock", "Critical"].includes(lot.status)).length;
-      return { label: "Items in stock", value: String(codes.size), sub: low ? `${plural(low, "stock record")} below min` : "None below min" };
+      return { label: "Items in stock", value: String(codes.size), count: welcomeIntCount(codes.size), sub: low ? `${plural(low, "stock record")} below min` : "None below min" };
     } },
-    transfersIn: { show: stockSeen && !isStockViewOnly(), build: () => { const n = (data.pendingTransfers || []).filter((transfer) => ["In Transit", "Incomplete"].includes(transfer.status)).length; return { label: "Transfers in", value: String(n), sub: n ? "In transit" : "Nothing on the way" }; } },
-    expiring60: { show: stockSeen, build: () => { const n = lots().filter((lot) => lot.row.expiry && daysUntil(lot.row.expiry) >= 0 && daysUntil(lot.row.expiry) <= 60).length; return { label: "Expiring in 60 days", value: plural(n, "lot"), sub: n ? "Use these first" : "None" }; } },
-    toReceive: { show: stockSeen && canManagePoReceiving(), build: () => { const n = receivingPurchaseOrders().filter((po) => ["For Receiving", "Partially Received"].includes(po.status)).length; return { label: "POs to receive", value: String(n), sub: n ? "Ready at receiving" : "Nothing to receive" }; } },
+    transfersIn: { show: stockSeen && !isStockViewOnly(), build: () => { const n = (data.pendingTransfers || []).filter((transfer) => ["In Transit", "Incomplete"].includes(transfer.status)).length; return { label: "Transfers in", value: String(n), count: welcomeIntCount(n), sub: n ? "In transit" : "Nothing on the way" }; } },
+    expiring60: { show: stockSeen, build: () => { const n = lots().filter((lot) => lot.row.expiry && daysUntil(lot.row.expiry) >= 0 && daysUntil(lot.row.expiry) <= 60).length; return { label: "Expiring in 60 days", value: plural(n, "lot"), count: welcomeIntCount(n, "lot"), sub: n ? "Use these first" : "None" }; } },
+    toReceive: { show: stockSeen && canManagePoReceiving(), build: () => { const n = receivingPurchaseOrders().filter((po) => ["For Receiving", "Partially Received"].includes(po.status)).length; return { label: "POs to receive", value: String(n), count: welcomeIntCount(n), sub: n ? "Ready at receiving" : "Nothing to receive" }; } },
   };
   const sets = {
     management: ["revenue", "collected", "owed", "weOwe"],
@@ -218,6 +226,12 @@ const WELCOME_LOGO = '<svg class="ml-logo" viewBox="0 0 24 24" aria-hidden="true
 let welcomeTaskList = [];
 /** @type {WelcomeAction[]} */
 let welcomeActionList = [];
+/** Count-up targets for the "At a glance" numbers, by data-wl-count index. @type {(WelcomeCount & { final: string })[]} */
+let welcomeCounters = [];
+/** The greeting split into words, each in a mask so it can slide up (the h1 carries the full sentence for screen readers). @param {string} text */
+function welcomeGreetingWords(text) {
+  return text.split(" ").map((word, index) => `<span class="wl-w" style="--i:${index}" aria-hidden="true"><span class="wl-wi">${escapeHtml(word)}</span></span>`).join(" ");
+}
 
 function welcomeHtml() {
   const variant = welcomeVariant();
@@ -229,45 +243,130 @@ function welcomeHtml() {
   const last = welcomeLastSignIn(welcomePreviousSignIn);
   const role = String(currentUser?.role || "");
   const list = welcomeTaskList.length
-    ? welcomeTaskList.map((task, index) => `<button type="button" class="wl-row" data-welcome-task="${index}">
-        <span class="wl-dot" style="background:${WELCOME_TONES[task.tone || "amber"] || WELCOME_TONES.amber}" aria-hidden="true"></span>
+    ? welcomeTaskList.map((task, index) => `<button type="button" class="wl-row" data-welcome-task="${index}" style="--i:${index}">
+        <span class="wl-dot${task.tone === "red" ? " is-red" : ""}" style="background:${WELCOME_TONES[task.tone || "amber"] || WELCOME_TONES.amber}" aria-hidden="true"></span>
         <span class="wl-row-text"><span class="wl-row-title">${escapeHtml(task.text)}</span><span class="wl-row-meta">${escapeHtml(welcomeModuleLabel(task.module))}${task.action ? ` · ${escapeHtml(task.action)}` : ""}</span></span>
         ${task.money ? `<span class="wl-row-amount">${escapeHtml(welcomePeso(task.money))}</span>` : ""}${WELCOME_CHEVRON}
       </button>`).join("")
     : `<div class="wl-empty"><span class="wl-empty-icon">${welcomeIcon("M5 12l5 5L20 7", 22)}</span><strong>You’re all caught up</strong><span>Nothing needs you right now.</span></div>`;
   const stats = welcomeStats();
-  return `<div class="wl-shell" role="dialog" aria-modal="true" aria-labelledby="wl-greeting" aria-describedby="wl-date">
-    <div class="wl-top wl wl-1"><div class="wl-brand"><span class="wl-brand-tile">${WELCOME_LOGO}</span><span>Medlane OS</span></div></div>
+  welcomeCounters = [];
+  const greeting = welcomeGreeting();
+  const statValue = (/** @type {WelcomeStat} */ stat) => {
+    if (!stat.count || Math.abs(stat.count.to) < 0.005) return `<span class="wl-stat-value">${escapeHtml(stat.value)}</span>`;
+    welcomeCounters.push({ ...stat.count, final: stat.value });
+    // The visible number counts up; screen readers get the exact value straight away.
+    return `<span class="wl-stat-value"><span data-wl-count="${welcomeCounters.length - 1}" aria-hidden="true">${escapeHtml(stat.value)}</span><span class="sr-only">${escapeHtml(stat.value)}</span></span>`;
+  };
+  return `<div class="wl-bg" aria-hidden="true"></div><div class="wl-shell" role="dialog" aria-modal="true" aria-labelledby="wl-greeting" aria-describedby="wl-date">
+    <div class="wl-top"><div class="wl-brand"><span class="wl-brand-tile">${WELCOME_LOGO}</span><span>Medlane OS</span></div></div>
     <main class="wl-main">
       <header class="wl-head">
-        <span class="wl-date wl wl-1" id="wl-date">${escapeHtml(welcomeDateLine())}</span>
-        <h1 class="wl-greeting wl wl-2" id="wl-greeting">${escapeHtml(welcomeGreeting())}</h1>
-        <div class="wl-meta wl wl-3"><span class="wl-role wl-role-${variant}">${escapeHtml(role)}</span><span>All branches</span>${last ? `<span class="wl-sep" aria-hidden="true"></span><span>Last signed in ${escapeHtml(last)}</span>` : ""}</div>
+        <span class="wl-date" id="wl-date">${escapeHtml(welcomeDateLine())}</span>
+        <h1 class="wl-greeting" id="wl-greeting" aria-label="${escapeHtml(greeting)}">${welcomeGreetingWords(greeting)}</h1>
+        <div class="wl-meta"><span class="wl-role wl-role-${variant}">${escapeHtml(role)}</span><span>All branches</span>${last ? `<span class="wl-sep" aria-hidden="true"></span><span>Last signed in ${escapeHtml(last)}</span>` : ""}</div>
       </header>
       <div class="wl-grid">
-        <section class="wl-card wl-tasks wl wl-4" aria-labelledby="wl-today">
+        <section class="wl-card wl-tasks" aria-labelledby="wl-today">
           <div class="wl-card-head"><h2 id="wl-today">${title}</h2>${tasks.length ? `<span>${urgent} urgent · ${tasks.length} total</span>` : ""}</div>
           <div class="wl-list">${list}</div>
         </section>
         <div class="wl-side">
-          ${welcomeActionList.length ? `<section class="wl-actions wl wl-4" aria-label="Quick actions">${welcomeActionList.map((action, index) => `<button type="button" class="wl-action" data-welcome-action="${index}"><span class="wl-action-icon">${welcomeIcon(WELCOME_ICONS[action.icon] || WELCOME_ICONS.dash)}</span><span class="wl-action-label">${escapeHtml(action.label)}<svg class="wl-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>`).join("")}</section>` : ""}
-          ${stats.length ? `<section class="wl-card wl-stats wl wl-5" aria-label="At a glance">${stats.map((stat) => `<div class="wl-stat"><span class="wl-stat-label">${escapeHtml(stat.label)}</span><span class="wl-stat-value">${escapeHtml(stat.value)}</span>${stat.sub ? `<span class="wl-stat-sub">${escapeHtml(stat.sub)}</span>` : ""}</div>`).join("")}</section>` : ""}
+          ${welcomeActionList.length ? `<section class="wl-actions" aria-label="Quick actions">${welcomeActionList.map((action, index) => `<button type="button" class="wl-action" data-welcome-action="${index}" style="--i:${index}"><span class="wl-action-icon">${welcomeIcon(WELCOME_ICONS[action.icon] || WELCOME_ICONS.dash)}</span><span class="wl-action-label">${escapeHtml(action.label)}<svg class="wl-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></button>`).join("")}</section>` : ""}
+          ${stats.length ? `<section class="wl-card wl-stats" aria-label="At a glance">${stats.map((stat) => `<div class="wl-stat"><span class="wl-stat-label">${escapeHtml(stat.label)}</span>${statValue(stat)}${stat.sub ? `<span class="wl-stat-sub">${escapeHtml(stat.sub)}</span>` : ""}</div>`).join("")}</section>` : ""}
         </div>
       </div>
-      <footer class="wl-foot wl wl-5">
-        <span class="wl-secure">${welcomeIcon("M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4", 16)}${last ? "If the last sign-in above wasn’t you, change your password in User Settings." : "Signed in securely."}</span>
+      <footer class="wl-foot">
+        <span class="wl-secure"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path class="wl-check" d="M9 12l2 2 4-4"/></svg>${last ? "If the last sign-in above wasn’t you, change your password in User Settings." : "Signed in securely."}</span>
         <button type="button" class="wl-continue" data-welcome-continue>Continue to dashboard${welcomeIcon("M5 12h14M13 6l6 6-6 6", 16)}</button>
       </footer>
     </main>
   </div>`;
 }
 
-/** Shows the Welcome screen over the (already drawn) app. @param {() => void} [onDone] runs after it closes */
-function showWelcomeScreen(onDone) {
+// ----- entrance animation ------------------------------------------------------------------------
+// t = 0 is when the sign-in sound starts: the intro class and audio.play() go in the same call.
+// All timings are CSS variables on .welcome-screen (--t-date, --t-greet, --t-meta, --t-list,
+// --t-actions, --t-stats, --t-cta); only the count-up is driven from here, and it reads --t-stats.
+// Plays once per sign-in: re-renders (the late Recon redraw) wait for it and never replay it.
+const WELCOME_INTRO_MS = 3400; // last red-dot ping ends ≈ 3.2s
+/** @type {{ timers: number[], raf: number, running: boolean, redraw: boolean }} */
+const welcomeIntro = { timers: [], raf: 0, running: false, redraw: false };
+function welcomeReducedMotion() { return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true; }
+
+/** Counts the "At a glance" numbers up from 0, easing out (quartic), ending on the exact value. @param {HTMLElement} screen @param {number} startedAt */
+function welcomeCountUp(screen, startedAt) {
+  const els = /** @type {HTMLElement[]} */ ([...screen.querySelectorAll("[data-wl-count]")]);
+  if (!els.length) return;
+  const delay = (parseFloat(getComputedStyle(screen).getPropertyValue("--t-stats")) || 900) + 150;
+  const duration = 900;
+  const items = els.map((el) => ({ el, counter: welcomeCounters[Number(el.dataset.wlCount)] })).filter((item) => item.counter);
+  items.forEach(({ el, counter }) => { el.textContent = counter.fmt(0); });
+  const step = (/** @type {number} */ now) => {
+    const p = Math.min(1, Math.max(0, (now - startedAt - delay) / duration));
+    const eased = 1 - Math.pow(1 - p, 4);
+    items.forEach(({ el, counter }) => { el.textContent = p >= 1 ? counter.final : counter.fmt(counter.to * eased); });
+    welcomeIntro.raf = p < 1 ? requestAnimationFrame(step) : 0;
+  };
+  welcomeIntro.raf = requestAnimationFrame(step);
+}
+
+/** Ends the intro (if any): numbers jump to their exact values and the screen is left in its final state. */
+function welcomeStopIntro() {
+  welcomeIntro.timers.forEach((id) => clearTimeout(id));
+  welcomeIntro.timers = [];
+  if (welcomeIntro.raf) cancelAnimationFrame(welcomeIntro.raf);
+  welcomeIntro.raf = 0;
+  welcomeIntro.running = false;
   const screen = document.getElementById("welcome-screen");
-  if (!screen || !currentUser) { onDone?.(); return; }
-  welcomeOnDone = onDone || null;
+  if (!screen) return;
+  screen.classList.remove("wl-pending", "wl-intro");
+  screen.querySelectorAll("[data-wl-count]").forEach((el) => { const counter = welcomeCounters[Number(/** @type {HTMLElement} */ (el).dataset.wlCount)]; if (counter) el.textContent = counter.final; });
+}
+
+/** Starts the animation and the sign-in sound together. @param {HTMLElement} screen */
+function welcomeStartIntro(screen) {
+  screen.classList.remove("wl-pending");
+  const audio = new Audio("/Startup Sound.mp3");
+  audio.volume = 0.55;
+  if (!welcomeReducedMotion()) {
+    welcomeIntro.running = true;
+    screen.classList.add("wl-intro");
+    welcomeCountUp(screen, performance.now());
+    welcomeIntro.timers.push(window.setTimeout(() => { welcomeStopIntro(); if (welcomeIntro.redraw) welcomeRedraw(); }, WELCOME_INTRO_MS));
+  }
+  // Blocked autoplay: the animation runs anyway, and the sound isn't retried later.
+  audio.play().catch(() => null);
+}
+
+/** Redraws the content in its final state (used when Recon results arrive late). */
+function welcomeRedraw() {
+  welcomeIntro.redraw = false;
+  const screen = document.getElementById("welcome-screen");
+  if (!screen || screen.hidden) return;
+  const focused = document.activeElement?.hasAttribute("data-welcome-continue");
   screen.innerHTML = welcomeHtml();
+  if (focused) /** @type {HTMLElement | null} */ (screen.querySelector("[data-welcome-continue]"))?.focus({ preventScroll: true });
+}
+
+/**
+ * Shows the Welcome screen over the (already drawn) app.
+ * @param {() => void} [onDone] runs after it closes
+ * @param {() => number | void} [hideLoader] hides the app loader; returns the ms before it starts fading
+ */
+async function showWelcomeScreen(onDone, hideLoader) {
+  const screen = document.getElementById("welcome-screen");
+  if (!screen || !currentUser) { hideLoader?.(); playLoginSuccessSound(); onDone?.(); return; }
+  welcomeOnDone = onDone || null;
+  welcomeStopIntro();
+  // Recon differences feed the task list: give them a moment so the list doesn't change mid-intro.
+  const needsRecon = canViewModule("reconciliation") && typeof loadRecon === "function" && !reconState.data;
+  const recon = needsRecon ? loadRecon().catch(() => null) : null;
+  if (recon) await Promise.race([recon, new Promise((resolve) => setTimeout(resolve, 1500))]);
+  if (!currentUser) return;
+  screen.innerHTML = welcomeHtml();
+  // Held invisible (under the loader) until the loader goes, so the whole sequence is seen.
+  if (!welcomeReducedMotion()) screen.classList.add("wl-pending");
   screen.hidden = false;
   document.body.classList.add("welcome-open");
   // Keep keyboard and screen-reader focus inside it.
@@ -276,16 +375,18 @@ function showWelcomeScreen(onDone) {
   // Focus "Continue" so Enter continues, without scrolling the greeting out of view on phones.
   /** @type {HTMLElement | null} */ (screen.querySelector("[data-welcome-continue]"))?.focus({ preventScroll: true });
   screen.scrollTop = 0;
-  // Recon differences are fetched separately; redraw the task list once they arrive.
-  if (canViewModule("reconciliation") && typeof loadRecon === "function" && !reconState.data) {
-    loadRecon().then(() => { if (!screen.hidden) { const focused = document.activeElement?.getAttribute("data-welcome-continue") !== null; screen.innerHTML = welcomeHtml(); screen.querySelectorAll(".wl").forEach((el) => el.classList.remove("wl")); if (focused) /** @type {HTMLElement | null} */ (screen.querySelector("[data-welcome-continue]"))?.focus({ preventScroll: true }); } }).catch(() => null);
-  }
+  const wait = Number(hideLoader?.() || 0);
+  welcomeIntro.timers.push(window.setTimeout(() => { if (!screen.hidden) welcomeStartIntro(screen); }, wait + 120));
+  // Recon results that arrive later redraw the list once the intro has finished — never replaying it.
+  if (recon && !reconState.data) recon.then(() => { if (screen.hidden || !reconState.data) return; if (welcomeIntro.running || screen.classList.contains("wl-pending")) welcomeIntro.redraw = true; else welcomeRedraw(); });
 }
 
 /** Closes it, then goes where the person chose. @param {() => void} [go] */
 function closeWelcomeScreen(go) {
   const screen = document.getElementById("welcome-screen");
   if (!screen || screen.hidden) return;
+  welcomeStopIntro();
+  welcomeIntro.redraw = false;
   screen.hidden = true;
   screen.innerHTML = "";
   document.body.classList.remove("welcome-open");

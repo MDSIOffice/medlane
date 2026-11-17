@@ -2108,7 +2108,6 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
   .ml-ring { display: none; }
   .app-loader-bar span { animation: ml-bar 3s ease-in-out infinite !important; }
   .app-loader-content, .app-loader-title, .app-loader-progress { animation: ml-appear 0.2s ease-out 0.3s both !important; }
-  .welcome-screen .wl { animation: none !important; }
   .skeleton-cell { animation: skeletonShimmer 2.2s ease-in-out infinite !important; }
 }
 
@@ -4152,13 +4151,16 @@ body[data-active-section="masterlists"] .topbar-title { display: none; }
 
 /* ----- Welcome screen (after every sign-in) ----------------------------------------------------
    Full-viewport layer over the already-drawn app. Light Medlane palette from the design, with dark
-   theme overrides. Entrance: staggered fade-up (.wl-1…5) and the logo strokes draw once. */
+   theme overrides. Entrance: see "Welcome entrance" below (synced to the sign-in sound). */
 .welcome-screen {
   --wl-bg: #F3F6F8; --wl-surface: #FFFFFF; --wl-border: #DFE5EA; --wl-divider: #EEF2F5; --wl-hover: #F7FAFB;
   --wl-ink: #12202E; --wl-muted: #4F5D6B; --wl-subtle: #5B6876; --wl-accent: #1F5F74; --wl-accent-soft: #E3EEF2;
   --wl-tint-a: #E3EEF2; --wl-tint-b: #FBEDE3;
+  /* Entrance timeline, ms after the sign-in sound starts. */
+  --t-bg: 0ms; --t-date: 80ms; --t-greet: 160ms; --t-meta: 520ms; --t-list: 620ms; --t-actions: 720ms; --t-stats: 900ms; --t-cta: 1250ms;
+  --wl-ease: cubic-bezier(0.16, 1, 0.3, 1); --wl-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   position: fixed; inset: 0; z-index: 150; overflow-y: auto; overscroll-behavior: contain;
-  background: radial-gradient(1000px 520px at 15% 0%, var(--wl-tint-a) 0%, transparent 60%), radial-gradient(800px 480px at 100% 100%, var(--wl-tint-b) 0%, transparent 55%), var(--wl-bg);
+  background: var(--wl-bg);
   color: var(--wl-ink); font-family: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 .welcome-screen[hidden] { display: none; }
@@ -4168,13 +4170,14 @@ body[data-active-section="masterlists"] .topbar-title { display: none; }
   --wl-tint-a: rgba(61, 179, 205, 0.16); --wl-tint-b: rgba(217, 104, 43, 0.12);
 }
 body.welcome-open { overflow: hidden; }
-.wl-shell { min-height: 100%; display: flex; flex-direction: column; gap: 24px; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); box-sizing: border-box; }
+/* Background tints on their own layer so they can bloom in without moving the content. */
+.wl-bg { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(1000px 520px at 15% 0%, var(--wl-tint-a) 0%, transparent 60%), radial-gradient(800px 480px at 100% 100%, var(--wl-tint-b) 0%, transparent 55%); }
+.wl-shell { position: relative; min-height: 100%; display: flex; flex-direction: column; gap: 24px; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); box-sizing: border-box; }
 .wl-top { display: flex; align-items: center; justify-content: space-between; }
 .wl-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 15px; }
 .wl-brand-tile { width: 40px; height: 40px; border-radius: 10px; background: #FFFFFF; border: 1px solid #E3E9EE; display: grid; place-items: center; }
 .wl-brand-tile .ml-logo { width: 24px; height: 24px; }
-.welcome-screen .ml-logo path { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-dasharray: 60; animation: wl-draw 1s cubic-bezier(0.65, 0, 0.35, 1) both; }
-.welcome-screen .ml-logo path + path { animation-delay: 0.15s; }
+.welcome-screen .ml-logo path { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-dasharray: 60; }
 .wl-main { flex: 1; width: 100%; max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 28px; }
 .wl-head { display: flex; flex-direction: column; gap: 10px; }
 .wl-date { font-size: 14px; font-weight: 700; color: var(--wl-accent); }
@@ -4194,19 +4197,21 @@ body.welcome-open { overflow: hidden; }
 .wl-card-head span { font-size: 13px; color: var(--wl-subtle); }
 .wl-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 20px; border: 0; border-top: 1px solid var(--wl-divider); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .wl-row:hover { background: var(--wl-hover); }
-.wl-dot { width: 10px; height: 10px; border-radius: 99px; flex-shrink: 0; }
+.wl-dot { position: relative; width: 10px; height: 10px; border-radius: 99px; flex-shrink: 0; }
+.wl-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; opacity: 0; }
 .wl-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .wl-row-title { font-size: 14px; font-weight: 700; color: var(--wl-ink); }
 .wl-row-meta { font-size: 13px; color: var(--wl-subtle); }
 .wl-row-amount { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.wl-chev { color: #8A97A4; flex-shrink: 0; }
+.wl-chev { color: #8A97A4; flex-shrink: 0; transition: translate 0.2s ease; }
+.wl-row:hover .wl-chev { translate: 3px 0; }
 .wl-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 34px 20px 38px; border-top: 1px solid var(--wl-divider); text-align: center; color: var(--wl-subtle); font-size: 13px; }
 .wl-empty strong { font-size: 16px; color: var(--wl-ink); }
 .wl-empty-icon { width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; background: #E6F3EC; color: #2F8F6B; margin-bottom: 4px; }
 .wl-side { display: flex; flex-direction: column; gap: 18px; }
 .wl-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .wl-action { background: var(--wl-surface); border: 1px solid var(--wl-border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-height: 96px; color: var(--wl-ink); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.2s ease, background-color 0.2s ease; }
-.wl-action:hover { border-color: #9FB3C2; background: var(--wl-hover); }
+.wl-action:hover { border-color: #9FB3C2; background: var(--wl-hover); translate: 0 -2px; box-shadow: 0 10px 22px rgba(18, 32, 46, 0.1); }
 .wl-action-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--wl-accent-soft); color: var(--wl-accent); display: grid; place-items: center; }
 .wl-action-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; font-size: 14px; font-weight: 700; }
 .wl-arrow { color: var(--wl-subtle); transition: transform 0.2s ease; }
@@ -4221,10 +4226,55 @@ body.welcome-open { overflow: hidden; }
 .wl-secure svg { color: #2F8F6B; flex-shrink: 0; }
 .wl-continue { height: 48px; padding: 0 20px; border: 0; border-radius: 12px; background: #1F5F74; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
 .wl-continue:hover { filter: brightness(1.1); }
+.wl-continue:active { scale: 0.98; }
 .welcome-screen button:focus-visible { outline: 2px solid var(--wl-accent); outline-offset: 2px; }
-.welcome-screen .wl { animation: wl-up 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-.welcome-screen .wl-1 { animation-delay: 0.05s; } .welcome-screen .wl-2 { animation-delay: 0.15s; } .welcome-screen .wl-3 { animation-delay: 0.25s; } .welcome-screen .wl-4 { animation-delay: 0.35s; } .welcome-screen .wl-5 { animation-delay: 0.45s; }
-@keyframes wl-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes wl-draw { from { stroke-dashoffset: 60; } to { stroke-dashoffset: 0; } }
+/* The greeting's words sit in masks; hover nudges use translate/scale so they combine with the
+   entrance transforms instead of being overridden by them. */
+.wl-w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: 0.12em; margin-bottom: -0.12em; }
+.wl-wi { display: inline-block; }
+.wl-action { transition: translate 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease; }
+.wl-continue { position: relative; overflow: hidden; transition: scale 0.12s ease, filter 0.2s ease; }
+.wl-continue::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; pointer-events: none; opacity: 0; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent); transform: translateX(-150%) skewX(-20deg); }
+
+/* ----- Welcome entrance (only while .wl-intro is on #welcome-screen; once per sign-in) ----------
+   Animates only transform, opacity, background-position and stroke-dashoffset; fill-mode both,
+   so nothing changes size. With reduced motion none of this applies: everything shows at once. */
+@media (prefers-reduced-motion: no-preference) {
+  .welcome-screen.wl-pending .wl-bg, .welcome-screen.wl-pending .wl-shell { opacity: 0; }
+  .wl-intro .wl-bg { animation: wl-bg-in 1.4s var(--wl-ease) var(--t-bg) both; }
+  .wl-intro .ml-logo path { animation: wl-draw 1s cubic-bezier(0.65, 0, 0.35, 1) var(--t-bg) both; }
+  .wl-intro .ml-logo path + path { animation-delay: calc(var(--t-bg) + 150ms); }
+  .wl-intro .wl-top, .wl-intro .wl-date { animation: wl-fade-up 0.6s var(--wl-ease) var(--t-date) both; }
+  .wl-intro .wl-wi {
+    background: linear-gradient(100deg, var(--wl-ink) 0%, var(--wl-ink) 40%, #3A9BBE 50%, var(--wl-ink) 60%, var(--wl-ink) 100%) 100% 0 / 300% 100%;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    animation: wl-word-up 0.7s var(--wl-ease) both, wl-shine 1.1s ease-in-out both;
+    animation-delay: calc(var(--t-greet) + var(--i) * 70ms), calc(var(--t-greet) + 450ms + var(--i) * 90ms);
+  }
+  .wl-intro .wl-role { animation: wl-pop 0.5s var(--wl-spring) var(--t-meta) both; }
+  .wl-intro .wl-meta > :not(.wl-role) { animation: wl-fade-up 0.5s var(--wl-ease) calc(var(--t-meta) + 80ms) both; }
+  .wl-intro .wl-tasks { animation: wl-rise 0.7s var(--wl-ease) var(--t-list) both; }
+  .wl-intro .wl-row, .wl-intro .wl-empty { animation: wl-row-in 0.55s var(--wl-ease) both; animation-delay: calc(var(--t-list) + 150ms + var(--i, 0) * 70ms); }
+  .wl-intro .wl-dot.is-red::after { animation: wl-ping 1s ease-out calc(var(--t-list) + 350ms + var(--i) * 70ms) 2; }
+  .wl-intro .wl-action { animation: wl-rise 0.6s var(--wl-ease) both; animation-delay: calc(var(--t-actions) + var(--i) * 60ms); }
+  .wl-intro .wl-action-icon { animation: wl-icon 0.6s var(--wl-spring) both; animation-delay: calc(var(--t-actions) + 120ms + var(--i) * 60ms); }
+  .wl-intro .wl-stats { animation: wl-rise 0.7s var(--wl-ease) var(--t-stats) both; }
+  .wl-intro .wl-secure { animation: wl-fade-up 0.5s var(--wl-ease) var(--t-cta) both; }
+  .wl-intro .wl-check { stroke-dasharray: 10; animation: wl-check 0.6s ease-out calc(var(--t-cta) + 150ms) both; }
+  .wl-intro .wl-continue { animation: wl-rise 0.6s var(--wl-spring) var(--t-cta) both; }
+  .wl-intro .wl-continue::after { animation: wl-sheen 0.9s ease-in-out calc(var(--t-cta) + 350ms) both; }
+}
+@keyframes wl-bg-in { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
+@keyframes wl-fade-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes wl-rise { from { opacity: 0; transform: translateY(24px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes wl-word-up { from { transform: translateY(105%); } to { transform: none; } }
+@keyframes wl-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes wl-pop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+@keyframes wl-row-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+@keyframes wl-ping { 0% { opacity: 0.55; transform: scale(1); } 100% { opacity: 0; transform: scale(3.2); } }
+@keyframes wl-icon { 0% { transform: scale(0.4) rotate(-12deg); } 60% { transform: scale(1.12) rotate(4deg); } 100% { transform: none; } }
+@keyframes wl-check { from { stroke-dashoffset: 10; } to { stroke-dashoffset: 0; } }
+@keyframes wl-sheen { from { opacity: 1; transform: translateX(-150%) skewX(-20deg); } to { opacity: 1; transform: translateX(350%) skewX(-20deg); } }
 @media (max-width: 900px) { .wl-grid { grid-template-columns: 1fr; } }
 @media (max-width: 520px) { .wl-shell { padding-left: 16px; padding-right: 16px; } .wl-continue { width: 100%; justify-content: center; } .wl-row { padding: 12px 16px; } }

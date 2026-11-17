@@ -33,14 +33,16 @@ function setAppLoaderStep(text) {
   const line = document.getElementById("app-loader-step");
   if (line && line.textContent !== text) line.textContent = text;
 }
+/** Hides the app loader (after its minimum display time). @returns {number} ms until it starts fading */
 function hideAppLoader() {
   const loader = document.getElementById("loading-overlay");
-  if (!loader || loader.classList.contains("hide")) return;
+  if (!loader || loader.classList.contains("hide")) return 0;
   const elapsed = performance.now() - appLoaderShownAt;
   const wait = elapsed < APP_LOADER_DELAY_MS ? 0 : Math.max(0, APP_LOADER_DELAY_MS + APP_LOADER_MIN_MS - elapsed);
   clearTimeout(appLoaderHideTimer);
   if (wait === 0) clearTimeout(appLoaderDeferTimer);
   appLoaderHideTimer = setTimeout(() => { loader.classList.add("hide"); loader.classList.remove("is-deferred"); }, wait);
+  return wait;
 }
 
 /** @param {AnyEl} container @param {string} message */
