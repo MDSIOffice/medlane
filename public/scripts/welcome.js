@@ -324,19 +324,118 @@ function welcomeStopIntro() {
   screen.querySelectorAll("[data-wl-count]").forEach((el) => { const counter = welcomeCounters[Number(/** @type {HTMLElement} */ (el).dataset.wlCount)]; if (counter) el.textContent = counter.final; });
 }
 
+// ----- sign-in sound: "Glass Arpeggio" -----------------------------------------------------------
+// 3.2s: four rising glass notes over 0–0.21s (with the greeting, --t-greet 160ms), a soft chord at
+// 1.95s (as the count-up lands: --t-stats 900ms + 150ms + 900ms), tail gone by ≈3.2s. So play() goes
+// in the same call that adds .wl-intro, with no delay. WebM/Opus where supported, else MP3. The
+// master WAV lives in docs/audio/, outside the bundle.
+const WELCOME_SOUND_SOURCES = /** @type {[string, string][]} */ ([
+  ["/sounds/welcome-glass-arpeggio.webm", 'audio/webm; codecs="opus"'],
+  ["/sounds/welcome-glass-arpeggio.mp3", "audio/mpeg"],
+]);
+const WELCOME_SOUND_VOLUME = 0.6;
+const WELCOME_SOUND_FADE_MS = 150;
+/** @type {{ audio: HTMLAudioElement | null, played: boolean, fade: number }} */
+const welcomeSound = { audio: null, played: false, fade: 0 };
+
+/** Account settings → Preferences → Sound effects (always on where that setting doesn't exist yet). */
+function welcomeSoundOn() { const pref = /** @type {any} */ (globalThis).soundEffectsOn; return typeof pref === "function" ? pref() !== false : true; }
+
+/** The first source this browser says it can play. */
+function welcomeSoundUrl() {
+  const probe = document.createElement("audio");
+  const playable = WELCOME_SOUND_SOURCES.find(([, type]) => probe.canPlayType(type) !== "");
+  return (playable || WELCOME_SOUND_SOURCES[WELCOME_SOUND_SOURCES.length - 1])[0];
+}
+
+/**
+ * Starts loading the sound so it's ready the moment the Welcome screen appears (called on "Sign in"
+ * and when the screen opens). With Sound effects off nothing is downloaded. Returns the element.
+ */
+function preloadWelcomeSound() {
+  if (!welcomeSoundOn()) return null;
+  if (welcomeSound.audio) return welcomeSound.audio;
+  const audio = new Audio();
+  audio.preload = "auto";
+  audio.loop = false;
+  audio.src = welcomeSoundUrl();
+  audio.volume = WELCOME_SOUND_VOLUME;
+  audio.load();
+  welcomeSound.audio = audio;
+  return audio;
+}
+
+/** Browser-local memory of who turned Sound effects off, so sign-in can skip the download for them. */
+const WELCOME_SOUND_OFF_KEY = "medlane-sound-off";
+/** @param {string} email @param {boolean} off */
+function rememberSoundPreference(email, off) {
+  try {
+    const list = new Set(JSON.parse(localStorage.getItem(WELCOME_SOUND_OFF_KEY) || "[]"));
+    if (off) list.add(email.toLowerCase()); else list.delete(email.toLowerCase());
+    localStorage.setItem(WELCOME_SOUND_OFF_KEY, JSON.stringify([...list]));
+  } catch { /* storage blocked: sign-in just preloads as usual */ }
+}
+/** @param {string} email */
+function soundKnownOffFor(email) {
+  try { return JSON.parse(localStorage.getItem(WELCOME_SOUND_OFF_KEY) || "[]").includes(String(email || "").toLowerCase()); } catch { return false; }
+}
+
+/**
+ * Called from the "Sign in" click/submit: starts the download and, inside that user gesture, plays
+ * it muted for an instant so Safari (iOS especially) allows the real play() when the Welcome screen
+ * appears. Skipped for someone this browser knows has Sound effects off.
+ * @param {string} email
+ */
+function unlockWelcomeSound(email) {
+  if (soundKnownOffFor(email)) return;
+  const audio = preloadWelcomeSound();
+  if (!audio || welcomeSound.played) return;
+  audio.muted = true;
+  audio.play().then(() => { if (!welcomeSound.played) { audio.pause(); try { audio.currentTime = 0; } catch { /* ignore */ } } }).catch(() => null).finally(() => { audio.muted = false; });
+}
+
+/** Plays it from the start, once per Welcome view. A blocked autoplay is ignored and never retried. */
+function playWelcomeSound() {
+  if (welcomeSound.played) return;
+  welcomeSound.played = true;
+  const audio = preloadWelcomeSound();
+  if (!audio) return;
+  cancelAnimationFrame(welcomeSound.fade);
+  audio.muted = false;
+  audio.volume = WELCOME_SOUND_VOLUME;
+  try { audio.currentTime = 0; } catch { /* not seekable yet: it's at 0 anyway */ }
+  audio.play().catch(() => null);
+}
+
+/** Fades it out over 150ms, then stops it (leaving the Welcome screen early). */
+function fadeOutWelcomeSound() {
+  const audio = welcomeSound.audio;
+  cancelAnimationFrame(welcomeSound.fade);
+  if (!audio || audio.paused || audio.ended) return;
+  const from = audio.volume;
+  const start = performance.now();
+  const stop = () => { audio.pause(); try { audio.currentTime = 0; } catch { /* ignore */ } audio.volume = WELCOME_SOUND_VOLUME; };
+  const step = (/** @type {number} */ now) => {
+    const p = Math.min(1, (now - start) / WELCOME_SOUND_FADE_MS);
+    audio.volume = Math.max(0, from * (1 - p));
+    if (p < 1) welcomeSound.fade = requestAnimationFrame(step); else stop();
+  };
+  welcomeSound.fade = requestAnimationFrame(step);
+  // iOS ignores audio.volume, and a background tab may not run frames: stop on time regardless.
+  window.setTimeout(() => { if (!audio.paused) stop(); }, WELCOME_SOUND_FADE_MS + 20);
+}
+
 /** Starts the animation and the sign-in sound together. @param {HTMLElement} screen */
 function welcomeStartIntro(screen) {
   screen.classList.remove("wl-pending");
-  const audio = new Audio("/Startup Sound.mp3");
-  audio.volume = 0.55;
   if (!welcomeReducedMotion()) {
     welcomeIntro.running = true;
     screen.classList.add("wl-intro");
     welcomeCountUp(screen, performance.now());
     welcomeIntro.timers.push(window.setTimeout(() => { welcomeStopIntro(); if (welcomeIntro.redraw) welcomeRedraw(); }, WELCOME_INTRO_MS));
   }
-  // Blocked autoplay: the animation runs anyway, and the sound isn't retried later.
-  audio.play().catch(() => null);
+  // Same call as the intro class. Reduced motion changes only the animation, not the sound.
+  playWelcomeSound();
 }
 
 /** Redraws the content in its final state (used when Recon results arrive late). */
@@ -359,6 +458,8 @@ async function showWelcomeScreen(onDone, hideLoader) {
   if (!screen || !currentUser) { hideLoader?.(); playLoginSuccessSound(); onDone?.(); return; }
   welcomeOnDone = onDone || null;
   welcomeStopIntro();
+  welcomeSound.played = false;
+  preloadWelcomeSound();
   // Recon differences feed the task list: give them a moment so the list doesn't change mid-intro.
   const needsRecon = canViewModule("reconciliation") && typeof loadRecon === "function" && !reconState.data;
   const recon = needsRecon ? loadRecon().catch(() => null) : null;
@@ -386,6 +487,7 @@ function closeWelcomeScreen(go) {
   const screen = document.getElementById("welcome-screen");
   if (!screen || screen.hidden) return;
   welcomeStopIntro();
+  fadeOutWelcomeSound();
   welcomeIntro.redraw = false;
   screen.hidden = true;
   screen.innerHTML = "";

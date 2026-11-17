@@ -1992,6 +1992,8 @@ qs("#login-form").addEventListener("submit", async (event) => {
   const loginForm = qs("#login-form");
   if (loginForm?.dataset.submitting === "true") return;
   if (loginForm) loginForm.dataset.submitting = "true";
+  // Inside the Sign in gesture: get the Welcome sound loading (and unlocked for Safari).
+  unlockWelcomeSound(String(qs("#login-email")?.value || ""));
   const loginButton = /** @type {HTMLButtonElement | null} */ (loginForm?.querySelector("button[type='submit']"));
   const originalLabel = loginButton?.textContent || "Login";
   if (loginButton) {
@@ -2096,10 +2098,10 @@ qs("#login-forgot")?.addEventListener("click", async () => {
   }
 });
 
+/** The sign-in sound when the Welcome screen can't be shown (same sound, same rules). */
 function playLoginSuccessSound() {
-  const audio = new Audio("/Startup Sound.mp3");
-  audio.volume = 0.55;
-  audio.play().catch(() => null);
+  welcomeSound.played = false;
+  playWelcomeSound();
 }
 
 function maybeShowPasswordKycModal() {
