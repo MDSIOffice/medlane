@@ -45,3 +45,43 @@ test("PM intervals: Superadmin, CEO and Admin change them; claims follow Warrant
   assert.equal(worker.canAccessKey(as("Sales", ["warranty"]), "warrantyClaims", "edit"), true);
   assert.equal(worker.canAccessKey(as("Sales", []), "warrantyClaims", "view"), false);
 });
+
+// ---- Alerts: warranty ending and preventive maintenance -----------------------------------------
+import { generateNotices, noticeVisibleTo } from "../src/notifications.js";
+
+test("alerts: warranty ending without an active contract, PM overdue (urgent) and PM due, unless already booked", () => {
+  const now = new Date("2026-11-18T09:00:00+08:00");
+  const state = {
+    warranties: [
+      { serial: "A", model: "Zybio Z5", client: "Lab C", warrantyEnd: "2026-12-29", lastPm: "2026-10-01" },
+      { serial: "B", model: "VEDA8900", client: "Clinic B", warrantyEnd: "2026-12-01", contractStatus: "active", contractEnd: "2027-12-01", lastPm: "2026-10-01" },
+      { serial: "C", model: "EXU 500", client: "Diag D", warrantyEnd: "2025-01-01", lastPm: "2026-07-01" },
+      { serial: "D", model: "EXC 200", client: "Hosp A", warrantyEnd: "2028-01-01", lastPm: "2026-07-01", pmScheduledFor: "2026-11-25" },
+      { serial: "E", model: "Zybio Z5", client: "Hosp E", warrantyEnd: "2028-01-01", lastPm: "2026-08-25" },
+      { serial: "F", model: "VEDA8900", client: "Lab F", warrantyEnd: "2028-01-01", lastPm: "2026-08-20" },
+    ],
+    warrantySettings: [{ id: "warranty-settings", pmMonths: { VEDA8900: 6 } }],
+  };
+  const byKey = Object.fromEntries(generateNotices(state, now).map((n) => [n.key, n]));
+  assert.equal(byKey["warranty-ending"].record, "A", "B has an active contract");
+  assert.equal(byKey["warranty-ending"].message, "Zybio Z5 at Lab C: warranty ends 29 Dec 2026 and no service contract has been quoted.");
+  assert.equal(byKey["warranty-pm-overdue"].record, "C", "D is overdue but booked");
+  assert.equal(byKey["warranty-pm-overdue"].urgent, true);
+  assert.equal(byKey["warranty-pm-overdue"].message, "EXU 500 at Diag D is overdue for preventive maintenance (was due 1 Oct 2026) and no visit is booked.");
+  assert.equal(byKey["warranty-pm-due"].record, "E", "F's model is every 6 months, so not due yet");
+  assert.ok(!byKey["warranty-pm-due"].urgent);
+
+  // Same units two days later: same message, so it is not sent again.
+  const later = Object.fromEntries(generateNotices(state, new Date("2026-11-20T09:00:00+08:00")).map((n) => [n.key, n]));
+  assert.equal(later["warranty-pm-overdue"].message, byKey["warranty-pm-overdue"].message);
+
+  // Who gets them: Warranty module holders and management; not Engineering without Warranty.
+  const pm = byKey["warranty-pm-overdue"];
+  assert.equal(noticeVisibleTo({ email: "a@x.ph", role: "Admin", modules: ["warranty"] }, pm), true);
+  assert.equal(noticeVisibleTo({ email: "c@x.ph", role: "CEO", modules: [] }, pm), true);
+  assert.equal(noticeVisibleTo({ email: "e@x.ph", role: "Engineering", modules: ["product-issues"] }, pm), false);
+
+  // Booking the PM clears the alert.
+  state.warranties[2].pmScheduledFor = "2026-11-21";
+  assert.ok(!generateNotices(state, now).some((n) => n.key === "warranty-pm-overdue"));
+});

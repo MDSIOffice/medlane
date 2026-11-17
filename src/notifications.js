@@ -10,6 +10,7 @@
 
 import { deliveryFor, inQuietHours } from "./account.js";
 import "../public/scripts/support-rules.js";
+import "../public/scripts/warranty-rules.js";
 
 /** @typedef {import("./account.js").AlertType} AlertType */
 /** @typedef {AlertType | "general"} NoticeCategory */
@@ -168,8 +169,38 @@ export function generateNotices(state, now = new Date()) {
     if (report.engineerEmail) add(`support-breach-${report.id}`, "service", "Response Time Breached", message, "product-issues", String(report.id), { urgent: true, targetUser: String(report.engineerEmail).toLowerCase() });
     add(`support-breach-${report.id}-superadmin`, "service", "Response Time Breached", message, "product-issues", String(report.id), { urgent: true, audience: ["Superadmin"] });
   }
-  const warrantyEnding = list("warranties").filter((w) => { const d = daysFromToday(w.warrantyEnd, now); return d >= 0 && d <= 60; });
-  if (warrantyEnding.length) add("warranty-ending", "service", "Warranty Ending", `${plural(warrantyEnding.length, "warranty", "warranties")} end within 60 days.`, "warranty", ids(warrantyEnding, (w) => w.serial || w.id || w.client));
+  // Warranty (WarrantyRules): warranties ending within 60 days with no active service contract, and
+  // preventive maintenance overdue or due within 14 days that nobody has booked yet. For people
+  // with the Warranty module; messages only change when the set of units does, so they aren't
+  // re-sent every day.
+  const W = /** @type {any} */ (globalThis).WarrantyRules;
+  const today = manilaDay(now);
+  const pmSettings = list("warrantySettings").find((r) => r.id === "warranty-settings");
+  const units = list("warranties").map((u) => ({ u, s: W.unitStatus(u, today), p: W.pm(u, today, pmSettings) }));
+  const unitName = (/** @type {any} */ u) => `${W.modelOf(u) || "Unit"} at ${u.client || "a client"}`;
+  const unitId = (/** @type {any} */ u) => u.serial || u.id || u.client;
+  const longDate = (/** @type {string} */ d) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const ending = units.filter(({ u, s }) => s.status === "expiring" && u.contractStatus !== "active").map(({ u }) => u);
+  if (ending.length) {
+    const one = ending[0];
+    add("warranty-ending", "service", "Warranty Ending", ending.length === 1
+      ? `${unitName(one)}: warranty ends ${longDate(one.warrantyEnd)}${one.contractStatus === "quoted" ? "; a service contract was quoted, follow up." : " and no service contract has been quoted."}`
+      : `${plural(ending.length, "warranty", "warranties")} end within 60 days without an active service contract.`, "warranty", ids(ending, unitId));
+  }
+  const pmOverdue = units.filter(({ p }) => p.status === "overdue" && !p.booked);
+  if (pmOverdue.length) {
+    const one = pmOverdue[0];
+    add("warranty-pm-overdue", "service", "PM Overdue", pmOverdue.length === 1
+      ? `${unitName(one.u)} is overdue for preventive maintenance (was due ${longDate(one.p.next)}) and no visit is booked.`
+      : `${plural(pmOverdue.length, "unit")} ${pmOverdue.length === 1 ? "is" : "are"} overdue for preventive maintenance with no visit booked.`, "warranty", ids(pmOverdue.map(({ u }) => u), unitId), { urgent: true });
+  }
+  const pmDue = units.filter(({ p }) => p.status === "due" && !p.booked);
+  if (pmDue.length) {
+    const one = pmDue[0];
+    add("warranty-pm-due", "service", "PM Due", pmDue.length === 1
+      ? `${unitName(one.u)} is due for preventive maintenance on ${longDate(one.p.next)}. Book the visit.`
+      : `${plural(pmDue.length, "unit")} ${pmDue.length === 1 ? "is" : "are"} due for preventive maintenance within 14 days with no visit booked.`, "warranty", ids(pmDue.map(({ u }) => u), unitId));
+  }
   return out;
 }
 

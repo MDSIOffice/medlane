@@ -1997,7 +1997,7 @@ function forgetCachedSession(sessionId) {
 // how — Account settings → Notifications). Manual notices are picked up for a person the moment
 // they open the page or the bell asks for a count; standing alerts are generated every 15 minutes
 // by the cron, which also fans them out to everyone and sends the emails.
-const NOTICE_SOURCE_MODULES = ["inventory", "pendingTransfers", "inventoryPurchaseOrders", "sales", "payments", "payables", "replenishments", "pendingCreditInvoices", "productIssues", "supportSettings", "warranties"];
+const NOTICE_SOURCE_MODULES = ["inventory", "pendingTransfers", "inventoryPurchaseOrders", "sales", "payments", "payables", "replenishments", "pendingCreditInvoices", "productIssues", "supportSettings", "warranties", "warrantySettings"];
 const GENERATED_NOTICES_KEY = "generated-notices";
 const NOTICE_COLUMNS = "user_id,notice_id,alert_type,title,message,section,record,urgent,in_app,created_at,read_at,email_status,emailed_at";
 /** Per-isolate: when each person's manual notices were last synced. @type {Map<string, number>} */
