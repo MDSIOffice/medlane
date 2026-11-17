@@ -2727,6 +2727,20 @@ dialog[open] > .toast { position: fixed; top: 26px; left: 50%; right: auto; bott
 .lr-pillars p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--lr-muted); }
 
 .lr-cards-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+/* Mission & Vision + COACH ME core values (#lr-values) */
+.lr-mv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.lr-mv .lr-card { gap: 18px; padding: 36px; }
+.lr-mv .lr-card p { font-size: 16px; line-height: 1.65; }
+.lr-values-head { margin-top: clamp(56px, 7vw, 88px); }
+.lr-values-head h2 { letter-spacing: .06em; }
+.lr-values-head h2 span { color: var(--lr-orange); }
+.lr-values-lead { margin: 0; max-width: 620px; font-size: 16px; line-height: 1.6; color: rgba(30,41,59,.72); }
+.lr-values-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin: 0; padding: 0; list-style: none; }
+.lr-value { flex: 0 1 calc((100% - 60px) / 4); display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 26px 24px; border-radius: 16px; background: #fff; border: 1px solid rgba(0,110,182,.08); }
+.lr-value-letter { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, var(--lr-blue), var(--lr-cyan)); color: #fff; font-family: var(--lr-display); font-weight: 800; font-size: 22px; }
+.lr-value:nth-child(n+6) .lr-value-letter { background: linear-gradient(135deg, var(--lr-orange), #f0a35e); }
+.lr-value h4 { margin: 4px 0 0; font-family: var(--lr-display); font-weight: 700; font-size: 18px; color: var(--lr-ink); }
+.lr-value p { margin: 0; font-size: 14px; line-height: 1.55; color: rgba(30,41,59,.75); }
 .lr-cards-6 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .lr-card { display: flex; flex-direction: column; gap: 16px; padding: 28px; border-radius: 16px; background: #fff; border: 1px solid rgba(0,110,182,.08); }
 .lr-cards-3 .lr-card { gap: 20px; padding: 32px; }
@@ -2935,12 +2949,15 @@ html.lr-lb-open, html.lr-lb-open body { overflow: hidden; }
   .lr-profile-grid { max-width: 620px; margin: 0 auto; }
   .lr-cards-3, .lr-cards-6 { grid-template-columns: 1fr 1fr; }
   .lr-nav-links { display: none; }
+  .lr-value { flex-basis: calc((100% - 20px) / 2); }
 }
 @media (max-width: 680px) {
   .lr-hero h1 br { display: none; }
   .lr-nav { gap: 12px; }
   .lr-nav-cta { padding: 9px 14px; font-size: 13px; }
-  .lr-cards-3, .lr-cards-6, .lr-loc-row { grid-template-columns: 1fr; }
+  .lr-cards-3, .lr-cards-6, .lr-loc-row, .lr-mv { grid-template-columns: 1fr; }
+  .lr-value { flex-basis: 100%; }
+  .lr-mv .lr-card { padding: 28px; }
   .lr-footer-box { flex-direction: column; align-items: flex-start; padding: 28px; }
   .lr-footer-bottom { flex-direction: column; align-items: flex-start; }
   .lr-metrics { gap: 24px; }
