@@ -82,6 +82,23 @@ describe("module access", () => {
     assert.equal(canAccessKey(as("Sales", ["product-issues"]), "productIssues", "edit"), false);
     assert.equal(canAccessKey(as("Admin", ["product-issues"]), "productIssues", "edit"), true);
   });
+  test("Engineering and Product Specialist always have the Support Tracker, even with older saved permissions", () => {
+    const { moduleListsFor, userFromProfileAndAuth, canAccessKey } = worker;
+    // Saved rows from before the Support Tracker existed: inventory only.
+    const stale = [{ module_key: "inventory", can_view: true, can_edit: false }];
+    for (const role of ["Engineering", "Product Specialist"]) {
+      for (const lists of [moduleListsFor(role, []), moduleListsFor(role, stale)]) {
+        assert.ok(lists.view.includes("product-issues") && lists.edit.includes("product-issues"), `${role} views and edits the Support Tracker`);
+      }
+      const { view, edit } = moduleListsFor(role, stale);
+      const profile = { role, customPermissions: { enabled: true, view, edit } };
+      assert.ok(canAccessKey(profile, "productIssues", "view") && canAccessKey(profile, "productIssues", "edit"), `${role} can read and save support reports`);
+      assert.ok(userFromProfileAndAuth({ role, email: "x@medlane.test" }, null, stale).modules.includes("product-issues"), `Users page shows ${role} with the Support Tracker`);
+    }
+    // Nobody else gains it: Sales and Logistics stay blocked, Accounting keeps its saved rows.
+    for (const role of ["Sales", "Logistics"]) assert.ok(!moduleListsFor(role, stale).view.includes("product-issues"), `${role} still has no Support Tracker`);
+    assert.ok(!moduleListsFor("Accounting", stale).view.includes("product-issues"));
+  });
   test("role defaults match the agreed access list", () => {
     const { moduleListsFor } = worker;
     const accounting = moduleListsFor("Accounting", []);
