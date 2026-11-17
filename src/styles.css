@@ -3769,7 +3769,7 @@ body[data-active-section="masterlists"] .topbar-title,
 body[data-active-section="user-settings"] .topbar-title,
 body[data-active-section="notifications"] .topbar-title,
 body[data-active-section="activity-log"] .topbar-title,
-body[data-active-section="product-issues"] .topbar-title { display: none; }
+body[data-active-section="product-issues"] .topbar-title, body[data-active-section="warranty"] .topbar-title { display: none; }
 .ui-scope .logs-notifications { display: grid; gap: 16px; }
 .ui-scope .ui-client-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }
 .ui-scope .ui-client-picker .ui-select { min-width: 0; max-width: 100%; }
@@ -4425,3 +4425,8 @@ body.welcome-open { overflow: hidden; }
 .sup-dialog .sup-num { display: flex; align-items: center; gap: 8px; }
 .sup-dialog .sup-num input { width: 96px; }
 .sup-dialog .sup-num span { font-size: 13px; opacity: .8; }
+
+/* Warranty dialogs (phase 6): two-column form grid inside the shared sup-dialog. */
+.sup-dialog .wty-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+.sup-dialog .wty-form .field.full { grid-column: 1 / -1; }
+@media (max-width: 560px) { .sup-dialog .wty-form { grid-template-columns: minmax(0, 1fr); } }

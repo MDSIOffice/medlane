@@ -31,7 +31,11 @@ function loadSupportEngineers() {
   MedlaneAPI.supportEngineers()
     .then((result) => { supportEngineersCache = result.engineers || []; })
     .catch(() => { supportEngineersCache = []; })
-    .finally(() => { supportEngineersLoading = false; if (document.body.dataset.activeSection === "product-issues") renderProductIssues(); });
+    .finally(() => {
+      supportEngineersLoading = false;
+      if (document.body.dataset.activeSection === "product-issues") renderProductIssues();
+      if (document.body.dataset.activeSection === "warranty") renderWarranty();
+    });
 }
 /** The saved support settings record (response targets, engineers' home branches). */
 function supportSettings() { return /** @type {any} */ ((data.supportSettings || []).find((/** @type {any} */ r) => r.id === "support-settings") || { id: "support-settings" }); }
@@ -598,7 +602,10 @@ function handleSupportClick(event) {
   if ((hit = el("data-support-unit"))) { supportTab = "open"; supportView = uiBlankViewState(); supportView.q = String(hit.dataset.supportUnit); if (!data.productIssues.some((r) => SupportRules.statusOf(r) !== "Resolved" && SupportRules.serialKey(r.serialNo) === SupportRules.serialKey(supportView.q))) supportTab = "resolved"; renderProductIssues(); return; }
   if ((hit = el("data-support-claim"))) {
     const report = supportReport(String(hit.dataset.supportClaim));
-    if (report) goToFocused("warranty", String(report.serialNo || ""));
+    if (!report) return;
+    // Warranty editors open the claim straight away; others just see the unit.
+    if (canEditModule("warranty")) { warrantyTab = "claims"; warrantyView = uiBlankViewState(); showSection("warranty"); void warrantyNewClaim({ ticketId: String(report.id) }); }
+    else goToFocused("warranty", String(report.serialNo || ""));
     return;
   }
   if (supportTab !== "overview") uiViewClick(target, "support", { state: () => supportView, view: () => supportTabModel(supportTab), render: renderProductIssues });

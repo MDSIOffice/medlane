@@ -919,3 +919,85 @@ test("Support Tracker: an engineer works their own ticket", async ({ page }) => 
   await expect(panel.getByRole("button", { name: "Response targets" })).toHaveCount(0);
   expect(problems).toEqual([]);
 });
+
+test("Warranty: overview, a unit's history, scheduling a PM books the branch engineer on the Calendar", async ({ page }) => {
+  const { problems } = await watch(page);
+  const saves = captureSaves(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=warranty");
+  const panel = page.locator("#warranty-tab-panel");
+  for (const label of ["Units installed", "Under warranty", "PM due or overdue", "Claims to recover"]) await expect(panel).toContainText(label);
+  await expect(panel).toContainText("₱60,500.00");
+  await expect(panel).toContainText("Act before it costs us");
+  await expect(panel).toContainText("Warranty ending · Zybio Z5 · Sample Lab C");
+  await expect(panel).toContainText("Issues per model");
+  await expect(page.locator(".workflow-assist")).toHaveCount(0);
+
+  await page.locator("#warranty-tabs").getByRole("tab", { name: /^Preventive maintenance/ }).click();
+  await expect(page).toHaveURL(/tab=pm/);
+  await expect(panel.locator("tbody tr").first()).toContainText("Z5-2306-00418");
+  await expect(panel.locator("tbody tr").first()).toContainText("Overdue");
+  await panel.locator("tbody tr", { hasText: "Z5-2411-00873" }).locator("[data-warranty-select]").click();
+  const detail = panel.locator(".ui-detail");
+  await expect(detail).toContainText("Service history · last 90 days");
+  await expect(detail).toContainText("TSR-0142");
+  await expect(detail).toContainText("WC-2026-004");
+  await detail.getByRole("button", { name: "Schedule PM" }).click();
+  const dialog = page.locator("dialog.sup-dialog");
+  await expect(dialog.locator("#sup-engineer option:checked")).toContainText("Engineer 2 · Naga (suggested)");
+  await dialog.getByRole("button", { name: "Schedule PM" }).click();
+  await expect.poll(() => saves.find((records) => records.calendarEvents?.length)?.calendarEvents[0]).toMatchObject({ assigneeEmail: "engineer2@medlane.test", assigneeName: "Engineer 2" });
+  const saved = saves.find((records) => records.calendarEvents?.length);
+  expect(saved.calendarEvents[0].title).toContain("PM: Sample Lab C · Zybio Z5 (Z5-2411-00873)");
+  expect(saved.warranties[0]).toMatchObject({ serial: "Z5-2411-00873", pmEngineer: "Engineer 2", status: "Expiring Soon" });
+  expect(saved.warranties[0].pmEventIds).toEqual([saved.calendarEvents[0].id]);
+  expect(problems).toEqual([]);
+});
+
+test("Warranty: a hardware ticket opens a claim, which moves to part received and is still to recover", async ({ page }) => {
+  const { problems } = await watch(page);
+  const saves = captureSaves(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=product-issues&tab=open");
+  await page.locator("#support-tab-panel tbody tr", { hasText: "TSR-0146" }).locator("[data-support-select]").click();
+  await page.locator("#support-detail").getByRole("button", { name: "Open warranty claim" }).click();
+  const dialog = page.locator("dialog.sup-dialog");
+  await expect(dialog).toContainText("From TSR-0146");
+  await expect(dialog.locator("#sup-serial option:checked")).toContainText("1230104910203");
+  await expect(dialog.locator("#sup-issue")).toHaveValue("Reader won't read cassette barcodes");
+  await dialog.locator("#sup-part").fill("Barcode reader");
+  await dialog.locator("#sup-partCost").fill("7500");
+  await dialog.getByRole("button", { name: "Open claim" }).click();
+  await expect.poll(() => saves.flatMap((r) => r.warrantyClaims || []).find((c) => c.ticketId === "TSR-0146")).toMatchObject({ id: "WC-2026-006", status: "Open", partCost: 7500, serial: "1230104910203" });
+  await expect(page).toHaveURL(/section=warranty.*tab=claims/);
+  const detail = page.locator("#warranty-tab-panel .ui-detail");
+  await expect(detail).toContainText("Barcode reader");
+  await detail.getByRole("button", { name: "Mark part received" }).click();
+  await dialog.getByRole("button", { name: "Mark part received" }).click();
+  await expect.poll(() => saves.flatMap((r) => r.warrantyClaims || []).filter((c) => c.id === "WC-2026-006").pop()?.status).toBe("Part received");
+  await expect(page.locator("#warranty-tab-panel")).toContainText("₱68,000.00");
+  expect(problems).toEqual([]);
+});
+
+test("Warranty: adding a unit, and a duplicate serial is refused", async ({ page }) => {
+  const { problems } = await watch(page);
+  const saves = captureSaves(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=warranty&tab=units");
+  const add = async (serial) => {
+    await page.locator("#warranty-actions").getByRole("button", { name: "Add unit" }).click();
+    const dialog = page.locator("dialog.sup-dialog");
+    await dialog.locator("#sup-model").fill("Zybio Z3");
+    await dialog.locator("#sup-serial").fill(serial);
+    await dialog.locator("#sup-installDate").fill("2026-11-01");
+    await dialog.locator("#sup-warrantyEnd").fill("2027-11-01");
+    await dialog.getByRole("button", { name: "Add unit" }).click();
+  };
+  await add("Z3-NEW-1");
+  await expect.poll(() => saves.flatMap((r) => r.warranties || []).find((u) => u.serial === "Z3-NEW-1")).toMatchObject({ model: "Zybio Z3", equipment: "Zybio Z3", client: "Naga City Lab", status: "Active" });
+  await expect(page.locator("#warranty-tab-panel tbody")).toContainText("Z3-NEW-1");
+  await add("z3-new-1");
+  await expect(page.locator(".toast, #toast").last()).toContainText("already listed");
+  expect(saves.flatMap((r) => r.warranties || []).filter((u) => /z3-new-1/i.test(u.serial))).toHaveLength(1);
+  expect(problems).toEqual([]);
+});

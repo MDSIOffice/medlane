@@ -1556,6 +1556,8 @@ qs("#global-search").addEventListener("input", () => {
 });
 qs("#inventory-status").addEventListener("change", renderInventory);
 qs("#product-issues").addEventListener("click", handleSupportClick);
+qs("#warranty").addEventListener("click", handleWarrantyClick);
+qs("#warranty").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "warranty", () => warrantyView, renderWarranty); });
 qs("#product-issues").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "support", () => supportView, renderProductIssues); });
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
 qs("#export-demo")?.addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export logged."); });

@@ -990,10 +990,17 @@
         <article class="panel" id="invoice-flow-detail-panel"></article>
       </section>
 
-      <section class="section" id="warranty">
-        <div class="section-header"><div><p class="eyebrow">Equipment Warranty</p><h2>Serial numbers, installs, service status</h2></div><button class="primary-button" data-action="open-modal" data-type="warranty">Add Warranty</button></div>
-        <div class="visual-grid" id="warranty-visuals"></div>
-        <div class="table-card"><table id="warranty-table"></table></div>
+      <section class="section ui-scope" id="warranty">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Warranty</h1></div>
+            <p class="ui-desc">Every analyzer we’ve installed: who covers it, when its next preventive maintenance is due, and the parts we’re claiming back from the principal.</p>
+          </div>
+          <div class="ui-actions" id="warranty-actions"></div>
+        </div>
+        <div class="ui-wa-host" data-wa-host="warranty"></div>
+        <div class="ui-tabs" id="warranty-tabs" role="tablist" aria-label="Warranty sections"></div>
+        <div id="warranty-tab-panel"></div>
       </section>
 
       <section class="section ui-scope" id="product-issues">
@@ -1536,7 +1543,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "notifications-page.js", "activity-page.js", "support-rules.js", "support-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "notifications-page.js", "activity-page.js", "support-rules.js", "support-page.js", "warranty-rules.js", "warranty-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

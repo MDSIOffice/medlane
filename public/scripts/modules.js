@@ -136,7 +136,7 @@ function renderWorkflowAssist(sectionId) {
 }
 
 // Support Tracker has the new Workflow assistant (WORKFLOW_RULES in support-page.js).
-const WORKFLOW_ASSIST_SECTIONS = ["warranty", "imports", "reports", "security"];
+const WORKFLOW_ASSIST_SECTIONS = ["imports", "reports", "security"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -473,6 +473,7 @@ function workflowGoto(module, tab, scope, sel) {
   else if (module === "purchase-orders") { if (PURCHASING_TAB_LABELS[tab]) purchasingTab = tab; purchasingView = view; inventoryWorkflowTab = "purchasing"; module = "inventory"; }
   else if (module === "payables") { if (PAYABLES_TAB_LABELS[tab]) payablesTab = tab; payablesView = view; }
   else if (module === "product-issues") { if (SUPPORT_TAB_LABELS[tab]) supportTab = tab; supportView = view; }
+  else if (module === "warranty") { if (WARRANTY_TAB_LABELS[tab]) warrantyTab = tab; warrantyView = view; }
   else if (module === "replenishments") { if (EXPENSES_TAB_LABELS[tab]) expensesTab = tab; expensesView = view; }
   else if (module === "logs") { if (LOGS_TAB_LABELS[tab]) logsTab = tab; logsView = view; }
   else if (module === "analytics") { if (ANALYTICS_TAB_LABELS[tab]) analyticsTab = tab; analyticsView = view; }
@@ -4666,6 +4667,7 @@ function sectionQueryString(sectionId) {
   if (sectionId === "purchase-orders") return clientPoQueryString();
   if (sectionId === "payables") return payablesQueryString();
   if (sectionId === "product-issues") return supportQueryString();
+  if (sectionId === "warranty") return warrantyQueryString();
   if (sectionId === "replenishments") return expensesQueryString();
   if (sectionId === "analytics") return analyticsQueryString();
   if (sectionId === "logs") return logsQueryString();
@@ -7558,18 +7560,6 @@ function previewSoa(client) {
   qs("#payment-request-preview-title").textContent = `Statement of Account — ${client}`;
   qs("#payment-request-preview-content").innerHTML = soaHtml(client);
   if (!dialog.open) dialog.showModal();
-}
-
-function renderWarranty() {
-  const warranties = data.warranties.filter((w) => includesSearch(Object.values(w)));
-  const endingSoon = warranties.filter((w) => daysUntil(w.warrantyEnd) <= 180).sort((a, b) => daysUntil(a.warrantyEnd) - daysUntil(b.warrantyEnd));
-  const equipmentMix = Object.entries(sumBy(warranties, "equipment", () => 1));
-  qs("#warranty-visuals").innerHTML = [
-    visualCard("◉", "Active Coverage", `${warranties.filter((w) => w.status === "Active").length}/${warranties.length} active`, barRows([["Active", warranties.filter((w) => w.status === "Active").length], ["Ending soon", endingSoon.length]], (value) => `${value} units`, ["green", "orange"]), "success", "Computed from warranty records by current status and warranty end date."),
-    visualCard("⌁", "Warranty Timeline", endingSoon.length ? `${endingSoon[0].serial} next` : "No urgent expiry", barRows(endingSoon.slice(0, 4).map((w) => [w.serial, Math.max(daysUntil(w.warrantyEnd), 0)]), (value) => `${value} days`, ["red", "orange", "green"]), "warning", "Computed as days remaining until warranty end for expiring units."),
-    visualCard("▧", "Equipment Mix", `${equipmentMix.length} equipment types`, barRows(equipmentMix, (value) => `${value} unit${value === 1 ? "" : "s"}`, ["", "green", "orange"]), "info", "Computed from warranty records grouped by equipment name."),
-  ].join("");
-  table("#warranty-table", ["Client", "Equipment", "Serial No.", "Install Date", "Warranty End", "Status", "Service Notes"], data.warranties.filter((w) => includesSearch(Object.values(w))).map((w) => ({ focus: w.serial, cells: [w.client, w.equipment, w.serial, w.installDate, w.warrantyEnd, `<span class="pill ${statusClass(w.status)}">${w.status}</span>`, w.service] })));
 }
 
 /** @param {string} status */
@@ -11467,7 +11457,7 @@ function renderServiceWarrantyReport() {
     ["Expired", expired.toLocaleString("en-PH"), { tone: "red" }],
   ]);
   setReportChart("#report-detail-chart-summary", { title: "Warranty coverage, installed units", kind: "stack", html: reportStack(reportWarrantySegments(warranties)) });
-  const endingNext = warranties.filter((w) => w.warrantyEnd && Number.isFinite(daysUntil(w.warrantyEnd)) && daysUntil(w.warrantyEnd) >= 0).sort((a, b) => daysUntil(a.warrantyEnd) - daysUntil(b.warrantyEnd)).slice(0, 8).map((w) => ({ title: w.equipment, sub: [w.client, w.serial && `SN ${w.serial}`].filter(Boolean).join(" · "), days: daysUntil(w.warrantyEnd) }));
+  const endingNext = warranties.filter((w) => w.warrantyEnd && Number.isFinite(daysUntil(w.warrantyEnd)) && daysUntil(w.warrantyEnd) >= 0).sort((a, b) => daysUntil(a.warrantyEnd) - daysUntil(b.warrantyEnd)).slice(0, 8).map((w) => ({ title: String(w.model || w.equipment || ""), sub: [w.client, w.serial && `SN ${w.serial}`].filter(Boolean).join(" · "), days: daysUntil(w.warrantyEnd) }));
   setReportChart("#report-detail-chart-primary", { title: "Coverage ending next", kind: "list", html: reportCountdownList(endingNext, "No upcoming warranty end dates."), note: "The 8 soonest warranty end dates." });
   const byEquipment = Object.entries(sumBy(warranties, "equipment", () => 1)).sort((a, b) => b[1] - a[1]).slice(0, 10);
   setReportChart("#report-detail-chart-secondary", { title: "Installed units by equipment", html: barRows(byEquipment, (value) => `${value} unit${value === 1 ? "" : "s"}`), note: "Top 10 equipment types by installed unit count." });
@@ -12421,7 +12411,7 @@ const sectionRenderers = {
   collections: renderCollections,
   "receivables-tracker": renderReceivablesTracker,
   "client-invoices": renderClientInvoices,
-  warranty: renderWarranty,
+  warranty: () => renderWarranty(),
   "product-issues": () => renderProductIssues(),
   "purchase-history": renderPurchaseHistory,
   imports: renderImports,

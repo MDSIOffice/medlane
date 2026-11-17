@@ -4,6 +4,7 @@ import { collectSample, collectLiveDetails, buildWeeklyReport, hasAccessToken } 
 import { resolveNotificationSettings, notificationSettingPatch, preferencesFromRow, preferencePatchColumns, profilePatch, passwordAge, welcomeShowsNow } from "./account.js";
 import { activityRow, activityRowsInOrder, activityQuery, activityPage, activityScope, activityTab, deviceKey, isSignIn as isActivitySignIn, isFailedSignIn, FAILED_SIGNIN_WINDOW_MS, ACTIVITY_TABS } from "./activity.js";
 import "../public/scripts/support-rules.js";
+import "../public/scripts/warranty-rules.js";
 import { generateNotices, planFanOut, emailsDue, dailySummaryRows, notificationPage, archiveCutoffIso, NOTIFICATION_TABS } from "./notifications.js";
 import { RECON_CHECKS, RECON_AREAS, RECON_INPUT_MODULES, runRecon, dataFromRows, mergeDifferences, getPath, setPath, sameValue, saleDocType, saleNo } from "./recon.js";
 
@@ -134,7 +135,7 @@ const moduleRecordKeys = {
   invoicing: ["sales", "pendingCreditInvoices"],
   sales: ["sales"],
   receivables: ["sales", "payments", "collectionContacts", "collectionContactHistory"],
-  warranty: ["warranties"],
+  warranty: ["warranties", "warrantyClaims", "warrantySettings"],
   history: ["sales", "purchaseOrders", "payments"],
   collections: ["payments", "paymentRequests", "collectionContacts", "collectionContactHistory"],
   payables: ["payables"],
@@ -2831,6 +2832,47 @@ async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
   }
 }
 
+/**
+ * Warranty: installed units' dates and service contract must be valid (a PM can't be logged in the
+ * future), and warranty claims move forward one step at a time (Open → Part received → Old part
+ * returned → Credited) with a non-negative part cost. Superadmin/CEO may correct a claim's status.
+ * @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows
+ */
+async function assertWarrantyChangesAllowed(env, stateKey, profile, rows) {
+  const Rules = /** @type {typeof WarrantyRules} */ (/** @type {any} */ (globalThis).WarrantyRules);
+  const today = Rules.manilaToday();
+  for (const row of rows.filter((r) => r.module_name === "warranties")) {
+    /** @type {Record<string, any>} */
+    const unit = row.data || {};
+    for (const field of ["installDate", "warrantyEnd", "lastPm", "contractEnd", "pmScheduledFor"]) {
+      if (unit[field] && !Rules.isDate(unit[field])) throw new Error(`${field} of unit ${row.record_key} must be a date`);
+    }
+    if (unit.lastPm && unit.lastPm > today) throw new Error(`The last PM of unit ${row.record_key} can't be in the future`);
+    if (unit.contractStatus !== undefined && !["", "none", "quoted", "active"].includes(unit.contractStatus)) throw new Error(`Unknown service contract status for unit ${row.record_key}`);
+  }
+  const claims = rows.filter((r) => r.module_name === "warrantyClaims");
+  if (!claims.length) return;
+  const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.warrantyClaims&record_key=in.${encodeURIComponent(postgrestIn(claims.map((r) => r.record_key)))}&select=record_key,data`));
+  const storedByKey = new Map(stored.map((r) => [r.record_key, r.data || {}]));
+  const management = ["Superadmin", "CEO"].includes(profile?.role);
+  for (const row of claims) {
+    /** @type {Record<string, any>} */
+    const next = row.data || {};
+    const prev = storedByKey.get(row.record_key);
+    const cost = Number(next.partCost ?? 0);
+    if (!Number.isFinite(cost) || cost < 0) throw new Error(`Part cost of claim ${row.record_key} must be zero or more`);
+    if (!Rules.CLAIM_STATUSES.includes(next.status)) throw new Error(`Unknown status for claim ${row.record_key}`);
+    if (!prev) {
+      if (next.status !== "Open" && !management) throw new Error(`New claim ${row.record_key} must start as Open`);
+      continue;
+    }
+    if (management) continue;
+    const from = Rules.claimStatus(prev);
+    if (!Rules.claimMoveAllowed(from, next.status)) throw new Error(`Claim ${row.record_key} can't move from ${from} to ${next.status}`);
+    if (from === "Credited" && JSON.stringify(prev) !== JSON.stringify(next)) throw new Error(`Claim ${row.record_key} is credited and can't be changed`);
+  }
+}
+
 /** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
 async function assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows) {
   const incoming = rows.filter((row) => row.module_name === "inventoryDemoRequests");
@@ -3295,6 +3337,7 @@ function canAccessKey(profile, key, mode = "view") {
   if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
   if (mode === "edit" && EXPENSE_PLANNING_KEYS.includes(key) && profile?.role !== "Admin") return false;
   if (mode === "edit" && key === "supportSettings" && profile?.role !== "Admin") return false;
+  if (mode === "edit" && key === "warrantySettings" && profile?.role !== "Admin") return false;
   if (mode === "edit" && key === "forecastSettings") return false;
   const modules = modulesForKey(key);
   return modules.some((module) => allowed.includes(module));
@@ -6516,6 +6559,7 @@ export default {
               assertFinancialApprovalAllowed(env, stateKey, profile, rows),
               assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
               assertSupportReportChangesAllowed(env, stateKey, profile, rows),
+              assertWarrantyChangesAllowed(env, stateKey, profile, rows),
               assertCalendarEventChangesAllowed(env, stateKey, profile, rows),
               assertCreditApprovalAllowed(env, stateKey, profile, rows),
               assertMigratedStockAllowed(env, stateKey, profile, rows),
@@ -6935,6 +6979,7 @@ export default {
           assertFinancialApprovalAllowed(env, stateKey, profile, rows),
           assertDemoRequestTransitionsAllowed(env, stateKey, profile, rows),
               assertSupportReportChangesAllowed(env, stateKey, profile, rows),
+              assertWarrantyChangesAllowed(env, stateKey, profile, rows),
               assertCalendarEventChangesAllowed(env, stateKey, profile, rows),
           assertCreditApprovalAllowed(env, stateKey, profile, rows),
           assertMigratedStockAllowed(env, stateKey, profile, rows),

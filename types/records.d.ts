@@ -373,7 +373,22 @@ interface Replenishment {
 interface CollectionContact { client: string; area: string; status: string; [extra: string]: any }
 interface PendingTransfer { id: string; status: string; code?: string; lot?: string; from?: string; to?: string; lines: any[]; [extra: string]: any }
 interface ImportBatch { id: string; date: string; module: string; status: string; [extra: string]: any }
-interface Warranty { serial?: string; client?: string; warrantyEnd?: string; [extra: string]: any }
+/**
+ * An installed unit (older records only have client/equipment/serial/installDate/warrantyEnd/status).
+ * contractStatus: "none" | "quoted" | "active"; lastPm / pmScheduledFor are YYYY-MM-DD.
+ */
+interface Warranty {
+  serial?: string; client?: string; warrantyEnd?: string; installDate?: string; equipment?: string;
+  model?: string; unitType?: string; branch?: string; contractStatus?: string; contractEnd?: string;
+  lastPm?: string; pmScheduledFor?: string; pmEngineer?: string; pmEventIds?: string[]; history?: PoHistoryEntry[];
+  [extra: string]: any;
+}
+/** A warranty claim: Open → Part received → Old part returned → Credited. */
+interface WarrantyClaim {
+  id: string; serial: string; client?: string; model?: string; ticketId?: string; issue?: string; part?: string;
+  partCost: number; rma?: string; status: string; openedAt?: string; creditedAt?: string; cancelled?: boolean;
+  history?: PoHistoryEntry[]; [extra: string]: any;
+}
 
 interface ImportCheckRow { row: number; kind: string; status: string; issues: string; [extra: string]: any }
 interface StockReceipt { id: string; status: string; poId?: string; lines: any[]; [extra: string]: any }
@@ -421,6 +436,10 @@ interface AppData {
   expenseBudgets: ExpenseBudget[];
   /** Support Tracker settings (one record, id "support-settings"): response targets, engineers' home branches. */
   supportSettings: { id: string, targets?: any, engineerBranches?: Record<string, string>, [extra: string]: any }[];
+  /** Parts claimed back from the principal for warranty repairs (Warranty → Claims). */
+  warrantyClaims: WarrantyClaim[];
+  /** One record, id "warranty-settings": PM interval in months per model. */
+  warrantySettings: { id: string, pmMonths?: Record<string, number>, defaultPmMonths?: number, [extra: string]: any }[];
   recurringCosts: RecurringCost[];
   priceLists: PriceList[];
   /** Item Forecast settings: one record, id "settings" (see forecastSettingsFrom). */
@@ -460,6 +479,9 @@ interface CalendarEvent {
   /** Creator's role, stamped by the server; drives the department color. */
   createdByRole?: string;
   createdAt: string;
+  /** Who the event is for (e.g. the engineer doing a PM visit). */
+  assigneeEmail?: string;
+  assigneeName?: string;
   removed?: boolean;
   removedBy?: string;
 }

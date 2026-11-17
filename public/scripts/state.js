@@ -259,7 +259,7 @@ const frontendModuleRecordKeys = {
   "receivables-tracker": ["sales", "payments", "collectionContacts", "collectionContactHistory"],
   "client-invoices": ["sales", "payments", "paymentRequests", "inventoryDemoRequests"],
   "sale-detail": ["sales", "payments", "paymentRequests"],
-  warranty: ["warranties"],
+  warranty: ["warranties", "warrantyClaims", "warrantySettings"],
   "purchase-history": ["sales", "purchaseOrders", "payments"],
   payables: ["payables"],
   replenishments: ["replenishments", "expenseBudgets", "recurringCosts"],
@@ -480,6 +480,8 @@ function emptyProductionData() {
     calendarEvents: [],
     expenseBudgets: [],
     supportSettings: [],
+    warrantyClaims: [],
+    warrantySettings: [],
     recurringCosts: [],
     forecastSettings: [],
   };
@@ -561,6 +563,8 @@ function normalizeData(next) {
   next.calendarEvents ||= [];
   next.expenseBudgets ||= [];
   next.supportSettings ||= [];
+  next.warrantyClaims ||= [];
+  next.warrantySettings ||= [];
   next.recurringCosts ||= [];
   next.forecastSettings ||= [];
   next.pendingTransfers ||= [];

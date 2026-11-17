@@ -611,7 +611,7 @@ function prepareFocusedSection(section, record) {
   }
   if (section === "receivables-tracker") { receivablesFocusRecord(query); return renderReceivablesTracker(); }
   if (section === "payables") { payablesFocusRecord(query); return renderPayables(); }
-  if (section === "warranty") return renderWarranty();
+  if (section === "warranty") { warrantyFocusRecord(query); return renderWarranty(); }
   if (section === "product-issues") return renderProductIssues();
   if (section === "replenishments") { expensesFocusRecord(query); return renderReplenishments(); }
   if (section === "collections") { collectionsFocusRecord(query); return renderCollections(); }
