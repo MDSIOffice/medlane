@@ -4204,8 +4204,8 @@ body.welcome-open { overflow: hidden; }
 .wl-shell { position: relative; min-height: 100%; display: flex; flex-direction: column; gap: 24px; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); box-sizing: border-box; }
 .wl-top { display: flex; align-items: center; justify-content: space-between; }
 .wl-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 15px; }
-.wl-brand-tile { width: 40px; height: 40px; border-radius: 10px; background: #FFFFFF; border: 1px solid #E3E9EE; display: grid; place-items: center; }
-.wl-brand-tile .ml-logo { width: 24px; height: 24px; }
+.wl-brand-tile { width: 40px; height: 40px; border-radius: 10px; background: #FFFFFF; border: 1px solid #E3E9EE; display: grid; place-items: center; overflow: hidden; }
+.wl-brand-tile .wl-logo { width: 100%; height: 100%; object-fit: contain; display: block; }
 .welcome-screen .ml-logo path { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-dasharray: 60; }
 .wl-main { flex: 1; width: 100%; max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 28px; }
 .wl-head { display: flex; flex-direction: column; gap: 10px; }
@@ -4272,8 +4272,7 @@ body.welcome-open { overflow: hidden; }
 @media (prefers-reduced-motion: no-preference) {
   .welcome-screen.wl-pending .wl-bg, .welcome-screen.wl-pending .wl-shell { opacity: 0; }
   .wl-intro .wl-bg { animation: wl-bg-in 1.4s var(--wl-ease) var(--t-bg) both; }
-  .wl-intro .ml-logo path { animation: wl-draw 1s cubic-bezier(0.65, 0, 0.35, 1) var(--t-bg) both; }
-  .wl-intro .ml-logo path + path { animation-delay: calc(var(--t-bg) + 150ms); }
+  .wl-intro .wl-brand-tile { animation: wl-pop 0.5s var(--wl-spring) var(--t-bg) both; }
   .wl-intro .wl-top, .wl-intro .wl-date { animation: wl-fade-up 0.6s var(--wl-ease) var(--t-date) both; }
   .wl-intro .wl-wi {
     background: linear-gradient(100deg, var(--wl-ink) 0%, var(--wl-ink) 40%, #3A9BBE 50%, var(--wl-ink) 60%, var(--wl-ink) 100%) 100% 0 / 300% 100%;

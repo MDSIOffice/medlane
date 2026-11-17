@@ -224,7 +224,8 @@ function welcomeLastSignIn(previous) {
 /** @param {string} path */
 function welcomeIcon(path, size = 18) { return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`; }
 const WELCOME_CHEVRON = '<svg class="wl-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>';
-const WELCOME_LOGO = '<svg class="ml-logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 19L10 6l3 5" stroke="#D9682B" stroke-linecap="round"/><path d="M7 19l7-11 7 11z" stroke="#1F5F74"/></svg>';
+// The company logo (same file as the sidebar and the login page).
+const WELCOME_LOGO = '<img class="wl-logo" src="/medlane.jpg" alt="" width="40" height="40" decoding="async">';
 
 /** @type {(UiRec & { module: string })[]} */
 let welcomeTaskList = [];
