@@ -2538,7 +2538,8 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
         const prev = stored.get(row.record_key);
         if (!prev || lower(prev.requestStatus) === "approved" || lower(prev.status) === "approved") continue;
         if (lower(prev.requestStatus) === "pending" || lower(prev.status) === "pending") throw new Error("Only Superadmin/CEO can approve payment requests");
-        throw new Error(`Collection ${row.record_key} is ${prev.requestStatus || prev.status} and can't be reopened`);
+        // A deposited (Completed) collection goes back to Approved when a cheque bounces.
+        if (lower(prev.requestStatus) === "cancelled" || lower(prev.status) === "cancelled") throw new Error(`Collection ${row.record_key} is cancelled and can't be reopened`);
       }
     }
 

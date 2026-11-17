@@ -815,6 +815,8 @@ function collectionTagForType(type) { return type === "TS" ? "TS-PR" : ["DR", "D
 /** @param {Payment} payment @param {string} buttonClass */
 function collectionStatusButtonsHtml(payment, buttonClass) {
   const receiptNo = escapeHtml(payment.receiptNo);
+  // A deposited cheque can still come back from the bank: Admin/Superadmin/CEO can mark it Bounced.
+  if (payment.collectionStatus === "Deposited") return canBounceOrCancelCollections() ? `<button class="${buttonClass} danger-button" data-collection-status="${receiptNo}:Bounced">Bounced</button>` : "";
   if (payment.collectionStatus === "Bounced") {
     return canRedepositCollections()
       ? `<button class="${buttonClass}" data-collection-redeposit="${receiptNo}">Redeposit</button>`
@@ -840,12 +842,11 @@ function paymentRequestActionsCell(request) {
     ? (canApprovePaymentRequests() ? `<button class="mini-button" data-payment-request-approve="${escapeHtml(request.cvNo)}">Approve</button>` : `<small>Awaiting Superadmin/CEO</small>`)
     : "";
   const linkedPayment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
-  const isDepositFinal = linkedPayment?.collectionStatus === "Deposited";
-  const isCancellable = ["Pending", "Approved"].includes(request.requestStatus) && !paymentRequestPayments(request).some((payment) => payment.collectionStatus === "Deposited");
+  const isCancellable = ["Pending", "Approved", "Completed"].includes(request.requestStatus);
   const cancelBtn = isCancellable && canBounceOrCancelCollections() ? `<button class="mini-button danger-button" data-payment-request-cancel="${escapeHtml(request.cvNo)}">Cancel</button>` : "";
-  const perCheque = request.requestStatus === "Approved" && collectionChequeGroups(request.cvNo).length > 0;
+  const perCheque = ["Approved", "Completed"].includes(request.requestStatus) && collectionChequeGroups(request.cvNo).length > 0;
   const statusActions = perCheque ? `<button class="mini-button" data-collections-goto-checks="${escapeHtml(request.cvNo)}">Update checks</button>`
-    : request.requestStatus === "Approved" && linkedPayment && !isDepositFinal
+    : ["Approved", "Completed"].includes(request.requestStatus) && linkedPayment
       ? collectionStatusButtonsHtml(linkedPayment, "mini-button")
       : "";
   const timelineBtn = `<button class="mini-button" data-payment-request-timeline="${escapeHtml(request.cvNo)}">View Timeline</button>`;
@@ -1025,7 +1026,6 @@ async function cancelPaymentRequest(cvNo) {
   if (!request) return toast("Payment request not found.");
   if (request.requestStatus === "Cancelled") return toast("This collection is already cancelled.");
   const payments = paymentRequestPayments(request).filter((payment) => !payment.voided);
-  if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("Part of this collection is already deposited, so it can no longer be cancelled. Mark the cheque that failed as Bounced instead.");
   const applied = payments.filter((payment) => payment.collectionStatus !== "Bounced");
   const { ok, reason } = await confirmDetailsModal({
     eyebrow: "Confirm Cancellation",
@@ -1074,10 +1074,10 @@ function renderPaymentRequestDetail(cvNo) {
   const events = paymentRequestHistory(request);
   const payment = data.payments.find((entry) => entry.paymentRequestCvNo === request.cvNo);
   const depositHistory = payment?.statusHistory?.length ? payment.statusHistory.map((/** @type {any} */ entry) => `<li>${escapeHtml(entry.date)} · ${escapeHtml(entry.status)} · ${escapeHtml(entry.user || "System User")}</li>`).join("") : `<li>No status history yet.</li>`;
-  const isDepositFinal = payment?.collectionStatus === "Deposited" || request.requestStatus === "Cancelled";
-  const depositActions = isDepositFinal
-    ? `<p class="page-description">${request.requestStatus === "Cancelled" ? "This payment request was cancelled." : "Deposited — this payment is final and its status can no longer be changed."}</p>`
-    : payment ? `<div class="modal-actions collection-status-actions">${collectionStatusButtonsHtml(payment, "ghost-button")}</div>` : "";
+  const statusButtons = payment && request.requestStatus !== "Cancelled" ? collectionStatusButtonsHtml(payment, "ghost-button") : "";
+  const depositActions = request.requestStatus === "Cancelled" ? `<p class="page-description">This payment request was cancelled.</p>`
+    : statusButtons ? `<div class="modal-actions collection-status-actions">${statusButtons}</div>`
+    : payment?.collectionStatus === "Deposited" ? `<p class="page-description">Deposited. If the bank returns it, an Admin can mark it Bounced.</p>` : "";
   const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposit</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}${payment.depositBank ? ` · Deposited to ${escapeHtml(depositBankLabel({ name: payment.depositBank, account: payment.depositBankAccount }))}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposit")}">${escapeHtml(payment.collectionStatus || "For Deposit")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
   const physicalCopySection = request.requestStatus === "Approved" ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Physical Copy</span><strong>Signed CV Voucher</strong><small>Upload a photo/scan of the physically signed and released voucher.</small></div></header>${attachedFilesHtml("paymentRequest", request.cvNo)}<div class="modal-actions"><button class="ghost-button" data-upload-copy="${escapeHtml(request.cvNo)}" type="button">Upload Physical Copy</button><input type="file" accept="image/*" class="physical-copy-input" data-record-type="paymentRequest" data-record-id="${escapeHtml(request.cvNo)}" data-rerender="payment-request-detail" hidden /></div></div>` : "";
   qs("#payment-request-detail-title").textContent = `${request.cvNo} · ${request.employee}`;
@@ -5125,9 +5125,10 @@ function collectionReceiptActions(receipt) {
     if (state === "deposit") buttons.push(`<button data-collection-status="${cv}:Posted Date">Post-dated</button>`);
     if (canBounceOrCancelCollections()) buttons.push(`<button class="danger-button" data-collection-status="${cv}:Bounced">Bounced</button>`);
   }
+  if (!chequeGroups.length && state === "deposited" && canBounceOrCancelCollections() && receipt.request) buttons.push(`<button class="danger-button" data-collection-status="${cv}:Bounced">Bounced</button>`);
   if (!chequeGroups.length && state === "bounced" && canRedepositCollections()) buttons.push(`<button data-collection-redeposit="${cv}">Redeposit</button>`);
-  // Cancel: any collection with nothing deposited yet (Admin/Superadmin/CEO).
-  if (receipt.request && ["approval", "deposit", "pdc", "bounced"].includes(state) && canBounceOrCancelCollections() && !paymentRequestPayments(receipt.id).some((payment) => payment.collectionStatus === "Deposited")) buttons.push(`<button class="danger-button" data-payment-request-cancel="${cv}">Cancel collection</button>`);
+  // Cancel: any collection not already cancelled, deposited or not (Admin/Superadmin/CEO).
+  if (receipt.request && ["approval", "deposit", "pdc", "bounced", "deposited"].includes(state) && canBounceOrCancelCollections()) buttons.push(`<button class="danger-button" data-payment-request-cancel="${cv}">Cancel collection</button>`);
   const primary = buttons.length > 0;
   if (receipt.request) buttons.push(`<button data-payment-request-preview="${cv}">Preview / print</button>`, `<button data-payment-request-timeline="${cv}">View timeline</button>`);
   const firstSale = receipt.shares.map((share) => data.sales.find((sale) => sale.documentNo === share.invoice || sale.id === share.invoice)).find(Boolean);
@@ -5336,7 +5337,7 @@ function collectionsTabModel(tab) {
             : receipt.state === "pdc" ? { text: `Post-dated${posted ? ` to ${uiDate(posted)}` : ""}. It already counts against the invoice; deposit it on or after that date.`, tone: "amber" }
             : receipt.state === "deposit" ? { text: "Applied to the invoice. Not yet banked.", tone: "orange" }
             : receipt.state === "bounced" ? { text: "The check bounced, so the invoice balance was restored. It needs to be redeposited.", tone: "red" }
-            : receipt.state === "deposited" ? { text: "Deposited. This receipt can no longer be changed.", tone: "green" } : undefined,
+            : receipt.state === "deposited" ? { text: "Deposited. If the bank returns it, an Admin can still mark it Bounced or cancel it.", tone: "green" } : undefined,
           actions: collectionReceiptActions(receipt),
         };
       },
@@ -6426,6 +6427,7 @@ function collectionChequeButtons(receiptNo, group, labelled = false) {
   const cv = escapeHtml(receiptNo);
   const no = labelled ? ` · ${escapeHtml(group.cheque.reference || `#${group.index + 1}`)}` : "";
   if (group.state === "bounced") return canRedepositCollections() ? [`<button data-collection-redeposit="${cv}:${group.index}">Redeposit${no}</button>`] : [];
+  if (group.state === "deposited") return canBounceOrCancelCollections() ? [`<button class="danger-button" data-collection-status="${cv}:Bounced:${group.index}">Bounced${no}</button>`] : [];
   if (group.state !== "deposit" && group.state !== "pdc") return [];
   return [
     `<button data-collection-status="${cv}:Deposited:${group.index}">Mark deposited${no}</button>`,
@@ -6445,7 +6447,7 @@ async function updateCollectionPaymentStatus(receiptNo, status, chequeIndex = nu
     : perCheque ? all.filter((payment) => ["For Deposit", "Posted Date"].includes(payment.collectionStatus)) : all;
   if (!payments.length) return toast(perCheque ? "No cheque on this collection is waiting for deposit." : "Collection not found.");
   const label = chequeIndex !== null ? `cheque ${payments[0].chequeNo || `#${chequeIndex + 1}`} (${receiptNo})` : receiptNo;
-  if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited and can no longer be changed.");
+  if (status !== "Bounced" && payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited. If the bank returned it, mark it Bounced.");
   if (payments.some((payment) => payment.collectionStatus === "Bounced")) return toast("This payment bounced — Redeposit it first.");
   if (status === "Bounced" && !canBounceOrCancelCollections()) return toast("Only Admin, Superadmin or CEO can mark a payment Bounced.");
   const postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payments[0].postedDate || fmtDate(today)) || "" : "";
@@ -6515,7 +6517,7 @@ function promptDepositBank(label, payments) {
     const dialog = document.createElement("dialog");
     dialog.className = "modal invite-confirm-modal";
     dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Deposit</p><h2>Mark ${escapeHtml(label)} deposited</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div>
-      <p class="page-description">${peso.format(total)} · Choose the bank account it was deposited into. Deposited is final and can't be changed afterwards.</p>
+      <p class="page-description">${peso.format(total)} · Choose the bank account it was deposited into.</p>
       <div class="field full"><label for="deposit-bank">Deposited to</label><select id="deposit-bank" required><option value="">Choose a bank account</option>${banks.map((bank) => `<option value="${escapeHtml(bank.name)}"${bank.name === guess ? " selected" : ""}>${escapeHtml(depositBankLabel(bank))}</option>`).join("")}</select></div>
       <div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Go Back</button><button class="primary-button confirm-button" value="confirm">Mark deposited</button></div></form>`;
     document.body.appendChild(dialog);

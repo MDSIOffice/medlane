@@ -102,6 +102,17 @@ describe("collection payment status", () => {
     mockSupabase({ payments: [stored("P1", { collectionStatus: "Bounced" })] });
     await check(env, STATE, as("Accounting"), [row("payments", "P1", { collectionStatus: "For Deposit" })]);
   });
+  test("Admin can still bounce or cancel a Deposited payment; Accounting can't", async () => {
+    for (const status of ["Bounced", "Cancelled"]) {
+      mockSupabase({ payments: [stored("P1", { collectionStatus: "Deposited" })] });
+      await check(env, STATE, as("Admin"), [row("payments", "P1", { collectionStatus: status })]);
+      await assert.rejects(check(env, STATE, as("Accounting"), [row("payments", "P1", { collectionStatus: status })]), /Only Admin, Superadmin or CEO/);
+    }
+  });
+  test("a deposited (Completed) collection goes back to Approved when a cheque bounces", async () => {
+    mockSupabase({ paymentRequests: [stored("R1", { requestStatus: "Completed", status: "Completed" })] });
+    await check(env, STATE, as("Admin"), [row("paymentRequests", "R1", { requestStatus: "Approved", status: "Approved" })]);
+  });
   test("a bounced payment can't jump straight to Deposited", async () => {
     mockSupabase({ payments: [stored("P1", { collectionStatus: "Bounced" })] });
     await assert.rejects(check(env, STATE, as("Admin"), [row("payments", "P1", { collectionStatus: "Deposited" })]), /redeposited first/);

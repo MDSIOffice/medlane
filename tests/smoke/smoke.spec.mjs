@@ -666,5 +666,10 @@ test("Collections: saved without approval; only Admin bounces or cancels; Accoun
   const adminActions = await actionsFor(admin, "CR-BNC");
   expect(adminActions).toContain(":Bounced");
   expect(adminActions).toContain("data-payment-request-cancel");
+  // Deposited is not final: Admin can still mark it Bounced or cancel the collection.
+  await admin.evaluate(() => { data.payments.find((p) => p.id === "CR-BNC|SI-COLL").collectionStatus = "Deposited"; const r = data.paymentRequests.find((x) => x.cvNo === "CR-BNC"); r.requestStatus = r.status = "Completed"; });
+  const depositedActions = await actionsFor(admin, "CR-BNC");
+  expect(depositedActions).toContain("CR-BNC:Bounced");
+  expect(depositedActions).toContain("data-payment-request-cancel");
   await admin.close();
 });
