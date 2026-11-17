@@ -18,7 +18,7 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 const b64 = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
 const fakeToken = (role, expiresInSeconds = 3600) => `${b64({ alg: "none" })}.${b64({ role, exp: Math.floor(Date.now() / 1000) + expiresInSeconds })}.fake`;
 const claims = (token) => { try { return JSON.parse(Buffer.from(token.split(".")[1], "base64url")); } catch { return null; } };
-const roleFromEmail = (email) => ({ superadmin: "Superadmin", ceo: "CEO", admin: "Admin", accounting: "Accounting", sales: "Sales", logistics: "Logistics" })[String(email).split("@")[0]] || "Superadmin";
+const roleFromEmail = (email) => ({ superadmin: "Superadmin", ceo: "CEO", admin: "Admin", accounting: "Accounting", sales: "Sales", logistics: "Logistics", engineering: "Engineering" })[String(email).split("@")[0]] || "Superadmin";
 const ROLE_MODULES = {
   Logistics: ["dashboard", "calendar", "inventory", "purchase-orders"],
   Accounting: ["dashboard", "calendar", "sales", "invoicing", "collections", "receivables-tracker", "payables", "replenishments", "reports"],
@@ -159,6 +159,7 @@ const activityFor = (role, url) => {
 const authedRoutes = {
   ...accountRoutes,
   "GET /api/activity": (role, _body, url) => activityFor(role, url),
+  "GET /api/support/engineers": () => ({ engineers: [{ id: "eng-1", email: "engineering@medlane.test", name: "Engineer 1", branch: "Las Pinas" }, { id: "eng-2", email: "engineer2@medlane.test", name: "Engineer 2", branch: "Naga" }] }),
   "GET /api/notifications": (role, _body, url) => notificationPage(noticesFor(role), { tab: url.searchParams.get("tab") || "all", page: Number(url.searchParams.get("page") || 1), size: Number(url.searchParams.get("size") || 10) }),
   "GET /api/notifications/unread": (role) => ({ unread: noticesFor(role).filter((row) => row.in_app && !row.read_at).length }),
   "POST /api/notifications/read": (role, body) => {
@@ -176,7 +177,8 @@ const authedRoutes = {
   "GET /api/auth/me": (role) => ({ user: { ...userFor(role), ...accountView(role) } }),
   "GET /api/modules/state": () => ({ data: seedData(seedScale), revision: 1, changesCursor: "cursor-1", pagination: {} }),
   "PUT /api/modules/state": () => ({ revision: 2 }),
-  "POST /api/modules/records": () => ({ revision: 2 }),
+  // Same answer shape as the real Worker.
+  "POST /api/modules/records": (_role, body) => ({ ok: true, savedRecords: Object.values(body?.records || {}).flat().length, revision: 2 }),
   "GET /api/modules/changes": () => ({ rows: [], cursor: "cursor-2" }),
   "GET /api/users": (role) => ({ users: [userFor(role)] }),
   "GET /api/files": () => ({ files: [] }),

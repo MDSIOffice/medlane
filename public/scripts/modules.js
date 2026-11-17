@@ -135,7 +135,8 @@ function renderWorkflowAssist(sectionId) {
   qsIn(panel, ".workflow-grid").innerHTML = items.map(workflowCard).join("") || `<article class="workflow-card success"><div><strong>All clear</strong><span>No urgent workflow recommendations for this module.</span></div></article>`;
 }
 
-const WORKFLOW_ASSIST_SECTIONS = ["warranty", "imports", "reports", "security", "product-issues"];
+// Support Tracker has the new Workflow assistant (WORKFLOW_RULES in support-page.js).
+const WORKFLOW_ASSIST_SECTIONS = ["warranty", "imports", "reports", "security"];
 
 function renderWorkflowAssistAll() {
   WORKFLOW_ASSIST_SECTIONS.forEach(renderWorkflowAssist);
@@ -471,6 +472,7 @@ function workflowGoto(module, tab, scope, sel) {
   // Supplier purchasing links ("purchase-orders|…") open Inventory → Supplier POs.
   else if (module === "purchase-orders") { if (PURCHASING_TAB_LABELS[tab]) purchasingTab = tab; purchasingView = view; inventoryWorkflowTab = "purchasing"; module = "inventory"; }
   else if (module === "payables") { if (PAYABLES_TAB_LABELS[tab]) payablesTab = tab; payablesView = view; }
+  else if (module === "product-issues") { if (SUPPORT_TAB_LABELS[tab]) supportTab = tab; supportView = view; }
   else if (module === "replenishments") { if (EXPENSES_TAB_LABELS[tab]) expensesTab = tab; expensesView = view; }
   else if (module === "logs") { if (LOGS_TAB_LABELS[tab]) logsTab = tab; logsView = view; }
   else if (module === "analytics") { if (ANALYTICS_TAB_LABELS[tab]) analyticsTab = tab; analyticsView = view; }
@@ -4663,6 +4665,7 @@ function sectionQueryString(sectionId) {
   if (sectionId === "receivables-tracker") return receivablesQueryString();
   if (sectionId === "purchase-orders") return clientPoQueryString();
   if (sectionId === "payables") return payablesQueryString();
+  if (sectionId === "product-issues") return supportQueryString();
   if (sectionId === "replenishments") return expensesQueryString();
   if (sectionId === "analytics") return analyticsQueryString();
   if (sectionId === "logs") return logsQueryString();
@@ -7624,6 +7627,7 @@ function openProductIssueEdit(id) {
   const fill = (/** @type {string} */ name, /** @type {any} */ value) => { const el = qs(`#modal-fields [name="${name}"]`); if (el) el.value = value ?? ""; };
   fill("id", report.id);
   qs("#id").readOnly = true;
+  ["priority", "issueType", "engineerPick"].forEach((name) => qs(`#modal-fields [name="${name}"]`)?.closest(".field")?.remove());
   for (const name of ["startDate", "companyName", "address", "equipment", "serialNo", "concerns", "remarks"]) fill(name, /** @type {any} */ (report)[name]);
   // Older reports may hold a value that isn't one of today's options (e.g. two types ticked on
   // paper): keep it selectable so opening the form never silently changes it.
@@ -7635,44 +7639,7 @@ function openProductIssueEdit(id) {
   renderServiceReportUploadSlot(type, report.id);
 }
 
-/** @param {any} report */
-function productIssueActionsMenu(report) {
-  const actor = report.currentActor || report.originRole || "Sales";
-  const locked = report.status !== "Resolved" && !canActOnProductIssue(report);
-  const canEdit = canEditModule("product-issues") && report.status !== "Resolved" && !locked;
-  const passButtons = actor === "Sales"
-    ? [`<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Product Specialist">Pass to Product Specialist</button>`, `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineer</button>`]
-    : actor === "Product Specialist"
-      ? [`<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Engineering">Pass to Engineer</button>`]
-      : [`<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Pass to Product Specialist">Pass to Product Specialist</button>`];
-  const statusButtons = canEdit ? [
-    report.status !== "In Progress" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:In Progress">In Progress</button>` : "",
-    report.status !== "Resolved" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Resolved">Mark Resolved</button>` : "",
-    passButtons.join(""),
-    report.status !== "Open" ? `<button class="mini-button" data-product-issue-status="${escapeHtml(report.id)}:Open">Reopen</button>` : "",
-  ].join("") : (report.status === "Resolved" ? `<small>Resolved &amp; locked</small>` : locked ? `<small>Locked to ${escapeHtml(actor)}</small>` : "");
-  const fileCount = productIssueFiles(report).length;
-  const attachments = `<button class="mini-button" data-product-issue-timeline="${escapeHtml(report.id)}">${fileCount ? `Photos / files (${fileCount})` : "Attachments"}</button>`;
-  const editDetails = canCorrectSupportReport() ? `<button class="mini-button" data-product-issue-edit="${escapeHtml(report.id)}">Edit details</button>` : "";
-  return `<details class="row-action-menu"><summary>Actions</summary><div><button class="mini-button" data-product-issue-print="${escapeHtml(report.id)}">Print</button>${attachments}${editDetails}${statusButtons}</div></details>`;
-}
-
-function renderProductIssues() {
-  // Attachment counts in each report's Actions menu need the file list.
-  ensureUploadedFilesLoaded(() => { if (document.body.dataset.activeSection === "product-issues") renderProductIssues(); });
-  qsa("#product-issues [data-action='open-modal']").forEach((btn) => { btn.hidden = !canRequestSupportReport(); });
-  const statusFilter = qs("#product-issue-status")?.value || "all";
-  const reports = data.productIssues.filter((report) => statusFilter === "all" || report.status === statusFilter);
-  const open = data.productIssues.filter((report) => report.status === "Open").length;
-  const passed = data.productIssues.filter((report) => ["Pass to Engineering", "Pass to Product Specialist"].includes(report.status)).length;
-  const resolved = data.productIssues.filter((report) => report.status === "Resolved");
-  const avgTurnaround = resolved.length ? Math.round(resolved.reduce((sum, report) => sum + (productIssueTurnaroundDays(report) || 0), 0) / resolved.length) : null;
-  qs("#product-issue-visuals").innerHTML = [
-    visualCard("🛠", "Case Status", `${open} open`, barRows([["Open", open], ["Pass to Engineering", passed], ["Resolved", resolved.length]], (value) => `${value} report${value === 1 ? "" : "s"}`, ["red", "orange", "green"]), open ? "warning" : "success", "Computed from current support report status across all logged cases."),
-    visualCard("⏱", "Avg. Turnaround", avgTurnaround === null ? "No resolved cases yet" : `${avgTurnaround} day${avgTurnaround === 1 ? "" : "s"}`, `<p>Average days between start date and resolution for resolved reports.</p>`, "info", "Computed as the average of (resolved date - start date) across resolved reports."),
-  ].join("");
-  table("#product-issues-table", ["Document No.", "Report Type", "Start Date", "Company", "Equipment", "Support Type", "Status", "Performed By", "Timeline", "Actions"], reports.filter((report) => includesSearch(Object.values(report))).map((report) => ({ focus: report.id, cells: [report.id, report.reportType === "instrumental" ? "Instrumental" : "Technical", report.startDate, report.companyName, `${report.equipment || "-"}${report.serialNo ? `<small>${report.serialNo}</small>` : ""}`, report.typeOfSupport || "-", `<span class="pill ${productIssueStatusClass(report.status)}">${escapeHtml(report.status || "Open")}</span>`, report.performedBy, `<button class="mini-button" data-product-issue-timeline="${escapeHtml(report.id)}">View Timeline</button>`, productIssueActionsMenu(report)] })));
-}
+// renderProductIssues() lives in support-page.js (Support Tracker redesign).
 
 /** @param {any} report */
 function productIssueParameterSummaryHtml(report) {
@@ -7728,7 +7695,7 @@ function confirmResolveProductIssue(id, currentResolvedBy) {
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     dialog.className = "modal invite-confirm-modal";
-    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Confirm Resolution</p><h2>Mark ${escapeHtml(id)} Resolved</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="field"><label for="resolve-by-select">Resolved By</label><select id="resolve-by-select" required><option value="Product Specialist"${currentResolvedBy === "Product Specialist" ? " selected" : ""}>Product Specialist</option><option value="Service Engineer"${currentResolvedBy === "Service Engineer" ? " selected" : ""}>Service Engineer</option></select></div><div class="field full"><label for="resolve-note">Resolution Note</label><textarea id="resolve-note" placeholder="Describe how this was resolved (optional)"></textarea></div><label class="ios-check-row"><input type="checkbox" id="resolve-confirm-check" /><span></span><strong>I confirm this issue has been fully resolved and no further action is needed.</strong></label><div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button" value="confirm" disabled>Mark Resolved</button></div></form>`;
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Confirm Resolution</p><h2>Mark ${escapeHtml(id)} Resolved</h2></div><button class="icon-button" value="cancel" aria-label="Close">x</button></div><div class="field"><label for="resolve-by-select">Resolved By</label><select id="resolve-by-select" required><option value="Product Specialist"${currentResolvedBy === "Product Specialist" ? " selected" : ""}>Product Specialist</option><option value="Service Engineer"${currentResolvedBy === "Service Engineer" ? " selected" : ""}>Service Engineer</option></select></div><div class="field"><label for="resolve-outcome">Outcome</label><select id="resolve-outcome">${SupportRules.OUTCOMES.map((o) => `<option>${escapeHtml(o)}</option>`).join("")}</select></div><div class="field full"><label for="resolve-note">Resolution Note</label><textarea id="resolve-note" placeholder="Describe how this was resolved (optional)"></textarea></div><label class="ios-check-row"><input type="checkbox" id="resolve-confirm-check" /><span></span><strong>I confirm this issue has been fully resolved and no further action is needed.</strong></label><div class="modal-actions"><button class="ghost-button" value="cancel">Go Back</button><button class="primary-button" value="confirm" disabled>Mark Resolved</button></div></form>`;
     document.body.appendChild(dialog);
     const checkbox = qsIn(dialog, "#resolve-confirm-check");
     const confirmBtn = qsIn(dialog, ".primary-button");
@@ -7737,8 +7704,9 @@ function confirmResolveProductIssue(id, currentResolvedBy) {
       const ok = dialog.returnValue === "confirm" && checkbox.checked;
       const resolvedBy = qsIn(dialog, "#resolve-by-select").value;
       const note = qsIn(dialog, "#resolve-note").value.trim();
+      const outcome = qsIn(dialog, "#resolve-outcome").value;
       dialog.remove();
-      resolve(ok ? { resolvedBy, note } : null);
+      resolve(ok ? { resolvedBy, note, outcome } : null);
     });
     dialog.showModal();
   });
@@ -7754,11 +7722,13 @@ async function updateProductIssueStatus(id, status) {
   const actingRole = report.currentActor || report.originRole || "Sales";
   let resolvedBy = report.resolvedBy || "";
   let note = "";
+  let outcome = "";
   if (status === "Resolved") {
     const result = await confirmResolveProductIssue(id, resolvedBy);
     if (!result) return;
     resolvedBy = result.resolvedBy;
     note = result.note;
+    outcome = result.outcome;
   } else {
     note = (prompt(`Action taken for marking ${id} as ${status}:`, "") || "").trim();
     if (!(await confirmFinalSave(`Mark ${id} as ${status}?`))) return;
@@ -7769,8 +7739,14 @@ async function updateProductIssueStatus(id, status) {
   else if (status === "Open") report.currentActor = report.originRole || "Sales";
   report.resolvedBy = status === "Resolved" ? resolvedBy : status === "Open" ? "" : report.resolvedBy;
   report.resolvedAt = status === "Resolved" ? fmtDate(today) : "";
+  // Ticket fields (Support Tracker): resolving closes the ticket; reopening puts it back in the queue.
+  const ticketBefore = SupportRules.statusOf(report);
+  if (status === "Resolved") { report.ticketStatus = "Resolved"; report.closedAt = new Date().toISOString(); report.outcome = outcome; }
+  else if (status === "Open") { report.ticketStatus = report.engineer ? "Assigned" : "New"; report.closedAt = ""; report.outcome = ""; }
+  else if (status === "Pass to Engineering" && report.engineer && ticketBefore === "New") report.ticketStatus = "Assigned";
+  if (SupportRules.statusOf(report) !== ticketBefore) report.statusSince = new Date().toISOString();
   report.history = productIssueHistory(report);
-  report.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, note: note || `Marked ${status}`, by: currentUser?.name || "System User" });
+  report.history.push({ at: new Date().toISOString(), date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status, note: note || `Marked ${status}`, by: currentUser?.name || "System User" });
   if (note) {
     const tag = `Action: ${actingRole} — ${note}`;
     report.actionsTaken = report.actionsTaken ? `${report.actionsTaken}\n${tag}` : tag;
@@ -12446,7 +12422,7 @@ const sectionRenderers = {
   "receivables-tracker": renderReceivablesTracker,
   "client-invoices": renderClientInvoices,
   warranty: renderWarranty,
-  "product-issues": renderProductIssues,
+  "product-issues": () => renderProductIssues(),
   "purchase-history": renderPurchaseHistory,
   imports: renderImports,
   payables: renderPayables,
@@ -12584,8 +12560,8 @@ const modalConfigs = {
   replenishment: { title: "Expense Request", fields: [["type", "Type", "select", ["Petty Cash", "Per Diem", "Operating Expense", "Revolving Fund"]], ["employeeName", "Employee Name", "datalist-optional", () => activeEmployees().map((employee) => employee.name)], ["requester", "Requester", "readonly"], ["office", "Office", "select", ["Las Pinas", "Naga"]], ["date", "Date", "date"], ["file", "Receipt/File Name"]] },
   inventoryPurchaseOrder: { title: "Inventory Purchase Order", fields: [["supplier", "Supplier", "datalist", () => activeSuppliers().map((s) => s.name)], ["branch", "Receiving Branch", "select", () => [ALL_RECEIVING_BRANCHES, ...platformBranches()]], ["date", "PO Date", "date"], ["promisedDate", "Supplier Promised Delivery (optional)", "date"]] },
   warranty: { title: "Add Warranty Record", fields: [["client", "Client", "select", () => activeClients().map((c) => c.name)], ["equipment", "Equipment"], ["serial", "Serial No."], ["installDate", "Install Date", "date"], ["warrantyEnd", "Warranty End", "date"], ["status", "Status", "select", ["Active", "Expiring Soon", "Expired", "For Service"]], ["service", "Service Notes", "textarea"]] },
-  productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support", "select-choose", supportTypeOptions], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
-  instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support", "select-choose", supportTypeOptions], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
+  productIssue: { title: "Technical Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support", "select-choose", supportTypeOptions], ["priority", "Priority", "select", () => SupportRules.PRIORITIES.map((p) => `${SupportRules.PRIORITY_LABELS[p]} — ${SupportRules.PRIORITY_HINTS[p].toLowerCase()}`)], ["issueType", "Ticket type", "select", () => SupportRules.TYPES], ["engineerPick", "Engineer", "select", () => ["Not assigned yet", ...supportEngineers().map((e) => `${e.name}${e.branch ? ` · ${supportBranchLabel(e.branch)}` : ""}`)]], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
+  instrumentalServiceReport: { title: "Instrumental Service Report", fields: [["id", "Document Number"], ["startDate", "Date", "date"], ["companyName", "Company Name", "datalist", () => activeClients().map((c) => c.name)], ["address", "Address", "textarea"], ["equipment", "Equipment Name", "datalist", () => [...new Set((data.warranties || []).map((w) => w.equipment).filter(Boolean))]], ["serialNo", "Serial No.", "datalist", () => [...new Set((data.warranties || []).map((w) => w.serial).filter(Boolean))]], ["typeOfSupport", "Type of Support", "select-choose", supportTypeOptions], ["priority", "Priority", "select", () => SupportRules.PRIORITIES.map((p) => `${SupportRules.PRIORITY_LABELS[p]} — ${SupportRules.PRIORITY_HINTS[p].toLowerCase()}`)], ["issueType", "Ticket type", "select", () => SupportRules.TYPES], ["engineerPick", "Engineer", "select", () => ["Not assigned yet", ...supportEngineers().map((e) => `${e.name}${e.branch ? ` · ${supportBranchLabel(e.branch)}` : ""}`)]], ["concerns", "Concerns / Inquiries", "textarea"], ["remarks", "Remarks / Actions Taken", "textarea"], ["attachment", "Upload File", "file-slot"]] },
 };
 
 /** @param {any} type @param {any} [edit] */
@@ -12698,6 +12674,7 @@ function openModal(type, edit = null) {
     if (qs("#performedBy")) qs("#performedBy").value = currentUser?.name || "System User";
     if (qs("#status")) qs("#status").value = "Open";
     toggleProductIssueResolvedByField();
+    supportFormDefaults();
     ensureUploadedFilesLoaded(() => renderServiceReportUploadSlot(type, qs("#id").value));
     renderServiceReportUploadSlot(type, qs("#id").value);
   }

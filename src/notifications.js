@@ -9,6 +9,7 @@
 // holds that person's own read state and email status.
 
 import { deliveryFor, inQuietHours } from "./account.js";
+import "../public/scripts/support-rules.js";
 
 /** @typedef {import("./account.js").AlertType} AlertType */
 /** @typedef {AlertType | "general"} NoticeCategory */
@@ -111,7 +112,7 @@ export function generateNotices(state, now = new Date()) {
   const list = (/** @type {string} */ key) => (Array.isArray(state?.[key]) ? state[key] : []);
   /** @type {Notice[]} */
   const out = [];
-  /** @param {string} key @param {NoticeCategory} category @param {string} type @param {string} message @param {string} section @param {string} record @param {{ urgent?: boolean, audience?: string[] }} [extra] */
+  /** @param {string} key @param {NoticeCategory} category @param {string} type @param {string} message @param {string} section @param {string} record @param {{ urgent?: boolean, audience?: string[], targetUser?: string }} [extra] */
   const add = (key, category, type, message, section, record, extra = {}) => out.push({ id: `GEN-${key}`, key, generated: true, category, type, message, section, record, ...extra });
 
   const stock = list("inventory").filter((item) => Number(item.qty || 0) > 0);
@@ -156,6 +157,17 @@ export function generateNotices(state, now = new Date()) {
 
   const issues = list("productIssues").filter((r) => r.status === "Open");
   if (issues.length) add("product-issues-open", "service", "Open Tickets", `${plural(issues.length, "support ticket")} ${issues.length === 1 ? "is" : "are"} open.`, "product-issues", ids(issues, (r) => r.id));
+  // Support tickets past a response-time target: the assigned engineer and Superadmin hear about it.
+  const Rules = /** @type {any} */ (globalThis).SupportRules;
+  const targets = Rules.targetsFrom(list("supportSettings").find((r) => r.id === "support-settings")?.targets);
+  const MISSED = /** @type {Record<string, string>} */ ({ response: "response time", onsite: "on-site visit", fix: "fix time" });
+  for (const report of list("productIssues")) {
+    const facts = Rules.ticketFacts(report, { now: now.getTime(), targets });
+    if (!facts.open || facts.sla !== "breach") continue;
+    const message = `${Rules.PRIORITY_LABELS[facts.priority]} ticket ${report.id} for ${report.companyName || "a client"} missed its ${MISSED[facts.clock] || "target"}.`;
+    if (report.engineerEmail) add(`support-breach-${report.id}`, "service", "Response Time Breached", message, "product-issues", String(report.id), { urgent: true, targetUser: String(report.engineerEmail).toLowerCase() });
+    add(`support-breach-${report.id}-superadmin`, "service", "Response Time Breached", message, "product-issues", String(report.id), { urgent: true, audience: ["Superadmin"] });
+  }
   const warrantyEnding = list("warranties").filter((w) => { const d = daysFromToday(w.warrantyEnd, now); return d >= 0 && d <= 60; });
   if (warrantyEnding.length) add("warranty-ending", "service", "Warranty Ending", `${plural(warrantyEnding.length, "warranty", "warranties")} end within 60 days.`, "warranty", ids(warrantyEnding, (w) => w.serial || w.id || w.client));
   return out;

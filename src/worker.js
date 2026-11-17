@@ -3,6 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 import { collectSample, collectLiveDetails, buildWeeklyReport, hasAccessToken } from "./perf-report.js";
 import { resolveNotificationSettings, notificationSettingPatch, preferencesFromRow, preferencePatchColumns, profilePatch, passwordAge, welcomeShowsNow } from "./account.js";
 import { activityRow, activityRowsInOrder, activityQuery, activityPage, activityScope, activityTab, deviceKey, isSignIn as isActivitySignIn, isFailedSignIn, FAILED_SIGNIN_WINDOW_MS, ACTIVITY_TABS } from "./activity.js";
+import "../public/scripts/support-rules.js";
 import { generateNotices, planFanOut, emailsDue, dailySummaryRows, notificationPage, archiveCutoffIso, NOTIFICATION_TABS } from "./notifications.js";
 import { RECON_CHECKS, RECON_AREAS, RECON_INPUT_MODULES, runRecon, dataFromRows, mergeDifferences, getPath, setPath, sameValue, saleDocType, saleNo } from "./recon.js";
 
@@ -146,7 +147,8 @@ const moduleRecordKeys = {
   security: ["notifications"],
   settings: ["branch", "platformAreas", "platformBranches", "branchAddresses", "invoiceApprovals"],
   system: ["branch", "notifications", "imports", "reconHistory"],
-  "product-issues": ["productIssues"],
+  // Support settings (response targets, engineers' home branches): Superadmin/CEO/Admin change them.
+  "product-issues": ["productIssues", "supportSettings"],
   "print-templates": ["printTemplates"],
   memos: ["memos"],
   // Shared team schedule: every role views and adds events (granted in profileForUser);
@@ -1993,7 +1995,7 @@ function forgetCachedSession(sessionId) {
 // how — Account settings → Notifications). Manual notices are picked up for a person the moment
 // they open the page or the bell asks for a count; standing alerts are generated every 15 minutes
 // by the cron, which also fans them out to everyone and sends the emails.
-const NOTICE_SOURCE_MODULES = ["inventory", "pendingTransfers", "inventoryPurchaseOrders", "sales", "payments", "payables", "replenishments", "pendingCreditInvoices", "productIssues", "warranties"];
+const NOTICE_SOURCE_MODULES = ["inventory", "pendingTransfers", "inventoryPurchaseOrders", "sales", "payments", "payables", "replenishments", "pendingCreditInvoices", "productIssues", "supportSettings", "warranties"];
 const GENERATED_NOTICES_KEY = "generated-notices";
 const NOTICE_COLUMNS = "user_id,notice_id,alert_type,title,message,section,record,urgent,in_app,created_at,read_at,email_status,emailed_at";
 /** Per-isolate: when each person's manual notices were last synced. @type {Map<string, number>} */
@@ -2755,7 +2757,9 @@ const DEMO_TRANSITIONS = {
 const SUPPORT_STATUS_ONLY_ROLES = ["Engineering", "Product Specialist"];
 /** Status-only roles that may still file a new report. @type {AppRole[]} */
 const SUPPORT_REQUESTER_ROLES = ["Product Specialist", "Engineering"];
-const SUPPORT_STATUS_FIELDS = new Set(["status", "currentActor", "resolvedBy", "resolvedAt", "history", "actionsTaken"]);
+// …plus the ticket fields (phase 5): priority, who's on it, replies, visits, resolution.
+const SUPPORT_STATUS_FIELDS = new Set(["status", "currentActor", "resolvedBy", "resolvedAt", "history", "actionsTaken",
+  "ticketStatus", "statusSince", "priority", "engineer", "engineerEmail", "firstResponseAt", "visitAt", "visitEventIds", "updates", "closedAt", "outcome"]);
 // Calendar events: anyone may add one (as themselves); only its creator or Superadmin/CEO may
 // change or remove (soft-delete via `removed`) an existing one.
 /** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
@@ -2791,21 +2795,35 @@ async function assertCalendarEventChangesAllowed(env, stateKey, profile, rows) {
   }
 }
 
-/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
+/**
+ * Support tickets:
+ * - the response clock is the server's: a new ticket's openedAt is stamped with the server's time,
+ *   and once set, openedAt and firstResponseAt can't be moved (except by Superadmin/CEO);
+ * - priority, type and ticket status must be known values;
+ * - Engineering / Product Specialist may only move an existing ticket along (SUPPORT_STATUS_FIELDS).
+ * @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows
+ */
 async function assertSupportReportChangesAllowed(env, stateKey, profile, rows) {
-  if (!SUPPORT_STATUS_ONLY_ROLES.includes(profile?.role)) return;
   const incoming = rows.filter((row) => row.module_name === "productIssues");
   if (!incoming.length) return;
   const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.productIssues&record_key=in.${encodeURIComponent(postgrestIn(incoming.map((row) => row.record_key)))}&select=record_key,data`));
   const storedByKey = new Map(stored.map((row) => [row.record_key, row.data || {}]));
+  const management = ["Superadmin", "CEO"].includes(profile?.role);
+  const Rules = /** @type {typeof SupportRules} */ (/** @type {any} */ (globalThis).SupportRules);
   for (const row of incoming) {
     const prev = storedByKey.get(row.record_key);
-    if (!prev) {
-      if (SUPPORT_REQUESTER_ROLES.includes(profile?.role)) continue;
-      throw new Error("Only Engineering, Product Specialist, Admin, CEO or Superadmin can request a service report");
-    }
     /** @type {Record<string, any>} */
     const next = row.data || {};
+    if (next.priority !== undefined && !Rules.PRIORITIES.includes(next.priority)) throw new Error(`Unknown priority for ${row.record_key}`);
+    if (next.issueType !== undefined && !Rules.TYPES.includes(next.issueType)) throw new Error(`Unknown ticket type for ${row.record_key}`);
+    if (next.ticketStatus !== undefined && !Rules.STATUSES.includes(next.ticketStatus)) throw new Error(`Unknown ticket status for ${row.record_key}`);
+    if (!prev) {
+      if (next.openedAt) next.openedAt = new Date().toISOString();
+      if (SUPPORT_STATUS_ONLY_ROLES.includes(profile?.role) && !SUPPORT_REQUESTER_ROLES.includes(profile?.role)) throw new Error("Only Engineering, Product Specialist, Admin, CEO or Superadmin can request a service report");
+      continue;
+    }
+    if (!management) for (const field of ["openedAt", "firstResponseAt"]) if (prev[field] && next[field] !== prev[field]) next[field] = prev[field];
+    if (!SUPPORT_STATUS_ONLY_ROLES.includes(profile?.role)) continue;
     for (const field of new Set([...Object.keys(prev), ...Object.keys(next)])) {
       if (SUPPORT_STATUS_FIELDS.has(field)) continue;
       if (JSON.stringify(prev[field] ?? null) !== JSON.stringify(next[field] ?? null)) throw new Error(`${profile.role} can only update the status of ${row.record_key}`);
@@ -3276,6 +3294,7 @@ function canAccessKey(profile, key, mode = "view") {
   // Sales raises supplier POs through the Purchase Orders module, not Inventory edit.
   if (mode === "edit" && DEMO_ONLY_ROLES.includes(profile?.role) && moduleRecordKeys.inventory.includes(key) && key !== "inventoryDemoRequests") return false;
   if (mode === "edit" && EXPENSE_PLANNING_KEYS.includes(key) && profile?.role !== "Admin") return false;
+  if (mode === "edit" && key === "supportSettings" && profile?.role !== "Admin") return false;
   if (mode === "edit" && key === "forecastSettings") return false;
   const modules = modulesForKey(key);
   return modules.some((module) => allowed.includes(module));
@@ -6216,6 +6235,15 @@ export default {
         const snapshot = await readDigestMessageSnapshot(env, url.searchParams.get("id"));
         if (!snapshot) return json({ error: "Digest message not found or no longer retained" }, { status: 404 });
         return json({ html: snapshot.html, subject: snapshot.meta.subject || "", role: snapshot.meta.role || "", periodLabel: snapshot.meta.periodLabel || "", createdAt: snapshot.meta.createdAt || "" });
+      }
+
+      // ---- Support Tracker: the Engineering users tickets can be assigned to ----
+      if (url.pathname === "/api/support/engineers" && request.method === "GET") {
+        const { profile } = await authenticatedProfile(request, env);
+        if (!canAccessKey(profile, "productIssues", "view")) return json({ error: "You do not have access to the Support Tracker" }, { status: 403 });
+        const rows = await supabaseFetch(env, `/rest/v1/profiles?role=eq.Engineering&select=id,email,full_name,branch&order=full_name.asc`);
+        const engineers = (Array.isArray(rows) ? rows : []).filter((row) => row.email).map((row) => ({ id: row.id, email: String(row.email).toLowerCase(), name: String(row.full_name || row.email), branch: row.branch && row.branch !== "all" ? String(row.branch) : "" }));
+        return json({ engineers });
       }
 
       // ---- User activity log: everyone may open it; the server decides whose entries they see ----

@@ -452,6 +452,7 @@ async function submitModal(event) {
     values.id = values.id?.trim() || nextProductIssueId(modalType);
     if (data.productIssues.some((report) => report.id === values.id)) return toast("Duplicate document number detected.");
     values.reportType = modalType === "instrumentalServiceReport" ? "instrumental" : "technical";
+    supportTicketFromForm(values);
     values.status = values.status || "Open";
     values.performedBy = currentUser?.name || "System User";
     values.qcParameters = collectProductIssueParameters?.() || [];
@@ -1458,7 +1459,8 @@ qs("#modal-fields").addEventListener("input", (event) => {
   if (/** @type {AnyEl} */ (event.target).id === "po" && ["invoice", "cancelReplace"].includes(modalType)) syncInvoiceFromPurchaseOrder();
   if (/** @type {AnyEl} */ (event.target).id === "sourceBranch" && ["invoice", "cancelReplace", "purchaseOrder"].includes(modalType)) syncInvoiceLinesForClient();
   if (/** @type {AnyEl} */ (event.target).id === "supplier" && modalType === "item") syncItemSupplierBrand();
-  if (/** @type {AnyEl} */ (event.target).id === "companyName" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) syncProductIssueClientAddress();
+  if (/** @type {AnyEl} */ (event.target).id === "companyName" && ["productIssue", "instrumentalServiceReport"].includes(modalType)) { syncProductIssueClientAddress(); supportFormDefaults(); }
+  if (["priority", "engineerPick"].includes(/** @type {AnyEl} */ (event.target).id) && ["productIssue", "instrumentalServiceReport"].includes(modalType)) /** @type {HTMLElement} */ (event.target).dataset.touched = "1";
   if (/** @type {AnyEl} */ (event.target).id === "type" && modalType === "replenishment") toggleReplenishmentEmployeeField();
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-item-input")) syncInvoiceRowItem(event.target);
   if (/** @type {AnyEl} */ (event.target).classList.contains("invoice-uom-input")) syncInvoiceRowExpiryRequired(closestEl(event.target, ".invoice-line-row"));
@@ -1553,7 +1555,8 @@ qs("#global-search").addEventListener("input", () => {
   globalSearchRenderTimer = setTimeout(() => renderSection(), 150);
 });
 qs("#inventory-status").addEventListener("change", renderInventory);
-qs("#product-issue-status").addEventListener("change", renderProductIssues);
+qs("#product-issues").addEventListener("click", handleSupportClick);
+qs("#product-issues").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "support", () => supportView, renderProductIssues); });
 qs("#reset-demo")?.addEventListener("click", () => toast("Production reset is disabled."));
 qs("#export-demo")?.addEventListener("click", () => { log("Exported summary", "Reports", "Admin summary"); renderAll(); toast("Summary export logged."); });
 qs("#print-report").addEventListener("click", () => window.print());

@@ -3,10 +3,12 @@
 import { test, expect } from "@playwright/test";
 
 const OUT = new URL("../../screens/implementation/", import.meta.url).pathname;
+const ONLY = process.env.SCREENS_ONLY;
 const PAGES = [
   { section: "user-settings", tabs: ["profile", "security", "notifications", "preferences"], name: "account" },
   { section: "notifications", tabs: ["all", "unread", "approvals", "stock", "money", "service", "security"], name: "notifications" },
   { section: "activity-log", tabs: ["all", "changes", "approvals", "signins", "exports", "flagged"], name: "activity" },
+  { section: "product-issues", tabs: ["overview", "open", "engineers", "resolved"], name: "support" },
 ];
 
 test.skip(!process.env.SCREENS, "Set SCREENS=1 to capture screenshots");
@@ -30,7 +32,7 @@ for (const theme of ["light", "dark"]) {
       await page.setViewportSize({ width, height: 1000 });
       await logIn(page);
       await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
-      for (const { section, tabs, name } of PAGES) {
+      for (const { section, tabs, name } of PAGES.filter((p) => !ONLY || p.name === ONLY)) {
         for (const tab of tabs) {
           await page.goto(`/dashboard?section=${section}&tab=${tab}`);
           await expect(page.locator(`#${section}.active`)).toBeVisible();

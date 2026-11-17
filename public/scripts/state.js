@@ -267,7 +267,7 @@ const frontendModuleRecordKeys = {
   reports: ["reports"],
   reconciliation: ["reconHistory"],
   notifications: ["notifications"],
-  "product-issues": ["productIssues"],
+  "product-issues": ["productIssues", "supportSettings"],
   "product-issue-detail": ["productIssues"],
   "inventory-po-detail": ["inventoryPurchaseOrders", "inventory"],
   "print-templates": ["printTemplates"],
@@ -479,6 +479,7 @@ function emptyProductionData() {
     memos: [],
     calendarEvents: [],
     expenseBudgets: [],
+    supportSettings: [],
     recurringCosts: [],
     forecastSettings: [],
   };
@@ -559,6 +560,7 @@ function normalizeData(next) {
   next.memos ||= [];
   next.calendarEvents ||= [];
   next.expenseBudgets ||= [];
+  next.supportSettings ||= [];
   next.recurringCosts ||= [];
   next.forecastSettings ||= [];
   next.pendingTransfers ||= [];

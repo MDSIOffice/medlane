@@ -3768,7 +3768,8 @@ body[data-active-section="item-forecast"] .topbar-title,
 body[data-active-section="masterlists"] .topbar-title,
 body[data-active-section="user-settings"] .topbar-title,
 body[data-active-section="notifications"] .topbar-title,
-body[data-active-section="activity-log"] .topbar-title { display: none; }
+body[data-active-section="activity-log"] .topbar-title,
+body[data-active-section="product-issues"] .topbar-title { display: none; }
 .ui-scope .logs-notifications { display: grid; gap: 16px; }
 .ui-scope .ui-client-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }
 .ui-scope .ui-client-picker .ui-select { min-width: 0; max-width: 100%; }
@@ -4408,3 +4409,19 @@ body.welcome-open { overflow: hidden; }
 .ui-scope .act-flag { display: inline-block; margin-left: 4px; }
 .ui-scope #act-panel td:first-child, .ui-scope #act-panel td:first-child .ui-doc, .ui-scope #act-panel td:nth-child(3) { white-space: nowrap; }
 .ui-scope .act-user-chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-accent-soft); color: var(--ui-ink); font-size: 13px; font-weight: 600; }
+
+/* ----- Support Tracker (phase 5, 18 Nov 2026) ----------------------------------------------------- */
+.ui-scope .sup-targets { display: grid; gap: 12px; margin: 0; }
+.ui-scope .sup-targets > div { display: grid; gap: 2px; padding-bottom: 12px; border-bottom: 1px solid var(--ui-border); }
+.ui-scope .sup-targets > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.ui-scope .sup-targets dt { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--ui-ink); flex-wrap: wrap; }
+.ui-scope .sup-targets dt small { font-weight: 500; color: var(--ui-muted); font-size: 12.5px; }
+.ui-scope .sup-targets dd { margin: 0 0 0 16px; font-size: 13.5px; color: var(--ui-ink-2); }
+.sup-dialog .field-help { margin: 4px 0 0; font-size: 13px; color: var(--muted, #5b6b7a); }
+.sup-dialog .sup-target-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.sup-dialog fieldset { border: 1px solid var(--border, #d5dde5); border-radius: 12px; padding: 10px 12px 12px; margin: 0; display: grid; gap: 8px; }
+.sup-dialog legend { display: flex; align-items: center; gap: 6px; padding: 0 4px; font-weight: 700; }
+.sup-dialog legend small { font-weight: 500; opacity: .75; }
+.sup-dialog .sup-num { display: flex; align-items: center; gap: 8px; }
+.sup-dialog .sup-num input { width: 96px; }
+.sup-dialog .sup-num span { font-size: 13px; opacity: .8; }

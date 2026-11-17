@@ -996,11 +996,17 @@
         <div class="table-card"><table id="warranty-table"></table></div>
       </section>
 
-      <section class="section" id="product-issues">
-        <div class="section-header"><div><p class="eyebrow">Support Tracker</p><h2>Technical support / service reports</h2></div><div class="inline-actions"><button class="primary-button" data-action="open-modal" data-type="productIssue">Technical Service Report</button><button class="primary-button" data-action="open-modal" data-type="instrumentalServiceReport">Instrumental Service Report</button></div></div>
-        <div class="toolbar"><select id="product-issue-status"><option value="all">All Status</option><option>Open</option><option>In Progress</option><option>Pass to Product Specialist</option><option>Pass to Engineering</option><option>Resolved</option></select></div>
-        <div class="visual-grid" id="product-issue-visuals"></div>
-        <div class="table-card"><table id="product-issues-table"></table></div>
+      <section class="section ui-scope" id="product-issues">
+        <div class="ui-page-header">
+          <div class="ui-title">
+            <div class="ui-title-row"><h1 class="ui-h1">Support Tracker</h1></div>
+            <p class="ui-desc">Client service requests for installed analyzers: what’s broken, who’s on it, and whether we’re meeting our response times. Tickets link to the unit’s warranty and to visits on the Calendar.</p>
+          </div>
+          <div class="ui-actions" id="support-actions"></div>
+        </div>
+        <div class="ui-wa-host" data-wa-host="product-issues"></div>
+        <div class="ui-tabs" id="support-tabs" role="tablist" aria-label="Support Tracker sections"></div>
+        <div id="support-tab-panel"></div>
       </section>
 
       <section class="section" id="product-issue-detail">
@@ -1530,7 +1536,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "notifications-page.js", "activity-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "account-page.js", "notifications-page.js", "activity-page.js", "support-rules.js", "support-page.js", "forecast-engine.js", "forecast-page.js", "dashboard-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

@@ -30,6 +30,8 @@ interface PoLine {
 
 interface PoHistoryEntry {
   date: string;
+  /** ISO time of the entry (newer entries; `date` is the display text). */
+  at?: string;
   status: string;
   note?: string;
   by?: string;
@@ -417,6 +419,8 @@ interface AppData {
   printTemplates: PrintTemplate[];
   pendingCreditInvoices: CreditInvoiceRequest[];
   expenseBudgets: ExpenseBudget[];
+  /** Support Tracker settings (one record, id "support-settings"): response targets, engineers' home branches. */
+  supportSettings: { id: string, targets?: any, engineerBranches?: Record<string, string>, [extra: string]: any }[];
   recurringCosts: RecurringCost[];
   priceLists: PriceList[];
   /** Item Forecast settings: one record, id "settings" (see forecastSettingsFrom). */

@@ -798,3 +798,124 @@ test("Activity log: other roles see only their own, from Account settings → Vi
   await expect(page.locator("#act-desc")).toContainText("Your own");
   expect(problems).toEqual([]);
 });
+
+// Support Tracker: records saved through POST /api/modules/records, captured from the page.
+function captureSaves(page) {
+  const saves = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/modules/records") saves.push(JSON.parse(request.postData() || "{}").records || {});
+  });
+  return saves;
+}
+const savedTicket = (saves, id) => saves.map((records) => (records.productIssues || []).find((r) => r.id === id)).filter(Boolean).pop();
+
+test("Support Tracker: overview, the breached ticket first, assign the branch engineer, a reply stops the clock", async ({ page }) => {
+  const { problems } = await watch(page);
+  const saves = captureSaves(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=product-issues");
+  const panel = page.locator("#support-tab-panel");
+  await expect(panel.locator(".ui-kpi").first()).toContainText("Open tickets");
+  for (const label of ["Analyzers down", "Response time met", "Fixed on first visit"]) await expect(panel).toContainText(label);
+  await expect(panel).toContainText("Needs action now");
+  await expect(panel).toContainText("TSR-0146 · Sample Clinic B");
+  await expect(panel).toContainText("Repeat problems");
+  await expect(page.locator(".workflow-assist")).toHaveCount(0);
+  for (const name of ["Overview", "Open tickets", "Engineers", "Resolved"]) await expect(page.locator("#support-tabs").getByRole("tab", { name: new RegExp(`^${name}`) })).toBeVisible();
+
+  await page.locator("#support-tabs").getByRole("tab", { name: /^Open tickets/ }).click();
+  await expect(page).toHaveURL(/tab=open/);
+  const first = panel.locator("tbody tr").first();
+  await expect(first).toContainText("TSR-0146");
+  await expect(first).toContainText("Breached");
+  await first.locator("[data-support-select]").click();
+  const detail = page.locator("#support-detail");
+  await expect(detail).toContainText("No response yet");
+
+  // Assign: the branch engineer is suggested.
+  await detail.getByRole("button", { name: "Assign engineer" }).click();
+  const dialog = page.locator("dialog.sup-dialog");
+  await expect(dialog.locator("#sup-engineer option:checked")).toContainText("Engineer 1 · Las Piñas");
+  await expect(dialog.locator("#sup-engineer option:checked")).toContainText("(suggested)");
+  await dialog.getByRole("button", { name: "Assign" }).click();
+  await expect.poll(() => savedTicket(saves, "TSR-0146")?.engineerEmail).toBe("engineering@medlane.test");
+  expect(savedTicket(saves, "TSR-0146")).toMatchObject({ ticketStatus: "Assigned", currentActor: "Engineering" });
+  await expect(detail).toContainText("Assigned to Engineer 1");
+
+  // A reply stops the response clock.
+  await detail.getByRole("button", { name: "Log reply / update" }).click();
+  await expect(dialog.locator('input[name="reply"]')).toBeChecked();
+  await dialog.locator("#sup-note").fill("Called the clinic; cleaning the barcode reader window.");
+  await dialog.getByRole("button", { name: "Save update" }).click();
+  await expect.poll(() => savedTicket(saves, "TSR-0146")?.firstResponseAt).toBeTruthy();
+  await expect(detail).toContainText("Replied: Called the clinic");
+  await expect(panel.locator("tbody tr", { hasText: "TSR-0146" })).not.toContainText("Breached");
+  expect(problems).toEqual([]);
+});
+
+test("Support Tracker: scheduling a visit puts it on the Calendar; resolved tickets show where a problem came back", async ({ page }) => {
+  const { problems } = await watch(page);
+  const saves = captureSaves(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=product-issues&tab=open");
+  const panel = page.locator("#support-tab-panel");
+  await panel.locator("tbody tr", { hasText: "TSR-0145" }).locator("[data-support-select]").click();
+  await page.locator("#support-detail").getByRole("button", { name: "Schedule visit" }).click();
+  const dialog = page.locator("dialog.sup-dialog");
+  await dialog.locator("#sup-time").fill("10:30");
+  await dialog.getByRole("button", { name: "Schedule visit" }).click();
+  await expect.poll(() => saves.find((records) => records.calendarEvents?.length)?.calendarEvents[0]?.title).toContain("Visit: Sample Hospital A");
+  const ticket = saves.find((records) => records.calendarEvents?.length).productIssues[0];
+  expect(ticket.ticketStatus).toBe("On-site visit set");
+  expect(ticket.visitEventIds).toHaveLength(1);
+
+  await page.locator("#support-tabs").getByRole("tab", { name: /^Engineers/ }).click();
+  await expect(panel.locator("tbody tr")).toHaveCount(2);
+  await expect(panel).toContainText("Engineer 2");
+  await page.locator("#support-tabs").getByRole("tab", { name: /^Resolved/ }).click();
+  await expect(panel.locator("tbody tr", { hasText: "TSR-0136" })).toContainText("Came back as TSR-0142");
+  expect(problems).toEqual([]);
+});
+
+test("Support Tracker: a new ticket gets a priority, a type and the client's branch engineer", async ({ page }) => {
+  const { problems } = await watch(page);
+  const saves = captureSaves(page);
+  await logIn(page, "superadmin@medlane.test");
+  await page.goto("/dashboard?section=product-issues&tab=engineers");
+  await expect(page.locator("#support-tab-panel tbody tr")).toHaveCount(2); // engineers loaded
+  await page.locator("#support-actions").getByRole("button", { name: "New ticket" }).click();
+  const form = page.locator("#demo-modal");
+  await expect(form.locator("#priority option:checked")).toHaveText(/^Medium/);
+  await form.locator("#companyName").fill("Naga City Lab");
+  await form.locator("#companyName").dispatchEvent("change");
+  await expect(form.locator("#engineerPick option:checked")).toHaveText("Engineer 2 · Naga");
+  await form.locator("#priority").selectOption({ index: 0 });
+  await form.locator("#issueType").selectOption("Hardware");
+  await form.locator("#address").fill("Naga City");
+  await form.locator("#equipment").fill("Zybio Z5");
+  await form.locator("#serialNo").fill("Z5-NEW-1");
+  await form.locator("#typeOfSupport").selectOption("Technical Support");
+  await form.locator("#concerns").fill("Analyzer won't start");
+  await form.locator("#remarks").fill("Client called at 9:05");
+  await form.locator("#modal-submit").click();
+  await page.getByRole("button", { name: "Yes, Save" }).click();
+  await expect.poll(() => saves.flatMap((records) => records.productIssues || []).find((r) => r.companyName === "Naga City Lab")).toBeTruthy();
+  const created = saves.flatMap((records) => records.productIssues || []).find((r) => r.companyName === "Naga City Lab");
+  expect(created).toMatchObject({ priority: "critical", issueType: "Hardware", engineer: "Engineer 2", engineerEmail: "engineer2@medlane.test", ticketStatus: "Assigned", branch: "Naga" });
+  expect(created.engineerPick).toBeUndefined();
+  expect(Date.parse(created.openedAt)).toBeGreaterThan(Date.now() - 60_000);
+  expect(problems).toEqual([]);
+});
+
+test("Support Tracker: an engineer works their own ticket", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page, "engineering@medlane.test");
+  await page.goto("/dashboard?section=product-issues&tab=open");
+  const panel = page.locator("#support-tab-panel");
+  await panel.locator("tbody tr", { hasText: "TSR-0145" }).locator("[data-support-select]").click();
+  const detail = page.locator("#support-detail");
+  for (const name of ["Log reply / update", "Schedule visit", "Resolve"]) await expect(detail.getByRole("button", { name })).toBeVisible();
+  await expect(page.locator("#support-actions").getByRole("button", { name: "New ticket" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Response targets" })).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
