@@ -82,18 +82,19 @@
   </head>
   <body>
     <div class="global-loading-bar" id="global-loading-bar" aria-hidden="true"></div>
-    <div class="loading-overlay" id="loading-overlay" aria-hidden="true">
-      <div class="loader-card"><div class="loader-orbit"><img src="medlane.jpg" alt="" /><span></span><i></i></div><strong>Loading Medlane OS</strong><small>Securing diagnostics operations...</small></div>
+    <!-- App loader: the initial load and the load after signing in. Its content only fades in after
+         300ms, so fast loads show just the plain background (see showAppLoader/hideAppLoader). -->
+    <div class="app-loader" id="loading-overlay" role="status" aria-live="polite" aria-label="Loading Medlane Diagnostic Solutions">
+      <div class="app-loader-content">
+        <div class="ml-mark" aria-hidden="true"><span class="ml-ring"></span><span class="ml-ring ml-ring-2"></span><div class="ml-tile"><svg class="ml-logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="ml-faint" d="M3 19L10 6l3 5" stroke="#F2D5C3" stroke-linecap="round" /><path class="ml-faint" d="M7 19l7-11 7 11z" stroke="#CFE0E6" /><path class="ml-orange" d="M3 19L10 6l3 5" stroke="#D9682B" stroke-linecap="round" /><path class="ml-teal" d="M7 19l7-11 7 11z" stroke="#1F5F74" /></svg></div></div>
+        <div class="app-loader-title"><strong>Medlane Diagnostic Solutions, Inc.</strong><span>Medlane OS · Diagnostics Distribution</span></div>
+        <div class="app-loader-progress"><div class="app-loader-bar" aria-hidden="true"><span></span></div><p class="app-loader-step" id="app-loader-step">Loading Medlane OS…</p></div>
+      </div>
     </div>
     <dialog class="save-guard-dialog" id="save-guard-dialog">
-      <div class="loader-card"><div class="loader-orbit"><img src="medlane.jpg" alt="" /><span></span><i></i></div><strong id="save-guard-text">Saving…</strong></div>
+      <div class="save-guard-card"><div class="ml-mark ml-mark-sm" aria-hidden="true"><div class="ml-tile"><svg class="ml-logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="ml-faint" d="M3 19L10 6l3 5" stroke="#F2D5C3" stroke-linecap="round" /><path class="ml-faint" d="M7 19l7-11 7 11z" stroke="#CFE0E6" /><path class="ml-orange" d="M3 19L10 6l3 5" stroke="#D9682B" stroke-linecap="round" /><path class="ml-teal" d="M7 19l7-11 7 11z" stroke="#1F5F74" /></svg></div></div><strong id="save-guard-text">Saving…</strong></div>
     </dialog>
-    <div class="welcome-transition" id="welcome-transition" hidden aria-hidden="true">
-      <div class="welcome-burst"><span></span><i></i><b></b></div>
-      <img src="medlane.jpg" alt="" />
-      <strong id="welcome-transition-name">Welcome</strong>
-      <small>Loading your Medlane workspace</small>
-    </div>
+    <div class="welcome-screen" id="welcome-screen" hidden></div>
     <section class="landing-page lr" id="landing-page">
       <div class="landing-scroll-progress" aria-hidden="true"><span></span></div>
       <button class="landing-back-to-top" id="landing-back-to-top" type="button" aria-label="Back to top">↑</button>
@@ -1543,7 +1544,7 @@
           setTimeout(function () { document.getElementById("loading-overlay").classList.add("hide"); }, 250);
           return;
         }
-        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
+        ["config-data.js", "api-client.js", "state.js", "ui-utils.js", "ui-kit.js", "modules.js", "recon-page.js", "masterlists-page.js", "users-page.js", "welcome.js", "events-bootstrap.js", "game.js"].forEach(function (file) {
           var script = document.createElement("script");
           var version = document.documentElement.getAttribute("data-asset-version");
           script.src = "scripts/" + file + (version ? "?v=" + version : "");

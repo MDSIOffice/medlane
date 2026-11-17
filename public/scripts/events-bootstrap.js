@@ -801,6 +801,8 @@ async function removePlatformBranch(branch) {
   toast(`${branch} removed from platform branches.`);
 }
 qs("#users").addEventListener("click", (event) => { handleUsersClick(/** @type {Element} */ (event.target)); });
+qs("#welcome-screen")?.addEventListener("click", (event) => { handleWelcomeClick(/** @type {Element} */ (event.target)); });
+document.addEventListener("keydown", (event) => handleWelcomeKey(event));
 qs("#users").addEventListener("input", (event) => { uiViewSearch(/** @type {AnyEl} */ (event.target), "users", () => usersView, renderUsers); });
 document.addEventListener("change", (event) => usersSyncCanDo(/** @type {Element} */ (event.target)));
 document.addEventListener("input", (event) => {
@@ -2030,9 +2032,12 @@ qs("#login-form").addEventListener("submit", async (event) => {
   const email = String(qs("#login-email").value || "").trim().toLowerCase();
   const password = qs("#login-password").value;
   let payload;
+  // Deferred: a quick answer (including a wrong password) never shows the loader at all.
+  showAppLoader("Signing you in…", { deferred: true });
   try {
     payload = await MedlaneAPI.login(email, password);
   } catch (/** @type {any} */ error) {
+    hideAppLoader();
     if (loginButton) {
       loginButton.disabled = false;
       loginButton.classList.remove("is-loading");
@@ -2042,6 +2047,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
     return toast(error.message || "Invalid email or password.");
   }
   currentUser = payload.user;
+  welcomePreviousSignIn = payload.previousSignIn || null;
   // Hand the credential to the browser's password manager so the next visit can offer the
   // Touch ID / Keychain prompt (and our auto-sign-in above can act on it).
   try {
@@ -2055,6 +2061,7 @@ qs("#login-form").addEventListener("submit", async (event) => {
   // keeps the password (the inputs carry autocomplete hints and the autofill-submit wiring above).
   if (qs("#remember-login")?.checked) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
   else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+  setAppLoaderStep("Loading stock and orders…");
   try {
     const serverState = await MedlaneAPI.loadAppState();
     if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state.");
@@ -2074,22 +2081,25 @@ qs("#login-form").addEventListener("submit", async (event) => {
   if (currentUser?.email) notify("Security", `New sign-in to your account (${new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" })}).`, "notifications", "", null, currentUser.email);
   saveData(["notifications"]);
   playLoginSuccessSound();
-  showWelcomeTransition(currentUser.name || currentUser.role, () => {
-    if (loginButton) {
-      loginButton.disabled = false;
-      loginButton.classList.remove("is-loading");
-      loginButton.textContent = originalLabel;
-    }
-    if (loginForm) loginForm.dataset.submitting = "";
-    if (location.protocol !== "file:") history.replaceState(null, "", "/dashboard");
-    document.body.classList.add("app-route");
-    document.body.classList.remove("login-route", "public-landing");
-    applyRole();
-    renderAll();
+  setAppLoaderStep("Preparing your dashboard…");
+  if (loginButton) {
+    loginButton.disabled = false;
+    loginButton.classList.remove("is-loading");
+    loginButton.textContent = originalLabel;
+  }
+  if (loginForm) loginForm.dataset.submitting = "";
+  if (location.protocol !== "file:") history.replaceState(null, "", "/dashboard");
+  document.body.classList.add("app-route");
+  document.body.classList.remove("login-route", "public-landing");
+  applyRole();
+  renderAll();
+  startAppVersionWatch();
+  hideAppLoader();
+  // Every sign-in opens on the Welcome screen; the dashboard is already drawn underneath it.
+  showWelcomeScreen(() => {
     playDashboardLoginSound();
     toast(`Logged in as ${currentUser.name || currentUser.role}.`);
     maybeShowPasswordKycModal();
-    startAppVersionWatch();
   });
 });
 
@@ -2152,18 +2162,6 @@ function playDashboardLoginSound() {
   audio.play().catch(() => null);
 }
 
-/** @param {string} name @param {() => void} done */
-function showWelcomeTransition(name, done) {
-  const overlay = qs("#welcome-transition");
-  qs("#welcome-transition-name").textContent = `Welcome ${name}`;
-  overlay.hidden = false;
-  overlay.setAttribute("aria-hidden", "false");
-  setTimeout(() => {
-    overlay.hidden = true;
-    overlay.setAttribute("aria-hidden", "true");
-    done();
-  }, 2950);
-}
 
 
 /** @param {string} email @param {string} token */
@@ -2204,7 +2202,7 @@ function showSupabasePasswordSetup() {
   document.body.classList.add("login-route");
   document.body.classList.remove("public-landing", "app-route");
   qs("#login-screen")?.classList.add("hidden");
-  setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 250);
+  hideAppLoader();
   return true;
 }
 
@@ -2483,6 +2481,7 @@ async function hydrateAuthenticatedSession() {
   });
   currentUser = me.user;
   localStorage.setItem("medlane-session", JSON.stringify(currentUser));
+  setAppLoaderStep("Loading stock and orders…");
   const serverState = await MedlaneAPI.loadAppState();
   if (!serverState.data || typeof serverState.data !== "object") throw new Error("Server returned an invalid app state. Refusing to load blank data over it.");
   serverRevision = Number(serverState.revision || 0);
@@ -2502,9 +2501,11 @@ async function initializeRoute() {
   if (!loginRoute && !dashboardRoute) {
     if (currentUser || MedlaneAPI?.session()?.access_token) {
       try {
+        setAppLoaderStep("Signing you in…");
         await hydrateAuthenticatedSession();
+        setAppLoaderStep("Preparing your dashboard…");
         showAuthenticatedApp();
-        setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 650);
+        hideAppLoader();
         return;
       } catch {
         currentUser = null;
@@ -2516,14 +2517,16 @@ async function initializeRoute() {
     document.body.classList.add("public-landing");
     document.body.classList.remove("login-route", "app-route");
     qs("#login-screen")?.classList.add("hidden");
-    setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 250);
+    hideAppLoader();
     return;
   }
   if (currentUser || MedlaneAPI?.session()?.access_token) {
     try {
+      setAppLoaderStep("Signing you in…");
       await hydrateAuthenticatedSession();
+      setAppLoaderStep("Preparing your dashboard…");
       showAuthenticatedApp();
-      setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 650);
+      hideAppLoader();
       return;
     } catch {
       currentUser = null;
@@ -2539,6 +2542,6 @@ async function initializeRoute() {
   // No renderAll() here: nobody is logged in, so it would only fire the dashboard's API calls with
   // no token, and those 401s pop a false "session expired" toast. It would also mark the first
   // render as done, leaving the render after login to redraw just one section.
-  setTimeout(() => qs("#loading-overlay")?.classList.add("hide"), 650);
+  hideAppLoader();
 }
 initializeRoute();

@@ -14,7 +14,7 @@ interface OkResponse { ok: true }
 type OrApiError<T> = T & { error?: Error };
 
 // ---- Auth ----
-interface LoginResponse { session: ApiSession; user: Profile }
+interface LoginResponse { session: ApiSession; user: Profile; previousSignIn?: { at: string, device: string, browser: string } | null }
 interface RefreshResponse { session: ApiSession; user: Profile | null }
 interface MeResponse { user: Profile }
 interface ThemeResponse extends OkResponse { theme: string }

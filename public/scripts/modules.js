@@ -343,11 +343,9 @@ const WORKFLOW_RULES = {
       return { tone: "red", money, text: bounced.length === 1 ? `${first.client}'s bounced check (${salesPesoShort(money)}) still needs a replacement.` : `${plural(bounced.length, "bounced check")} (${salesPesoShort(money)}) still need a replacement.`, action: "Show bounced", attrs: { "data-wa-goto": `collections|receipts|bounced|${bounced.length === 1 ? first.id : ""}` } };
     } },
     { id: "to-deposit", rule: (ctx) => {
-      const waiting = ctx.receipts.filter((receipt) => receipt.state === "deposit");
-      if (!waiting.length) return null;
-      const cash = waiting.filter((receipt) => collectionMethodKey(receipt.method) === "cash").reduce((sum, receipt) => sum + receipt.total, 0);
-      const money = waiting.reduce((sum, receipt) => sum + receipt.total, 0);
-      return { tone: "amber", money, text: `${salesPesoShort(money)} waiting to be deposited${cash > 0.005 ? ` (${salesPesoShort(cash)} in cash)` : ""} — ${plural(waiting.length, "receipt")}.`, action: "Deposit slips", attrs: { "data-wa-goto": "collections|deposits||" } };
+      const { amount: money, cash, count } = kpiToDeposit(ctx.receipts);
+      if (!count) return null;
+      return { tone: "amber", money, text: `${salesPesoShort(money)} waiting to be deposited${cash > 0.005 ? ` (${salesPesoShort(cash)} in cash)` : ""} — ${plural(count, "receipt")}.`, action: "Deposit slips", attrs: { "data-wa-goto": "collections|deposits||" } };
     } },
     { id: "pdc-now-due", rule: () => {
       const due = data.payments.filter((payment) => !payment.voided && payment.collectionStatus === "Posted Date" && (payment.postedDate || payment.chequeDate) && daysUntil(payment.postedDate || payment.chequeDate) <= 0);
@@ -478,6 +476,7 @@ function workflowGoto(module, tab, scope, sel) {
   else if (module === "analytics") { if (ANALYTICS_TAB_LABELS[tab]) analyticsTab = tab; analyticsView = view; }
   else if (module === "reconciliation") { if (RECON_TAB_LABELS[tab]) reconTab = tab; reconView = view; }
   else if (module === "masterlists") { if (MASTER_TAB_LABELS[tab]) masterPageTab = tab; masterView = view; }
+  else if (module === "users") { if (USER_TAB_LABELS[tab]) usersPageTab = tab; usersView = view; usersRoleFilter = ""; }
   else if (module === "purchase-history") {
     if (CLIENT_HISTORY_TAB_LABELS[tab]) clientHistoryPageTab = tab;
     if (clientHistoryPageTab === "profile") { if (sel) clientHistoryClient = sel; view.sel = ""; }
@@ -511,6 +510,29 @@ function workflowRecommendations(module) {
   }
   const rank = (/** @type {UiRec} */ rec) => { const at = WORKFLOW_TONE_RANK.indexOf(rec.tone || "amber"); return at < 0 ? 99 : at; };
   return recs.sort((a, b) => rank(a) - rank(b) || (b.money || 0) - (a.money || 0));
+}
+
+/**
+ * Open tasks across several modules, most urgent first: red before amber, then the biggest peso
+ * amount. Built from the same rules as each page's Workflow assistant, limited to modules this
+ * person can open (their data is already limited by the server). Used by the Welcome screen and
+ * the Dashboard's "Needs attention".
+ * @param {string[]} modules @returns {(UiRec & { module: string })[]}
+ */
+function todayTasks(modules) {
+  /** @type {(UiRec & { module: string })[]} */
+  const out = [];
+  const seen = new Set();
+  for (const module of modules) {
+    if (!canViewModule(module)) continue;
+    for (const rec of workflowRecommendations(module)) {
+      if (seen.has(rec.text)) continue;
+      seen.add(rec.text);
+      out.push({ ...rec, module });
+    }
+  }
+  const rank = (/** @type {UiRec} */ rec) => { const at = WORKFLOW_TONE_RANK.indexOf(rec.tone || "amber"); return at < 0 ? 99 : at; };
+  return out.sort((a, b) => rank(a) - rank(b) || (b.money || 0) - (a.money || 0));
 }
 
 /** Draws a module's assistant into its `[data-wa-host]` slot. @param {string} module */
@@ -10428,19 +10450,56 @@ function bizStockValue() {
   return { value, atRisk, costed, rows, byBranch: byBranchValue };
 }
 
+// ----- Headline numbers ---------------------------------------------------------------------------
+// One definition each, shared by the Analytics overview, the Dashboard and the Welcome screen, so
+// the same label always shows the same figure. They read only data the server sent this role.
+/** Today, the first of this month, and the same point last month (Manila dates). */
+function kpiPeriods() {
+  const todayKey = fmtDate(today);
+  return { todayKey, monthStart: `${todayKey.slice(0, 7)}-01`, prev: bizSamePointLastMonth() };
+}
+/** Invoiced revenue between two dates, net of VAT. @param {BizFacts} facts @param {string} from @param {string} to */
+function kpiRevenueIn(facts, from, to) {
+  return facts.sales.filter((sale) => { const day = fmtDateSafe(sale.date); return day >= from && day <= to; }).reduce((sum, sale) => sum + saleTaxBreakdown(sale).amountNetVat, 0);
+}
+/** Payments received against those invoices between two dates. @param {BizFacts} facts @param {string} from @param {string} to */
+function kpiCollectedIn(facts, from, to) {
+  return bizReceivedPayments().filter((payment) => { const day = bizPaymentDate(payment); return facts.docs.has(String(payment.invoice || "")) && day >= from && day <= to; }).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+}
+/** What clients owe, and how much of it is overdue. @param {ClientSummary[]} summaries */
+function kpiReceivables(summaries) {
+  return { total: summaries.reduce((sum, s) => sum + (s.ar?.total || 0), 0), overdue: summaries.reduce((sum, s) => sum + (s.ar?.overdue || 0), 0) };
+}
+/** Unpaid bills falling due within `days` (overdue ones included), and the overdue part. @param {number} days */
+function kpiPayablesDue(days) {
+  const horizon = fmtDate(addDays(new Date(`${fmtDate(today)}T00:00:00`), days));
+  const open = payableFactsAll().filter((fact) => fact.balance > 0.005 && fact.due <= horizon);
+  return { amount: open.reduce((sum, fact) => sum + fact.balance, 0), overdue: open.filter((fact) => fact.overdue).reduce((sum, fact) => sum + fact.balance, 0), count: open.length };
+}
+/** Everything we still owe suppliers, and the overdue part. */
+function kpiPayablesOpen() {
+  const open = payableFactsAll().filter((fact) => fact.balance > 0.005);
+  return { amount: open.reduce((sum, fact) => sum + fact.balance, 0), overdue: open.filter((fact) => fact.overdue).reduce((sum, fact) => sum + fact.balance, 0) };
+}
+/** Collection receipts approved but not yet deposited. @param {ReturnType<typeof collectionReceipts>} [receipts] */
+function kpiToDeposit(receipts = collectionReceipts()) {
+  const waiting = receipts.filter((receipt) => receipt.state === "deposit");
+  return { amount: waiting.reduce((sum, receipt) => sum + receipt.total, 0), count: waiting.length, cash: waiting.filter((receipt) => collectionMethodKey(receipt.method) === "cash").reduce((sum, receipt) => sum + receipt.total, 0) };
+}
+/** Office expenses this month against the monthly budget. */
+function kpiExpensesMonth() {
+  const spent = Object.values(expenseSpendByCategory(byBranch(data.replenishments, "office"), fmtDate(today).slice(0, 7))).reduce((sum, value) => sum + value, 0);
+  return { spent, budget: Object.values(expenseBudgetMap()).reduce((sum, value) => sum + value, 0) };
+}
+
 /** @param {BizFacts} facts @param {ClientSummary[]} summaries */
 function analyticsOverviewHtml(facts, summaries) {
-  const todayKey = fmtDate(today);
-  const monthStart = `${todayKey.slice(0, 7)}-01`;
-  const prev = bizSamePointLastMonth();
+  const { todayKey, monthStart, prev } = kpiPeriods();
   const inRange = (/** @type {string} */ date, /** @type {string} */ from, /** @type {string} */ to) => date >= from && date <= to;
-  const revenueIn = (/** @type {string} */ from, /** @type {string} */ to) => facts.sales.filter((sale) => inRange(fmtDateSafe(sale.date), from, to)).reduce((sum, sale) => sum + saleTaxBreakdown(sale).amountNetVat, 0);
-  const collectedIn = (/** @type {string} */ from, /** @type {string} */ to) => bizReceivedPayments().filter((payment) => facts.docs.has(String(payment.invoice || "")) && inRange(bizPaymentDate(payment), from, to)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const revNow = revenueIn(monthStart, todayKey), revThen = revenueIn(prev.start, prev.end);
-  const colNow = collectedIn(monthStart, todayKey), colThen = collectedIn(prev.start, prev.end);
+  const revNow = kpiRevenueIn(facts, monthStart, todayKey), revThen = kpiRevenueIn(facts, prev.start, prev.end);
+  const colNow = kpiCollectedIn(facts, monthStart, todayKey), colThen = kpiCollectedIn(facts, prev.start, prev.end);
   const change = (/** @type {number} */ now, /** @type {number} */ then) => { const pct = bizTrend(now, then); return pct === null ? null : { text: bizTrendText(pct, 1), good: pct >= 0 }; };
-  const arTotal = summaries.reduce((sum, s) => sum + (s.ar?.total || 0), 0);
-  const arOverdue = summaries.reduce((sum, s) => sum + (s.ar?.overdue || 0), 0);
+  const { total: arTotal, overdue: arOverdue } = kpiReceivables(summaries);
   const ninety = fmtDate(addDays(new Date(`${todayKey}T00:00:00`), -89));
   const recent = facts.sales.filter((sale) => inRange(fmtDateSafe(sale.date), ninety, todayKey));
   const gross90 = recent.reduce((sum, sale) => sum + Number(sale.net || 0), 0);
@@ -10464,15 +10523,11 @@ function analyticsOverviewHtml(facts, summaries) {
     kpis.push({ label: "Inventory value", value: stock.costed ? pesoShort(stock.value) : "—", tone: "blue", sub: !stock.costed ? "No item costs on file yet" : `${pesoShort(stock.atRisk)} is expired or expires within 60 days${stock.costed < stock.rows ? ` · ${plural(stock.rows - stock.costed, "stock row")} without a cost not counted` : ""}` });
   }
   if (canViewModule("payables")) {
-    const horizon = fmtDate(addDays(new Date(`${todayKey}T00:00:00`), 30));
-    const open = payableFactsAll().filter((fact) => fact.balance > 0.005 && fact.due <= horizon);
-    const late = open.filter((fact) => fact.overdue).reduce((sum, fact) => sum + fact.balance, 0);
-    kpis.push({ label: "Payables due in 30 days", value: pesoShort(open.reduce((sum, fact) => sum + fact.balance, 0)), tone: "orange", sub: late > 0.005 ? `${pesoShort(late)} of it is already overdue` : "Nothing overdue" });
+    const due = kpiPayablesDue(30);
+    kpis.push({ label: "Payables due in 30 days", value: pesoShort(due.amount), tone: "orange", sub: due.overdue > 0.005 ? `${pesoShort(due.overdue)} of it is already overdue` : "Nothing overdue" });
   }
   if (canViewModule("replenishments")) {
-    const spentMap = expenseSpendByCategory(byBranch(data.replenishments, "office"), todayKey.slice(0, 7));
-    const spent = Object.values(spentMap).reduce((sum, value) => sum + value, 0);
-    const budget = Object.values(expenseBudgetMap()).reduce((sum, value) => sum + value, 0);
+    const { spent, budget } = kpiExpensesMonth();
     const [y, m, d] = todayKey.split("-").map(Number);
     const gone = d / new Date(Date.UTC(y, m, 0)).getUTCDate();
     kpis.push({ label: `Operating expenses · ${shortMonthLabel(facts.keys[11])}`, value: pesoShort(spent), tone: "accent", change: budget > 0 ? { text: spent / budget <= gone + 0.05 ? "On pace" : "Ahead of pace", good: spent / budget <= gone + 0.05 } : null, sub: budget > 0 ? `${Math.round((spent / budget) * 100)}% of ${pesoShort(budget)} budget, ${Math.round(gone * 100)}% of month gone` : "Approved and paid · no budgets set" });

@@ -5507,9 +5507,12 @@ export default {
         }
         await loginThrottle(env, request, "reset", email);
         const user = await profileForUser(env, session.user.id, email);
+        // The person's own previous sign-in (read before this one is recorded), for the Welcome screen.
+        const previous = await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(session.user.id)}&select=created_at,device_name,browser&order=created_at.desc&limit=1`).catch(() => []);
         const appSession = await createAppSession(env, request, session.user.id);
         ctx.waitUntil(recordSignInEvent(env, request, { ok: true, email: String(email || "").trim().toLowerCase(), profile: user, userId: session.user.id }));
-        return json({ session: { ...session, app_session_id: appSession?.id || null }, user });
+        const previousSignIn = previous[0] ? { at: previous[0].created_at, device: previous[0].device_name || "", browser: previous[0].browser || "" } : null;
+        return json({ session: { ...session, app_session_id: appSession?.id || null }, user, previousSignIn });
       }
 
       if (url.pathname === "/api/auth/refresh") {

@@ -19,6 +19,7 @@ const roleFromEmail = (email) => ({ superadmin: "Superadmin", ceo: "CEO", admin:
 const ROLE_MODULES = {
   Logistics: ["dashboard", "calendar", "inventory", "purchase-orders"],
   Accounting: ["dashboard", "calendar", "sales", "invoicing", "collections", "receivables-tracker", "payables", "replenishments", "reports"],
+  Sales: ["dashboard", "calendar", "analytics", "inventory", "item-forecast", "purchase-orders", "sales", "client-invoices"],
 };
 const userFor = (role) => ({
   id: `fake-${role}`, name: `Fake ${role}`, email: `${role.toLowerCase()}@medlane.test`, role, branch: "Las Pinas", phone: "",

@@ -24,7 +24,7 @@ async function watch(page) {
   return { problems, api };
 }
 
-async function logIn(page, email = "superadmin@medlane.test") {
+async function logIn(page, email = "superadmin@medlane.test", { stayOnWelcome = false } = {}) {
   await page.goto("/login");
   await page.fill("#login-email", email);
   await page.fill("#login-password", "fake-backend-accepts-anything");
@@ -32,6 +32,11 @@ async function logIn(page, email = "superadmin@medlane.test") {
   await page.locator("#login-form").evaluate((form) => { if (!form.dataset.submitting) form.requestSubmit(); });
   await page.waitForURL("**/dashboard*");
   await expect(page.locator("body")).toHaveClass(/app-route/);
+  // Every sign-in opens on the Welcome screen; continue past it like a person would.
+  await expect(page.locator("#welcome-screen")).toBeVisible();
+  if (stayOnWelcome) return;
+  await page.getByRole("button", { name: "Continue to dashboard" }).click();
+  await expect(page.locator("#welcome-screen")).toBeHidden();
 }
 
 const APP_SCRIPTS = /scripts\/(modules|state|api-client|ui-utils|events-bootstrap|recon-page|masterlists-page|game|config-data|vendor\/pdf-lib)/;
@@ -372,4 +377,53 @@ test("every report opens from the hub and its card agrees with its page", async 
     await page.locator("#sales-breakdown-detail .rd-back").click();
   }
   expect(problems).toEqual([]);
+});
+
+for (const [email, heading] of [["superadmin@medlane.test", "Needs you today"], ["sales@medlane.test", "Your day"], ["logistics@medlane.test", "Your day"], ["accounting@medlane.test", "Needs you today"]]) {
+  test(`${email.split("@")[0]} gets the Welcome screen after signing in, and Enter continues`, async ({ page }) => {
+    const { problems } = await watch(page);
+    await logIn(page, email, { stayOnWelcome: true });
+    const screen = page.locator("#welcome-screen");
+    await expect(screen.getByRole("heading", { level: 1 })).toHaveText(/^Good (morning|afternoon|evening), \S+\.$/);
+    await expect(screen.getByRole("heading", { name: heading })).toBeVisible();
+    await expect(screen.locator(".wl-action")).toHaveCount(4);
+    await expect(screen.getByRole("button", { name: "Continue to dashboard" })).toBeFocused();
+    // Keyboard focus stays inside it: the app behind is inert.
+    for (let i = 0; i < 12; i += 1) {
+      await page.keyboard.press("Tab");
+      expect(await page.evaluate(() => Boolean(document.activeElement?.closest("#welcome-screen")) || document.activeElement === document.body)).toBe(true);
+    }
+    await page.locator(".wl-greeting").click();
+    await page.keyboard.press("Enter");
+    await expect(screen).toBeHidden();
+    await expect(page.locator("body")).toHaveAttribute("data-active-section", "dashboard");
+    await page.reload();
+    await expect(page.locator("body")).toHaveClass(/app-route/);
+    await page.waitForTimeout(800);
+    await expect(screen).toBeHidden();
+    expect(problems).toEqual([]);
+  });
+}
+
+test("a Welcome quick action closes it and opens that page", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page, "logistics@medlane.test", { stayOnWelcome: true });
+  await page.locator("#welcome-screen .wl-action").first().click();
+  await expect(page.locator("#welcome-screen")).toBeHidden();
+  await expect(page.locator("body")).toHaveAttribute("data-active-section", "inventory");
+  expect(problems).toEqual([]);
+});
+
+test("with reduced motion the loader shows a still logo and only the bar moves", async ({ browser }) => {
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await page.goto("/login");
+  const styles = await page.evaluate(() => {
+    const get = (/** @type {string} */ sel, /** @type {string} */ prop) => getComputedStyle(/** @type {Element} */ (document.querySelector(sel))).getPropertyValue(prop);
+    return { draw: get(".app-loader .ml-orange", "animation-name"), dash: get(".app-loader .ml-orange", "stroke-dasharray"), pulse: get(".app-loader .ml-tile", "animation-name"), ring: get(".app-loader .ml-ring", "display"), bar: get(".app-loader-bar span", "animation-name"), barTime: get(".app-loader-bar span", "animation-duration") };
+  });
+  expect(styles).toEqual({ draw: "none", dash: "none", pulse: "none", ring: "none", bar: "ml-bar", barTime: "3s" });
+  await expect(page.locator("#loading-overlay")).toHaveAttribute("role", "status");
+  await expect(page.locator("#loading-overlay")).toHaveAttribute("aria-live", "polite");
+  await context.close();
 });

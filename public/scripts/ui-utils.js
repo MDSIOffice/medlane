@@ -1,4 +1,48 @@
 // @ts-check
+// ----- App loader (#loading-overlay) ---------------------------------------------------------------
+// Its logo and text fade in only 300ms after it's shown (CSS), so fast loads never flash them. Once
+// they've shown, they stay at least 600ms before the 200ms fade-out.
+const APP_LOADER_DELAY_MS = 300;
+const APP_LOADER_MIN_MS = 600;
+/** performance.now() when the loader was last shown; the page load itself counts from 0. */
+let appLoaderShownAt = 0;
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let appLoaderHideTimer;
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let appLoaderDeferTimer;
+/**
+ * Shows the loader again (after signing in). `deferred` also holds back the background for 300ms,
+ * for screens that are already drawn (the login form), so a quick answer shows nothing at all.
+ * @param {string} [step] @param {{ deferred?: boolean }} [options]
+ */
+function showAppLoader(step = "", { deferred = false } = {}) {
+  const loader = document.getElementById("loading-overlay");
+  if (!loader) return;
+  clearTimeout(appLoaderHideTimer);
+  const content = /** @type {HTMLElement | null} */ (loader.querySelector(".app-loader-content"));
+  if (content) { content.style.animation = "none"; void content.offsetWidth; content.style.animation = ""; }
+  clearTimeout(appLoaderDeferTimer);
+  loader.classList.toggle("is-deferred", deferred);
+  if (deferred) appLoaderDeferTimer = setTimeout(() => loader.classList.remove("is-deferred"), APP_LOADER_DELAY_MS);
+  loader.classList.remove("hide");
+  appLoaderShownAt = performance.now();
+  if (step) setAppLoaderStep(step);
+}
+/** The status line: the real step being done ("Signing you in…"). @param {string} text */
+function setAppLoaderStep(text) {
+  const line = document.getElementById("app-loader-step");
+  if (line && line.textContent !== text) line.textContent = text;
+}
+function hideAppLoader() {
+  const loader = document.getElementById("loading-overlay");
+  if (!loader || loader.classList.contains("hide")) return;
+  const elapsed = performance.now() - appLoaderShownAt;
+  const wait = elapsed < APP_LOADER_DELAY_MS ? 0 : Math.max(0, APP_LOADER_DELAY_MS + APP_LOADER_MIN_MS - elapsed);
+  clearTimeout(appLoaderHideTimer);
+  if (wait === 0) clearTimeout(appLoaderDeferTimer);
+  appLoaderHideTimer = setTimeout(() => { loader.classList.add("hide"); loader.classList.remove("is-deferred"); }, wait);
+}
+
 /** @param {AnyEl} container @param {string} message */
 function showActionLoading(container, message) {
   if (!container) return;
