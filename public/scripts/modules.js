@@ -1046,7 +1046,7 @@ function renderPaymentRequestDetail(cvNo) {
   const depositActions = isDepositFinal
     ? `<p class="page-description">${request.requestStatus === "Cancelled" ? "This payment request was cancelled." : "Deposited — this payment is final and its status can no longer be changed."}</p>`
     : payment ? `<div class="modal-actions collection-status-actions">${collectionStatusButtonsHtml(payment, "ghost-button")}</div>` : "";
-  const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposit</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposit")}">${escapeHtml(payment.collectionStatus || "For Deposit")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
+  const depositSection = payment ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Deposit</span><strong>${escapeHtml(payment.receiptNo)}</strong><small>${peso.format(Number(payment.amount || 0))}${payment.postedDate ? ` · Posted ${escapeHtml(payment.postedDate)}` : ""}${payment.depositBank ? ` · Deposited to ${escapeHtml(depositBankLabel({ name: payment.depositBank, account: payment.depositBankAccount }))}` : ""}</small></div><span class="pill ${statusClass(payment.collectionStatus || "For Deposit")}">${escapeHtml(payment.collectionStatus || "For Deposit")}</span></header><div class="collection-history-panel"><h3>Deposit Status History</h3><ul>${depositHistory}</ul></div>${depositActions}</div>` : "";
   const physicalCopySection = request.requestStatus === "Approved" ? `<div class="collection-detail-card"><header><div><span class="eyebrow">Physical Copy</span><strong>Signed CV Voucher</strong><small>Upload a photo/scan of the physically signed and released voucher.</small></div></header>${attachedFilesHtml("paymentRequest", request.cvNo)}<div class="modal-actions"><button class="ghost-button" data-upload-copy="${escapeHtml(request.cvNo)}" type="button">Upload Physical Copy</button><input type="file" accept="image/*" class="physical-copy-input" data-record-type="paymentRequest" data-record-id="${escapeHtml(request.cvNo)}" data-rerender="payment-request-detail" hidden /></div></div>` : "";
   qs("#payment-request-detail-title").textContent = `${request.cvNo} · ${request.employee}`;
   qs("#payment-request-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(request.employee || "-")}</p><h2>${escapeHtml(request.invoice ? `Linked to ${request.invoice}` : "CV Voucher")}</h2></div><span class="pill ${statusClass(request.requestStatus || request.status)}">${escapeHtml(request.requestStatus || request.status || "-")}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>Date</small><strong>${escapeHtml(request.date || "-")}</strong></div><div class="report-preview-card"><small>Total</small><strong>${peso.format(request.total || 0)}</strong></div><div class="report-preview-card"><small>Prepared By</small><strong>${escapeHtml(request.preparedBy || "-")}</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(request.approvedBy || "-")}</strong></div></div>${depositSection}${physicalCopySection}<details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((/** @type {any} */ event) => `<div class="event-item ${event.status === "Approved" ? "done" : "pending"}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
@@ -5470,7 +5470,7 @@ function collectionsTabModel(tab) {
       cells: [
         uiCellDoc(receipt.id, select(receipt.id), uiDate(receipt.date)),
         uiCellText(receipt.client || "—", [invoices.length ? `For ${invoices.slice(0, 2).join(", ")}${invoices.length > 2 ? ` +${invoices.length - 2}` : ""}` : "", receipt.collector ? `by ${receipt.collector}` : ""].filter(Boolean).join(" · "), { strong: true }),
-        uiCellText(collectionMethodLabel(receipt.method), collectionMethodSub(receipt)),
+        uiCellText(collectionMethodLabel(receipt.method), collectionDepositedTo(receipt) ? `Deposited to ${collectionDepositedTo(receipt)}` : collectionMethodSub(receipt)),
         uiCellNum(peso.format(receipt.total)),
         uiPill(meta.label, meta.tone),
         inventoryNextStep(collectionNextButton(receipt)),
@@ -5488,6 +5488,7 @@ function collectionsTabModel(tab) {
             ...(posted ? [{ label: "Post-dated to", value: uiDate(posted) }] : []),
             ...(request?.approvedBy ? [{ label: "Approved by", value: request.approvedBy, sub: uiDate(request.approvedAt) }] : []),
             ...(request?.completedBy ? [{ label: "Deposited", value: uiDate(request.completedAt), sub: `by ${request.completedBy}` }] : []),
+            ...(collectionDepositedTo(receipt) ? [{ label: "Deposited to", value: collectionDepositedTo(receipt), wide: true }] : []),
             ...(request?.cancelReason ? [{ label: "Cancel reason", value: request.cancelReason, wide: true }] : []),
           ],
           linesTitle: receipt.state === "approval" ? "Will apply to" : receipt.state === "bounced" ? "Reversed on" : "Applied to",
@@ -6610,7 +6611,14 @@ async function updateCollectionPaymentStatus(receiptNo, status, chequeIndex = nu
   if (payments.some((payment) => payment.collectionStatus === "Deposited")) return toast("This payment is already Deposited and can no longer be changed.");
   if (payments.some((payment) => payment.collectionStatus === "Bounced")) return toast("This payment bounced — a Superadmin must Redeposit it first.");
   const postedDate = status === "Posted Date" ? prompt("Posted / claim date (YYYY-MM-DD):", payments[0].postedDate || fmtDate(today)) || "" : "";
-  if (!(await confirmFinalSave(`Mark ${label} as ${status}?`))) return;
+  // Deposited asks which bank account (Masterlists → Banks) it went into; that dialog is the confirmation.
+  /** @type {{ bank: string, account: string } | null} */
+  let depositTo = null;
+  if (status === "Deposited") {
+    if (!activeBanks().length) return toast("Add the company bank account in Masterlists → Banks first, then mark it deposited.");
+    depositTo = await promptDepositBank(label, payments);
+    if (!depositTo) return;
+  } else if (!(await confirmFinalSave(`Mark ${label} as ${status}?`))) return;
   payments.forEach((payment) => {
     // The invoice's paid amount is applied as soon as the payment is posted (see approvePaymentRequest),
     // not gated on deposit confirmation. Only a bounced deposit reverses it; every other status here
@@ -6619,6 +6627,7 @@ async function updateCollectionPaymentStatus(receiptNo, status, chequeIndex = nu
     else applyCollectionPayment(payment);
     payment.collectionStatus = status;
     payment.postedDate = status === "Posted Date" ? postedDate : "";
+    if (depositTo) { payment.depositBank = depositTo.bank; payment.depositBankAccount = depositTo.account; payment.depositedAt = fmtDate(today); }
     payment.statusHistory ||= [];
     payment.statusHistory.push(...collectionStatusHistory(status));
   });
@@ -6631,13 +6640,13 @@ async function updateCollectionPaymentStatus(receiptNo, status, chequeIndex = nu
     if (status === "Deposited" && perCheque && !allDeposited) {
       request.requestStatus = "Approved";
       request.status = "Approved";
-      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Deposited", note: `${label} marked Deposited by ${by}.`, by });
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Deposited", note: `${label} marked Deposited${depositTo ? ` to ${depositTo.bank}` : ""} by ${by}.`, by });
     } else if (status === "Deposited") {
       request.requestStatus = "Completed";
       request.status = "Completed";
       request.completedAt = fmtDate(today);
       request.completedBy = by;
-      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Completed", note: `Marked Deposited by ${by}.`, by });
+      request.history.push({ date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }), status: "Completed", note: `Marked Deposited${depositTo ? ` to ${depositTo.bank}` : ""} by ${by}.`, by });
     } else {
       request.requestStatus = "Approved";
       request.status = "Approved";
@@ -6647,11 +6656,44 @@ async function updateCollectionPaymentStatus(receiptNo, status, chequeIndex = nu
   const affectedSales = [...new Map(/** @type {Sale[]} */ (payments.map((payment) => saleForPayment(payment)).filter(Boolean)).map((sale) => [sale.documentNo || sale.id, sale])).values()];
   const saveResult = await persistRecords({ payments, paymentRequests: request ? [request] : [], sales: affectedSales });
   if (!saveResult?.ok) return;
-  log("Changed collection status", "Collections", `${label}: ${status}`, { save: false });
+  log("Changed collection status", "Collections", `${label}: ${status}${depositTo ? ` (to ${depositTo.bank}${depositTo.account ? ` ${depositTo.account}` : ""})` : ""}`, { save: false });
   saveData(["notifications"]);
   renderAll();
   if (payments[0].paymentRequestCvNo && document.body.dataset.activeSection === "payment-request-detail") renderPaymentRequestDetail(payments[0].paymentRequestCvNo);
-  toast(`${label} marked ${status}.`);
+  toast(`${label} marked ${status}${depositTo ? ` to ${depositTo.bank}` : ""}.`);
+}
+
+/** "BDO · 0012-3456-78" for a bank masterlist entry. @param {{ name: string, account?: string }} bank */
+function depositBankLabel(bank) { return `${bank.name}${bank.account ? ` · ${bank.account}` : ""}`; }
+
+/** Asks which company bank account (Masterlists → Banks) the money went into. Doubles as the confirmation.
+ * @param {string} label @param {Payment[]} payments @returns {Promise<{ bank: string, account: string } | null>} */
+function promptDepositBank(label, payments) {
+  const banks = activeBanks();
+  const total = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  // A bank transfer already names the account it was paid into; start there.
+  const guess = payments.map((payment) => payment.depositBank || (collectionMethodKey(payment.method) === "transfer" ? payment.bank : "")).find((name) => name && banks.some((bank) => bank.name === name)) || "";
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "modal invite-confirm-modal";
+    dialog.innerHTML = `<form method="dialog"><div class="modal-header"><div><p class="eyebrow">Deposit</p><h2>Mark ${escapeHtml(label)} deposited</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">x</button></div>
+      <p class="page-description">${peso.format(total)} · Choose the bank account it was deposited into. Deposited is final and can't be changed afterwards.</p>
+      <div class="field full"><label for="deposit-bank">Deposited to</label><select id="deposit-bank" required><option value="">Choose a bank account</option>${banks.map((bank) => `<option value="${escapeHtml(bank.name)}"${bank.name === guess ? " selected" : ""}>${escapeHtml(depositBankLabel(bank))}</option>`).join("")}</select></div>
+      <div class="modal-actions"><button class="ghost-button" value="cancel" formnovalidate>Go Back</button><button class="primary-button confirm-button" value="confirm">Mark deposited</button></div></form>`;
+    document.body.appendChild(dialog);
+    dialog.addEventListener("close", () => {
+      const name = /** @type {HTMLSelectElement} */ (dialog.querySelector("#deposit-bank")).value;
+      dialog.remove();
+      const bank = banks.find((entry) => entry.name === name);
+      resolve(dialog.returnValue === "confirm" && bank ? { bank: bank.name, account: String(bank.account || "") } : null);
+    });
+    dialog.showModal();
+  });
+}
+
+/** Bank account(s) a receipt was deposited into ("BDO · 0012…"), from its payments. @param {{ payments: Payment[] }} receipt */
+function collectionDepositedTo(receipt) {
+  return [...new Set(receipt.payments.filter((payment) => payment.depositBank).map((payment) => depositBankLabel({ name: String(payment.depositBank), account: payment.depositBankAccount })))].join(", ");
 }
 
 // A "Multiple Cheques" collection shows one editable number per cheque; anything else one field.

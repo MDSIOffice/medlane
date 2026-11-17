@@ -1606,6 +1606,7 @@ async function postRecordEventsToDiscord(env, profile, beforeRows, savedRows) {
           { name: "Client", value: webhookText(record.client), inline: true },
           { name: "Amount", value: money(record.amount), inline: true },
           { name: "Status", value: `${webhookText(before.collectionStatus)} -> ${webhookText(record.collectionStatus)}`, inline: true },
+          ...(record.depositBank ? [{ name: "Deposited to", value: webhookText(`${record.depositBank}${record.depositBankAccount ? ` ${record.depositBankAccount}` : ""}`), inline: true }] : []),
         ], `Collection status ${record.receiptNo || key}`);
       }
     }

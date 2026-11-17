@@ -299,6 +299,10 @@ interface Payment {
   /** Multiple Cheques: which cheque (0-based, request.cheques order) this slice belongs to. */
   chequeIndex?: number;
   chequeNo?: string;
+  /** Company bank account (Masterlists → Banks) it was deposited into, set when marked Deposited. */
+  depositBank?: string;
+  depositBankAccount?: string;
+  depositedAt?: string;
 }
 
 interface Payable {

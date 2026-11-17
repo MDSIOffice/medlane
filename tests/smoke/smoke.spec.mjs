@@ -427,3 +427,32 @@ test("with reduced motion the loader shows a still logo and only the bar moves",
   await expect(page.locator("#loading-overlay")).toHaveAttribute("aria-live", "polite");
   await context.close();
 });
+
+test("marking a collection deposited records the company bank it went into", async ({ page }) => {
+  const { problems } = await watch(page);
+  await page.route("**/api/modules/state", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.banks = [{ name: "BDO", account: "0012-3456-78" }, { name: "Metrobank", account: "777-1" }];
+    await route.fulfill({ response, json: body });
+  });
+  /** @type {any[]} */
+  const saved = [];
+  // The real server answers a save with ok: true.
+  await page.route("**/api/modules/records", async (route) => { saved.push(route.request().postDataJSON()); await route.fulfill({ json: { ok: true, revision: 2 } }); });
+  await logIn(page);
+  await page.evaluate(() => { /** @type {any} */ (window).updateCollectionPaymentStatus("OR-1", "Deposited"); });
+  const dialog = page.locator("dialog[open]").filter({ has: page.locator("#deposit-bank") });
+  await expect(dialog.getByRole("heading")).toHaveText("Mark OR-1 deposited");
+  // It won't go through without a bank.
+  await dialog.getByRole("button", { name: "Mark deposited" }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.locator("#deposit-bank").selectOption("Metrobank");
+  await dialog.getByRole("button", { name: "Mark deposited" }).click();
+  await expect(page.locator("#toast")).toContainText("OR-1 marked Deposited to Metrobank");
+  expect(JSON.stringify(saved)).toContain('"depositBank":"Metrobank"');
+  expect(JSON.stringify(saved)).toContain('"depositBankAccount":"777-1"');
+  await page.evaluate(() => /** @type {any} */ (window).showSection("collections"));
+  await expect(page.locator("#collections")).toContainText("Deposited to Metrobank · 777-1");
+  expect(problems).toEqual([]);
+});
