@@ -133,4 +133,12 @@ test("a new ticket defaults to the branch engineer with the fewest open tickets;
   const prior = [{ id: "TSR-9", serialNo: "Z5-001", status: "Resolved", closedAt: new Date(at(-24 * 12)).toISOString() }, { id: "TSR-8", serialNo: "Z5-001", status: "Resolved", closedAt: new Date(at(-24 * 40)).toISOString() }];
   assert.equal(S.reopenOf({ id: "new", serialNo: "z5-001" }, prior, at(0)), "TSR-9");
   assert.equal(S.reopenOf({ id: "new", serialNo: "OTHER" }, prior, at(0)), "");
+  // Placeholder serials ("-", "N/A" …) are not a unit: two "-" tickets are not the same problem coming back.
+  const dash = [{ id: "TSR-2026-0641", serialNo: "-", status: "Resolved", closedAt: new Date(at(-24)).toISOString() }];
+  for (const serial of ["-", " - ", "N/A", "n/a", "none", "0", "000", "TBA", "--", "x", ""]) {
+    assert.equal(S.serialKey(serial), "", JSON.stringify(serial));
+    assert.equal(S.reopenOf({ id: "TSR-2026-0640", serialNo: serial }, [{ ...dash[0], serialNo: serial }], at(0)), "", JSON.stringify(serial));
+  }
+  assert.equal(S.serialKey(" z5 2107 01617 "), "Z5210701617");
+  assert.equal(S.serialKey("838920930409"), "838920930409");
 });

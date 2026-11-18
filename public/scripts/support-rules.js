@@ -116,7 +116,18 @@ const SupportRules = (() => {
   /** @param {any} branch */
   function isNaga(branch) { return /naga/i.test(String(branch || "")); }
   /** Normalised serial for matching tickets to units. @param {any} serial */
-  function serialKey(serial) { return String(serial || "").trim().toUpperCase().replace(/\s+/g, ""); }
+  /**
+   * A serial number for matching tickets, units and claims, or "" when there isn't a real one.
+   * Placeholders ("-", "N/A", "none", "0", "TBA" …) and anything with fewer than 3 letters or
+   * digits don't count, so tickets with no serial are never treated as the same unit.
+   * @param {unknown} serial
+   */
+  function serialKey(serial) {
+    const key = String(serial || "").trim().toUpperCase().replace(/\s+/g, "");
+    const plain = key.replace(/[^A-Z0-9]/g, "");
+    if (plain.length < 3 || /^0+$/.test(plain) || ["NA", "NONE", "NIL", "NULL", "TBA", "TBD", "UNKNOWN", "NOSERIAL", "NOTGIVEN"].includes(plain)) return "";
+    return key;
+  }
 
   /**
    * Everything the page shows about one ticket's clocks.

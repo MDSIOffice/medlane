@@ -225,7 +225,12 @@ function supportTabModel(tab) {
 
   const resolvedTab = tab === "resolved";
   const list = data.productIssues.filter((r) => (SupportRules.statusOf(r) === "Resolved") === resolvedTab);
-  const comeBack = new Map(data.productIssues.filter((r) => r.reopenOf).map((r) => [String(r.reopenOf), String(r.id)]));
+  // "Came back": a later ticket for the same unit. Links saved before placeholder serials ("-")
+  // were ignored are re-checked here, so only tickets with the same real serial stay linked.
+  const byId = new Map(data.productIssues.map((r) => [String(r.id), r]));
+  const sameUnit = (/** @type {ProductIssue} */ r) => { const key = SupportRules.serialKey(r.serialNo); return Boolean(key) && key === SupportRules.serialKey(byId.get(String(r.reopenOf))?.serialNo); };
+  const reopenLinks = data.productIssues.filter((r) => r.reopenOf && sameUnit(r));
+  const comeBack = new Map(reopenLinks.map((r) => [String(r.reopenOf), String(r.id)]));
   const rows = list.map(/** @returns {UiViewRow} */ (report) => {
     const f = supportFacts(report);
     const warranty = supportWarranty(report);
@@ -288,7 +293,7 @@ function supportTabModel(tab) {
             { label: "Opened", value: f.opened ? supportWhen(f.opened) : uiDate(String(report.startDate || "")), sub: f.age !== null && !resolvedTab ? `${SupportRules.duration(f.age)} ago` : "" },
             { label: "First response", value: f.responseTook !== null ? SupportRules.duration(f.responseTook) : f.tracked ? "No response yet" : "Not tracked", sub: f.responseOnTime === false ? "Late" : f.responseOnTime ? "On time" : f.tracked ? `Due ${supportWhen(f.respondBy)}` : "" },
             resolvedTab ? { label: "Time to fix", value: f.timeToFix === null ? "—" : SupportRules.duration(f.timeToFix), sub: f.closedAt ? `Closed ${supportWhen(f.closedAt)}` : "" } : { label: "Response target", value: SUPPORT_SLA[f.sla].label, sub: f.visitAt ? `Visit ${supportWhen(f.visitAt)}` : "" },
-            ...(report.reopenOf ? [{ label: "Came back from", value: String(report.reopenOf), sub: "Same unit, within 30 days", mono: true }] : []),
+            ...(report.reopenOf && SupportRules.serialKey(report.serialNo) && SupportRules.serialKey(report.serialNo) === SupportRules.serialKey(supportReport(String(report.reopenOf))?.serialNo) ? [{ label: "Came back from", value: String(report.reopenOf), sub: "Same unit, within 30 days", mono: true }] : []),
           ],
           linesTitle: "Timeline",
           lines: supportTimeline(report),
