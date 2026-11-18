@@ -1097,12 +1097,12 @@ test("receivables keep an invoice until its collection is deposited", async ({ p
     payment.collectionStatus = "Posted Date";
     const pdc = find();
     const soaPdc = document.createElement("div"); soaPdc.innerHTML = soaHtml("Deposit Test Clinic");
-    const pdcBold = soaPdc.querySelector(".soa-pdc-row")?.textContent?.includes("SI-RCV-1") ?? false;
+    const pdcBold = (soaPdc.querySelector(".soa-pdc-row")?.textContent?.includes("SI-RCV-1") ?? false) && Boolean(soaPdc.querySelector(".soa-meta .soa-pdc-note"));
     payment.collectionStatus = "Deposited";
     const after = find();
     const soaAfter = document.createElement("div"); soaAfter.innerHTML = soaHtml("Deposit Test Clinic");
     return { before: before?.total, undeposited: before?.invoices[0]?.undeposited, pdc: pdc?.total, after: after?.total ?? null,
-      soaListsInvoice: soaText.includes("SI-RCV-1") && soaText.includes("not yet deposited") && !soaText.includes("Amount due"),
+      soaListsInvoice: soaText.includes("SI-RCV-1") && !soaText.includes("Less:") && !soaText.includes("Amount due") && !soaText.includes("post-dated checks"),
       soaAfterDeposit: (soaAfter.textContent || "").includes("No open invoices"), pdcBold, forDepositNotBold: !soa.querySelector(".soa-pdc-row") };
   });
   expect(result).toEqual({ before: 1000, undeposited: 1000, pdc: 1000, after: null, soaListsInvoice: true, soaAfterDeposit: true, pdcBold: true, forDepositNotBold: true });
@@ -1114,7 +1114,7 @@ test("receivables keep an invoice until its collection is deposited", async ({ p
     data.payments.push({ id: "P-A", invoice: "SI-9128", client: "Partial Clinic", receiptNo: "CR-A", method: "Cash", amount: 27589, collectionStatus: "For Deposit" });
     data.payments.push({ id: "P-B", invoice: "SI-9128", client: "Partial Clinic", receiptNo: "CR-B", method: "Cash", amount: 13794.5, collectionStatus: "For Deposit", appliedToInvoice: true });
     const box = document.createElement("div"); box.innerHTML = soaHtml("Partial Clinic");
-    const less = [...box.querySelectorAll(".soa-less-row")].map((row) => row.cells[2].textContent);
+    const less = box.querySelectorAll(".soa-less-row").length;
     const totals = [...box.querySelectorAll(".soa-total-row")].map((row) => row.cells[2].textContent);
     const plainRow = !box.querySelector(".soa-pdc-row");
     // A For Deposit check dated next month counts as post-dated too.
@@ -1122,6 +1122,6 @@ test("receivables keep an invoice until its collection is deposited", async ({ p
     box.innerHTML = soaHtml("Partial Clinic");
     return { less, totals, receivables: receivablesByClient().find((entry) => entry.client === "Partial Clinic")?.total, plainRow, futureCheckBold: box.querySelector(".soa-pdc-row")?.textContent?.includes("SI-9128") ?? false };
   });
-  expect(partial).toEqual({ less: ["(13,794.50)"], totals: ["27,589.00"], receivables: 27589, plainRow: true, futureCheckBold: true });
+  expect(partial).toEqual({ less: 0, totals: ["27,589.00"], receivables: 27589, plainRow: true, futureCheckBold: true });
   expect(problems).toEqual([]);
 });
