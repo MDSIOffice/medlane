@@ -5367,11 +5367,13 @@ const FOLLOWUP_TONES = /** @type {Record<string, UiTone>} */ ({ Pending: "slate"
 
 /**
  * Open receivables grouped by client, aged from each invoice's due date.
- * @returns {{ client: string, area: string, invoices: { sale: Sale, doc: string, balance: number, due: string, days: number, bucket: number }[], amounts: number[], total: number, overdue: number, risk: string, bounced: Payment[], pdc: Payment[], lastPayment: string, branches: string[] }[]}
+ * @returns {{ client: string, area: string, invoices: { sale: Sale, doc: string, balance: number, undeposited: number, due: string, days: number, bucket: number }[], amounts: number[], total: number, overdue: number, risk: string, bounced: Payment[], pdc: Payment[], lastPayment: string, branches: string[] }[]}
  */
 function receivablesByClient() {
   const canViewAll = ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role);
-  const open = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && salesBalance(sale) > 0.005 && (canViewAll || isClientAssignedToCurrentUser(sale.client)));
+  const awaiting = receivablesAwaitingDeposit();
+  const balanceOf = (/** @type {Sale} */ sale) => receivablesBalance(sale, awaiting);
+  const open = byBranch(data.sales, "area").filter((sale) => sale.status !== "Cancelled" && balanceOf(sale) > 0.005 && (canViewAll || isClientAssignedToCurrentUser(sale.client)));
   /** @type {Map<string, Sale[]>} */
   const grouped = new Map();
   open.forEach((sale) => grouped.set(sale.client, [...(grouped.get(sale.client) || []), sale]));
@@ -5379,7 +5381,7 @@ function receivablesByClient() {
     const invoices = sales.map((sale) => {
       const due = salesDueDate(sale);
       const days = -moduleDaysFromToday(due);
-      return { sale, doc: salesDocNo(sale), balance: salesBalance(sale), due, days, bucket: AGING_BUCKETS.findIndex((bucket) => bucket.test(days)) };
+      return { sale, doc: salesDocNo(sale), balance: balanceOf(sale), undeposited: Math.min(awaiting.get(sale) || 0, balanceOf(sale)), due, days, bucket: AGING_BUCKETS.findIndex((bucket) => bucket.test(days)) };
     }).sort((a, b) => b.days - a.days);
     const amounts = AGING_BUCKETS.map((_, index) => invoices.filter((invoice) => invoice.bucket === index).reduce((sum, invoice) => sum + invoice.balance, 0));
     const total = amounts.reduce((sum, amount) => sum + amount, 0);
@@ -5391,6 +5393,26 @@ function receivablesByClient() {
     const risk = amounts[4] > 0 || bounced.length ? "risk" : amounts[3] > 0 ? "escalate" : overdue > 0.005 ? "follow" : "ok";
     return { client, area: sales[0]?.area || "", invoices, amounts, total, overdue, risk, bounced, pdc, lastPayment, branches: [...new Set(sales.flatMap(salesBranches))] };
   });
+}
+/**
+ * Collected but not yet deposited, per invoice: saved collections that are For Deposit or
+ * post-dated. Saving a collection already counts it as paid on the invoice, but Receivables keeps
+ * the invoice open until the money is marked Deposited.
+ * @returns {Map<Sale, number>}
+ */
+function receivablesAwaitingDeposit() {
+  /** @type {Map<Sale, number>} */
+  const out = new Map();
+  for (const payment of data.payments) {
+    if (payment.voided || payment.appliedToInvoice === false || !["For Deposit", "Posted Date"].includes(String(payment.collectionStatus || ""))) continue;
+    const sale = saleForPayment(payment);
+    if (sale) out.set(sale, (out.get(sale) || 0) + Number(payment.amount || 0));
+  }
+  return out;
+}
+/** What Receivables still counts as owed: the balance plus collections not yet deposited. @param {Sale} sale @param {Map<Sale, number>} awaiting */
+function receivablesBalance(sale, awaiting) {
+  return Math.min(salesBalance(sale) + (awaiting.get(sale) || 0), Math.max(Number(sale.net || 0), salesBalance(sale)));
 }
 /** ISO date from a stored date string, or "" when it can't be read. @param {unknown} value */
 function fmtDateSafe(value) {
@@ -5409,7 +5431,7 @@ function receivablesTabModel(tab) {
   const clients = receivablesByClient();
   const invoiceLines = (/** @type {ReturnType<typeof receivablesByClient>[number]} */ entry, limit = 12) => [...entry.invoices.slice(0, limit).map(/** @returns {UiLine} */ (invoice) => ({
     left: invoice.doc,
-    sub: invoice.days > 0 ? `${invoice.days} ${invoice.days === 1 ? "day" : "days"} overdue · due ${uiDate(invoice.due)}` : invoice.days === 0 ? "Due today" : `Due ${uiDate(invoice.due)}`,
+    sub: `${invoice.days > 0 ? `${invoice.days} ${invoice.days === 1 ? "day" : "days"} overdue · due ${uiDate(invoice.due)}` : invoice.days === 0 ? "Due today" : `Due ${uiDate(invoice.due)}`}${invoice.undeposited > 0.005 ? ` · ${peso.format(invoice.undeposited)} collected, awaiting deposit` : ""}`,
     right: peso.format(invoice.balance),
     tone: AGING_BUCKETS[invoice.bucket]?.tone || "slate",
   })), ...(entry.invoices.length > limit ? [/** @type {UiLine} */ ({ left: `+${entry.invoices.length - limit} more open invoices`, sub: `${peso.format(entry.invoices.slice(limit).reduce((sum, invoice) => sum + invoice.balance, 0))} · see View invoices`, tone: "slate" })] : [])];

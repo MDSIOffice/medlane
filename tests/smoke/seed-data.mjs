@@ -51,7 +51,8 @@ function supportTickets() {
 
 function baseData() {
   const today = new Date();
-  const day = (offset) => new Date(today.getTime() + offset * 86400000).toISOString().slice(0, 10);
+  // Manila dates, like the app: UTC dates are a day behind between 00:00 and 08:00 Manila.
+  const day = (offset) => new Date(today.getTime() + 8 * 3600000 + offset * 86400000).toISOString().slice(0, 10);
   const line = { item: "Glucose Reagent", code: "GLU-1", brand: "Medlane", qty: 2, uom: "box", price: 1500, sourceBranch: "Las Pinas", branch: "Las Pinas", lot: "L100", expiry: day(300) };
   return {
     clients: [
@@ -96,7 +97,7 @@ function baseData() {
     ],
     warrantySettings: [{ id: "warranty-settings", pmMonths: { VEDA8900: 6 }, defaultPmMonths: 3 }],
     calendarEvents: [
-      { id: "EVT-standup", title: "Weekly ops meeting", date: day(1), time: "08:30", type: "internal", note: "Conference room", createdBy: "Fake Superadmin", createdByUser: "superadmin@medlane.test", createdByRole: "Superadmin", createdAt: day(-2) },
+      { id: "EVT-standup", title: "Weekly ops meeting", date: day(0), time: "08:30", type: "internal", note: "Conference room", createdBy: "Fake Superadmin", createdByUser: "superadmin@medlane.test", createdByRole: "Superadmin", createdAt: day(-2) },
       { id: "EVT-visit", title: "Visit: Sample Lab C · Zybio Z5 (TSR-0142)", date: day(2), time: "09:00", type: "service", source: "support-visit", sourceId: "TSR-0142", module: "product-issues", branch: "Naga", assigneeEmail: "engineer2@medlane.test", assigneeName: "Engineer 2", createdBy: "Fake Superadmin", createdByUser: "superadmin@medlane.test", createdAt: day(-1) },
       { id: "EVT-pm", title: "PM: Sample Diagnostic D · Zybio EXU 500 (EXU-2501-00977)", date: day(2), time: "10:00", type: "service", source: "warranty-pm", sourceId: "EXU-2501-00977", module: "warranty", branch: "Naga", assigneeEmail: "engineer2@medlane.test", assigneeName: "Engineer 2", createdBy: "Fake Superadmin", createdByUser: "superadmin@medlane.test", createdAt: day(-1) },
       { id: "EVT-delivery", title: "Deliver reagents to Naga City Lab", date: day(3), time: "13:00", type: "deliveries", branch: "Naga", createdBy: "Fake Superadmin", createdByUser: "superadmin@medlane.test", createdAt: day(-1) },

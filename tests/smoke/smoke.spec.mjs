@@ -1081,3 +1081,23 @@ test("Calendar: people only see events for their modules and branch", async ({ p
   await expect(panel).not.toContainText("Office rent due");
   expect(problems).toEqual([]);
 });
+
+test("receivables keep an invoice until its collection is deposited", async ({ page }) => {
+  const { problems } = await watch(page);
+  await logIn(page);
+  await page.goto("/dashboard?section=receivables-tracker");
+  const result = await page.evaluate(() => {
+    const sale = { id: "SI-RCV-1", documentNo: "SI-RCV-1", client: "Deposit Test Clinic", area: data.sales[0]?.area || "", type: "SI", date: "2026-11-01", terms: 30, net: 1000, paid: 1000, status: "Paid" };
+    const payment = { id: "PMT-RCV-1", invoice: "SI-RCV-1", client: "Deposit Test Clinic", receiptNo: "CR-RCV-1", amount: 1000, collectionStatus: "For Deposit", appliedToInvoice: true };
+    data.sales.push(sale); data.payments.push(payment);
+    const find = () => receivablesByClient().find((entry) => entry.client === "Deposit Test Clinic");
+    const before = find();
+    payment.collectionStatus = "Posted Date";
+    const pdc = find();
+    payment.collectionStatus = "Deposited";
+    const after = find();
+    return { before: before?.total, undeposited: before?.invoices[0]?.undeposited, pdc: pdc?.total, after: after?.total ?? null };
+  });
+  expect(result).toEqual({ before: 1000, undeposited: 1000, pdc: 1000, after: null });
+  expect(problems).toEqual([]);
+});
