@@ -3703,7 +3703,10 @@ body[data-active-section="masterlists"] .topbar-title,
 body[data-active-section="user-settings"] .topbar-title,
 body[data-active-section="notifications"] .topbar-title,
 body[data-active-section="activity-log"] .topbar-title,
-body[data-active-section="product-issues"] .topbar-title, body[data-active-section="warranty"] .topbar-title { display: none; }
+body[data-active-section="product-issues"] .topbar-title, body[data-active-section="warranty"] .topbar-title,
+body[data-active-section="users"] .topbar-title, body[data-active-section="calendar"] .topbar-title { display: none; }
+/* Any page that draws its own header hides the old one, so the title never shows twice. */
+body:has(.section.active .ui-page-header) .topbar-title { display: none; }
 .ui-scope .logs-notifications { display: grid; gap: 16px; }
 .ui-scope .ui-client-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; }
 .ui-scope .ui-client-picker .ui-select { min-width: 0; max-width: 100%; }
