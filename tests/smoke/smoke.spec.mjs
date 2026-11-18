@@ -1116,8 +1116,12 @@ test("receivables keep an invoice until its collection is deposited", async ({ p
     const box = document.createElement("div"); box.innerHTML = soaHtml("Partial Clinic");
     const less = [...box.querySelectorAll(".soa-less-row")].map((row) => row.cells[2].textContent);
     const totals = [...box.querySelectorAll(".soa-total-row")].map((row) => row.cells[2].textContent);
-    return { less, totals, receivables: receivablesByClient().find((entry) => entry.client === "Partial Clinic")?.total };
+    const plainRow = !box.querySelector(".soa-pdc-row");
+    // A For Deposit check dated next month counts as post-dated too.
+    data.payments.find((p) => p.id === "P-B").chequeDate = "2099-01-01";
+    box.innerHTML = soaHtml("Partial Clinic");
+    return { less, totals, receivables: receivablesByClient().find((entry) => entry.client === "Partial Clinic")?.total, plainRow, futureCheckBold: box.querySelector(".soa-pdc-row")?.textContent?.includes("SI-9128") ?? false };
   });
-  expect(partial).toEqual({ less: ["(13,794.50)"], totals: ["27,589.00"], receivables: 27589 });
+  expect(partial).toEqual({ less: ["(13,794.50)"], totals: ["27,589.00"], receivables: 27589, plainRow: true, futureCheckBold: true });
   expect(problems).toEqual([]);
 });

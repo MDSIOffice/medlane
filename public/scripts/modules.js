@@ -7502,8 +7502,11 @@ function soaHtml(client) {
   const invoices = data.sales.filter((sale) => sale.client === client && sale.status !== "Cancelled" && receivablesBalance(sale, awaiting) > 0.005).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
   const totalBalance = invoices.reduce((sum, sale) => sum + receivablesBalance(sale, awaiting), 0);
   const pending = invoices.flatMap((sale) => awaiting.get(sale)?.payments || []);
-  // Invoices with a post-dated check on hand are printed bold orange.
-  const withPdc = new Set(pending.filter(({ payment }) => payment.collectionStatus === "Posted Date").map(({ payment }) => saleForPayment(payment)));
+  // Invoices with a post-dated check on hand (marked Posted Date, or a check dated after today)
+  // are printed bold orange.
+  const manilaToday = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+  const isPostDated = (/** @type {Payment} */ payment) => payment.collectionStatus === "Posted Date" || String(payment.chequeDate || payment.postedDate || "").slice(0, 10) > manilaToday;
+  const withPdc = new Set(pending.filter(({ payment }) => isPostDated(payment)).map(({ payment }) => saleForPayment(payment)));
   const shortDate = (/** @type {any} */ value) => {
     const parsed = value instanceof Date ? value : new Date(`${value}T00:00:00`);
     if (Number.isNaN(parsed.getTime())) return "-";
