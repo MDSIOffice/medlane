@@ -1096,13 +1096,28 @@ test("receivables keep an invoice until its collection is deposited", async ({ p
     const soaText = soa.textContent || "";
     payment.collectionStatus = "Posted Date";
     const pdc = find();
+    const soaPdc = document.createElement("div"); soaPdc.innerHTML = soaHtml("Deposit Test Clinic");
+    const pdcBold = soaPdc.querySelector(".soa-pdc-row")?.textContent?.includes("SI-RCV-1") ?? false;
     payment.collectionStatus = "Deposited";
     const after = find();
     const soaAfter = document.createElement("div"); soaAfter.innerHTML = soaHtml("Deposit Test Clinic");
     return { before: before?.total, undeposited: before?.invoices[0]?.undeposited, pdc: pdc?.total, after: after?.total ?? null,
-      soaListsInvoice: soaText.includes("SI-RCV-1") && soaText.includes("not yet deposited") && /Amount due[^0-9]*0\.00/.test(soaText),
-      soaAfterDeposit: (soaAfter.textContent || "").includes("No open invoices") };
+      soaListsInvoice: soaText.includes("SI-RCV-1") && soaText.includes("not yet deposited") && !soaText.includes("Amount due"),
+      soaAfterDeposit: (soaAfter.textContent || "").includes("No open invoices"), pdcBold, forDepositNotBold: !soa.querySelector(".soa-pdc-row") };
   });
-  expect(result).toEqual({ before: 1000, undeposited: 1000, pdc: 1000, after: null, soaListsInvoice: true, soaAfterDeposit: true });
+  expect(result).toEqual({ before: 1000, undeposited: 1000, pdc: 1000, after: null, soaListsInvoice: true, soaAfterDeposit: true, pdcBold: true, forDepositNotBold: true });
+
+  // A partial payment plus a stray full-amount record on the same invoice: only what the invoice
+  // counted as paid is taken off, so the SOA shows the invoice, one Less line and the true balance.
+  const partial = await page.evaluate(() => {
+    data.sales.push({ id: "SI-9128", documentNo: "SI-9128", client: "Partial Clinic", area: data.sales[0]?.area || "", type: "SI", date: "2026-11-12", terms: 30, net: 27589, paid: 13794.5, status: "Partially Paid" });
+    data.payments.push({ id: "P-A", invoice: "SI-9128", client: "Partial Clinic", receiptNo: "CR-A", method: "Cash", amount: 27589, collectionStatus: "For Deposit" });
+    data.payments.push({ id: "P-B", invoice: "SI-9128", client: "Partial Clinic", receiptNo: "CR-B", method: "Cash", amount: 13794.5, collectionStatus: "For Deposit", appliedToInvoice: true });
+    const box = document.createElement("div"); box.innerHTML = soaHtml("Partial Clinic");
+    const less = [...box.querySelectorAll(".soa-less-row")].map((row) => row.cells[2].textContent);
+    const totals = [...box.querySelectorAll(".soa-total-row")].map((row) => row.cells[2].textContent);
+    return { less, totals, receivables: receivablesByClient().find((entry) => entry.client === "Partial Clinic")?.total };
+  });
+  expect(partial).toEqual({ less: ["(13,794.50)"], totals: ["27,589.00"], receivables: 27589 });
   expect(problems).toEqual([]);
 });
