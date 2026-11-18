@@ -7468,11 +7468,14 @@ function printClientInvoicesReport() {
 /** @param {string} client */
 function soaHtml(client) {
   const clientRecord = data.clients.find((item) => item.name === client) || /** @type {Record<string, any>} */ ({});
-  // An invoice whose collection is marked "Posted Date" is already settled by a dated cheque in
-  // hand — it's awaiting the claim date, not the client, so it must not be billed again on the SOA.
-  const postedDateInvoices = new Set(data.payments.filter((payment) => payment.collectionStatus === "Posted Date").map((payment) => saleForPayment(payment)).filter(Boolean));
-  const invoices = data.sales.filter((sale) => sale.client === client && !postedDateInvoices.has(sale) && Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0) > 0).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-  const totalBalance = invoices.reduce((sum, sale) => sum + Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0), 0);
+  // Same open invoices and amounts as Receivables: a collection only settles an invoice once it is
+  // deposited. Cheques already received but not yet deposited (For Deposit / post-dated) are listed
+  // as "Less:" lines so the client isn't asked to pay them twice.
+  const awaiting = receivablesAwaitingDeposit();
+  const invoices = data.sales.filter((sale) => sale.client === client && sale.status !== "Cancelled" && receivablesBalance(sale, awaiting) > 0.005).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const totalBalance = invoices.reduce((sum, sale) => sum + receivablesBalance(sale, awaiting), 0);
+  const pending = data.payments.filter((payment) => !payment.voided && payment.appliedToInvoice !== false && ["For Deposit", "Posted Date"].includes(String(payment.collectionStatus || "")) && invoices.includes(/** @type {Sale} */ (saleForPayment(payment))));
+  const pendingTotal = pending.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const shortDate = (/** @type {any} */ value) => {
     const parsed = value instanceof Date ? value : new Date(`${value}T00:00:00`);
     if (Number.isNaN(parsed.getTime())) return "-";
@@ -7482,11 +7485,16 @@ function soaHtml(client) {
     const invoiceDate = new Date(`${sale.date}T00:00:00`);
     const soaDate = new Date(`${fmtDate(today)}T00:00:00`);
     const daysDue = Number.isNaN(invoiceDate.getTime()) ? 0 : Math.max(0, Math.floor((soaDate.getTime() - invoiceDate.getTime()) / 86400000));
-    const balance = Math.max(Number(sale.net || 0) - Number(sale.paid || 0), 0);
+    const balance = receivablesBalance(sale, awaiting);
     return `<tr><td>${escapeHtml(shortDate(sale.date))}</td><td>${escapeHtml(sale.documentNo || sale.id)}</td><td>${peso.format(balance).replace("₱", "")}</td><td>${daysDue}</td></tr>`;
   });
-  const blankRows = Array.from({ length: Math.max(0, 13 - rows.length) }, () => `<tr class="soa-blank-row"><td>&nbsp;</td><td></td><td></td><td></td></tr>`).join("");
-  return `<section class="soa-print"><header><img src="medlane.jpg" alt="Medlane Diagnostic Solutions" /><h1>Statement of Account</h1></header><div class="soa-meta"><div><span>Account Name:</span><strong>${escapeHtml(client)}</strong></div><div><span>Terms:</span><strong>${escapeHtml(`${Number(clientRecord.terms || 30)} Days`)}</strong></div><div><span>Address:</span><strong>${escapeHtml(clientRecord.address || "No address recorded")}</strong></div><div><span>TIN No.:</span><strong>${escapeHtml(clientRecord.tin || "")}</strong></div><div><span>SOA Date:</span><strong>${escapeHtml(shortDate(today))}</strong></div></div><table><thead><tr><th>Date</th><th>Reference Number</th><th>Amount</th><th>Days Due</th></tr></thead><tbody>${rows.join("") || `<tr><td colspan="4">No open invoices.</td></tr>`}${blankRows}<tr class="soa-total-row"><td></td><td>Total</td><td>${peso.format(totalBalance).replace("₱", "")}</td><td></td></tr></tbody></table><div class="soa-notes"><p>Should there be any discrepancies, you may reach us through our company's contact number.</p><p>We respectfully request that all <strong>overdue accounts</strong>, if any, be settled immediately to <strong>avoid delays in your future orders and transactions.</strong> Kindly make all checks payable to <strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong></p><p>Please note that any payments and/or orders made <strong>after this billing date</strong> may not yet be reflected in this SOA. If payment has already been made, kindly disregard this notice.</p><p>Thank you very much.</p></div><div class="soa-signature"><p>Very truly yours,</p><strong>${escapeHtml(currentUser?.name || "Jessica Berry")}</strong><span>Accounting Staff</span><span>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</span></div><footer>MEDLANE DIAGNOSTIC SOLUTIONS, INC.<br />13 Gumamela St. Pilar Village, Las Piñas<br />Las Piñas City 1740<br />Tel. No. (02) 8836-2853 Email: receivables.mdsi@gmail.com</footer></section>`;
+  pending.forEach((payment) => {
+    const cheque = [payment.chequeNo ? `Check #${payment.chequeNo}` : String(payment.method || "Payment"), payment.bank].filter(Boolean).join(" ");
+    const dated = payment.postedDate || payment.chequeDate;
+    rows.push(`<tr class="soa-less-row"><td>${dated ? escapeHtml(shortDate(String(dated).slice(0, 10))) : ""}</td><td>Less: ${escapeHtml(cheque)} for ${escapeHtml(payment.invoice || "")} received, not yet deposited</td><td>(${peso.format(Number(payment.amount || 0)).replace("₱", "")})</td><td></td></tr>`);
+  });
+  const blankRows = Array.from({ length: Math.max(0, (pending.length ? 12 : 13) - rows.length) }, () => `<tr class="soa-blank-row"><td>&nbsp;</td><td></td><td></td><td></td></tr>`).join("");
+  return `<section class="soa-print"><header><img src="medlane.jpg" alt="Medlane Diagnostic Solutions" /><h1>Statement of Account</h1></header><div class="soa-meta"><div><span>Account Name:</span><strong>${escapeHtml(client)}</strong></div><div><span>Terms:</span><strong>${escapeHtml(`${Number(clientRecord.terms || 30)} Days`)}</strong></div><div><span>Address:</span><strong>${escapeHtml(clientRecord.address || "No address recorded")}</strong></div><div><span>TIN No.:</span><strong>${escapeHtml(clientRecord.tin || "")}</strong></div><div><span>SOA Date:</span><strong>${escapeHtml(shortDate(today))}</strong></div></div><table><thead><tr><th>Date</th><th>Reference Number</th><th>Amount</th><th>Days Due</th></tr></thead><tbody>${rows.join("") || `<tr><td colspan="4">No open invoices.</td></tr>`}${blankRows}<tr class="soa-total-row"><td></td><td>${pending.length ? "Total open" : "Total"}</td><td>${peso.format(totalBalance).replace("₱", "")}</td><td></td></tr>${pending.length ? `<tr class="soa-total-row"><td></td><td>Amount due (after checks on hand)</td><td>${peso.format(Math.max(totalBalance - pendingTotal, 0)).replace("₱", "")}</td><td></td></tr>` : ""}</tbody></table><div class="soa-notes"><p>Should there be any discrepancies, you may reach us through our company's contact number.</p><p>We respectfully request that all <strong>overdue accounts</strong>, if any, be settled immediately to <strong>avoid delays in your future orders and transactions.</strong> Kindly make all checks payable to <strong>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</strong></p><p>Please note that any payments and/or orders made <strong>after this billing date</strong> may not yet be reflected in this SOA. If payment has already been made, kindly disregard this notice.</p><p>Thank you very much.</p></div><div class="soa-signature"><p>Very truly yours,</p><strong>${escapeHtml(currentUser?.name || "Jessica Berry")}</strong><span>Accounting Staff</span><span>MEDLANE DIAGNOSTIC SOLUTIONS, INC.</span></div><footer>MEDLANE DIAGNOSTIC SOLUTIONS, INC.<br />13 Gumamela St. Pilar Village, Las Piñas<br />Las Piñas City 1740<br />Tel. No. (02) 8836-2853 Email: receivables.mdsi@gmail.com</footer></section>`;
 }
 
 /** @param {string} client */

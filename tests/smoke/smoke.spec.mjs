@@ -1092,12 +1092,17 @@ test("receivables keep an invoice until its collection is deposited", async ({ p
     data.sales.push(sale); data.payments.push(payment);
     const find = () => receivablesByClient().find((entry) => entry.client === "Deposit Test Clinic");
     const before = find();
+    const soa = document.createElement("div"); soa.innerHTML = soaHtml("Deposit Test Clinic");
+    const soaText = soa.textContent || "";
     payment.collectionStatus = "Posted Date";
     const pdc = find();
     payment.collectionStatus = "Deposited";
     const after = find();
-    return { before: before?.total, undeposited: before?.invoices[0]?.undeposited, pdc: pdc?.total, after: after?.total ?? null };
+    const soaAfter = document.createElement("div"); soaAfter.innerHTML = soaHtml("Deposit Test Clinic");
+    return { before: before?.total, undeposited: before?.invoices[0]?.undeposited, pdc: pdc?.total, after: after?.total ?? null,
+      soaListsInvoice: soaText.includes("SI-RCV-1") && soaText.includes("not yet deposited") && /Amount due[^0-9]*0\.00/.test(soaText),
+      soaAfterDeposit: (soaAfter.textContent || "").includes("No open invoices") };
   });
-  expect(result).toEqual({ before: 1000, undeposited: 1000, pdc: 1000, after: null });
+  expect(result).toEqual({ before: 1000, undeposited: 1000, pdc: 1000, after: null, soaListsInvoice: true, soaAfterDeposit: true });
   expect(problems).toEqual([]);
 });
