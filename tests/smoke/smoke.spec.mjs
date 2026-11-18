@@ -833,7 +833,7 @@ test("Support Tracker: overview, the breached ticket first, assign the branch en
   await expect(detail).toContainText("No response yet");
 
   // Assign: the branch engineer is suggested.
-  await detail.getByRole("button", { name: "Assign engineer" }).click();
+  await detail.getByRole("button", { name: "Assign Engineer / APS" }).click();
   const dialog = page.locator("dialog.sup-dialog");
   await expect(dialog.locator("#sup-engineer option:checked")).toContainText("Engineer 1 · Las Piñas");
   await expect(dialog.locator("#sup-engineer option:checked")).toContainText("(suggested)");
@@ -870,8 +870,9 @@ test("Support Tracker: scheduling a visit puts it on the Calendar; resolved tick
   expect(ticket.visitEventIds).toHaveLength(1);
 
   await page.locator("#support-tabs").getByRole("tab", { name: /^Engineers/ }).click();
-  await expect(panel.locator("tbody tr")).toHaveCount(2);
+  await expect(panel.locator("tbody tr")).toHaveCount(3);
   await expect(panel).toContainText("Engineer 2");
+  await expect(panel).toContainText("Pia Santos (APS)");
   await page.locator("#support-tabs").getByRole("tab", { name: /^Resolved/ }).click();
   await expect(panel.locator("tbody tr", { hasText: "TSR-0136" })).toContainText("Came back as TSR-0142");
   expect(problems).toEqual([]);
@@ -882,13 +883,15 @@ test("Support Tracker: a new ticket gets a priority, a type and the client's bra
   const saves = captureSaves(page);
   await logIn(page, "superadmin@medlane.test");
   await page.goto("/dashboard?section=product-issues&tab=engineers");
-  await expect(page.locator("#support-tab-panel tbody tr")).toHaveCount(2); // engineers loaded
+  await expect(page.locator("#support-tab-panel tbody tr")).toHaveCount(3); // engineers and the APS loaded
   await page.locator("#support-actions").getByRole("button", { name: "New ticket" }).click();
   const form = page.locator("#demo-modal");
   await expect(form.locator("#priority option:checked")).toHaveText(/^Medium/);
   await form.locator("#companyName").fill("Naga City Lab");
   await form.locator("#companyName").dispatchEvent("change");
-  await expect(form.locator("#engineerPick option:checked")).toHaveText("Engineer 2 · Naga");
+  await expect(form.locator("#engineerPick option:checked")).toHaveText("Engineer 2 · Naga"); // suggested: an engineer, not the APS
+  await expect(form.locator('label[for="engineerPick"]')).toHaveText(/Engineer \/ APS/);
+  await expect(form.locator("#engineerPick option", { hasText: "Pia Santos (APS) · Naga" })).toHaveCount(1);
   await form.locator("#priority").selectOption({ index: 0 });
   await form.locator("#issueType").selectOption("Hardware");
   await form.locator("#address").fill("Naga City");

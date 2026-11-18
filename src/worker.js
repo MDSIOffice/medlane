@@ -6386,8 +6386,8 @@ export default {
       if (url.pathname === "/api/support/engineers" && request.method === "GET") {
         const { profile } = await authenticatedProfile(request, env);
         if (!canAccessKey(profile, "productIssues", "view")) return json({ error: "You do not have access to the Support Tracker" }, { status: 403 });
-        const rows = await supabaseFetch(env, `/rest/v1/profiles?role=eq.Engineering&select=id,email,full_name,branch&order=full_name.asc`);
-        const engineers = (Array.isArray(rows) ? rows : []).filter((row) => row.email).map((row) => ({ id: row.id, email: String(row.email).toLowerCase(), name: String(row.full_name || row.email), branch: row.branch && row.branch !== "all" ? String(row.branch) : "" }));
+        const rows = await supabaseFetch(env, `/rest/v1/profiles?role=in.(Engineering,${encodeURIComponent('"Product Specialist"')})&select=id,email,full_name,branch,role&order=full_name.asc`);
+        const engineers = (Array.isArray(rows) ? rows : []).filter((row) => row.email).map((row) => ({ id: row.id, email: String(row.email).toLowerCase(), name: String(row.full_name || row.email), role: String(row.role || "Engineering"), branch: row.branch && row.branch !== "all" ? String(row.branch) : "" }));
         return json({ engineers });
       }
 

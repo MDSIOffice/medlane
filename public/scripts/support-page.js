@@ -22,7 +22,7 @@ const SUPPORT_TYPE_TONES = /** @type {Record<string, UiTone>} */ ({ Hardware: "r
 function supportQueryString() { return moduleViewQueryString("product-issues", supportTab, "overview", supportView); }
 
 // ----- engineers ---------------------------------------------------------------------------------
-/** @type {{ email: string, name: string, branch: string }[] | null} */
+/** Engineering and Product Specialist (APS) users. @type {{ email: string, name: string, branch: string, role?: string }[] | null} */
 let supportEngineersCache = null;
 let supportEngineersLoading = false;
 function loadSupportEngineers() {
@@ -40,7 +40,11 @@ function loadSupportEngineers() {
 /** The saved support settings record (response targets, engineers' home branches). */
 function supportSettings() { return /** @type {any} */ ((data.supportSettings || []).find((/** @type {any} */ r) => r.id === "support-settings") || { id: "support-settings" }); }
 function supportTargets() { return SupportRules.targetsFrom(supportSettings().targets); }
-/** Engineering users, each with a home branch (set here, else their profile's), plus anyone tickets name. */
+/** "Ana Cruz (APS)" for a Product Specialist, else the name. @param {{ name: string, role?: string }} person */
+function supportPersonName(person) { return person.role === "Product Specialist" ? `${person.name} (APS)` : person.name; }
+/** Engineers only (not APS): who new tickets and PM visits are suggested for. @param {ReturnType<typeof supportEngineers>} people */
+function supportFieldEngineers(people) { return people.filter((p) => p.role !== "Product Specialist"); }
+/** Engineering and Product Specialist users, each with a home branch (set here, else their profile's), plus anyone tickets name. */
 function supportEngineers() {
   const homes = /** @type {Record<string, string>} */ (supportSettings().engineerBranches || {});
   const list = (supportEngineersCache || []).map((e) => ({ ...e, branch: homes[e.email] || e.branch || "" }));
@@ -183,12 +187,12 @@ function supportTabModel(tab) {
         sortValues: { id: engineer.name, open: open.length, visits, response: response.avgResponse ?? Infinity, fix: firstFix.rate ?? -1 },
         csv: [engineer.name, engineer.branch, open.length, visits, response.avgResponse === null ? "" : SupportRules.duration(response.avgResponse), firstFix.rate === null ? "" : `${Math.round(firstFix.rate * 100)}%`],
         cells: [
-          uiCellDoc(engineer.name, select(engineer.email), supportBranchLabel(engineer.branch) || "No home branch", { plain: true }),
+          uiCellDoc(supportPersonName(engineer), select(engineer.email), supportBranchLabel(engineer.branch) || "No home branch", { plain: true }),
           breached ? `<span class="ui-num tone-red">${open.length}</span>` : uiCellNum(open.length), uiCellNum(visits),
           uiCellNum(response.avgResponse === null ? "—" : SupportRules.duration(response.avgResponse)), uiCellNum(firstFix.rate === null ? "—" : `${Math.round(firstFix.rate * 100)}%`),
         ],
         detail: () => ({
-          eyebrow: supportBranchLabel(engineer.branch) || "No home branch", title: engineer.name, pill: { text: `${open.length} open`, tone: breached ? "red" : "accent" }, closeAttrs, label: "Engineer workload",
+          eyebrow: supportBranchLabel(engineer.branch) || "No home branch", title: supportPersonName(engineer), pill: { text: `${open.length} open`, tone: breached ? "red" : "accent" }, closeAttrs, label: "Engineer workload",
           fields: [
             { label: "Avg first response", value: response.avgResponse === null ? "—" : SupportRules.duration(response.avgResponse), sub: "Last 90 days" },
             { label: "Fixed on first visit", value: firstFix.rate === null ? "—" : `${Math.round(firstFix.rate * 100)}%`, sub: "Last 90 days" },
@@ -280,7 +284,7 @@ function supportTabModel(tab) {
             { label: "Unit", value: supportUnit(report), sub: warranty.text, wide: true },
             { label: "Priority", value: SupportRules.PRIORITY_LABELS[f.priority], sub: SupportRules.PRIORITY_HINTS[f.priority] },
             { label: "Type", value: f.type },
-            { label: "Engineer", value: engineer || "Not assigned", sub: `With ${actor}` },
+            { label: "Engineer / APS", value: engineer || "Not assigned", sub: `With ${actor}` },
             { label: "Opened", value: f.opened ? supportWhen(f.opened) : uiDate(String(report.startDate || "")), sub: f.age !== null && !resolvedTab ? `${SupportRules.duration(f.age)} ago` : "" },
             { label: "First response", value: f.responseTook !== null ? SupportRules.duration(f.responseTook) : f.tracked ? "No response yet" : "Not tracked", sub: f.responseOnTime === false ? "Late" : f.responseOnTime ? "On time" : f.tracked ? `Due ${supportWhen(f.respondBy)}` : "" },
             resolvedTab ? { label: "Time to fix", value: f.timeToFix === null ? "—" : SupportRules.duration(f.timeToFix), sub: f.closedAt ? `Closed ${supportWhen(f.closedAt)}` : "" } : { label: "Response target", value: SUPPORT_SLA[f.sla].label, sub: f.visitAt ? `Visit ${supportWhen(f.visitAt)}` : "" },
@@ -291,7 +295,7 @@ function supportTabModel(tab) {
           note,
           actions: [
             ...(canAct ? [
-              uiButton(f.status === "New" ? "Assign engineer" : "Reassign", { "data-support-assign": report.id }, { primary: f.status === "New" }),
+              uiButton(f.status === "New" ? "Assign Engineer / APS" : "Reassign", { "data-support-assign": report.id }, { primary: f.status === "New" }),
               uiButton("Log reply / update", { "data-support-update": report.id }, { primary: f.status !== "New" }),
               uiButton("Schedule visit", { "data-support-visit": report.id }),
               uiButton("Resolve", { "data-product-issue-status": `${report.id}:Resolved` }),
@@ -439,21 +443,21 @@ async function supportAssign(id) {
   const report = supportReport(id);
   if (!report || !supportCanAct(report)) return toast("You can't change this ticket.");
   const engineers = supportEngineers();
-  if (!engineers.length) return toast(supportEngineersCache === null ? "Still loading the engineers. Try again in a moment." : "There are no Engineering users to assign. Invite one from Users first.");
+  if (!engineers.length) return toast(supportEngineersCache === null ? "Still loading the engineers. Try again in a moment." : "There are no Engineering or Product Specialist users to assign. Invite one from Users first.");
   const branch = supportBranch(report);
-  const suggested = SupportRules.defaultEngineer(engineers, branch, data.productIssues);
+  const suggested = SupportRules.defaultEngineer(supportFieldEngineers(engineers), branch, data.productIssues);
   const current = String(report.engineerEmail || suggested?.email || "");
   const load = (/** @type {string} */ email) => data.productIssues.filter((r) => SupportRules.statusOf(r) !== "Resolved" && String(r.engineerEmail || "").toLowerCase() === email).length;
   const values = await supportDialog({
-    kicker: `${report.id} · ${report.companyName}`, title: report.engineer ? "Reassign engineer" : "Assign engineer", confirm: "Assign",
-    body: supportSelectHtml("engineer", "Engineer", engineers.map((e) => ({ value: e.email, label: `${e.name}${e.branch ? ` · ${supportBranchLabel(e.branch)}` : ""} · ${plural(load(e.email), "open ticket")}${suggested?.email === e.email ? " (suggested)" : ""}` })), current)
-      + `<p class="field-help">The client is served from ${escapeHtml(supportBranchLabel(branch))}. Assigning passes the ticket to Engineering.</p>`,
+    kicker: `${report.id} · ${report.companyName}`, title: report.engineer ? "Reassign Engineer / APS" : "Assign Engineer / APS", confirm: "Assign",
+    body: supportSelectHtml("engineer", "Engineer / APS", engineers.map((e) => ({ value: e.email, label: `${supportPersonName(e)}${e.branch ? ` · ${supportBranchLabel(e.branch)}` : ""} · ${plural(load(e.email), "open ticket")}${suggested?.email === e.email ? " (suggested)" : ""}` })), current)
+      + `<p class="field-help">The client is served from ${escapeHtml(supportBranchLabel(branch))}. Assigning passes the ticket to Engineering, or to the Product Specialist if you pick an APS.</p>`,
   });
   if (!values) return;
   const engineer = engineers.find((e) => e.email === values.engineer);
   if (!engineer || engineer.email === String(report.engineerEmail || "").toLowerCase()) return;
   const status = SupportRules.statusOf(report) === "New" ? "Assigned" : SupportRules.statusOf(report);
-  await supportSave(report, { engineer: engineer.name, engineerEmail: engineer.email, ticketStatus: status, currentActor: "Engineering", branch }, { status, note: `Assigned to ${engineer.name}`, log: "Assigned support ticket" });
+  await supportSave(report, { engineer: engineer.name, engineerEmail: engineer.email, ticketStatus: status, currentActor: engineer.role === "Product Specialist" ? "Product Specialist" : "Engineering", branch }, { status, note: `Assigned to ${engineer.name}`, log: "Assigned support ticket" });
 }
 
 /** Log a reply to the client or an update; the first reply stops the response clock. @param {string} id */
@@ -551,7 +555,7 @@ function supportFormFields() {
   return [
     ["priority", "Priority", "select", () => SupportRules.PRIORITIES.map((p) => `${SupportRules.PRIORITY_LABELS[p]} — ${SupportRules.PRIORITY_HINTS[p].toLowerCase()}`)],
     ["issueType", "Ticket type", "select", () => SupportRules.TYPES],
-    ["engineerPick", "Engineer", "select", () => ["Not assigned yet", ...supportEngineers().map((e) => `${e.name}${e.branch ? ` · ${supportBranchLabel(e.branch)}` : ""}`)]],
+    ["engineerPick", "Engineer / APS", "select", () => ["Not assigned yet", ...supportEngineers().map((e) => `${supportPersonName(e)}${e.branch ? ` · ${supportBranchLabel(e.branch)}` : ""}`)]],
   ];
 }
 /** Pre-selects the branch engineer once a client is chosen (and medium priority on open). */
@@ -562,7 +566,7 @@ function supportFormDefaults() {
   if (!pick || pick.dataset.touched) return;
   const client = String(/** @type {HTMLInputElement | null} */ (qs("#companyName"))?.value || "");
   const engineers = supportEngineers();
-  const suggested = client ? SupportRules.defaultEngineer(engineers, SupportRules.clientBranch(client, { clients: data.clients, sales: data.sales }), data.productIssues) : null;
+  const suggested = client ? SupportRules.defaultEngineer(supportFieldEngineers(engineers), SupportRules.clientBranch(client, { clients: data.clients, sales: data.sales }), data.productIssues) : null;
   pick.selectedIndex = suggested ? engineers.findIndex((e) => e.email === suggested.email) + 1 : 0;
 }
 /** Turns the form's ticket fields into the record's. @param {Record<string, any>} values */

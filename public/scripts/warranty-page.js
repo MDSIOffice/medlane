@@ -477,7 +477,7 @@ async function warrantyEditUnit(unit) {
 /** Book a PM visit on the Calendar for the branch engineer. @param {Warranty} unit */
 async function warrantySchedulePm(unit) {
   if (!canEditWarranty()) return;
-  const engineers = supportEngineers();
+  const engineers = supportFieldEngineers(supportEngineers());
   const f = warrantyFacts(unit);
   const suggested = SupportRules.defaultEngineer(engineers, f.branch, data.productIssues);
   const day = warrantyToday();
