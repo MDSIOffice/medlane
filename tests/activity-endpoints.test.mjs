@@ -32,7 +32,9 @@ function fakeSupabase({ logs = /** @type {any[]} */ ([]), activity = /** @type {
     const [, col, not, op, raw] = m;
     const v = row[col];
     let ok;
-    if (op === "eq") ok = String(v ?? "") === raw;
+    // PostgREST unquotes a "double-quoted" value (used for emails inside or=() groups).
+    const unquoted = /^".*"$/.test(raw) ? raw.slice(1, -1).replace(/\\(.)/g, "$1") : raw;
+    if (op === "eq") ok = String(v ?? "") === unquoted;
     else if (op === "neq") ok = String(v ?? "") !== raw;
     else if (op === "in") ok = raw.replace(/^\(|\)$/g, "").split(",").map((x) => x.replace(/^"|"$/g, "")).includes(String(v));
     else if (op === "gte") ok = String(v) >= raw;

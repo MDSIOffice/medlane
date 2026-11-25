@@ -221,11 +221,9 @@ create trigger activity_log_no_truncate before truncate on activity_log
 
 alter table activity_log enable row level security;
 drop policy if exists "Users can read own activity" on activity_log;
-create policy "Users can read own activity" on activity_log for select using ((select auth.uid()) = user_id);
 
 revoke all on table activity_log from public, anon, authenticated, service_role;
 grant select, insert on table activity_log to service_role;
-grant select on table activity_log to authenticated;
 grant usage, select on sequence activity_log_id_seq to service_role;
 
 
@@ -323,38 +321,30 @@ alter table storage_usage enable row level security;
 alter table app_sessions enable row level security;
 alter table backup_runs enable row level security;
 
+-- No read policies and no anon/authenticated table grants: browsers never query PostgREST. The
+-- Worker reads and writes everything with the service_role key and applies the role, module,
+-- branch and memo-audience rules itself (see docs/migrations/2026-11-25-close-direct-table-reads.sql).
+
 drop policy if exists "Users can read own profile" on profiles;
-create policy "Users can read own profile" on profiles for select using ((select auth.uid()) = id);
 
 drop policy if exists "Users can read own module permissions" on module_permissions;
-create policy "Users can read own module permissions" on module_permissions for select using ((select auth.uid()) = user_id);
 
 drop policy if exists "Authenticated users can read branches" on branches;
-create policy "Authenticated users can read branches" on branches for select using ((select auth.role()) = 'authenticated');
 
 drop policy if exists "Authenticated users can read app state" on app_state;
-create policy "Authenticated users can read app state" on app_state for select using ((select auth.role()) = 'authenticated');
 
 drop policy if exists "Authenticated users can read active files" on file_objects;
-create policy "Authenticated users can read active files" on file_objects for select using ((select auth.role()) = 'authenticated' and deleted_at is null);
 
 drop policy if exists "Authenticated users can read app records" on app_records;
-create policy "Authenticated users can read app records" on app_records for select using ((select auth.role()) = 'authenticated');
 
 drop policy if exists "Authenticated users can read storage usage" on storage_usage;
-create policy "Authenticated users can read storage usage" on storage_usage for select using ((select auth.role()) = 'authenticated');
 
 drop policy if exists "Users can read own app sessions" on app_sessions;
-create policy "Users can read own app sessions" on app_sessions for select using ((select auth.uid()) = user_id);
 
 drop policy if exists "Authenticated users can read backup metadata" on backup_runs;
-create policy "Authenticated users can read backup metadata" on backup_runs for select using ((select auth.role()) = 'authenticated');
 alter table user_preferences enable row level security;
 alter table notification_settings enable row level security;
-create policy "Users can read own preferences" on user_preferences for select using ((select auth.uid()) = user_id);
-create policy "Users can read own notification settings" on notification_settings for select using ((select auth.uid()) = user_id);
 alter table user_notifications enable row level security;
-create policy "Users can read own notifications" on user_notifications for select using ((select auth.uid()) = user_id);
 
 create or replace function update_app_state(expected_revision bigint, next_data jsonb, actor uuid, state_key text default 'production')
 returns table(key text, revision bigint, updated_at timestamptz)
@@ -525,19 +515,7 @@ grant select, insert, update, delete on table app_sessions to service_role;
 grant select, insert, update, delete on table backup_runs to service_role;
 grant select, insert, update, delete on table user_preferences to service_role;
 grant select, insert, update, delete on table notification_settings to service_role;
-grant select on table user_preferences to authenticated;
-grant select on table notification_settings to authenticated;
 grant select, insert, update, delete on table user_notifications to service_role;
-grant select on table user_notifications to authenticated;
-grant select on table branches to authenticated;
-grant select on table profiles to authenticated;
-grant select on table module_permissions to authenticated;
-grant select on table app_state to authenticated;
-grant select on table app_records to authenticated;
-grant select on table file_objects to authenticated;
-grant select on table storage_usage to authenticated;
-grant select on table app_sessions to authenticated;
-grant select on table backup_runs to authenticated;
 revoke execute on function update_app_state(bigint, jsonb, uuid, text) from public, anon, authenticated;
 revoke execute on function reserve_file_storage(text, bigint, bigint) from public, anon, authenticated;
 revoke execute on function release_file_storage(text, bigint) from public, anon, authenticated;
@@ -568,3 +546,9 @@ on conflict on constraint storage_usage_pkey do update set max_bytes = excluded.
 -- Example:
 -- insert into profiles (id, email, full_name, role, branch, is_superadmin)
 -- values ('AUTH_USER_UUID', 'admin@yourdomain.com', 'Admin User', 'Superadmin', 'all', true);
+
+-- Browser roles get no direct table access (2026-11-25-close-direct-table-reads.sql).
+revoke all on table
+  profiles, module_permissions, app_state, file_objects, app_records, branches, storage_usage,
+  app_sessions, backup_runs, activity_log, user_preferences, notification_settings, user_notifications
+from anon, authenticated;

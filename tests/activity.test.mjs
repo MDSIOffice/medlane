@@ -87,7 +87,7 @@ test("Superadmin sees everyone, CEO everyone read-only, other roles only themsel
   assert.deepEqual(activityScope({ id: "1", role: "CEO" }), { all: true, readOnly: true });
   for (const role of ["Admin", "Accounting", "Sales", "Logistics", "HR"]) assert.deepEqual(activityScope({ id: "1", role }), { all: false, readOnly: true });
   const mine = new URLSearchParams(activityQuery({ stateKey: "production", profile: { id: "u-9", email: "Ana@X.ph", role: "Sales" }, user: "Somebody Else" }).query);
-  assert.equal(mine.get("or"), "(user_id.eq.u-9,email.eq.ana@x.ph)");
+  assert.equal(mine.get("or"), "(user_id.eq.u-9,email.eq.\"ana@x.ph\")");
   assert.equal(mine.get("actor"), null, "a Sales user can't filter to someone else");
   const boss = new URLSearchParams(activityQuery({ stateKey: "production", profile: { id: "u-1", role: "Superadmin" }, user: "Ana Cruz" }).query);
   assert.equal(boss.get("or"), null);

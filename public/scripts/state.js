@@ -1487,4 +1487,4 @@ function fmtDate(date) { const value = new Date(date); return Number.isNaN(value
 /** @param {any} date */
 function daysUntil(date) { return Math.ceil((new Date(date).getTime() - Number(today)) / 86400000); }
 /** @param {any} value */
-function escapeHtml(value) { return String(value ?? "").replace(/[&<>"]/g, (char) => /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]); }
+function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]); }

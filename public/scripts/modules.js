@@ -1640,15 +1640,27 @@ function ptFieldLabel(key) {
   return key;
 }
 
+// Template overrides are stored data, interpolated into style="…" and value="…" attributes, so
+// only finite numbers and the three known alignments are ever let through.
+/** @param {unknown} value @returns {number | null} */
+function ptNum(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+/** @param {unknown} value */
+function ptAlign(value) { return ["left", "center", "right", "justify"].includes(String(value)) ? String(value) : ""; }
+
 /** @param {any} o */
 function ptFieldStyleAttr(o) {
   if (!o) return "";
   const parts = [];
-  if (o.left != null) parts.push(`left:${o.left}in`);
-  if (o.top != null) parts.push(`top:${o.top}in`);
-  if (o.width != null) parts.push(`width:${o.width}in`);
-  if (o.align) parts.push(`text-align:${o.align}`);
-  if (o.fontSize != null) parts.push(`font-size:${o.fontSize}px`);
+  const left = ptNum(o.left), top = ptNum(o.top), width = ptNum(o.width), fontSize = ptNum(o.fontSize), align = ptAlign(o.align);
+  if (left != null) parts.push(`left:${left}in`);
+  if (top != null) parts.push(`top:${top}in`);
+  if (width != null) parts.push(`width:${width}in`);
+  if (align) parts.push(`text-align:${align}`);
+  if (fontSize != null) parts.push(`font-size:${fontSize}px`);
   return parts.length ? ` style="${parts.join(";")}"` : "";
 }
 
@@ -1714,11 +1726,12 @@ function buildPrintTemplateCanvas() {
   const rowStyleAttr = (/** @type {any} */ index) => {
     const parts = [`--row:${index}`];
     if (row) {
-      const top = round3(Number(row.top || 0) + index * Number(row.spacing || 0));
+      const top = round3((ptNum(row.top) || 0) + index * (ptNum(row.spacing) || 0));
+      const left = ptNum(row.left), right = ptNum(row.right), height = ptNum(row.height);
       parts.push(`top:${top}in`);
-      if (row.left != null) parts.push(`left:${row.left}in`);
-      if (row.right != null) parts.push(`right:${row.right}in`);
-      if (row.height != null) parts.push(`height:${row.height}in`);
+      if (left != null) parts.push(`left:${left}in`);
+      if (right != null) parts.push(`right:${right}in`);
+      if (height != null) parts.push(`height:${height}in`);
     }
     return ` style="${parts.join(";")}"`;
   };
@@ -1753,8 +1766,8 @@ function renderPrintTemplateSidePanel() {
   const el = qs(`#print-template-canvas [data-pt-field="${key}"]`);
   const box = ptElementBoxIn(el, ptFieldReferenceEl(kind));
   const override = ptOverrides.fields[key] || /** @type {Record<string, any>} */ ({});
-  const fontSize = override.fontSize != null ? override.fontSize : "";
-  const align = override.align || (el ? getComputedStyle(el).textAlign : "left") || "left";
+  const fontSize = ptNum(override.fontSize) ?? "";
+  const align = ptAlign(override.align) || ptAlign(el ? getComputedStyle(el).textAlign : "left") || "left";
   const isRowCol = kind === "row-col";
   panel.innerHTML = `<h3>${escapeHtml(ptFieldLabel(key))}</h3>
     <div class="field"><label>Left (in)</label><input id="pt-input-left" type="number" step="0.01" value="${box.left.toFixed(3)}" /></div>
@@ -1956,7 +1969,8 @@ const inventoryPoStatusEmoji = { "Sent to Supplier": "📤", "In Transit": "🚚
 /** @type {Record<string, any>} */
 const inventoryPoNextStatus = { Approved: "Sent to Supplier", "Sent to Supplier": "In Transit", "In Transit": "For Receiving" };
 /** @param {string} status */
-function poStatusLabel(status) { return `${inventoryPoStatusEmoji[status] ? `${inventoryPoStatusEmoji[status]} ` : ""}${status}`; }
+// Returns HTML-safe text: the status is stored data and is interpolated into innerHTML templates.
+function poStatusLabel(status) { return `${inventoryPoStatusEmoji[status] ? `${inventoryPoStatusEmoji[status]} ` : ""}${escapeHtml(status)}`; }
 
 // A PO whose stock receipt is waiting on Superadmin/CEO approval leaves "Receiving POs" right away
 // (it's listed under "Pending Receipts" instead) and comes back only if that receipt is cancelled
@@ -2212,7 +2226,7 @@ function renderInventoryPoDetail(id) {
   const events = poHistory(po);
   const lineRows = (po.lines || []).map((line) => `<tr><td>${escapeHtml(line.item)}</td><td>${escapeHtml(line.lot || "-")}</td><td>${Number(line.qty || 0)}</td><td>${Number(line.receivedQty || 0)}</td></tr>`).join("");
   qs("#inventory-po-detail-title").textContent = `${po.id} · ${po.supplier}`;
-  qs("#inventory-po-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(po.supplier)}</p><h2>${escapeHtml(po.branch || "No branch")}</h2></div><span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>PO Date</small><strong>${escapeHtml(po.date || "-")}</strong></div><div class="report-preview-card"><small>Terms</small><strong>${Number(po.terms || 30)} days</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(po.approvedBy || "-")}</strong></div><div class="report-preview-card"><small>Completed By</small><strong>${escapeHtml(po.receivedBy || po.cancelledBy || "-")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Lot</th><th>Ordered Qty</th><th>Received Qty</th></tr></thead><tbody>${lineRows}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${inventoryPoHistoryClass(event.status)}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${escapeHtml(poStatusLabel(event.status || ""))}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
+  qs("#inventory-po-detail-panel").innerHTML = `<div class="panel-header"><div><p class="eyebrow">${escapeHtml(po.supplier)}</p><h2>${escapeHtml(po.branch || "No branch")}</h2></div><span class="pill ${statusClass(po.status)}">${poStatusLabel(po.status)}</span></div><div class="report-preview-grid invoice-mini-grid"><div class="report-preview-card"><small>PO Date</small><strong>${escapeHtml(po.date || "-")}</strong></div><div class="report-preview-card"><small>Terms</small><strong>${Number(po.terms || 30)} days</strong></div><div class="report-preview-card"><small>Approved By</small><strong>${escapeHtml(po.approvedBy || "-")}</strong></div><div class="report-preview-card"><small>Completed By</small><strong>${escapeHtml(po.receivedBy || po.cancelledBy || "-")}</strong></div></div><div class="table-card compact-table"><table><thead><tr><th>Item</th><th>Lot</th><th>Ordered Qty</th><th>Received Qty</th></tr></thead><tbody>${lineRows}</tbody></table></div><details class="full-event-details" open><summary>Status timeline</summary><div class="event-timeline">${events.map((event) => `<div class="event-item ${inventoryPoHistoryClass(event.status)}"><span>${escapeHtml((event.status || "P")[0])}</span><time>${escapeHtml(event.date || "")}</time><div><strong>${poStatusLabel(event.status || "")}</strong><p>${escapeHtml(event.note || "-")}</p><small>${escapeHtml(event.by || "-")}</small></div></div>`).join("")}</div></details>`;
   showSection("inventory-po-detail");
 }
 

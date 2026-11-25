@@ -130,8 +130,12 @@ function guardDialogEscape(dialog, options) {
 function downloadCsv(filename, rows) {
   /** @param {any} value */
   const escapeCsv = (value) => {
-    const text = String(value ?? "");
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    let text = String(value ?? "");
+    // A cell starting with = + - @ (or a tab / carriage return) is run as a formula by Excel,
+    // Sheets and LibreOffice. Stored text from any role ends up in these exports, so such a cell
+    // gets a leading apostrophe and is shown as text. Plain numbers (e.g. -250) are left alone.
+    if (typeof value !== "number" && /^[=+\-@\t\r]/.test(text) && !/^[-+]?[\d,]*\.?\d+%?$|^-+$/.test(text.trim())) text = `'${text}`;
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
   const csv = rows.map((row) => row.map(escapeCsv).join(",")).join("\r\n");
   const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
@@ -427,19 +431,25 @@ function tableSkeleton(target, headers, rowCount = 5) {
 // is interpolated into HTML strings in many places. This strips anything that can execute script
 // — active elements, on* handlers, javascript:/data: URLs — while keeping normal markup,
 // classes, data-* attributes and styles used by the app's own templates.
-const SANITIZE_DROP_TAGS = new Set(["SCRIPT", "IFRAME", "FRAME", "FRAMESET", "OBJECT", "EMBED", "APPLET", "LINK", "META", "BASE", "FORM", "NOSCRIPT", "TEMPLATE"]);
+// Raw-text / namespace-switching elements are dropped too: <math>, <style>, <xmp>, <noembed>…
+// parse differently when the sanitized string is parsed again in its real place, which is how
+// mutation-XSS slips markup past a sanitizer (the app never emits any of them in cells/previews).
+const SANITIZE_DROP_TAGS = new Set(["SCRIPT", "IFRAME", "FRAME", "FRAMESET", "OBJECT", "EMBED", "APPLET", "LINK", "META", "BASE", "FORM", "NOSCRIPT", "TEMPLATE", "STYLE", "MATH", "XMP", "NOEMBED", "NOFRAMES", "PLAINTEXT", "TEXTAREA", "TITLE"]);
 /** @param {string} html */
-function sanitizeHtml(html) {
+function sanitizeHtmlOnce(html) {
   const template = document.createElement("template");
   template.innerHTML = String(html ?? "");
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
   const doomed = [];
   for (let node = /** @type {Element | null} */ (walker.nextNode()); node; node = /** @type {Element | null} */ (walker.nextNode())) {
-    if (SANITIZE_DROP_TAGS.has(node.tagName.toUpperCase()) || /^(script|animate|set|foreignobject)$/i.test(node.localName)) { doomed.push(node); continue; }
+    if (SANITIZE_DROP_TAGS.has(node.tagName.toUpperCase()) || /^(script|style|math|animate|set|foreignobject|mglyph|malignmark)$/i.test(node.localName)) { doomed.push(node); continue; }
     for (const attr of [...node.attributes]) {
       const name = attr.name.toLowerCase();
       const value = attr.value.replace(/[\u0000-\u0020\u007f-\u009f]+/g, "").toLowerCase();
       if (name.startsWith("on") || name === "srcdoc" || name === "formaction") { node.removeAttribute(attr.name); continue; }
+      // An attribute holding markup is only useful to an attacker (serialization keeps < and >
+      // unescaped inside attribute values, so a later re-parse could turn it into tags).
+      if (/<\/?[a-z!?]/i.test(attr.value)) { node.removeAttribute(attr.name); continue; }
       if (["href", "src", "xlink:href", "action", "poster", "data"].includes(name)) {
         const safe = !/^[a-z][a-z0-9+.-]*:/.test(value) || /^(https?:|mailto:|tel:|blob:)/.test(value) || (name === "src" && /^data:image\/(png|jpe?g|gif|webp);/.test(value));
         if (!safe) node.removeAttribute(attr.name);
@@ -449,6 +459,16 @@ function sanitizeHtml(html) {
   }
   doomed.forEach((node) => node.remove());
   return template.innerHTML;
+}
+/** @param {string} html */
+function sanitizeHtml(html) {
+  const once = sanitizeHtmlOnce(html);
+  // A safe result is stable: cleaning it again changes nothing. If re-parsing it produces
+  // something different, the markup mutates between parses — show it as plain text instead.
+  if (sanitizeHtmlOnce(once) === once) return once;
+  const holder = document.createElement("template");
+  holder.innerHTML = once;
+  return escapeHtml(holder.content.textContent || "");
 }
 
 /** @param {AnyEl} row @param {any[]} [headers] */

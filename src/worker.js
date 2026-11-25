@@ -197,13 +197,6 @@ function methodNotAllowed() {
   return json({ error: "Method not allowed" }, { status: 405 });
 }
 
-/** @param {any} value */
-async function shortHash(value) {
-  const bytes = new TextEncoder().encode(String(value || ""));
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(hash)].slice(0, 8).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 /** @param {WorkerEnv} env @param {any} keys */
 function requireEnv(env, keys) {
   const missing = keys.filter((/** @type {any} */ key) => !env[key]);
@@ -327,8 +320,9 @@ async function loginThrottle(env, request, action, email = "") {
   /** @type {Array<[string, number, string]>} */
   const counters = [];
   if (account) counters.push([`login-throttle-account:${account}`, LOGIN_THROTTLE_MAX_FAILS_PER_ACCOUNT, action]);
-  // A successful login resets only that account's counter.
-  if (ip) counters.push([`login-throttle:${ip}`, LOGIN_THROTTLE_MAX_FAILS_PER_IP, action === "reset" ? "check" : action]);
+  // A successful login resets only that account's counter; the IP counter just gets back the slot
+  // that attempt reserved.
+  if (ip) counters.push([`login-throttle:${ip}`, LOGIN_THROTTLE_MAX_FAILS_PER_IP, action === "reset" ? "release" : action]);
   try {
     const results = await Promise.all(counters.map(async ([name, max, counterAction]) => {
       const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(name));
@@ -340,6 +334,24 @@ async function loginThrottle(env, request, action, email = "") {
   } catch (error) {
     console.warn(JSON.stringify({ message: "Login throttle unavailable", error: error instanceof Error ? error.message : String(error) }));
     return { blocked: false, retryAfter: 0 };
+  }
+}
+
+// A small "at most N per window" limiter on the same LiveHub counters as the login throttle (one
+// reserved slot per call). Fails open, like the login throttle.
+/** @param {WorkerEnv} env @param {Array<[string, number]>} counters */
+async function requestThrottle(env, counters) {
+  if (!env.LIVE_HUB) return { blocked: false };
+  try {
+    const results = await Promise.all(counters.map(async ([name, max]) => {
+      const stub = env.LIVE_HUB.get(env.LIVE_HUB.idFromName(name));
+      const response = await stub.fetch(`https://live-hub/login-throttle/attempt?max=${max}`, { method: "POST" });
+      return /** @type {{ blocked: boolean }} */ (await response.json());
+    }));
+    return { blocked: results.some((result) => result.blocked) };
+  } catch (error) {
+    console.warn(JSON.stringify({ message: "Request throttle unavailable", error: error instanceof Error ? error.message : String(error) }));
+    return { blocked: false };
   }
 }
 
@@ -1020,10 +1032,16 @@ export class LiveHub extends DurableObject {
       const maxFails = Number(url.searchParams.get("max")) || LOGIN_THROTTLE_MAX_FAILS_PER_ACCOUNT;
       const now = Date.now();
       let fails = /** @type {number[]} */ ((await this.ctx.storage.get("fails")) || []).filter((t) => now - t < LOGIN_THROTTLE_WINDOW_MS);
+      // "attempt" checks and reserves a slot in one step (this object handles one request at a
+      // time), so parallel guesses can't all pass the check before any failure is counted. A
+      // sign-in that turns out fine gives its slot back ("release"); a wrong password keeps it.
+      const wasBlocked = fails.length >= maxFails;
+      if (action === "attempt" && !wasBlocked) fails.push(now);
       if (action === "fail") fails.push(now);
+      if (action === "release" && fails.length) fails.pop();
       if (action === "reset") fails = [];
       if (fails.length) await this.ctx.storage.put("fails", fails); else await this.ctx.storage.delete("fails");
-      const blocked = fails.length >= maxFails;
+      const blocked = action === "attempt" ? wasBlocked : fails.length >= maxFails;
       const retryAfter = blocked ? Math.max(1, Math.ceil((fails[0] + LOGIN_THROTTLE_WINDOW_MS - now) / 1000)) : 0;
       return Response.json({ blocked, retryAfter });
     }
@@ -1755,7 +1773,28 @@ async function authenticatedUser(request, env) {
   if (response.status >= 500 || response.status === 429) throw new Error("The sign-in service is temporarily unavailable");
   const user = await response.json().catch(() => null);
   if (!response.ok || !user?.id) throw new Error("Invalid or expired session");
+  // A deactivated account's access token stays valid at GoTrue until it expires; refuse it here.
+  if (authUserIsBanned(user)) throw new Error("Invalid or expired session: this account has been deactivated");
   return { token, user };
+}
+
+// GoTrue records how a session was started in the access token's `amr` claim. Invite, recovery
+// and magic-link verifications appear as recovery/invite/otp/magiclink/email-signup; a password
+// sign-in (and every refresh of it) as "password". The token itself is verified by GoTrue when it
+// is used; this only reads which kind it is, and that the email link was opened recently.
+const EMAIL_LINK_AMR_METHODS = ["recovery", "invite", "otp", "magiclink", "email/signup", "email_change"];
+const EMAIL_LINK_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+/** @param {string} token */
+function emailLinkSessionToken(token) {
+  try {
+    const part = String(token).split(".")[1] || "";
+    const claims = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "=")));
+    const amr = Array.isArray(claims?.amr) ? claims.amr : [];
+    return amr.some((/** @type {any} */ entry) => EMAIL_LINK_AMR_METHODS.includes(String(entry?.method || ""))
+      && Date.now() - Number(entry?.timestamp || 0) * 1000 < EMAIL_LINK_MAX_AGE_MS);
+  } catch {
+    return false;
+  }
 }
 
 /** @param {Request} request */
@@ -1877,8 +1916,10 @@ function grantSupportTracker(role, view, edit) {
 /** @param {AppRole} role @param {ModulePermissionRow[]} permissions */
 function moduleListsFor(role, permissions) {
   const fallback = roleModules[role] || roleModules.Sales;
-  const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : fallback;
-  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : withoutViewOnlyDefaults(role, fallback);
+  // Fresh copies: the role defaults are shared module-level arrays, and view and edit must never be
+  // the same array (a view-only grant pushed below would otherwise land in edit too).
+  const view = permissions.length ? permissions.filter((item) => item.can_view).map((item) => item.module_key) : [...fallback];
+  const edit = permissions.length ? permissions.filter((item) => item.can_edit).map((item) => item.module_key) : [...withoutViewOnlyDefaults(role, fallback)];
   // Every role can view memos regardless of when their module_permissions rows were created —
   // this is a newer module that predates most existing users' explicit permission grants, and
   // memo posting is separately gated by requireMemoAdmin(), not by this permission list.
@@ -2065,12 +2106,15 @@ async function syncNoticesForUser(env, profile, { force = false } = {}) {
 
 /** Everyone who can receive notifications, with their modules, preferences and settings. @param {WorkerEnv} env @returns {Promise<import("./notifications.js").NoticeUser[]>} */
 async function allNoticeUsers(env) {
-  const [profiles, permissions, prefs, settings] = await Promise.all([
+  const [allProfiles, permissions, prefs, settings, disabled] = await Promise.all([
     supabaseFetchAll(env, "/rest/v1/profiles?select=id,email,role"),
     supabaseFetchAll(env, "/rest/v1/module_permissions?select=user_id,module_key,can_view,can_edit"),
     supabaseFetchAll(env, "/rest/v1/user_preferences?select=*").catch(() => []),
     supabaseFetchAll(env, "/rest/v1/notification_settings?select=user_id,alert_type,in_app,email").catch(() => []),
+    disabledAuthUserIds(env),
   ]);
+  // Deactivated accounts get no new notices and no emails.
+  const profiles = allProfiles.filter((/** @type {any} */ p) => !disabled.has(String(p.id)));
   /** @param {any[]} rows */
   const byUser = (rows) => { const map = new Map(); rows.forEach((row) => { if (!map.has(row.user_id)) map.set(row.user_id, []); map.get(row.user_id).push(row); }); return map; };
   const perms = byUser(permissions); const settingRows = byUser(settings);
@@ -2293,6 +2337,17 @@ function requireUserAdmin(profile) {
   if (!["Superadmin", "CEO"].includes(profile?.role)) throw new Error("Only Superadmin/CEO can manage users");
 }
 
+/**
+ * A memo goes to the roles it was posted for ("all" = everyone). The posters (Superadmin, CEO,
+ * HR) see every memo. Mirrors memoVisibleToCurrentUser() in public/scripts/modules.js.
+ * @param {Profile} profile @param {any} memo
+ */
+function memoVisibleTo(profile, memo) {
+  if (["Superadmin", "CEO", "HR"].includes(String(profile?.role || ""))) return true;
+  if (!memo || typeof memo !== "object") return false;
+  return memo.audience === "all" || (Array.isArray(memo.audience) && memo.audience.includes(profile?.role));
+}
+
 /** @param {Profile} profile */
 function requireMemoAdmin(profile) {
   if (!["Superadmin", "CEO", "HR"].includes(profile?.role)) throw new Error("Only Superadmin, CEO, or HR can post a memo");
@@ -2355,6 +2410,106 @@ function assertSaleNotNegative(sale, label) {
 // positive quantity and a real (or "N/A") expiry, and come from someone who can run an import.
 // Only brand-new rows are checked — once a migrated row exists, later invoicing/transfers/stock
 // edits update it like any other stock row.
+// Print-template overrides are positions/sizes and an alignment. Anything else is refused at
+// save time (the client and the printables also coerce them, but nothing odd should be stored).
+/** @param {AppRecordRow[]} rows */
+function assertPrintTemplateValuesValid(rows) {
+  const numberKeys = ["left", "top", "width", "right", "height", "spacing", "fontSize"];
+  /** @param {any} override @param {string} where */
+  const check = (override, where) => {
+    if (override == null) return;
+    if (typeof override !== "object" || Array.isArray(override)) throw new Error(`You do not have permission to save print template ${where}: invalid value`);
+    for (const [key, value] of Object.entries(override)) {
+      if (numberKeys.includes(key)) {
+        if (value !== null && value !== "" && !Number.isFinite(Number(value))) throw new Error(`You do not have permission to save print template ${where}: ${key} must be a number`);
+      } else if (key === "align") {
+        if (value && !["left", "center", "right", "justify"].includes(String(value))) throw new Error(`You do not have permission to save print template ${where}: unknown alignment`);
+      }
+    }
+  };
+  for (const row of rows) {
+    if (row.module_name !== "printTemplates") continue;
+    const template = row.data || {};
+    for (const [field, override] of Object.entries(template.fields && typeof template.fields === "object" ? template.fields : {})) check(override, field);
+    check(template.row, "row");
+  }
+}
+
+// Stock quantities move only through the flows that account for them. For any role below Admin,
+// every change to an inventory row in a save must be covered by a stock-moving record in the
+// same save: a new invoice (stock out), an invoice cancelled or restored (stock back in / out),
+// or a transfer whose dispatched (out) or received (in) quantities go up. A row's expiry is never
+// changed this way, and a brand-new row needs a matching receipt-in (transfer destination) unless
+// it is an Imports migration (assertMigratedStockAllowed). Anything else is a manual correction,
+// which is Admin/CEO/Superadmin-only, or goes through an approved stock receipt.
+/** @param {WorkerEnv} env @param {string} stateKey @param {string} moduleName @param {string[]} keys */
+async function storedDataByKey(env, stateKey, moduleName, keys) {
+  if (!keys.length) return new Map();
+  const stored = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.${encodeURIComponent(moduleName)}&record_key=in.${encodeURIComponent(postgrestIn(keys))}&select=record_key,data`));
+  return new Map(stored.map((row) => [row.record_key, row.data || {}]));
+}
+
+/** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
+async function assertStockChangesAllowed(env, stateKey, profile, rows) {
+  if (["Admin", "CEO", "Superadmin"].includes(String(profile?.role || ""))) return;
+  const stockRows = rows.filter((row) => row.module_name === "inventory");
+  if (!stockRows.length) return;
+  const saleRows = rows.filter((row) => row.module_name === "sales");
+  const transferRows = rows.filter((row) => row.module_name === "pendingTransfers");
+  const [storedStock, storedSales, storedTransfers] = await Promise.all([
+    storedDataByKey(env, stateKey, "inventory", stockRows.map((row) => String(row.record_key))),
+    storedDataByKey(env, stateKey, "sales", saleRows.map((row) => String(row.record_key))),
+    storedDataByKey(env, stateKey, "pendingTransfers", transferRows.map((row) => String(row.record_key))),
+  ]);
+  const lower = (/** @type {unknown} */ value) => String(value ?? "").trim().toLowerCase();
+  /** @type {Map<string, number>} */ const stockOut = new Map();
+  /** @type {Map<string, number>} */ const stockIn = new Map();
+  const add = (/** @type {Map<string, number>} */ map, /** @type {unknown} */ code, /** @type {unknown} */ qty) => {
+    const n = Number(qty || 0);
+    if (n > 0 && code) map.set(String(code), (map.get(String(code)) || 0) + n);
+  };
+  for (const row of saleRows) {
+    const sale = row.data || {};
+    if (sale.noPo) continue; // skip-PO sales never move stock
+    const prev = storedSales.get(String(row.record_key));
+    const cancelled = lower(sale.status) === "cancelled";
+    const wasCancelled = lower(prev?.status) === "cancelled";
+    const target = !prev ? (cancelled ? null : stockOut) : (!wasCancelled && cancelled ? stockIn : wasCancelled && !cancelled ? stockOut : null);
+    if (target) for (const line of Array.isArray(sale.lines) ? sale.lines : []) add(target, line?.code, line?.qty);
+  }
+  for (const row of transferRows) {
+    const prevLines = Array.isArray(storedTransfers.get(String(row.record_key))?.lines) ? storedTransfers.get(String(row.record_key))?.lines : [];
+    (Array.isArray(row.data?.lines) ? row.data.lines : []).forEach((/** @type {any} */ line, /** @type {number} */ index) => {
+      const before = prevLines[index] || {};
+      add(stockOut, line?.code, Number(line?.dispatchedQty || 0) - Number(before.dispatchedQty || 0));
+      add(stockIn, line?.code, Number(line?.receivedQty || 0) - Number(before.receivedQty || 0));
+    });
+  }
+  const consume = (/** @type {Map<string, number>} */ map, /** @type {string} */ code, /** @type {number} */ qty) => {
+    const available = map.get(code) || 0;
+    if (qty > available + 1e-9) return false;
+    map.set(code, available - qty);
+    return true;
+  };
+  const denied = "Only Admin, CEO, or Superadmin can edit stock quantity or expiry";
+  for (const row of stockRows) {
+    const next = row.data || {};
+    const code = String(next.code || "");
+    const prev = storedStock.get(String(row.record_key));
+    const nextQty = Number(next.qty || 0);
+    if (!prev) {
+      if (next.migrated === true) continue; // Imports: checked by assertMigratedStockAllowed
+      if (nextQty > 0 && !consume(stockIn, code, nextQty)) throw new Error("Only Admin, CEO, or Superadmin can add stock outside an approved stock receipt");
+      continue;
+    }
+    if (String(prev.expiry || "") !== String(next.expiry || "")) throw new Error(denied);
+    if (String(prev.code || "") !== code) throw new Error(denied);
+    const delta = nextQty - Number(prev.qty || 0);
+    if (Math.abs(delta) < 1e-9) continue;
+    if (!consume(delta < 0 ? stockOut : stockIn, code, Math.abs(delta))) throw new Error(denied);
+  }
+}
+
 /** @param {WorkerEnv} env @param {string} stateKey @param {Profile} profile @param {AppRecordRow[]} rows */
 async function assertMigratedStockAllowed(env, stateKey, profile, rows) {
   const migrated = rows.filter((row) => row.module_name === "inventory" && row.data?.migrated === true);
@@ -2916,17 +3071,45 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
     return new Map(stored.map((row) => [row.record_key, row.data || {}]));
   };
 
+  // Supplier PO status is display text in every client view, so only the known workflow statuses
+  // (plus the legacy names the client still normalises on load) may be stored.
+  {
+    const poStatuses = new Set(["pending approval", "approved", "sent to supplier", "in transit", "for receiving", "partially received", "fully received", "cancelled", "purchase receiving", "received"]);
+    for (const row of rows) {
+      if (row.module_name !== "inventoryPurchaseOrders") continue;
+      const status = row.data?.status;
+      if (status !== undefined && status !== null && status !== "" && !poStatuses.has(lower(status))) throw new Error(`Unknown purchase order status: ${String(status).slice(0, 40)}`);
+    }
+  }
+
   // Payables / expense requests: any approved-or-paid-looking state (not just the literal
   // requestStatus) counts, compared case-insensitively against the stored row, so a non-approver
   // can't reach it by writing status/paymentConfirmed instead of requestStatus.
   if (!isManagement) {
-    const approvedLike = (/** @type {Record<string, unknown>} */ data) => lower(data?.requestStatus) === "approved" || ["approved", "paid"].includes(lower(data?.status)) || data?.paymentConfirmed === true || data?.paymentConfirmed === "true";
+    // Mirrors the client normalisers (state.js): a row with no requestStatus is read as Approved
+    // when its status is "Approved" (or, for expenses, the legacy "Approved by HR"), so that
+    // spelling counts as an approval here too.
+    const effectiveRequestStatus = (/** @type {Record<string, unknown>} */ data) => lower(data?.requestStatus)
+      || (["approved", "approved by hr"].includes(lower(data?.status)) ? "approved" : "");
+    const approvedLike = (/** @type {Record<string, unknown>} */ data) => effectiveRequestStatus(data) === "approved" || ["approved", "paid"].includes(lower(data?.status)) || data?.paymentConfirmed === true || data?.paymentConfirmed === "true";
+    // Once approved, the approval covers these figures and parties: a non-approver may still record
+    // the payment (method, bank, cheque, paid…) but can't change what was approved.
+    const approvedNumberFields = ["amount", "grossAmount"];
+    const approvedTextFields = ["supplier", "requester", "employeeName", "type"];
+    const approvedContentChanged = (/** @type {Record<string, unknown>} */ prev, /** @type {Record<string, unknown>} */ next) =>
+      approvedNumberFields.some((field) => field in (next || {}) && Math.abs(Number(prev?.[field] || 0) - Number(next?.[field] || 0)) > 0.01)
+      || approvedTextFields.some((field) => field in (next || {}) && String(prev?.[field] ?? "").trim() !== String(next?.[field] ?? "").trim());
     for (const moduleName of ["payables", "replenishments"]) {
       const candidates = rows.filter((row) => row.module_name === moduleName && approvedLike(row.data));
       if (!candidates.length) continue;
       const stored = await fetchStored(moduleName, candidates);
+      const approver = moduleName === "payables" ? false : ["Admin"].includes(role);
       for (const row of candidates) {
-        if (lower(stored.get(row.record_key)?.requestStatus) === "approved") continue;
+        const prev = stored.get(row.record_key);
+        if (prev && effectiveRequestStatus(prev) === "approved") {
+          if (!approver && approvedContentChanged(prev, row.data)) throw new Error(`You do not have permission to change the amount or payee of ${row.record_key} after it was approved`);
+          continue;
+        }
         if (moduleName === "payables") throw new Error("Only Superadmin or CEO can approve payable requests");
         if (role === "Accounting") throw new Error("Accounting cannot approve expense requests");
       }
@@ -3032,18 +3215,22 @@ async function assertFinancialApprovalAllowed(env, stateKey, profile, rows) {
         throw new Error("Only Superadmin/CEO can approve purchase orders");
       }
     }
-    // Sales / Accounting reach supplier POs only through the Purchase Orders module: they may raise
-    // a new PO (Pending Approval) and annotate one (e.g. promised date), but never change its status.
-    if (["Sales", "Accounting"].includes(role)) {
-      const ownPoRows = rows.filter((row) => row.module_name === "inventoryPurchaseOrders");
-      if (ownPoRows.length) {
-        const stored = await fetchStored("inventoryPurchaseOrders", ownPoRows);
-        for (const row of ownPoRows) {
+    // Every non-management save: a new PO starts as Pending Approval (so it can't skip approval by
+    // being created further along), and a Cancelled PO stays cancelled. Sales / Accounting reach
+    // supplier POs only through the Purchase Orders module: they may raise a new PO and annotate
+    // one (e.g. promised date), but never change its status.
+    {
+      const poRows = rows.filter((row) => row.module_name === "inventoryPurchaseOrders");
+      if (poRows.length) {
+        const stored = await fetchStored("inventoryPurchaseOrders", poRows);
+        const statusLocked = ["Sales", "Accounting"].includes(role);
+        for (const row of poRows) {
           const prev = stored.get(row.record_key);
           if (!prev) {
             if (lower(row.data?.status) !== "pending approval") throw new Error("A new purchase order must start as Pending Approval");
           } else if (lower(prev.status) !== lower(row.data?.status)) {
-            throw new Error("Only Logistics or Superadmin/CEO can change a purchase order's status");
+            if (statusLocked) throw new Error("Only Logistics or Superadmin/CEO can change a purchase order's status");
+            if (lower(prev.status) === "cancelled") throw new Error(`Purchase order ${row.record_key} is cancelled and can no longer be edited`);
           }
         }
       }
@@ -3311,6 +3498,18 @@ function modulesForKey(key) {
   return Object.entries(moduleRecordKeys).filter(([, keys]) => keys.includes(key)).map(([module]) => module);
 }
 
+/**
+ * Ids of the memos this person may see, or null when they see them all (or no memo file is
+ * involved), so memo attachments follow the memo's audience.
+ * @param {WorkerEnv} env @param {Profile} profile @param {any[]} fileRows
+ */
+async function visibleMemoIdsFor(env, profile, fileRows) {
+  if (["Superadmin", "CEO", "HR"].includes(String(profile?.role || ""))) return null;
+  if (!fileRows.some((row) => row?.record_type === "memo")) return null;
+  const memos = /** @type {StoredRow[]} */ (await supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(appStateKey(env))}&module_name=eq.memos&select=record_key,data`));
+  return new Set(memos.filter((row) => memoVisibleTo(profile, row.data)).map((row) => String(row.record_key)));
+}
+
 /** Record types whose attachments can be removed from the app (Support Tracker reports). */
 const REMOVABLE_FILE_RECORD_TYPES = ["productIssue", "instrumentalServiceReport"];
 /**
@@ -3378,8 +3577,33 @@ function notificationVisibleTo(profile, notice) {
 
 /** @param {AppRecordRow[]} records @param {Profile} profile @param {AccessMode} [mode] */
 function filterRecordsForProfile(records, profile, mode = "view") {
-  return records.filter((row) => (canAccessKey(profile, row.module_name, mode) && (mode !== "view" || row.module_name !== "calendarEvents" || calendarEventVisibleTo(profile, row.data)))
+  return records.filter((row) => (canAccessKey(profile, row.module_name, mode)
+      && (mode !== "view" || row.module_name !== "calendarEvents" || calendarEventVisibleTo(profile, row.data))
+      && (mode !== "view" || row.module_name !== "memos" || memoVisibleTo(profile, row.data))
+      && (mode !== "view" || branchRecordVisibleTo(profile, row.module_name, row.data)))
     || (mode === "view" && row.module_name === "notifications" && notificationVisibleTo(profile, row.data)));
+}
+
+// A person locked to one branch (profiles.branch) only receives that branch's invoices, client
+// POs, stock and expenses — the same rule the browser's byBranch() applies (state.js), now
+// enforced on every state read (load, live changes, pages, reports) and not just in the UI.
+/** @type {Record<string, string>} */
+const BRANCH_SCOPED_KEYS = { sales: "area", purchaseOrders: "area", inventory: "branch", replenishments: "office" };
+/** @param {Profile} profile */
+function profileBranchScope(profile) {
+  const branch = String(profile?.branch || "all").trim();
+  return !branch || ["all", "both"].includes(branch.toLowerCase()) ? "" : branch;
+}
+/** @param {Profile} profile @param {string} moduleName @param {any} record */
+function branchRecordVisibleTo(profile, moduleName, record) {
+  const key = BRANCH_SCOPED_KEYS[moduleName];
+  const branch = profileBranchScope(profile);
+  if (!key || !branch) return true;
+  if (!record || typeof record !== "object") return false;
+  const target = branch.toLowerCase();
+  const same = (/** @type {unknown} */ value) => String(value ?? "").trim().toLowerCase() === target;
+  return same(record[key]) || String(record[key] ?? "").trim().toLowerCase() === "both" || same(record.area) || same(record.office) || same(record.dealer)
+    || (moduleName === "sales" && (same(record.branch) || same(record.sourceBranch)));
 }
 
 /**
@@ -3704,7 +3928,8 @@ function dedupeRowsByRecordKey(rows) {
 
 /** @param {any} values */
 function postgrestIn(values) {
-  return `(${values.map((/** @type {any} */ value) => `"${String(value).replace(/"/g, "\\\"")}"`).join(",")})`;
+  // Backslashes first, then quotes, so a value ending in "\" can't escape its own closing quote.
+  return `(${values.map((/** @type {any} */ value) => `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`).join(",")})`;
 }
 
 function manilaTimestamp() {
@@ -5430,12 +5655,42 @@ async function digestRecipients(env, roles) {
     if (!byEmail.has(key)) byEmail.set(key, { email: clean, roles: new Set() });
     byEmail.get(key).roles.add(role);
   };
-  const profiles = await supabaseFetch(env, "/rest/v1/profiles?select=email,role").catch(() => []);
-  profiles.forEach((/** @type {any} */ row) => add(row.role, row.email));
-  const stateKey = appStateKey(env);
-  const appUsers = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.users&select=data`).catch(() => []);
-  appUsers.forEach((/** @type {any} */ row) => { const user = row.data || {}; add(user.role, user.email); });
+  // Current accounts only: a deactivated person (GoTrue ban) keeps their profiles row, and the
+  // legacy app_records "users" rows are no longer maintained, so neither may receive a digest.
+  const [profiles, disabled] = await Promise.all([
+    supabaseFetch(env, "/rest/v1/profiles?select=id,email,role").catch(() => []),
+    disabledAuthUserIds(env),
+  ]);
+  profiles.forEach((/** @type {any} */ row) => { if (!disabled.has(row.id)) add(row.role, row.email); });
   return byEmail;
+}
+
+/** @param {any} user */
+function authUserIsBanned(user) {
+  const until = user?.banned_until ? new Date(user.banned_until).getTime() : 0;
+  return Number.isFinite(until) && until > Date.now();
+}
+
+/**
+ * Ids of deactivated (banned) accounts, for the scheduled emails and notice fan-out. If GoTrue
+ * can't be read the jobs still run (an empty set), since a missed alert is worse than the brief
+ * outage window — the per-request ban check in authenticatedUser still locks the account out.
+ * @param {WorkerEnv} env @returns {Promise<Set<string>>}
+ */
+async function disabledAuthUserIds(env) {
+  /** @type {Set<string>} */
+  const ids = new Set();
+  try {
+    for (let page = 1; page <= 20; page += 1) {
+      const payload = await supabaseAuthAdminFetch(env, `/auth/v1/admin/users?page=${page}&per_page=1000`);
+      const users = Array.isArray(payload?.users) ? payload.users : [];
+      users.forEach((/** @type {any} */ user) => { if (user?.id && authUserIsBanned(user)) ids.add(String(user.id)); });
+      if (users.length < 1000) break;
+    }
+  } catch (/** @type {any} */ error) {
+    console.error(JSON.stringify({ message: "Could not read deactivated accounts", error: error?.message }));
+  }
+  return ids;
 }
 
 const DIGEST_COLORS = {
@@ -5978,18 +6233,13 @@ export default {
 
       if (url.pathname === "/api/health") {
         if (request.method !== "GET") return methodNotAllowed();
-        const supabaseUrl = env.SUPABASE_URL ? new URL(env.SUPABASE_URL) : null;
+        // Public and unauthenticated: report only whether the app is configured, never hosts or
+        // key material.
         return json({
           ok: true,
           app: "medlane",
           r2Configured: Boolean(env.DOCUMENTS_BUCKET),
-          supabaseUrlConfigured: Boolean(env.SUPABASE_URL),
-          supabaseHost: supabaseUrl?.hostname || null,
-          supabasePath: supabaseUrl?.pathname || null,
-          supabaseAnonKeyConfigured: Boolean(env.SUPABASE_ANON_KEY),
-          supabaseAnonKeyPrefix: env.SUPABASE_ANON_KEY ? `${env.SUPABASE_ANON_KEY.slice(0, 12)}...` : null,
-          supabaseAnonKeyHash: await shortHash(env.SUPABASE_ANON_KEY),
-          supabaseSecretConfigured: Boolean(env.SUPABASE_SERVICE_ROLE_KEY),
+          supabaseConfigured: Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY && env.SUPABASE_SERVICE_ROLE_KEY),
         });
       }
 
@@ -6019,7 +6269,7 @@ export default {
         if (request.method !== "POST") return methodNotAllowed();
         requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
         const { email, password } = await request.json();
-        const throttle = await loginThrottle(env, request, "check", email);
+        const throttle = await loginThrottle(env, request, "attempt", email);
         if (throttle.blocked) {
           return json({ error: `Too many failed sign-in attempts. Try again in ${Math.ceil(throttle.retryAfter / 60)} minute(s).` }, { status: 429, headers: { "retry-after": String(throttle.retryAfter) } });
         }
@@ -6032,12 +6282,14 @@ export default {
         if (!authResponse.ok) {
           const authError = session?.error_description || session?.msg || session?.error || "Invalid email or password";
           if (authResponse.status === 400 || authResponse.status === 401 || authResponse.status === 422) {
-            await loginThrottle(env, request, "fail", email);
+            // The slot reserved by "attempt" already counts this failure.
             ctx.waitUntil(recordSignInEvent(env, request, { ok: false, email: String(email || "").trim().toLowerCase() }));
+          } else {
+            // Not a wrong password (e.g. the sign-in service is down): don't count it.
+            await loginThrottle(env, request, "release", email);
           }
-          const debug = url.searchParams.get("debug") === "1";
           console.error(JSON.stringify({ message: "Supabase login failed", authError, status: authResponse.status }));
-          return json({ error: authError, ...(debug ? { supabaseStatus: authResponse.status, supabaseResponse: session, supabaseHost: new URL(env.SUPABASE_URL).hostname, supabasePath: new URL(env.SUPABASE_URL).pathname, authUrl: `${supabaseBaseUrl(env)}/auth/v1/token?grant_type=password`, anonKeyHash: await shortHash(env.SUPABASE_ANON_KEY) } : {}) }, { status: 401 });
+          return json({ error: authError }, { status: 401 });
         }
         await loginThrottle(env, request, "reset", email);
         const user = await profileForUser(env, session.user.id, email);
@@ -6078,6 +6330,10 @@ export default {
         const { email: rawEmail } = await request.json().catch(() => ({}));
         const email = cleanEmail(rawEmail);
         if (!validEmail(email)) return json({ error: "Enter a valid email address" }, { status: 400 });
+        // At most a few reset emails per address (and per IP) every few minutes, so this can't be
+        // used to flood someone's inbox or burn the shared email quota. Same answer either way.
+        const resetThrottle = await requestThrottle(env, [[`forgot-password:${email}`, 3], [`forgot-password-ip:${clientIp(request) || "unknown"}`, 20]]);
+        if (resetThrottle.blocked) return json({ ok: true });
         // Always answer with the same 200 body regardless of whether the account exists, so this
         // endpoint can't be used to probe which emails are registered. Failures are logged server-side.
         try {
@@ -6135,6 +6391,13 @@ export default {
         let patch;
         try { patch = profilePatch(await request.json()); } catch (/** @type {any} */ error) { return json({ error: error.message }, { status: 400 }); }
         const before = { name: profile.name, phone: profile.phone };
+        // Audit entries and the Activity page name people by full name, so two accounts may not
+        // share one — otherwise anyone could take a colleague's name and act under it.
+        if (String(patch.fullName).trim().toLowerCase() !== String(profile.name || "").trim().toLowerCase()) {
+          const wanted = String(patch.fullName).trim().replace(/\s+/g, " ").toLowerCase();
+          const others = await supabaseFetchAll(env, `/rest/v1/profiles?id=neq.${encodeURIComponent(authUser.id)}&select=full_name`);
+          if (others.some((/** @type {any} */ row) => String(row.full_name || "").trim().replace(/\s+/g, " ").toLowerCase() === wanted)) return json({ error: "Another account already uses that full name. Add a middle initial or similar to tell them apart." }, { status: 409 });
+        }
         const beforePrefs = preferencesFromRow(await preferencesRow(env, authUser.id));
         await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(authUser.id)}`, {
           method: "PATCH", headers: { prefer: "return=minimal" },
@@ -6144,7 +6407,7 @@ export default {
         /** @type {[string, string, string][]} */
         const fields = [["Full name", before.name || "", patch.fullName], ["Mobile", before.phone || "", patch.phone], ["Display name", beforePrefs.displayName, patch.displayName]];
         const changes = fields.filter(([, from, to]) => from !== to).map(([field, from, to]) => ({ field, from, to }));
-        if (changes.length) ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: patch.fullName, role: profile.role, action: "Updated own profile", module: "Account settings", record: profile.email, changes }, authUser.id, auditContextForRequest(request)));
+        if (changes.length) ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: before.name || profile.email, role: profile.role, action: "Updated own profile", module: "Account settings", record: profile.email, changes }, authUser.id, auditContextForRequest(request)));
         return json({ ok: true, name: patch.fullName, phone: patch.phone, displayName: patch.displayName });
       }
 
@@ -6232,22 +6495,11 @@ export default {
         return json({ ok: true, revoked: rows.length });
       }
 
+      // Retired: the old whole-blob app_state read/write let every role read and replace all data
+      // past the per-module permission checks. The app saves per record (/api/modules/records and
+      // /api/modules/state) and no client calls this any more.
       if (url.pathname === "/api/app-state") {
-        const { authUser, profile } = await authenticatedProfile(request, env);
-        if (request.method === "GET") {
-          const rows = await supabaseFetch(env, `/rest/v1/app_state?key=eq.${encodeURIComponent(appStateKey(env))}&select=data,updated_at,revision`);
-          return json({ data: rows[0]?.data || null, updatedAt: rows[0]?.updated_at || null, revision: rows[0]?.revision || 0 });
-        }
-        if (request.method === "PUT") {
-          requireWriteAccess(profile);
-          const { data, revision } = await request.json();
-          const rows = await supabaseFetch(env, "/rest/v1/rpc/update_app_state", {
-            method: "POST",
-            body: JSON.stringify({ expected_revision: Number(revision || 0), next_data: data, actor: authUser.id, state_key: appStateKey(env) }),
-          });
-          return json({ ok: true, revision: rows[0]?.revision, updatedAt: rows[0]?.updated_at });
-        }
-        return methodNotAllowed();
+        return json({ error: "This endpoint has been retired." }, { status: 410 });
       }
 
       if (url.pathname === "/api/auth/set-password") {
@@ -6255,6 +6507,10 @@ export default {
         requireEnv(env, ["SUPABASE_URL", "SUPABASE_ANON_KEY"]);
         const { accessToken, password } = await request.json();
         if (!accessToken) return json({ error: "Invite or reset token is required" }, { status: 400 });
+        // Only a session that came from an invite / reset email link may set a password without
+        // the current one. An ordinary signed-in session (password login, or a refresh of one)
+        // must use /api/auth/change-password, which checks the current password.
+        if (!emailLinkSessionToken(String(accessToken))) return json({ error: "This link is invalid or has expired. Request a new password reset email, or change your password from Account settings." }, { status: 400 });
         const policyError = passwordPolicyError(password);
         if (policyError) return json({ error: policyError }, { status: 400 });
         const response = await fetch(`${supabaseBaseUrl(env)}/auth/v1/user`, {
@@ -6322,15 +6578,21 @@ export default {
         const stateKey = appStateKey(env);
         const { action, module, record } = await request.json();
         if (!action) return json({ error: "Action is required" }, { status: 400 });
+        // Sign-ins are recorded by the server itself (writeSignInAudit); a browser can't add one.
+        if (/^\s*(logged in|signed in|failed sign-?in)\s*$/i.test(String(action))) return json({ error: "Sign-in events are recorded by the server" }, { status: 400 });
         const context = auditContextForRequest(request);
         const entry = {
           date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }),
           user: profile.name || profile.email || "System User",
+          // The signed-in account (not the editable display name) identifies who posted this, and
+          // the entry is marked as reported by the browser rather than observed by the server.
+          email: cleanEmail(profile.email),
+          clientReported: true,
           // While previewing, the audit trail still names the real role behind the action.
           role: profile.previewOf ? `${profile.previewOf} (previewing ${profile.role})` : profile.role || "Unknown",
-          action,
-          module: module || "",
-          record: record || "",
+          action: String(action).slice(0, 300),
+          module: String(module || "").slice(0, 120),
+          record: String(record || "").slice(0, 500),
           device: context.device,
           browser: context.browser,
           location: context.location,
@@ -6572,14 +6834,12 @@ export default {
             const eventModules = presentKeys.filter((key) => DISCORD_EVENT_MODULES.includes(key));
             const masterlistModulesPresent = !["Superadmin", "CEO"].includes(profile.role) ? presentKeys.filter((key) => ["clients", "items", "suppliers", "employees", "banks"].includes(key)) : [];
             const masterlistRecordKeys = masterlistModulesPresent.length ? rows.filter((row) => masterlistModulesPresent.includes(row.module_name)).map((row) => row.record_key) : [];
-            const checkInventoryStock = !["Admin", "Superadmin", "CEO"].includes(profile.role) && presentKeys.includes("inventory") && !presentKeys.includes("sales") && !presentKeys.includes("pendingTransfers");
-            const inventoryRecordKeys = checkInventoryStock ? rows.filter((row) => row.module_name === "inventory").map((row) => row.record_key) : [];
             const poRows = presentKeys.includes("purchaseOrders") ? rows.filter((row) => row.module_name === "purchaseOrders") : [];
 
             // None of these reads depend on each other, so fire them together instead of
             // one `await` at a time — this used to be up to 4 sequential Supabase round
             // trips before the save could even start.
-            const [beforeRows, eventBeforeRows, storedMasterRows, storedStock] = await Promise.all([
+            const [beforeRows, eventBeforeRows, storedMasterRows] = await Promise.all([
               supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(presentKeys))}&select=module_name,record_key`),
               // The Discord poster diffs before/after status, so it needs the *complete* stored
               // set of the event modules (paged), not the single capped page the circuit-breaker
@@ -6592,12 +6852,6 @@ export default {
               // here used to cost as much as the login-time state load, on every save.
               masterlistRecordKeys.length
                 ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=in.${encodeURIComponent(postgrestIn(masterlistModulesPresent))}&record_key=in.${encodeURIComponent(postgrestIn(masterlistRecordKeys))}&select=module_name,record_key,data`)
-                : Promise.resolve([]),
-              // Only the incoming inventory rows need their stored qty/expiry checked — not
-              // the entire inventory table, which grows with every SKU/lot the company has ever
-              // stocked. A full-module fetch here used to run on every non-admin inventory save.
-              inventoryRecordKeys.length
-                ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(inventoryRecordKeys))}&select=record_key,data`)
                 : Promise.resolve([]),
             ]);
             /** @type {Record<string, any>} */
@@ -6632,20 +6886,7 @@ export default {
               }
             }
 
-            // Editing a stored stock row's quantity or expiry is Admin/CEO/Superadmin-only, even
-            // through this bulk state PUT. New rows, and changes bundled with a stock-moving flow
-            // (`sales` invoicing, `pendingTransfers`), are unaffected.
-            if (checkInventoryStock) {
-              const storedStockByKey = new Map(storedStock.map((/** @type {any} */ row) => [row.record_key, row.data || {}]));
-              for (const row of rows) {
-                if (row.module_name !== "inventory") continue;
-                const prev = storedStockByKey.get(row.record_key);
-                if (!prev) continue;
-                if (Number(prev.qty || 0) !== Number(row.data?.qty || 0) || String(prev.expiry || "") !== String(row.data?.expiry || "")) {
-                  throw new Error("Only Admin, CEO, or Superadmin can edit stock quantity or expiry");
-                }
-              }
-            }
+            // Stock quantity/expiry changes: see assertStockChangesAllowed (run with the others below).
 
             // These are all independent assertions against already-stored data — run them
             // together instead of one at a time. (validateNewSaleRows needs beforeKeysByModule
@@ -6665,6 +6906,8 @@ export default {
               assertCalendarEventChangesAllowed(env, stateKey, profile, rows),
               assertCreditApprovalAllowed(env, stateKey, profile, rows),
               assertMigratedStockAllowed(env, stateKey, profile, rows),
+              assertStockChangesAllowed(env, stateKey, profile, rows),
+              Promise.resolve().then(() => assertPrintTemplateValuesValid(rows)),
             ]);
 
             const wipedModules = presentKeys.filter((key) => (beforeCounts[key] || 0) > 0 && (afterCounts[key] || 0) === 0);
@@ -6792,6 +7035,9 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         const id = decodeURIComponent(url.pathname.split("/")[3]);
         const stateKey = appStateKey(env);
+        // Only someone the memo was posted for can acknowledge it (or learn that it exists).
+        const memoRows = await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.memos&record_key=eq.${encodeURIComponent(id)}&select=data`);
+        if (!memoRows[0] || !memoVisibleTo(profile, memoRows[0].data)) return json({ error: "Memo not found" }, { status: 404 });
         // Single RPC round trip (atomic read-check-write in Postgres) instead of a separate
         // SELECT then POST -- see docs/migrations/2026-09-16-acknowledge-memo-rpc.sql.
         const rows = await supabaseFetch(env, "/rest/v1/rpc/acknowledge_memo", {
@@ -7012,16 +7258,9 @@ export default {
         const archiveKeysByModule = {};
         if (checkMasterlistArchive) for (const row of archiveCandidateRows) (archiveKeysByModule[row.module_name] ||= []).push(row.record_key);
 
-        // Directly correcting a stored stock row's quantity or expiry (the Inventory → Stocks
-        // "Edit" dialog) is Admin/CEO/Superadmin-only. The "inventory" module permission gates
-        // receiving/transfers for Logistics et al., but a manual stock correction is a higher bar.
-        // Legit stock-moving flows bundle a companion record (invoicing → `sales`, transfers →
-        // `pendingTransfers`); the correction dialog sends `inventory` alone, so skip the guard
-        // when a companion is present. A brand-new stock row (no stored match) also passes through.
-        const stockMovementCompanions = new Set(["sales", "pendingTransfers"]);
+        // Stock changes below Admin must be covered by a stock-moving record in this same save
+        // (assertStockChangesAllowed); a manual correction is Admin/CEO/Superadmin-only.
         const incomingStockRows = rows.filter((row) => row.module_name === "inventory");
-        const hasStockMovementCompanion = rows.some((row) => stockMovementCompanions.has(row.module_name));
-        const checkStockEdit = incomingStockRows.length && !hasStockMovementCompanion && !["Admin", "CEO", "Superadmin"].includes(profile?.role);
         // Stored quantities (read under the stock lock, after the rebase) for the movement log.
         const storedStockForLog = incomingStockRows.length ? storedInventoryByKey(env, stateKey, incomingStockRows.map((row) => String(row.record_key))) : Promise.resolve(new Map());
         storedStockForLog.catch(() => null); // awaited before the upsert; a validation error may throw first
@@ -7048,7 +7287,7 @@ export default {
         // needs a second, sequential read below — it only knows which sales rows to look for once
         // it knows which incoming PO rows are edits of an existing PO, i.e. once storedPoRows below
         // has resolved.)
-        const [saleScopedStock, existingSaleRows, storedPoRows, beforeRows, masterlistStoredRows, stockEditStoredStock, auditBefore] = await Promise.all([
+        const [saleScopedStock, existingSaleRows, storedPoRows, beforeRows, masterlistStoredRows, auditBefore] = await Promise.all([
           saleStockRows.length
             ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(saleStockRows.map((row) => row.record_key)))}&select=record_key,data`)
             : Promise.resolve([]),
@@ -7071,9 +7310,6 @@ export default {
                 return stored.map((/** @type {any} */ entry) => ({ moduleName, ...entry }));
               })).then((groups) => groups.flat())
             : Promise.resolve([]),
-          checkStockEdit
-            ? supabaseFetchAll(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventory&record_key=in.${encodeURIComponent(postgrestIn(incomingStockRows.map((row) => row.record_key)))}&select=record_key,data`)
-            : Promise.resolve([]),
           // Stored copies of watched records, for the audit trail's before → after.
           auditBeforeRows(env, stateKey, rows),
           incomingPoRows.length ? assertPurchaseOrderClientsNotArchived(env, stateKey, incomingPoRows) : Promise.resolve(),
@@ -7085,6 +7321,8 @@ export default {
               assertCalendarEventChangesAllowed(env, stateKey, profile, rows),
           assertCreditApprovalAllowed(env, stateKey, profile, rows),
           assertMigratedStockAllowed(env, stateKey, profile, rows),
+          assertStockChangesAllowed(env, stateKey, profile, rows),
+          Promise.resolve().then(() => assertPrintTemplateValuesValid(rows)),
         ]);
 
         if (saleScopedInventory) {
@@ -7093,7 +7331,7 @@ export default {
             const incoming = row.data || {};
             if (!(/** @type {Set<string>} */ (saleCodes)).has(String(incoming.code || ""))) throw new Error("You do not have permission to edit inventory");
             const prev = storedStockByKey.get(row.record_key);
-            if (!prev) continue;
+            if (!prev) throw new Error("You do not have permission to edit inventory");
             const { qty: _prevQty, lot: _prevLot, ...prevRest } = prev;
             const { qty: _nextQty, lot: _nextLot, ...nextRest } = incoming;
             if (JSON.stringify(prevRest, Object.keys(prevRest).sort()) !== JSON.stringify(nextRest, Object.keys(nextRest).sort())) throw new Error("You do not have permission to edit inventory");
@@ -7118,17 +7356,6 @@ export default {
             const wasArchived = storedArchivedByKey.get(`${row.module_name}|${row.record_key}`) || false;
             const willBeArchived = Boolean(row.data && row.data.archived);
             if (wasArchived !== willBeArchived) throw new Error("Only CEO or Superadmin can archive or restore masterlist records");
-          }
-        }
-
-        if (checkStockEdit) {
-          const storedStockByKey = new Map(stockEditStoredStock.map((/** @type {any} */ entry) => [entry.record_key, entry.data || {}]));
-          for (const row of incomingStockRows) {
-            const prev = storedStockByKey.get(row.record_key);
-            if (!prev) continue;
-            const qtyChanged = Number(prev.qty || 0) !== Number(row.data?.qty || 0);
-            const expiryChanged = String(prev.expiry || "") !== String(row.data?.expiry || "");
-            if (qtyChanged || expiryChanged) throw new Error("Only Admin, CEO, or Superadmin can edit stock quantity or expiry");
           }
         }
 
@@ -7390,6 +7617,19 @@ export default {
         if (receipt.status !== "Pending Approval") throw new Error(`Cannot approve a stock receipt with status "${receipt.status}"`);
         // Posting a receipt rewrites stock rows, so it holds the same stock lock as invoice saves.
         return await withStockLock(env, stateKey, async () => {
+        // Re-read the receipt now that the lock is held: two overlapping approvals both passed
+        // the check above, and only the first may post its stock.
+        const fresh = (await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.stockReceipts&record_key=eq.${encodeURIComponent(receiptId)}&select=data`))[0]?.data;
+        if (!fresh) return json({ error: "Stock receipt not found" }, { status: 404 });
+        if (fresh.status === "Approved") {
+          const approvedPo = fresh.poId
+            ? (await supabaseFetch(env, `/rest/v1/app_records?state_key=eq.${encodeURIComponent(stateKey)}&module_name=eq.inventoryPurchaseOrders&record_key=eq.${encodeURIComponent(fresh.poId)}&select=data`))[0]?.data || null
+            : null;
+          return json({ ok: true, receipt: fresh, po: approvedPo });
+        }
+        if (fresh.status !== "Pending Approval") throw new Error(`Cannot approve a stock receipt with status "${fresh.status}"`);
+        Object.assign(receipt, fresh);
+        receipt.history = receipt.history || [];
         // The PO lookup and the inventory lookup are independent reads — running them together
         // shaves a full round trip off every approval, which matters most on itemized receipts
         // where the extra latency made a transient network blip more likely to surface as
@@ -7554,7 +7794,7 @@ export default {
         /** @type {Record<string, any>} */
         const state = stateFromRecords(rows);
         const record = (state[key] || []).find((/** @type {any} */ item) => item.id === id);
-        if (!record) return json({ error: "Request not found" }, { status: 404 });
+        if (!record || !branchRecordVisibleTo(profile, key, record)) return json({ error: "Request not found" }, { status: 404 });
         const titleType = type === "payable" ? "Payable" : "Expense";
         return json({ id: record.id, title: `${titleType} Request ${record.id}`, description: `${record.supplier || record.requester || "Request"} · ${money(record.amount)}`, html: financialRequestPrintableHtml(record, type) });
       }
@@ -7778,6 +8018,15 @@ export default {
           method: "PUT",
           body: JSON.stringify({ ban_duration: disabled ? "876000h" : "none", user_metadata: { ...(target.user_metadata || {}), disabled_reason: disabled ? String(reason).trim() : "", disabled_at: disabled ? new Date().toISOString() : "" } }),
         });
+        if (disabled) {
+          // End every signed-in device now, not when the access token runs out.
+          await supabaseFetch(env, `/rest/v1/app_sessions?user_id=eq.${encodeURIComponent(target.id)}&revoked_at=is.null`, {
+            method: "PATCH",
+            headers: { prefer: "return=minimal" },
+            body: JSON.stringify({ revoked_at: new Date().toISOString(), revoked_by: authUser.id }),
+          });
+          authCache.clear();
+        }
         return json({ ok: true, disabled: Boolean(disabled), reason: disabled ? String(reason).trim() : "" });
       }
 
@@ -7875,6 +8124,7 @@ export default {
           headers: { prefer: "return=minimal" },
           body: JSON.stringify({ revoked_at: new Date().toISOString(), revoked_by: authUser.id }),
         });
+        authCache.clear();
         const names = await supabaseFetch(env, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=email`);
         ctx.waitUntil(writeAuditTrace(env, appStateKey(env), { actor: profile.name || profile.email, role: profile.role, action: "Signed out all sessions", module: "Users", record: names[0]?.email || userId }, profile.id, auditContextForRequest(request)));
         return json({ ok: true });
@@ -7891,6 +8141,7 @@ export default {
           headers: { prefer: "return=minimal" },
           body: JSON.stringify({ revoked_at: new Date().toISOString(), revoked_by: authUser.id }),
         });
+        forgetCachedSession(sessionId);
         return json({ ok: true });
       }
 
@@ -8033,7 +8284,8 @@ export default {
         const { authUser, profile } = await authenticatedProfile(request, env);
         if (request.method === "GET") {
           const rows = await supabaseFetch(env, "/rest/v1/file_objects?deleted_at=is.null&select=*&order=uploaded_at.desc");
-          const visible = rows.filter((/** @type {any} */ row) => canAccessKey(profile, fileRecordTypeKey[row.record_type], "view"));
+          const visibleMemoIds = await visibleMemoIdsFor(env, profile, rows);
+          const visible = rows.filter((/** @type {any} */ row) => canAccessKey(profile, fileRecordTypeKey[row.record_type], "view") && (row.record_type !== "memo" || !visibleMemoIds || visibleMemoIds.has(String(row.record_id || ""))));
           return json({ files: visible });
         }
         if (request.method !== "POST") return methodNotAllowed();
@@ -8047,6 +8299,17 @@ export default {
         const maxBytes = Number(env.MAX_R2_BYTES || 536870912000);
         const recordType = String(form.get("recordType") || "general");
         const recordId = String(form.get("recordId") || "");
+        // An attachment is part of the record it is filed under, so uploading one needs edit
+        // access to that record's module (memos: the memo posters). Untyped files are
+        // Superadmin/CEO-only, since nobody else could ever read them back.
+        const recordModuleKey = Object.hasOwn(fileRecordTypeKey, recordType) ? fileRecordTypeKey[/** @type {keyof typeof fileRecordTypeKey} */ (recordType)] : "";
+        if (!recordModuleKey) {
+          if (!["Superadmin", "CEO"].includes(String(profile?.role || ""))) return json({ error: "Unknown attachment type" }, { status: 400 });
+        } else if (recordType === "memo") {
+          requireMemoAdmin(profile);
+        } else if (!canAccessKey(profile, recordModuleKey, "edit")) {
+          return json({ error: "You do not have permission to attach files to this record" }, { status: 403 });
+        }
         const objectKey = objectKeyFor(file.name, recordType);
         await reserveStorage(env, file.size);
         let inserted;
@@ -8089,6 +8352,10 @@ export default {
         const rows = await supabaseFetch(env, `/rest/v1/file_objects?id=eq.${encodeURIComponent(id)}&deleted_at=is.null&select=*`);
         if (!rows[0]) return json({ error: "File not found" }, { status: 404 });
         if (!canAccessKey(profile, fileRecordTypeKey[rows[0].record_type], "view")) throw new Error("You do not have permission to access this file");
+        if (rows[0].record_type === "memo") {
+          const visibleMemoIds = await visibleMemoIdsFor(env, profile, rows);
+          if (visibleMemoIds && !visibleMemoIds.has(String(rows[0].record_id || ""))) throw new Error("You do not have permission to access this file");
+        }
         const object = await env.DOCUMENTS_BUCKET.get(rows[0].object_key);
         if (!object) return json({ error: "R2 object not found" }, { status: 404 });
         // Stored MIME type is client-declared, so only a short list of passive types is ever served
@@ -8113,7 +8380,7 @@ export default {
       return env.ASSETS.fetch(request);
     } catch (/** @type {any} */ error) {
       console.error(JSON.stringify({ message: error.message, path: url.pathname }));
-      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: |^Calendar event|calendar events as yourself|^Stock changed:/.test(error.message) ? 422 : /^Recon conflict/.test(error.message) ? 409 : /^Recon: /.test(error.message) ? 422 : /^Stock is busy/.test(error.message) ? 503 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
+      const status = /Authentication required|Invalid or expired|Invalid app session|SESSION_REVOKED|SESSION_EXPIRED_12H/.test(error.message) ? 401 : /No Medlane profile|permission|^Only |cannot approve/.test(error.message) ? 403 : /can no longer be edited|already in use|Duplicate/.test(error.message) ? 409 : /^Invoice [^:]+: |^Calendar event|calendar events as yourself|^Stock changed:|^Unknown purchase order status|must start as Pending Approval/.test(error.message) ? 422 : /^Recon conflict/.test(error.message) ? 409 : /^Recon: /.test(error.message) ? 422 : /^Stock is busy/.test(error.message) ? 503 : /MEMO_NOT_FOUND/.test(error.message) ? 404 : /APP_STATE_CONFLICT/.test(error.message) ? 409 : /STORAGE_LIMIT_REACHED/.test(error.message) ? 409 : 500;
       return json({ error: error.message || "Server error" }, { status });
     }
   },

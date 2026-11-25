@@ -179,7 +179,8 @@ export function activityQuery({ stateKey, profile, tab = "all", q = "", user = "
   const anyOf = [];
   if (!scope.all) {
     const mine = [`user_id.eq.${profile.id}`];
-    if (profile.email) mine.push(`email.eq.${String(profile.email).toLowerCase()}`);
+    // Quoted, so an email containing "," or ")" can't break out of this or=() group.
+    if (profile.email) mine.push(`email.eq."${String(profile.email).toLowerCase().replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
     anyOf.push(mine.join(","));
   } else if (user) {
     p.set("actor", `eq.${user}`);
