@@ -219,7 +219,7 @@ const PRINT_TEMPLATE_FIELDS = {
       ["si-date", "Date"], ["si-po", "P.O. No."], ["si-terms", "Terms of Payment"], ["si-due", "Due Date"], ["si-salesperson", "Sales Person"], ["si-sold", "Sold To"],
       ["si-registered", "Registered Name"], ["si-tin", "TIN"], ["si-address", "Address"],
       ["si-total-sales", "Total Sales (VAT Incl.)"], ["si-less-vat", "Less: VAT"], ["si-net-vat", "Amount Net of VAT"], ["si-vatable", "VATable Sales"], ["si-vat-amount", "VAT Amount"], ["si-discount", "Discount"],
-      ["si-vat", "VAT"], ["si-wht", "Less: Withholding Tax"], ["si-amount-due", "Total Amount Due"], ["si-prepared", "Prepared By"], ["si-approved", "Approved By"],
+      ["si-vat", "Add: VAT"], ["si-wht", "Less: Withholding Tax"], ["si-amount-due", "Total Amount Due"], ["si-prepared", "Prepared By"], ["si-approved", "Approved By"],
     ],
     rowCols: [["si-qty", "Qty"], ["si-item", "Item"], ["si-lot", "Lot / Expiry"], ["si-price", "Price"], ["si-amount", "Amount"]],
   },
