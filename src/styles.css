@@ -540,6 +540,11 @@ dialog.save-guard-dialog[open] { display: grid; }
   min-width: 0;
   position: relative;
   font-size: 13px;
+  /* Nav links are not text: with browser caret browsing on (F7), clicking one parked a blinking
+     text caret after the label, so it looked like a typeable field. */
+  user-select: none;
+  -webkit-user-select: none;
+  caret-color: transparent;
 }
 .nav-item::before {
   content: "";
