@@ -855,9 +855,15 @@ function comboOpen(input) {
   window.addEventListener("resize", comboReposition);
 }
 
-/** @param {AnyEl} input */
-function comboRefresh(input) {
-  if (input !== comboOpenInput) return;
+// The dropdown closes when nothing matches or after a pick, and focusin won't fire again while the
+// field keeps focus — so a real keystroke in a focused combo field reopens it (e.g. pick a product,
+// backspace, type another). Programmatic input events (autofill) never reopen it.
+/** @param {AnyEl} input @param {boolean} [userTyped] */
+function comboRefresh(input, userTyped = false) {
+  if (input !== comboOpenInput) {
+    if (userTyped && input?.tagName === "INPUT" && document.activeElement === input && (input.hasAttribute("list") || input.dataset.comboList)) comboOpen(input);
+    return;
+  }
   comboHighlightIndex = -1;
   comboRenderOptions(comboFilter(comboOptionsFor(input), input.value));
 }

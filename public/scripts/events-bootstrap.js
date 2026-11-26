@@ -794,7 +794,7 @@ document.addEventListener("change", (event) => usersSyncCanDo(/** @type {Element
 document.addEventListener("input", (event) => {
   if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target);
   if (/** @type {AnyEl} */ (event.target).matches(".transfer-lot")) updateTransferBalanceHint(closestEl(event.target, "tr"));
-  comboRefresh(/** @type {AnyEl} */ (event.target));
+  comboRefresh(/** @type {AnyEl} */ (event.target), event.isTrusted);
 });
 document.addEventListener("blur", (event) => {
   if (/** @type {AnyEl} */ (event.target).matches(".stock-code, .stock-item, .transfer-code, .transfer-item, .transfer-from")) syncStockSheetRow(event.target, true);

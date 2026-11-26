@@ -4219,7 +4219,17 @@ const SALES_PAYMENT_TONES = { Paid: "green", Unpaid: "blue", "Partially Paid": "
 function salesCanViewAll() { return ["Accounting", "Admin", "Superadmin", "CEO"].includes(currentUser?.role); }
 /** Same scope the Sales page has always used: the branch filter, and Sales agents see only their assigned clients. @param {string} client */
 function salesClientVisible(client) { return salesCanViewAll() || isClientAssignedToCurrentUser(client); }
-function salesScopedDocuments() { return byBranch(data.sales, "area").filter((sale) => salesClientVisible(sale.client)); }
+/** True when the current user recorded this client order or invoice themselves. @param {{ salesperson?: string, createdBy?: string }} record */
+function salesRecordIsMine(record) { const me = currentUser?.name; return Boolean(me) && (record?.salesperson === me || record?.createdBy === me); }
+/** Sales agents also see orders they recorded, even for a client assigned to someone else. @param {ClientPO} po */
+function salesOrderVisible(po) { return salesClientVisible(po.client) || salesRecordIsMine(po); }
+/** @param {Sale} sale */
+function salesDocumentVisible(sale) {
+  if (salesClientVisible(sale.client) || salesRecordIsMine(sale)) return true;
+  const po = sale.po ? (data.purchaseOrders || []).find((order) => order.id === sale.po) : null;
+  return Boolean(po && salesRecordIsMine(po));
+}
+function salesScopedDocuments() { return byBranch(data.sales, "area").filter(salesDocumentVisible); }
 /** @param {Sale} sale */
 function salesDocNo(sale) { return String(sale.documentNo || sale.id); }
 /** @param {Sale} sale */
@@ -4235,7 +4245,7 @@ function salesBranches(record) {
   return [...new Set([record.sourceBranch, record.branch, ...(record.lines || []).map((/** @type {PoLine} */ line) => line.sourceBranch || line.branch)].filter(Boolean).map(String))];
 }
 /** Client orders this user may see that still have lines to serve. */
-function salesOpenOrders() { return byBranch(data.purchaseOrders || [], "area").filter((po) => salesClientVisible(po.client) && !PO_TERMINAL_STATUSES.includes(poStatus(po))); }
+function salesOpenOrders() { return byBranch(data.purchaseOrders || [], "area").filter((po) => salesOrderVisible(po) && !PO_TERMINAL_STATUSES.includes(poStatus(po))); }
 /** @param {ClientPO} po */
 function salesOrderTotal(po) { return (po.lines || []).reduce((sum, line) => sum + lineSubtotal(line), 0); }
 /** @param {ClientPO} po */
@@ -4262,7 +4272,7 @@ function clientOrdersModel(prefix) {
   const select = (/** @type {string} */ id) => uiViewSelect(prefix, id);
   const closeAttrs = { [`data-${prefix}-close`]: "" };
   const monthKey = salesMonthKey();
-  const orders = byBranch(data.purchaseOrders || [], "area").filter((po) => salesClientVisible(po.client));
+  const orders = byBranch(data.purchaseOrders || [], "area").filter(salesOrderVisible);
   const rows = orders.map(/** @returns {UiViewRow} */ (po) => {
     const status = poStatus(po);
     const done = PO_TERMINAL_STATUSES.includes(status);
@@ -4519,7 +4529,7 @@ function renderSales() {
   if (!SALES_TAB_LABELS[salesTab]) salesTab = "orders";
   const newOrder = qs("#sales-new-order");
   if (newOrder) newOrder.hidden = !canEditModule("purchase-orders");
-  const ordersCount = byBranch(data.purchaseOrders || [], "area").filter((po) => salesClientVisible(po.client) && !PO_TERMINAL_STATUSES.includes(poStatus(po))).length;
+  const ordersCount = byBranch(data.purchaseOrders || [], "area").filter((po) => salesOrderVisible(po) && !PO_TERMINAL_STATUSES.includes(poStatus(po))).length;
   const docs = salesScopedDocuments();
   /** @type {Record<string, number>} */
   const counts = {
