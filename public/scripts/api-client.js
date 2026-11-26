@@ -620,10 +620,11 @@ const MedlaneAPI = (() => {
     return request(`/api/memos/${encodeURIComponent(id)}/acknowledge`, { method: "POST" });
   }
 
-  /** @param {string} id @param {boolean} [noDate] @param {string} [templateId] @returns {Promise<PrintableInvoice>} */
-  async function printableInvoice(id, noDate = false, templateId = "default") {
+  /** @param {string} id @param {boolean} [noDate] @param {string} [templateId] @param {boolean} [withholding] @returns {Promise<PrintableInvoice>} */
+  async function printableInvoice(id, noDate = false, templateId = "default", withholding = false) {
     const query = new URLSearchParams({ id });
     if (noDate) query.set("noDate", "1");
+    if (withholding) query.set("wht", "1");
     if (templateId === "custom") query.set("template", "custom");
     return request(`/api/printables/invoice?${query}`);
   }

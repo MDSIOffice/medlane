@@ -1510,6 +1510,7 @@ qs("#report-preview-cancel").addEventListener("click", closeReportPreview);
 qs("#report-preview-print").addEventListener("click", printReportPreview);
 qs("#report-preview-print-no-date").addEventListener("click", printReportPreviewNoDate);
 qs("#report-preview-template")?.addEventListener("change", (e) => changeReportPreviewTemplate(/** @type {AnyEl} */ (e.target).value));
+qs("#report-preview-wht")?.addEventListener("change", (e) => changeReportPreviewWithholding(/** @type {AnyEl} */ (e.target).checked));
 qs("#payment-request-preview-close").addEventListener("click", () => qs("#payment-request-preview-modal").close());
 qs("#payment-request-preview-cancel").addEventListener("click", () => qs("#payment-request-preview-modal").close());
 qs("#payment-request-preview-print").addEventListener("click", () => window.print());

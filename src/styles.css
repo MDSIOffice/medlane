@@ -1870,12 +1870,15 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .si-registered { left: 1.6in; top: 1.61in; width: 3.45in; }
 .si-tin { left: 1.15in; top: 1.7in; width: 2.0in; }
 .si-address { left: 1.6in; top: 2.08in; width: 5.7in; }
-.si-row { position: absolute; left: 0.55in; right: 0.45in; top: calc(2.78in + (var(--row) * 0.34in)); height: 0.33in; }
-.si-item { position: absolute; left: 0.23in; width: 4.4in; }
-.si-lot { left: 0.23in; top: 0.2in; width: 4.4in; }
-.si-qty { position: absolute; left: 4.64in; width: 0.7in; text-align: center; }
-.si-price { position: absolute; left: 5.37in; width: 0.75in; text-align: right; }
-.si-amount { position: absolute; left: 6.47in; width: 0.85in; text-align: right; }
+/* New SI form (Nov 2026) column order: Quantity | Item Description | Unit Price | Amount.
+   The row starts further left so Quantity fits in the narrow first column; price/amount keep
+   their previous absolute page positions (5.92in / 7.02in). */
+.si-row { position: absolute; left: 0.3in; right: 0.45in; top: calc(2.78in + (var(--row) * 0.34in)); height: 0.33in; }
+.si-qty { position: absolute; left: 0.03in; width: 0.68in; text-align: center; white-space: nowrap; overflow: hidden; }
+.si-item { position: absolute; left: 0.78in; width: 4.4in; }
+.si-lot { left: 0.78in; top: 0.2in; width: 4.4in; }
+.si-price { position: absolute; left: 5.62in; width: 0.75in; text-align: right; }
+.si-amount { position: absolute; left: 6.72in; width: 0.85in; text-align: right; }
 .si-total-sales { left: 6.55in; top: 6.28in; width: 1.0in; text-align: right; }
 .si-less-vat { left: 6.55in; top: 6.48in; width: 1.0in; text-align: right; }
 .si-net-vat { left: 6.55in; top: 6.68in; width: 1.0in; text-align: right; }
@@ -1883,6 +1886,7 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .si-vat-amount { left: 1.6in; top: 7.1in; width: 1.3in; text-align: right; }
 .si-discount { left: 6.55in; top: 6.89in; width: 1.0in; text-align: right; }
 .si-vat { left: 6.55in; top: 7.1in; width: 1.0in; text-align: right; }
+.si-wht { left: 6.55in; top: 7.3in; width: 1.0in; text-align: right; }
 .si-amount-due { left: 6.55in; top: 7.51in; width: 1.0in; text-align: right; font-size: 16px; }
 .si-prepared { left: 3.9in; top: 7.94in; width: 1.4in; text-align: center; }
 .si-approved { left: 3.9in; top: 8.22in; width: 1.4in; text-align: center; }
@@ -1973,6 +1977,8 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .pt-arrow-row { display: flex; gap: 4px; }
 .print-template-actions { justify-content: flex-end; margin-top: 14px; }
 .report-preview-template-field { max-width: 260px; margin: 10px 0; }
+.report-preview-wht-field:not([hidden]) { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.report-preview-wht-field input { width: 16px; height: 16px; accent-color: var(--accent); }
 @media (max-width: 640px) {
   .print-template-editor { grid-template-columns: 1fr; }
   .print-template-canvas-wrap { width: 100%; max-width: 342px; height: auto; aspect-ratio: 8.5 / 11; margin: 0 auto; }

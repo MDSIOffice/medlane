@@ -7,7 +7,7 @@ const STOCK = [stored("A|LP|L1", { code: "A", branch: "LP", lot: "L1", qty: 10 }
 const sale = (over = {}) => ({ documentNo: "SI-1", client: "Lab", type: "SI", code: "A", qty: 2, price: 100, branch: "LP", lot: "L1", amount: 200, net: 200, discount: 0, ...over });
 const saleRow = (data, key = data.documentNo || "SI-1") => row("sales", key, data);
 const run = (profile, ...sales) => validate(env, STATE, profile, sales.map((data) => saleRow(data)));
-const client = (name, data = {}) => stored(name, { name, creditLimit: 0, ...data });
+const client = (name, data = {}) => stored(name, { name, creditLimit: 0, salesperson: "Ana Cruz", ...data });
 beforeEach(() => mockSupabase({ inventory: STOCK, clients: [client("Lab")] }));
 
 describe("amounts", () => {
@@ -28,6 +28,24 @@ describe("amounts", () => {
   });
   test("an expired lot is rejected", async () => {
     await assert.rejects(run(as("Accounting"), sale({ expiry: "2001-01-01" })), /expired lot/);
+  });
+});
+
+describe("assigned sales agent", () => {
+  for (const [label, salesperson] of [["missing", ""], ["Unassigned", "Unassigned"]]) {
+    test(`an SI for a client with a ${label} agent is rejected`, async () => {
+      mockSupabase({ inventory: STOCK, clients: [client("Lab", { salesperson })] });
+      await assert.rejects(run(as("Admin"), sale()), /no assigned sales agent/);
+    });
+  }
+  test("TS and DR don't need an agent", async () => {
+    mockSupabase({ inventory: STOCK, clients: [client("Lab", { salesperson: "" })] });
+    await run(as("Admin"), sale({ type: "TS" }));
+  });
+  test("skip-PO and migrated SIs don't need an agent", async () => {
+    mockSupabase({ inventory: STOCK, clients: [client("Lab", { salesperson: "Unassigned" })] });
+    await run(as("Admin"), sale({ noPo: true }));
+    await run(as("Admin", ["imports"]), sale({ migrated: true }));
   });
 });
 

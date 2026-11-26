@@ -4164,6 +4164,11 @@ function isClientAssignedToAgent(clientName, agentName) {
 function salesAgentNameSet() {
   return new Set(data.users.filter((user) => user.role === "Sales").map((user) => user.name));
 }
+/** @param {any} client */
+function hasAssignedSalesAgent(client) {
+  const agent = String(client?.salesperson || "").trim();
+  return Boolean(agent) && agent.toLowerCase() !== "unassigned";
+}
 /** @param {Sale} sale @returns {string} */
 function assignedSalesAgent(sale) {
   return /** @type {string} */ (data.clients.find((client) => client.name === sale.client)?.salesperson);
@@ -6089,6 +6094,7 @@ function showReportPreviewLoading() {
   if (qs("#report-preview-print")) qs("#report-preview-print").disabled = true;
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = true;
   if (qs("#report-preview-template-field")) qs("#report-preview-template-field").hidden = true;
+  if (qs("#report-preview-wht-field")) qs("#report-preview-wht-field").hidden = true;
   const dialog = qs("#report-preview-modal");
   if (!dialog.open) dialog.showModal();
 }
@@ -6104,6 +6110,7 @@ function closeReportPreview() {
   clearPrintTarget();
   currentReportSaleId = null;
   currentPrintTemplateId = "default";
+  currentPrintWithholding = false;
   qs("#report-preview-modal").close();
 }
 
@@ -6115,7 +6122,7 @@ async function printInvoice(invoiceId, noDate = false, templateId = null) {
   currentPrintNoDate = noDate;
   currentPrintTemplateId = templateId || currentPrintTemplateId || "default";
   showReportPreviewLoading();
-  const printable = await MedlaneAPI.printableInvoice(invoiceId, noDate, currentPrintTemplateId).catch((error) => {
+  const printable = await MedlaneAPI.printableInvoice(invoiceId, noDate, currentPrintTemplateId, currentPrintWithholding).catch((error) => {
     toast(error.message || "Unable to load printable invoice.");
     qs("#report-preview-modal").close();
     return null;
@@ -6132,6 +6139,8 @@ async function printInvoice(invoiceId, noDate = false, templateId = null) {
   if (qs("#report-preview-print-no-date")) qs("#report-preview-print-no-date").disabled = false;
   if (qs("#report-preview-template-field")) qs("#report-preview-template-field").hidden = !printable.hasCustomTemplate;
   if (qs("#report-preview-template")) qs("#report-preview-template").value = currentPrintTemplateId;
+  if (qs("#report-preview-wht-field")) qs("#report-preview-wht-field").hidden = type !== "si";
+  if (qs("#report-preview-wht")) qs("#report-preview-wht").checked = currentPrintWithholding;
 }
 
 // The SI/TS/DR overlays print onto a pre-printed form whose line rows sit at fixed offsets. The
@@ -6185,6 +6194,13 @@ async function printReportPreviewNoDate() {
   if (sale || currentReportSaleId) await printInvoice(sale?.id || currentReportSaleId, true);
   fitPrintTemplateRows();
   window.print();
+}
+
+/** @param {boolean} include */
+function changeReportPreviewWithholding(include) {
+  if (!currentReportSaleId) return;
+  currentPrintWithholding = Boolean(include);
+  printInvoice(currentReportSaleId, currentPrintNoDate);
 }
 
 /** @param {string} templateId */
@@ -13227,6 +13243,12 @@ function buildSale(values, replacementOf = null, { allowCreditPending = false } 
   if (!documentNo) throw new Error("Manual document number is required.");
   if (documentExists(documentNo)) throw new Error(`Duplicate document number: ${documentNo}`);
   values.type = documentType(values.type);
+  // The printed Sales Invoice carries the client's assigned sales agent, so an SI can't be issued
+  // for a client with none. Skip-PO entries are never printed, so they're exempt. Mirrored
+  // server-side in validateNewSaleRows().
+  if (values.type === "SI" && !values.skipPo && !hasAssignedSalesAgent(client)) {
+    throw new Error(`${client.name} has no assigned sales agent. Assign one in Masterlists → Clients before issuing a Sales Invoice.`);
+  }
   // Skip-PO invoices are a record-keeping/collections-only entry: no PO to match against, no
   // stock reservation or deduction, no credit-limit or discount-approval gate, and (see the
   // "Print" action gating) never printed since there's no real PO or stock movement behind them.
