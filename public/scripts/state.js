@@ -214,9 +214,9 @@ let ptStepIn = 0.05;
 const PRINT_TEMPLATE_FIELDS = {
   SI: {
     point: [
-      ["si-date", "Date"], ["si-po", "P.O. No."], ["si-terms", "Terms of Payment"], ["si-sold", "Sold To"],
+      ["si-date", "Date"], ["si-po", "P.O. No."], ["si-terms", "Terms of Payment"], ["si-due", "Due Date"], ["si-salesperson", "Sales Person"], ["si-sold", "Sold To"],
       ["si-registered", "Registered Name"], ["si-tin", "TIN"], ["si-address", "Address"],
-      ["si-total-sales", "Total Sales (VAT Incl.)"], ["si-net-vat", "Amount Net of VAT"], ["si-discount", "Discount"],
+      ["si-total-sales", "Total Sales (VAT Incl.)"], ["si-less-vat", "Less: VAT"], ["si-net-vat", "Amount Net of VAT"], ["si-vatable", "VATable Sales"], ["si-vat-amount", "VAT Amount"], ["si-discount", "Discount"],
       ["si-vat", "VAT"], ["si-amount-due", "Total Amount Due"], ["si-prepared", "Prepared By"], ["si-approved", "Approved By"],
     ],
     rowCols: [["si-item", "Item"], ["si-lot", "Lot / Expiry"], ["si-qty", "Qty"], ["si-price", "Price"], ["si-amount", "Amount"]],

@@ -1864,6 +1864,8 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .si-date { left: 6.5in; top: 1.17in; width: 1.0in; text-align: center; }
 .si-po { left: 6.1in; top: 1.4in; width: 1.2in; text-align: center; }
 .si-terms { left: 5.9in; top: 1.6in; width: 2.2in; text-align: center; }
+.si-due { left: 7.35in; top: 1.4in; width: 0.95in; text-align: center; }
+.si-salesperson { left: 6.1in; top: 1.82in; width: 2.1in; text-align: center; }
 .si-sold { left: 1.35in; top: 1.4in; width: 3.2in; }
 .si-registered { left: 1.6in; top: 1.61in; width: 3.45in; }
 .si-tin { left: 1.15in; top: 1.7in; width: 2.0in; }
@@ -1875,7 +1877,10 @@ td small { display: block; color: var(--muted); margin-top: 3px; }
 .si-price { position: absolute; left: 5.37in; width: 0.75in; text-align: right; }
 .si-amount { position: absolute; left: 6.47in; width: 0.85in; text-align: right; }
 .si-total-sales { left: 6.55in; top: 6.28in; width: 1.0in; text-align: right; }
+.si-less-vat { left: 6.55in; top: 6.48in; width: 1.0in; text-align: right; }
 .si-net-vat { left: 6.55in; top: 6.68in; width: 1.0in; text-align: right; }
+.si-vatable { left: 1.6in; top: 6.5in; width: 1.3in; text-align: right; }
+.si-vat-amount { left: 1.6in; top: 7.1in; width: 1.3in; text-align: right; }
 .si-discount { left: 6.55in; top: 6.89in; width: 1.0in; text-align: right; }
 .si-vat { left: 6.55in; top: 7.1in; width: 1.0in; text-align: right; }
 .si-amount-due { left: 6.55in; top: 7.51in; width: 1.0in; text-align: right; font-size: 16px; }
